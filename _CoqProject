@@ -1,2 +1,5 @@
 -R . ""
+Helper.v
+GF2.v
 Poly.v
+PolyDiv.v

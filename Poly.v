@@ -1,168 +1,39 @@
 Require Import Coq.Lists.List.
 Require Import Coq.Bool.Bool.
 Require Import VST.floyd.functional_base.
-(* Polynomials over GF(2) - Note that we need to redefine this instead of using mathcomp version bc we need an executable
-  version of Euclidean division *)
+Require Import GF2.
+Require Import Helper.
+Require Import Coq.setoid_ring.Ring_theory.
+(** Computable Polynomials over GF(2) - here we provide executable definitions of polynomial addition and multiplication
+  and prove that GF(2)\[x\] is a ring *)
 
-Inductive bit :=
-  | Zero
-  | One.
+Ltac solve_neq := intro C; inversion C.
 
-Notation "0" := Zero.
-Notation "1" := One.
+(** * Definitions *)
 
 (* We represent a polynomial as a list of bits, representing the coefficients a_0,...a_n. The last element in
-  the list must be 1, and the degree of the polynomial is thus the length of the list*)
+  the list must be 1*)
 Definition poly := list bit.
+
 Definition wf_poly p := p <> nil -> last p 0 = 1.
 
-(*need these cases bc zero is a special case (see, for instance 
-  https://en.wikipedia.org/wiki/Degree_of_a_polynomial#Degree_of_the_zero_polynomial *)
+(* The degre of a polynomial is just the length - 1, except that the zero polynomial is a special case *)
 Definition deg (p: poly) : Z :=
   match p with
   | nil => -1
   | _ => Zlength p - 1
 end.
 
-Instance bit_default : Inhabitant bit.
-apply Zero.
-Defined.
-
-(*get coefficient of x^i in poly p - Inhabitant structure ensures that we will get 0 for coefficients
-  not in the list (ie, coefficients beyond the degree)
-we also allow negative numbers - it makes reasoning easier for some lemmas (in multiplication)*)
+(* The coefficient a_i of x^i in poly p. Gives 0 for all inputs not in range *)
 Definition ith (p: poly) (i: Z) : bit := Znth i p.
 
-(*addition in GF(2)*)
-Definition bit_add (b1 b2 : bit) :=
-  match (b1, b2) with
-  | (1, 1) => 0
-  | (0, 0) => 0
-  | (_, _) => 1
-  end.
-
-Lemma bit_add_comm: forall b1 b2,
-  bit_add b1 b2 = bit_add b2 b1.
-Proof.
-  intros. destruct b1; destruct b2; reflexivity.
-Qed.
-
-Lemma bit_add_assoc : forall b1 b2 b3,
-  bit_add (bit_add b1 b2) b3 = bit_add b1 (bit_add b2 b3).
-Proof.
-  intros; destruct b1; destruct b2; destruct b3; reflexivity.
-Qed.
-
-Lemma bit_add_0_l: forall b,
-  bit_add 0 b = b.
-Proof.
-  intros; destruct b; reflexivity.
-Qed.
-
-Lemma bit_add_0_r: forall b,
-  bit_add b 0 = b.
-Proof.
-  intros; destruct b; reflexivity.
-Qed.
-
-Definition eq_bit (b1 b2 : bit) :=
-  match (b1, b2) with
-  | (1, 1) => true
-  | (0, 0) => true
-  | (_, _) => false
-  end.
-
-Lemma eq_bit_eq: forall b1 b2,
-  eq_bit b1 b2 = true <-> b1 = b2.
-Proof.
-  intros; split; intros; destruct b1; destruct b2; try reflexivity; try (inversion H).
-Qed.
-
-Fixpoint poly_add_inter (f g: poly) :=
-  match f, g with
-  | nil, nil => nil
-  | x1 :: t1, x2 :: t2 => bit_add x1 x2 :: poly_add_inter t1 t2
-  | nil, l => l
-  | l, _ => l
-  end.
-
-Lemma poly_add_inter_nil: forall l1 l2,
-  poly_add_inter l1 l2 = nil <-> l1 = nil /\ l2 = nil.
-Proof.
-  intros. split; intros. destruct l1; destruct l2; try auto; try inversion H.
-  destruct H; subst; reflexivity.
-Qed.
-
-(*need to remove trailing zeroes - inspired by Haskell*)
-Definition null {A} (l: list A) :=
-  match l with
-  | nil => true
-  | _ => false
-  end.
-
-(*function (from Haskell) to remove all values from end of list that satisfy a predicate. This runs in one pass
-  over the list (rather than the naive reverse - remove from front - reverse *)
-Definition dropWhileEnd {A} (p: A -> bool)(l: list A)  : list A :=
-  fold_right (fun x acc => if (null acc) && (p x) then nil else x :: acc) nil l.
-
-(*first, we get nil iff every element in the list satifies the predicate*)
-Lemma dropWhileEnd_nil: forall {A} p (l: list A),
-  dropWhileEnd p l = nil <-> forall x, In x l -> p x = true.
-Proof.
-  intros. induction l; split; intros.
-  - inversion H0.
-  - reflexivity.
-  - simpl in H. destruct (null (dropWhileEnd p l)) eqn : N. simpl in H. destruct (p a) eqn : P.
-    + destruct H0. subst. assumption. apply IHl. destruct (dropWhileEnd p l). reflexivity. inversion N. assumption.
-    + inversion H.
-    + simpl in H. inversion H.
-  - simpl. destruct ((dropWhileEnd p l)) eqn : D. simpl. assert (p a = true). apply H. left. reflexivity.
-    rewrite H0. reflexivity. assert (a0 :: l0 = nil). apply IHl. intros. apply H. right. assumption.
-    inversion H0.
-Qed. 
-
-(*then, we get the unique sublist that includes all elements of l, up to the last nonzero element*)
-Lemma dropWhileEnd_spec: forall {A} p (l: list A) (y: A) res,
-  dropWhileEnd p l = res <->
-  (exists l1, l = res ++ l1 /\ forall x, In x l1 -> p x = true) /\
-  (res <> nil -> p (last res y) = false).
-Proof.
-  intros. split; intros; subst. induction l; simpl; split.
-  - exists nil. auto.
-  - intros. contradiction.
-  - destruct IHl. destruct (dropWhileEnd p l) eqn : L.
-    + simpl. destruct (p a) eqn : P.
-      * exists (a :: l). simpl. split. reflexivity. intros. destruct H1. subst. assumption.
-        destruct H. destruct H. simpl in H; subst. apply H2. assumption.
-      * exists l. simpl. split. reflexivity. destruct H. destruct H. simpl in H; subst. apply H1.
-    + simpl. destruct H as [l1]. destruct H. subst. exists l1. split. reflexivity. apply H1.
-  - destruct IHl. destruct (dropWhileEnd p l) eqn : L; simpl.
-    + destruct (p a) eqn : P.
-      * intros. contradiction.
-      * intros. simpl. assumption.
-    + intros. simpl in H0. apply H0. intro. inversion H2.
-  - destruct H. destruct H as [l1]. destruct H. rewrite H. unfold dropWhileEnd. rewrite fold_right_app.
-    assert ((fold_right (fun (x : A) (acc : list A) => if null acc && p x then nil else x :: acc) nil l1) =
-    dropWhileEnd p l1). unfold dropWhileEnd. reflexivity. rewrite H2; clear H2.
-    assert (dropWhileEnd p l1 = nil). apply dropWhileEnd_nil. apply H1. rewrite H2.
-    assert (fold_right (fun (x : A) (acc : list A) => if null acc && p x then nil else x :: acc) nil res
-    = dropWhileEnd p res) by reflexivity. rewrite H3; clear H3.
-    clear H2. clear H1. clear H. induction res.
-    + reflexivity.
-    + simpl. destruct (dropWhileEnd p res) eqn : D.
-      * simpl. destruct (p a) eqn : P. simpl in H0. destruct res.
-        rewrite H0 in P. inversion P. intro. inversion H.
-        assert (nil = a0 :: res). apply IHres. intros. apply H0. intro. inversion H1. inversion H.
-        destruct res. reflexivity. rewrite IHres. reflexivity. intros. simpl. simpl in H0. apply H0.
-        intro. inversion H1.
-      * simpl. destruct res. simpl in IHres. rewrite IHres. reflexivity. intros. contradiction.
-        rewrite IHres. reflexivity. intros. simpl. simpl in H0. apply H0. intro. inversion H1; simpl in IHres.
-Qed. 
-
-(*for our purposes, use to remove trailing zeroes*)
+(* Transform a list into a polynomial by cutting off any trailing zeroes *)
 Definition removeTrailingZeroes p := dropWhileEnd (eq_bit 0) p.
 
-(*TODO: may need other results about this - derived from above*)
+(** * General Results *)
+
+(** [removeTrailingZeroes] *)
+
 Lemma removeTrailingZeroes_wf: forall p, wf_poly (removeTrailingZeroes p).
 Proof.
   intros. unfold wf_poly. intros. pose proof (dropWhileEnd_spec (eq_bit 0) p 0 (dropWhileEnd (eq_bit 0) p)).
@@ -173,18 +44,150 @@ Proof.
   - reflexivity.
 Qed.
 
-(*now we define polynomial addition*)
-Definition poly_add p1 p2 := removeTrailingZeroes (poly_add_inter p1 p2).
-
-Lemma wf_poly_add : forall p1 p2, wf_poly (poly_add p1 p2).
+(* removeTrailingZeroes actually removes a list of trailing zeroes *)
+Lemma removeTrailingZeroes_app_zeroes: forall l1 l2,
+  (forall x, In x l2 -> eq_bit x 0 = true) ->
+  removeTrailingZeroes (l1 ++ l2) = removeTrailingZeroes l1.
 Proof.
-  intros. unfold poly_add. apply removeTrailingZeroes_wf.
+  intros. unfold removeTrailingZeroes. unfold dropWhileEnd. rewrite fold_right_app.
+  assert ((fold_right (fun (x : bit) (acc : list bit) => if null acc && eq_bit 0 x then nil else x :: acc) nil
+     l2) = removeTrailingZeroes l2) by reflexivity. rewrite H0; clear H0.
+  assert (removeTrailingZeroes l2 = nil). unfold removeTrailingZeroes. apply dropWhileEnd_nil. apply H. rewrite H0.
+  reflexivity.
 Qed.
 
-(*Properties of poly_add - first, we prove associativity, comutativity, identity, inverses*)
+Lemma wf_no_trailing_zeroes: forall f,
+   wf_poly f ->
+  removeTrailingZeroes f = f.
+Proof.
+  intros. unfold wf_poly in H. unfold removeTrailingZeroes. pose proof (dropWhileEnd_spec (eq_bit 0) f 0 f).
+  apply H0. split. exists nil. split. rewrite app_nil_r. reflexivity. intros.
+  inversion H1. intros. rewrite <- eq_bit_eq in H. apply H in H1. rewrite eq_bit_eq in H1. rewrite H1. reflexivity.
+Qed. 
+
+(*note: we use length, since degree is meant to refer to well formed polynomials*)
+Lemma removeTrailingZeroes_length: forall l1,
+  Zlength(removeTrailingZeroes l1) <= Zlength l1.
+Proof.
+  intros. induction l1.
+  - simpl. lia.
+  - simpl.  destruct (null (removeTrailingZeroes l1) && eq_bit 0 a ). list_solve.
+    list_solve.
+Qed.
+
+(** [wf_poly] *)
+
+Lemma wf_poly_cons: forall x l1,
+  l1 <> nil ->
+  wf_poly (x :: l1) <-> wf_poly l1.
+Proof.
+  intros. destruct l1.
+  - contradiction.
+  - destruct l1. unfold wf_poly. simpl. split; intros.
+    apply H0. intro C; inversion C. apply H0. intro C; inversion C.
+    unfold wf_poly. simpl. split; intros. apply H0. intro C; inversion C. 
+    apply H0. intro C; inversion C.
+Qed.
+
+Lemma wf_bad: wf_poly (0 :: nil) -> False.
+Proof.
+  intros. unfold wf_poly in H. simpl in H. assert (0=1) by (apply H; solve_neq). inversion H0.
+Qed.
+
+(** [deg] *)
+
+Lemma deg_cons: forall x l,
+  deg (x :: l) = 1 + deg l.
+Proof.
+  intros. unfold deg. rewrite Zlength_cons. destruct l. simpl. reflexivity. list_solve.
+Qed. 
+
+(** [ith] *)
+
+Lemma ith_zero: forall i,
+  ith nil i = 0.
+Proof.
+  intros. unfold ith. apply Znth_nil.
+Qed.
+
+Lemma ith_in: forall p x,
+  In x p ->
+  exists i, ith p i = x /\ 0 <= i < Zlength p.
+Proof.
+  intros. rewrite In_Znth_iff in H.
+  unfold ith. destruct H. exists x0. split; apply H.
+Qed. 
+
+(* every polynomial of degree nth has a nonzero nth coefficient *)
+Lemma ith_deg: forall p,
+  p <> nil ->
+  wf_poly p ->
+  ith p (deg p) = 1.
+Proof.
+  intros. unfold deg. unfold ith. destruct p. contradiction.
+  unfold wf_poly in H0.  erewrite Znth_last. apply H0.
+  all: solve_neq.
+Qed.
+
+Lemma ith_unbounded: forall f i,
+  i < 0 \/ i > deg f ->
+  ith f i = 0.
+Proof.
+  intros. unfold ith. unfold deg in H. destruct f. apply ith_zero.
+  destruct H. apply Znth_underflow. assumption. apply Znth_overflow. lia.
+Qed.
+
+(*For well formed polynomials, we can exactly determine polynomials by looking at their coefficients at
+  each location. This is useful for proving properties of multiplication*)
+Lemma ith_eq: forall p1 p2,
+  wf_poly p1 ->
+  wf_poly p2 ->
+  p1 = p2 <-> (forall i, ith p1 i = ith p2 i).
+Proof.
+  intros. split; intros. subst. reflexivity.
+  generalize dependent p2. induction p1; intros.
+  - destruct p2. reflexivity. unfold wf_poly in H0. 
+    assert (last (b :: p2) 0 = 1) by (apply H0; solve_neq). 
+    remember (b :: p2) as p.
+    assert (ith p (deg p) = 1). apply ith_deg. subst. solve_neq. unfold wf_poly.
+    apply H0. rewrite <- H1 in H3. rewrite ith_zero in H3. inversion H3.
+  - destruct p2. 
+    assert (ith (a :: p1) (deg (a :: p1)) = 1). apply ith_deg.
+    solve_neq. apply H. rewrite H1 in H2. rewrite ith_zero in H2. inversion H2.
+    f_equal.
+    + specialize (H1 0%Z). unfold ith in H1. rewrite? Znth_0_cons in H1. subst. reflexivity.
+    + apply IHp1. unfold wf_poly in *. intros. simpl in H. destruct p1. contradiction. apply H.
+      solve_neq. unfold wf_poly in *. intros. simpl in H0. destruct p2. contradiction.
+      apply H0. solve_neq. intros. specialize (H1 (i+1)%Z).
+      unfold ith. unfold ith in H1.
+      assert (i <0 \/ i >= 0) by lia. destruct H2. rewrite? Znth_underflow; try lia. reflexivity.
+      rewrite? Znth_pos_cons in H1; try lia. list_solve.
+Qed.
+
+(** * Addition *)
+
+(** Definitions and Ring Properties *)
+
+(* We use an intermediate function to add two polynomials. The result is correct, but may not be well-formed,
+  since it may have trailing zeroes*)
+Fixpoint poly_add_inter (f g: poly) :=
+  match f, g with
+  | nil, nil => nil
+  | x1 :: t1, x2 :: t2 => bit_add x1 x2 :: poly_add_inter t1 t2
+  | nil, l => l
+  | l, _ => l
+  end.
+
+(* begin hide *)
+Lemma poly_add_inter_nil: forall l1 l2,
+  poly_add_inter l1 l2 = nil <-> l1 = nil /\ l2 = nil.
+Proof.
+  intros. split; intros. destruct l1; destruct l2; try auto; try inversion H.
+  destruct H; subst; reflexivity.
+Qed.
 
 (*first, we prove that removing trailing zeroes does not affect addition - this turns out to be more complicated
-  than it seems*)
+  than it seems *)
 
 (*poly_add_inter distributes over appending lists of same length*)
 Lemma poly_add_inter_app: forall l1 l2 l3 l4,
@@ -228,18 +231,6 @@ Proof.
     apply H1.
 Qed.
 
-(*removeTrailingZeroes actually removes a list of trailing zeroes*)
-Lemma removeTrailingZeroes_app_zeroes: forall l1 l2,
-  (forall x, In x l2 -> eq_bit x 0 = true) ->
-  removeTrailingZeroes (l1 ++ l2) = removeTrailingZeroes l1.
-Proof.
-  intros. unfold removeTrailingZeroes. unfold dropWhileEnd. rewrite fold_right_app.
-  assert ((fold_right (fun (x : bit) (acc : list bit) => if null acc && eq_bit 0 x then nil else x :: acc) nil
-     l2) = removeTrailingZeroes l2) by reflexivity. rewrite H0; clear H0.
-  assert (removeTrailingZeroes l2 = nil). unfold removeTrailingZeroes. apply dropWhileEnd_nil. apply H. rewrite H0.
-  reflexivity.
-Qed.
-
 (*the result we want: we can just remove trailing zeroes at the end when doing polynomial addition*)
 Lemma poly_add_inter_removezero: forall p1 p2,
   removeTrailingZeroes (poly_add_inter p1 p2) = removeTrailingZeroes (poly_add_inter (removeTrailingZeroes p1) p2).
@@ -273,18 +264,12 @@ Proof.
     apply removeTrailingZeroes_app_zeroes. apply H4. all: list_solve.
 Qed. 
 
-
-(*Commutativity - this is easy*)
+(*Commutativity - this is easy, since we can reason bitwise*)
 Lemma poly_add_inter_comm: forall p1 p2, poly_add_inter p1 p2 = poly_add_inter p2 p1.
 Proof.
   intros p1. induction p1; intros.
   - simpl. destruct p2; reflexivity.
   - simpl. destruct p2. reflexivity. simpl. rewrite IHp1. rewrite bit_add_comm. reflexivity.
-Qed.
-
-Lemma poly_add_comm: forall p1 p2, poly_add p1 p2 = poly_add p2 p1.
-Proof.
-  intros. unfold poly_add. rewrite poly_add_inter_comm. reflexivity.
 Qed.
 
 (*Associativity - requires [poly_add_inter_removezero], so we can "push" the removeTrailingZeroes to the end*)
@@ -304,6 +289,29 @@ Proof.
         -- inversion P; subst. rewrite bit_add_assoc. rewrite IHp1. reflexivity.
 Qed.
 
+(*inverses - every polynomial is its own inverse*)
+Lemma poly_add_inter_same: forall l,
+  forall x, In x (poly_add_inter l l) -> eq_bit x 0 = true.
+Proof.
+  intros. induction l.
+  - inversion H.
+  - simpl in H. destruct H. destruct a; simpl in H; subst; try reflexivity. apply IHl. apply H.
+Qed.
+
+(* end hide *)
+
+Definition poly_add p1 p2 := removeTrailingZeroes (poly_add_inter p1 p2).
+
+Lemma wf_poly_add : forall p1 p2, wf_poly (poly_add p1 p2).
+Proof.
+  intros. unfold poly_add. apply removeTrailingZeroes_wf.
+Qed.
+
+Lemma poly_add_comm: forall p1 p2, poly_add p1 p2 = poly_add p2 p1.
+Proof.
+  intros. unfold poly_add. rewrite poly_add_inter_comm. reflexivity.
+Qed.
+
 Lemma poly_add_assoc: forall p1 p2 p3, poly_add (poly_add p1 p2) p3 = poly_add p1 (poly_add p2 p3).
 Proof.
   intros. unfold poly_add. rewrite <- poly_add_inter_removezero.
@@ -315,34 +323,11 @@ Proof.
   by (apply poly_add_inter_comm). rewrite H; clear H. rewrite poly_add_inter_assoc. reflexivity.
 Qed.
 
-(* additive identity is nil (ie, the 0 polynomial) - we only prove left inverse bc commutative*)
-
-(*need to prove that removeTrailingZeroes does nothing on a well formed polynomial - note: this is where\
-  we need the "only if" in [dropWhileEnd_spec] - to show that if we have a nonempty list
-  with the last elt nonzero, removeTrailingZeroes returns this list*)
-Lemma wf_no_trailing_zeroes: forall f,
-   wf_poly f ->
-  removeTrailingZeroes f = f.
-Proof.
-  intros. unfold wf_poly in H. unfold removeTrailingZeroes. pose proof (dropWhileEnd_spec (eq_bit 0) f 0 f).
-  apply H0. split. exists nil. split. rewrite app_nil_r. reflexivity. intros.
-  inversion H1. intros. rewrite <- eq_bit_eq in H. apply H in H1. rewrite eq_bit_eq in H1. rewrite H1. reflexivity.
-Qed. 
-
 Lemma poly_add_id: forall l,
   wf_poly l ->
   poly_add nil l = l.
 Proof.
   intros. unfold poly_add. rewrite poly_add_inter_nil_l. apply wf_no_trailing_zeroes. apply H.
-Qed.
-
-(*inverses - every polynomial is its own inverse*)
-Lemma poly_add_inter_same: forall l,
-  forall x, In x (poly_add_inter l l) -> eq_bit x 0 = true.
-Proof.
-  intros. induction l.
-  - inversion H.
-  - simpl in H. destruct H. destruct a; simpl in H; subst; try reflexivity. apply IHl. apply H.
 Qed.
 
 Lemma poly_add_inv: forall l,
@@ -352,24 +337,90 @@ Proof.
   apply poly_add_inter_same.
 Qed.
 
-(*TODO later: add group structure*)
+(*begin hide*)
 
-(*addition and degrees*)
-
-(*First, some helper lemmas about the structure of the sum*)
-Lemma wf_poly_cons: forall x l1,
-  l1 <> nil ->
-  wf_poly (x :: l1) <-> wf_poly l1.
+Lemma poly_add_inter_zeroes_eq: forall f g,
+  wf_poly f ->
+  wf_poly g ->
+  (forall x, In x (poly_add_inter f g) -> eq_bit x 0 = true) ->
+  f = g.
 Proof.
-  intros. destruct l1.
-  - contradiction.
-  - destruct l1. unfold wf_poly. simpl. split; intros.
-    apply H0. intro C; inversion C. apply H0. intro C; inversion C.
-    unfold wf_poly. simpl. split; intros. apply H0. intro C; inversion C. 
-    apply H0. intro C; inversion C.
+  intros f; induction f; intros.
+  - simpl in H1. destruct g. reflexivity. 
+    unfold wf_poly in H0. specialize (H1 (last (b :: g) 0)). rewrite H0 in H1 at 2.
+    unfold eq_bit in H1. assert (false = true). apply H1. apply last_in. solve_neq.
+    inversion H2. solve_neq.
+  - destruct g. specialize (H1 (last (a :: f) 0)). 
+    unfold wf_poly in H. rewrite H in H1 at 2. assert (false = true).
+    apply H1. unfold poly_add_inter. apply last_in. all: try solve_neq. inversion H2.
+    simpl in H1. assert (a = b). assert (eq_bit (bit_add a b) 0 = true).
+    apply H1. left. reflexivity. solve_bit. inversion H2. inversion H2. subst.
+    destruct f. destruct g. reflexivity.
+    unfold wf_poly in H0. specialize (H1 (last (b :: b0 :: g) 0)).
+    assert ( eq_bit (last (b :: b0 :: g) 0) 0 = true). apply H1.
+    right. unfold poly_add_inter.
+    replace (last (b :: b0 :: g)) with (last (b0 :: g)) by reflexivity.
+    apply last_in. solve_neq. rewrite H0 in H2. inversion H2. solve_neq.
+    destruct g. unfold wf_poly in H. specialize (H1 (last (b :: b0 :: f) 0)).
+    assert (eq_bit (last (b :: b0 :: f) 0) 0 = true). apply H1. right.
+    unfold poly_add_inter. replace (last (b :: b0 :: f) 0) with (last (b0 :: f) 0) by reflexivity.
+    apply last_in. solve_neq. rewrite H in H2. inversion H2. solve_neq. rewrite (IHf (b1 :: g)).
+    reflexivity. rewrite wf_poly_cons in H. assumption. solve_neq. rewrite wf_poly_cons in H0.
+    assumption. solve_neq. intuition.
 Qed.
 
-Ltac solve_neq := intro C; inversion C.
+(*end hide*)
+
+Lemma poly_add_inv_iff: forall f g,
+  wf_poly f ->
+  wf_poly g ->
+  poly_add f g = nil <-> f = g.
+Proof.
+  intros. split; intros. unfold poly_add in H1. apply poly_add_inter_zeroes_eq; try assumption.
+  unfold removeTrailingZeroes in H1. rewrite dropWhileEnd_nil in H1. intros. 
+  rewrite eq_bit_eq. symmetry. rewrite <- eq_bit_eq. apply H1; assumption. 
+  subst. apply poly_add_inv.
+Qed.
+
+Lemma poly_add_cancel_1: forall f g h,
+  wf_poly f ->
+  wf_poly h ->
+  poly_add f g = h <-> f = poly_add g h.
+Proof.
+  intros. split; intros.
+  - subst. rewrite poly_add_comm. rewrite poly_add_assoc. rewrite poly_add_inv.
+    rewrite poly_add_comm. symmetry. apply poly_add_id. assumption.
+  - subst. rewrite poly_add_assoc. rewrite poly_add_comm. rewrite poly_add_assoc. 
+    rewrite poly_add_inv. rewrite poly_add_comm. apply poly_add_id. assumption.
+Qed.
+
+(*begin hide*)
+Lemma poly_add_zero_same: forall f g,
+  wf_poly f ->
+  wf_poly g ->
+  poly_add f g = f -> g = nil.
+Proof.
+  intros. rewrite poly_add_comm in H1. rewrite poly_add_cancel_1 in H1.
+  rewrite poly_add_inv in H1. all: assumption. 
+Qed.
+(*end hide*)
+
+Lemma poly_add_cancel_2: forall f g h,
+  wf_poly f ->
+  wf_poly g ->
+  wf_poly h ->
+  poly_add f g = poly_add f h -> g = h.
+Proof.
+  intros. rewrite poly_add_cancel_1 in H2; try assumption.
+  rewrite poly_add_comm in H2. rewrite poly_add_assoc in H2. symmetry in H2. apply poly_add_zero_same in H2.
+  rewrite poly_add_inv_iff in H2. auto. all: try assumption.
+  all: apply wf_poly_add.
+Qed.
+
+(** Degrees of sums *)
+
+(* begin hide *)
+(*First, some helper lemmas about the structure of the sum*)
 
 (*if we add two nonzero polynomials of the same degree, the resulting sum has a nonempty list of zeroes
   at the end (ie, the degree is reduced*)
@@ -409,15 +460,7 @@ Proof.
       destruct g eqn : G; list_solve.
 Qed. 
 
-(*note: we use length, since degree is meant to refer to well formed polynomials*)
-Lemma removeTrailingZeroes_length: forall l1,
-  Zlength(removeTrailingZeroes l1) <= Zlength l1.
-Proof.
-  intros. induction l1.
-  - simpl. lia.
-  - simpl.  destruct (null (removeTrailingZeroes l1) && eq_bit 0 a ). list_solve.
-    list_solve.
-Qed.
+(* end hide *)
 
 (*deg(f+g) <= max(deg f, deg g)*)
 Lemma poly_add_degree_max: forall f g,
@@ -432,7 +475,8 @@ Proof.
   lia. 
 Qed.
 
-(*if deg f = deg g, then deg (f + g) < deg f - this will be important for Euclidean division*)
+(* If deg f = deg g, then deg (f + g) < deg f - this will be important for Euclidean division
+  and computing the mod operation *)
 Lemma poly_add_degree_same: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -455,14 +499,7 @@ Proof.
   rewrite Z.max_id in H7. destruct (removeTrailingZeroes l); lia.
 Qed.
 
-(*if the degrees are different, the inequality in [poly_add_degree_max] is an equality*)
-
-(*TODO move*)
-Lemma deg_cons: forall x l,
-  deg (x :: l) = 1 + deg l.
-Proof.
-  intros. unfold deg. rewrite Zlength_cons. destruct l. simpl. reflexivity. list_solve.
-Qed. 
+(* begin hide *)
 
 Lemma poly_add_inter_degree_diff: forall l1 l2,
   wf_poly l2 ->  
@@ -502,6 +539,9 @@ Proof.
   lia. split. exists l'. split; assumption. intros. rewrite H5. reflexivity.
 Qed.
 
+(* end hide *)
+
+(* If the degrees are different, the inequality in [poly_add_degree_max] is an equality*)
 Lemma poly_add_degree_diff: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -514,22 +554,13 @@ Proof.
   rewrite Z.max_comm. rewrite poly_add_comm. apply poly_add_degree_diff_one; assumption.
 Qed.
 
+(** [ith] elements of sums *)
+
 
 (*zero polynomial results in zeroes for ith*)
-Lemma Znth_nil: forall {A} `{d: Inhabitant A} z,
-  Znth z (@nil A) = d.
-Proof.
-  intros. assert (z < 0 \/ z >= 0) by lia. destruct H.
-  - rewrite Znth_underflow; try lia. reflexivity.
-  - rewrite Znth_overflow. reflexivity. list_solve.
-Qed.
 
-Lemma ith_zero: forall i,
-  ith nil i = 0.
-Proof.
-intros. unfold ith. apply Znth_nil.
-Qed.
 
+(* begin hide *)
 Lemma ith_poly_add_inter: forall p1 p2 i,
   ith (poly_add_inter p1 p2) i = bit_add (ith p1 i) (ith p2 i).
 Proof.
@@ -572,78 +603,14 @@ Proof.
         -- unfold ith in *. rewrite Znth_pos_cons; try lia. rewrite Znth_pos_cons; try lia. apply IHl.
         -- unfold ith. rewrite? Znth_underflow; try lia. reflexivity.
 Qed.
-
+(* end hide *)
 Lemma ith_poly_add: forall p1 p2 i,
   ith (poly_add p1 p2) i = bit_add (ith p1 i) (ith p2 i).
 Proof.
   intros. unfold poly_add. rewrite <- ith_removeTrailingZeroes. apply ith_poly_add_inter.
 Qed.
 
-(*TODO: move to stuff about [ith] in general *)
-Lemma ith_in: forall p x,
-  In x p ->
-  exists i, ith p i = x /\ 0<= i < Zlength p.
-Proof.
-  intros. rewrite In_Znth_iff in H.
-  unfold ith. destruct H. exists x0. split; apply H.
-Qed. 
-
-Lemma Znth_last: forall {A} `{Inhabitant A} (l: list A) x,
-  l <> nil ->
-  Znth (Zlength l - 1) l = last l x.
-Proof.
-  intros A H l. induction l; intros.
-  - contradiction.
-  - destruct l.
-    + simpl. list_solve.
-    + simpl in IHl. simpl. rewrite <- IHl. list_solve. solve_neq. 
-Qed.
-
-(*every polynomial of degree nth has a nonzero nth coefficient*)
-Lemma ith_deg: forall p,
-  p <> nil ->
-  wf_poly p ->
-  ith p (deg p) = 1.
-Proof.
-  intros. unfold deg. unfold ith. destruct p. contradiction.
-  unfold wf_poly in H0.  erewrite Znth_last. apply H0.
-  all: solve_neq.
-Qed.
-
-(*For well formed polynomials, we can exactly determine polynomials by looking at their coefficients at
-  each location - this is useful for multiplication (TODO: probably)*)
-Lemma ith_eq: forall p1 p2,
-  wf_poly p1 ->
-  wf_poly p2 ->
-  p1 = p2 <-> (forall i, ith p1 i = ith p2 i).
-Proof.
-  intros. split; intros. subst. reflexivity.
-  generalize dependent p2. induction p1; intros.
-  - destruct p2. reflexivity. unfold wf_poly in H0. 
-    assert (last (b :: p2) 0 = 1) by (apply H0; solve_neq). 
-    remember (b :: p2) as p.
-    assert (ith p (deg p) = 1). apply ith_deg. subst. solve_neq. unfold wf_poly.
-    apply H0. rewrite <- H1 in H3. rewrite ith_zero in H3. inversion H3.
-  - destruct p2. 
-    assert (ith (a :: p1) (deg (a :: p1)) = 1). apply ith_deg.
-    solve_neq. apply H. rewrite H1 in H2. rewrite ith_zero in H2. inversion H2.
-    f_equal.
-    + specialize (H1 0%Z). unfold ith in H1. rewrite? Znth_0_cons in H1. subst. reflexivity.
-    + apply IHp1. unfold wf_poly in *. intros. simpl in H. destruct p1. contradiction. apply H.
-      solve_neq. unfold wf_poly in *. intros. simpl in H0. destruct p2. contradiction.
-      apply H0. solve_neq. intros. specialize (H1 (i+1)%Z).
-      unfold ith. unfold ith in H1.
-      assert (i <0 \/ i >= 0) by lia. destruct H2. rewrite? Znth_underflow; try lia. reflexivity.
-      rewrite? Znth_pos_cons in H1; try lia. list_solve.
-Qed.
-
-(** multiplication **)
-(*for multiplication, we want to define a (relatively) efficient algorithm - we use essentially the O(n^2)
-  grade school algorithm. But this is very difficult to prove correct (in particular, to prove polynomials
-  form a ring under multiplication, we prove that this is equivalent to the mathematical definition - ie,
-  the ith component's coefficient is \sum_{j=0}^{i} a_j*b_{i-j} - then, using [ith_eq], we can prove the
-  desired properties. But first we need to define multiplication and relate it to the mathematical specification,
-  which we do below*)
+(** * Shift *)
 
 (*shift f n = x^n*f*)
 Definition shift (f: poly) (n: nat) : poly := list_repeat n 0 ++ f.
@@ -675,16 +642,6 @@ Proof.
     rewrite Zlength_app. rewrite Zlength_list_repeat'. lia.
 Qed. 
 
-Lemma last_nonempty: forall {A} (l1: list A) l2 (x: A),
-  l2 <> nil ->
-  last (l1 ++ l2) x = last l2 x.
-Proof.
-  intros. induction l1.
-  - reflexivity.
-  - simpl. destruct ((l1 ++ l2)) eqn : L. 
-    destruct l1. destruct l2. contradiction. inversion L. inversion L. apply IHl1.
-Qed.
-
 Lemma wf_shift: forall f n,
   f <> nil ->
   wf_poly f ->
@@ -695,48 +652,34 @@ Proof.
   rewrite last_nonempty. apply H0. all: solve_neq.
 Qed.
 
-(*grade school multiplication algorithm - only works on well-formed polys*)
+
+
+(** * Multiplication *)
+(* We want to define a (relatively) efficient algorithm to compute polynomial multiplication. We use the
+  standard grade school algorithm. To prove properties, we relate this to the standard mathematical definition - 
+  the ith coefficient is \sum_{j=0}^{i} a_j*b_{i-j} *)
+
+
+(* Again we use a helper function which is correct for nonzero polynomials but may result in a list
+  of zeroes if g is nil*)
 Fixpoint mult_help (f g : poly) : poly :=
   match f with
-  | nil => (*mult by 0*) nil
+  | nil => nil
   | 0 :: nil => (*cannot happen in well formed poly*) nil
   | 1 :: nil => g
   | 1 :: f' => poly_add g (shift (mult_help f' g) 1)
   | 0 :: f' => shift (mult_help f' g) 1
   end.
 
-(*specification of [mult_help]*)
-
-(* multiplication in GF(2) - TODO: move to bit stuff*)
-Definition bit_mult (b1 b2 : bit) : bit :=
-  match b1, b2 with
-  | 1, 1 => 1
-  | _, _ => 0
+Definition poly_mult f g :=
+  match g with
+  | nil => nil
+  | _ => mult_help f g
   end.
 
-Lemma bit_mult_comm: forall b1 b2,
-  bit_mult b1 b2 = bit_mult b2 b1.
-Proof.
-  intros; destruct b1; destruct b2; reflexivity.
-Qed.
+(* begin hide *)
 
-Lemma bit_mult_assoc: forall b1 b2 b3,
-  bit_mult (bit_mult b1 b2) b3 = bit_mult b1 (bit_mult b2 b3).
-Proof.
-  intros; destruct b1; destruct b2; destruct b3; reflexivity.
-Qed.
-
-Lemma bit_mult_0_l: forall b,
-  bit_mult 0 b = 0.
-Proof.
-  intros; destruct b; reflexivity.
-Qed.
-
-Lemma bit_mult_r: forall b,
-  bit_mult b 0 = 0.
-Proof.
-  intros; destruct b; reflexivity.
-Qed.
+(*specification of [mult_help]*)
 
 (*this was intended to just include the info about the degrees, but it turns out we need the other results as 
   induction hypotheses. All of them need each other to be proved*)
@@ -810,7 +753,7 @@ Proof.
   intros. apply mult_help_facts; assumption.
 Qed.
 
-(*proves integral domain (although we will prove that formally later*)
+(*proves integral domain (once we have ring properties )*)
 Lemma mult_help_nonzero: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -823,7 +766,15 @@ Qed.
 
 (*use integer bounds so we allow for invalid summations - will just get 0*)
 
-(*see*)
+(* end hide *)
+
+(** Summations *)
+
+(* If f(x) = a_0 + ...+a_nx^n and g(x) = b_0 + ... + b_mx^m, then the ith coefficient of f(x)g(x) is
+  sum_{j=0}^{i} a_{ijb_{i-j}. We represent this with the following summation function, which is
+  generic to make some of the induction easier. We allow integer bounds but a summation with a negative
+  upper bound returns 0 *)
+
 Definition summation_aux (u : Z) f g l' base :=
   fold_right (fun x acc => bit_add (bit_mult (ith f (u - (Z.of_nat x))%Z) (ith g (Z.of_nat x))) acc) base l'.
 
@@ -833,7 +784,7 @@ Definition summation_gen (u: Z) (f g : poly) lower :=
 
 Definition summation (u: Z) (f g : poly) :=
   summation_gen u f g 0.
-
+(* begin hide *)
 (*TODO: move*)
 Lemma summation_nil_aux_l: forall u g l',
   summation_aux u nil g l' 0 = 0.
@@ -854,7 +805,7 @@ Lemma summation_nil_aux_r: forall u f l',
 Proof.
   intros. revert u f. induction l'; intros; simpl.
   - reflexivity.
-  - rewrite IHl'. rewrite ith_zero. rewrite bit_mult_r. reflexivity.
+  - rewrite IHl'. rewrite ith_zero. rewrite bit_mult_0_r. reflexivity.
 Qed.
 
 Lemma summation_nil_r: forall u f,
@@ -878,24 +829,16 @@ Proof.
   - simpl. rewrite <- IHl. rewrite bit_add_assoc. reflexivity.
 Qed. 
 
-Lemma Znth_seq: forall start len z,
-  0 <= z < Z.of_nat len ->
-  Znth z (seq start len) = Z.to_nat (Z.of_nat start + z).
-Proof.
-  intros. rewrite <- nth_Znth. rewrite seq_nth. lia. lia. 
-  rewrite Zlength_correct. rewrite seq_length. lia.
-Qed. 
 
-Lemma Zlength_seq: forall start len,
-  Zlength (seq start len) = Z.of_nat len.
-Proof.
-  intros. rewrite Zlength_correct. rewrite seq_length. reflexivity.
-Qed.
+
 
 (*A very annoying lemma to prove - we have to reason about both ends of the list at once. We do this by proving
   a stronger claim: if our list has the property that the ith and (length l - i - 1)st elements add up to i,
   then, we can prove the claim for (sublist 0 i) and sublist (length l - i) (length l) and unroll elements 
   from each side of the list*)
+
+(* end hide *)
+
 Lemma summation_comm: forall f g i,
   summation i f g = summation i g f.
 Proof.
@@ -945,6 +888,27 @@ Proof.
       -  lia.
 Qed.
 
+Lemma summation_distr: forall f g h i,
+  summation i (poly_add f g) h = bit_add (summation i f h) (summation i g h).
+Proof.
+  intros. unfold summation. unfold summation_gen. if_tac. reflexivity.
+  remember (seq 0 (Z.to_nat i + 1)) as l. clear Heql. induction l.
+  - simpl. reflexivity.
+  - simpl. rewrite ith_poly_add. rewrite IHl.
+    remember (ith f (i - Z.of_nat a)) as n1. 
+    remember (ith g (i - Z.of_nat a)) as n2.
+    remember (ith h (Z.of_nat a)) as n3. 
+    remember (summation_aux i f h l 0) as n4.
+    remember (summation_aux i g h l 0) as n5.
+    rewrite bit_distr. symmetry. rewrite bit_add_assoc.
+    replace ((bit_add n4 (bit_add (bit_mult n2 n3) n5))) with (bit_add  (bit_add (bit_mult n2 n3) n5) n4) by
+    (apply bit_add_comm). 
+    replace (bit_add (bit_add (bit_mult n2 n3) n5) n4) with (bit_add (bit_mult n2 n3) (bit_add n5 n4))
+    by (rewrite bit_add_assoc; reflexivity). rewrite bit_add_assoc. f_equal. f_equal. apply bit_add_comm.
+Qed.
+
+(* begin hide *)
+
 (*lemma for 1st case of [mult_help_ith] - when the ones digit in f is 0*)
 (*this is really annoying to prove - since the bounds change, the function inside fold_right changes too*)
 Lemma summation_leading_zero: forall f g i base,
@@ -980,15 +944,6 @@ fold_right
     intros. rewrite in_seq in H3. lia.
 Qed. 
 
-(*TODO: move*)
-Lemma bit_mult_1_l:
-  forall b,
-  bit_mult 1 b = b.
-Proof.
-  intros; destruct b; reflexivity.
-Qed.
-
-
 (*summation when f = 1*)
 Lemma summation_by_one:  forall g i,
   0 <= i ->
@@ -1012,13 +967,6 @@ Proof.
       intros. apply H1. right. assumption. list_solve. }
     rewrite H1. reflexivity. intros. rewrite in_seq in H2. lia.
 Qed. 
-
-Lemma bit_mult_1_r:
-  forall b,
-  bit_mult b 1 = b.
-Proof.
-  intros; destruct b; reflexivity.
-Qed.
 
 (*third case: f = 1 + f'*)
 Lemma summation_split: forall f g i,
@@ -1070,14 +1018,6 @@ Proof.
     intros. rewrite in_seq in H5. lia.
 Qed.
 
-(*TODO: MOVE to ith stuff*)
-Lemma ith_unbounded: forall f i,
-  i < 0 \/ i > deg f ->
-  ith f i = 0.
-Proof.
-  intros. unfold ith. unfold deg in H. destruct f. apply ith_zero.
-  destruct H. apply Znth_underflow. assumption. apply Znth_overflow. lia.
-Qed.
 
 (*if the second value is nil, mult_help does not give nil necessarily, but the resulting list has all 0s*)
 (*One last lemma about mult_help -for the annoying case when g is nil and we may end up with a list of zeroes*)
@@ -1130,15 +1070,15 @@ Proof.
     assert (i - Z.of_nat a > deg f) by lia. (*same case as before - maybe a better way to automate*)
     rewrite ith_unbounded; try lia. simpl. rewrite IHl. reflexivity. intuition.
     assert (ith g (Z.of_nat a ) = 0). apply ith_unbounded. lia. rewrite H8. clear H8.
-    rewrite bit_mult_r. rewrite IHl. reflexivity. intuition.
+    rewrite bit_mult_0_r. rewrite IHl. reflexivity. intuition.
     (*now have to do the same things for when deg g is the max *)
     destruct H5. rewrite H6 in H5. assert (i - Z.of_nat a <= deg f \/ i - Z.of_nat a > deg f) by lia.
     destruct H7. assert (Z.of_nat a > deg g) by lia. 
     assert (ith g (Z.of_nat a) = 0). apply ith_unbounded; lia. rewrite H9.
-    rewrite bit_mult_r. rewrite IHl. reflexivity. intuition. 
+    rewrite bit_mult_0_r. rewrite IHl. reflexivity. intuition. 
     rewrite ith_unbounded; try lia. simpl. rewrite IHl. reflexivity. intuition.
     assert (ith g (Z.of_nat a) = 0). apply ith_unbounded; lia. rewrite H7.
-    rewrite bit_mult_r. rewrite IHl. reflexivity. intuition. } (*finally*)
+    rewrite bit_mult_0_r. rewrite IHl. reflexivity. intuition. } (*finally*)
     apply H2. intros. rewrite in_seq in H3. lia.
 Qed.
 
@@ -1181,18 +1121,10 @@ Proof.
            rewrite wf_poly_cons in H. assumption. solve_neq. lia. assumption. 
 Qed.
 
+(* end hide *)
 
-(*There is one case (ie poly_mult_help 0 :: 0:: 1 :: nil nil) where we can end up with a list of zeroes. So
-  we just return nil*)
-Definition poly_mult f g :=
-  match g with
-  | nil => nil
-  | _ => mult_help f g
-  end.
+(** Properties of [poly_mult *)
 
-(*Results about multiplication*)
-
-(*First, GF(2)[x] is an integral domain (once we prove the ring properties)*)
 Lemma poly_mult_zero_iff: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -1207,7 +1139,7 @@ Proof.
     subst. reflexivity. 
 Qed.
 
-(*deg (fg) = deg f + deg g. This holds for nonzero polynomials, for the zero case, see previous lemma*)
+(*For the zero case, see previous lemma*)
 Lemma poly_mult_deg: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -1219,7 +1151,6 @@ Proof.
   all: try assumption.
 Qed.
 
-(*[poly_mult] gives a well formed polynomial*)
 Lemma wf_poly_mult: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -1240,7 +1171,7 @@ Proof.
   unfold poly_mult. apply mult_help_ith; try assumption. 
 Qed.
 
-
+(*begin hide *)
 (*With these in mind, we now want to start proving that polynomials form a ring - we need
   commutativity, associativity, and distributivity - we will prove these by proving that the summations
   are equal. Then, by [ith_eq], we can conclude that the resulting polynomials are equal*)
@@ -1258,8 +1189,7 @@ Proof.
   - apply wf_mult_help_nonzero; assumption.
 Qed.
 
-
-(*The result of this lemma - we use the fact that f = g iff ith f i = ith g i for all i*)
+(* end hide*)
 Lemma poly_mult_comm: forall f g,
   wf_poly f ->
   wf_poly g ->
@@ -1269,38 +1199,6 @@ Proof.
   all: apply wf_poly_mult; assumption.
 Qed.
 
-(*Distributivity*)
-(*TODO: move*)
-Lemma bit_distr: forall b1 b2 b3,
-  bit_mult (bit_add b1 b2) b3  = bit_add (bit_mult b1 b3) (bit_mult b2 b3).
-Proof.
-  intros; destruct b1; destruct b2; destruct b3; reflexivity.
-Qed. 
-
-Lemma summation_distr: forall f g h i,
-  summation i (poly_add f g) h = bit_add (summation i f h) (summation i g h).
-Proof.
-  intros. unfold summation. unfold summation_gen. if_tac. reflexivity.
-  remember (seq 0 (Z.to_nat i + 1)) as l. clear Heql. induction l.
-  - simpl. reflexivity.
-  - simpl. rewrite ith_poly_add. rewrite IHl.
-    remember (ith f (i - Z.of_nat a)) as n1. 
-    remember (ith g (i - Z.of_nat a)) as n2.
-    remember (ith h (Z.of_nat a)) as n3. 
-    remember (summation_aux i f h l 0) as n4.
-    remember (summation_aux i g h l 0) as n5.
-    rewrite bit_distr. symmetry. rewrite bit_add_assoc.
-    replace ((bit_add n4 (bit_add (bit_mult n2 n3) n5))) with (bit_add  (bit_add (bit_mult n2 n3) n5) n4) by
-    (apply bit_add_comm). 
-    replace (bit_add (bit_add (bit_mult n2 n3) n5) n4) with (bit_add (bit_mult n2 n3) (bit_add n5 n4))
-    by (rewrite bit_add_assoc; reflexivity). rewrite bit_add_assoc. f_equal. f_equal. apply bit_add_comm.
-Qed.
-
-(*lets try to prove directly, reasining about degrees is awful*)
-Lemma wf_bad: wf_poly (0 :: nil) -> False.
-Proof.
-  intros. unfold wf_poly in H. simpl in H. assert (0=1) by (apply H; solve_neq). inversion H0.
-Qed.
 
 Lemma poly_mult_distr_r: forall f g h,
   wf_poly f ->
@@ -1324,6 +1222,8 @@ Proof.
   intros. rewrite poly_mult_comm. rewrite poly_mult_distr_r; try assumption.
   f_equal; apply poly_mult_comm. all: try assumption. apply wf_poly_add.
 Qed.
+
+(*begin hide*)
 
 
 (* For associativity, we cannot go element by element, since the corresponding terms are not equal
@@ -1393,6 +1293,8 @@ Proof.
         unfold shift. intro. simpl in H6; inversion H6.
 Qed.
 
+(*end hide *)
+
 Lemma poly_mult_0_l: forall f,
   poly_mult nil f = nil.
 Proof.
@@ -1422,112 +1324,63 @@ Proof.
       reflexivity.
 Qed.
 
+(*begin hide*)
+
 Eval compute in (poly_mult (0 :: 1 :: 1 :: nil) (1 :: 1 :: nil)).
+(*end hide*)
 
-Definition monomial (n: nat) :=
-  if Nat.eq_dec n 0%nat then (1 :: nil) else shift (1 :: nil) n.
+(** Ring structure on well-formed polynomials *)
 
-(*for convenience*)
-Lemma monomial_deg: forall n,
-  deg (monomial n) = Z.of_nat n.
+Section Ring.
+
+Definition wpoly : Type := {p : poly | wf_poly p}.
+
+(* begin hide *)
+Lemma wf_poly_nil: wf_poly nil.
 Proof.
-  intros. unfold monomial. if_tac. subst. simpl. reflexivity. rewrite deg_shift. unfold deg. list_solve.
+  unfold wf_poly. intros. contradiction.
 Qed.
 
-Lemma wf_monomial: forall n,
-  wf_poly (monomial n).
+Lemma wf_poly_1: wf_poly (1 :: nil).
 Proof.
-  intros. unfold monomial. if_tac. unfold wf_poly; intros. reflexivity.
-  unfold shift. unfold wf_poly. intros. rewrite last_last. reflexivity.
+  unfold wf_poly. intros. reflexivity.
 Qed.
 
-Lemma monomial_not_0: forall n,
-  monomial n <> nil.
+(*end hide*)
+
+Definition r0 : wpoly := exist _ nil wf_poly_nil.
+Definition r1 : wpoly := exist _ (1 :: nil) wf_poly_1.
+
+Definition radd (f g: wpoly) : wpoly :=
+  exist _ (poly_add (proj1_sig f) (proj1_sig g)) (wf_poly_add _ _).
+
+Definition rmul (f g: wpoly) : wpoly :=
+  exist _ (poly_mult (proj1_sig f) (proj1_sig g)) (wf_poly_mult _ _ (proj2_sig f) (proj2_sig g)).
+
+Definition rsub := radd.
+
+Definition poly_ring: @ring_theory wpoly r0 r1 radd rmul rsub id eq.
 Proof.
-  intros. intro. unfold monomial in H. destruct (Nat.eq_dec n 0). inversion H.
-  unfold shift in H. destruct (list_repeat n 0); inversion H.
+  apply mk_rt.
+  - intros. destruct x. unfold radd. simpl. apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat.
+    apply poly_add_id. assumption.
+  - intros. destruct x; destruct y; unfold radd; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. apply poly_add_comm.
+  - intros. destruct x; destruct y; destruct z; unfold radd; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. symmetry. apply poly_add_assoc.
+  - intros. unfold rmul; unfold r1; destruct x; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. unfold poly_mult.
+    destruct x; reflexivity.
+  - intros. destruct x; destruct y; unfold rmul; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. apply poly_mult_comm; assumption.
+  - intros. destruct x; destruct y; destruct z; unfold rmul; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. symmetry. apply poly_mult_assoc; assumption.
+  - intros. destruct x; destruct y; destruct z; unfold rmul; unfold radd; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. apply poly_mult_distr_r; assumption.
+  - intros. reflexivity.
+  - intros. unfold radd; unfold id; destruct x; unfold r0; simpl.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. apply poly_add_inv.
 Qed.
 
-(** Euclidean Division **)
-
-(*note: may want to make more efficient by shifting instead of add a monomial*)
-Program Fixpoint poly_div (a b q r : poly) (Hb: wf_poly b) (Hr: wf_poly r) {measure (Z.to_nat (deg r + 1))} : 
-  {x: poly * poly | (0<= deg b) -> (*b <> 0*)  wf_poly q ->
-   (deg (snd x) < deg b /\ wf_poly (fst x) /\ wf_poly (snd x) /\
-   (a = poly_add (poly_mult b q) r -> a = poly_add (poly_mult b (fst x)) (snd x)))}
-  :=
-  match b with
-  | nil => (nil, nil) (*cannot divide by zero *)
-  | (x :: t) =>
-  match (zlt (deg r) (deg b)) with
-  | left H => (q,r)
-  | right H' => let pow := monomial (Z.to_nat (deg r - deg b)) in
-                let q' := poly_add q pow in
-                let r' := poly_add r (poly_mult b pow) in
-                poly_div a b q' r' Hb (wf_poly_add _ _)
-  end
-end.
-Next Obligation.
-lia.
-Defined.
-Next Obligation.
-destruct r.
-(*if r = 0 - contradiction*)
-simpl in H'. assert (Zlength (x :: t) > 0) by list_solve. lia.
-(*now handle case when r' = 0*)
-assert (forall l, deg l = -1 \/ 0 <= deg l). { intros. unfold deg; destruct l. left. reflexivity.
-right. list_solve. }
-remember (poly_add (b :: r) (poly_mult (x :: t) (monomial (Z.to_nat (deg (b :: r) - deg (x :: t)))))) as r'.
-specialize (H r'). destruct H.
-- destruct r'. simpl. list_solve. unfold deg in H. list_solve. 
-- (*now we can handle the usual case, and use the fact that polys of same degree result in a smaller poly when
-    multiplied together *)
-assert (deg (b :: r) = deg  (poly_mult (x :: t) (monomial (Z.to_nat (deg (b :: r) - deg (x :: t)))))). {
-rewrite poly_mult_deg. rewrite monomial_deg. lia. assumption. apply wf_monomial. simpl. 
-solve_neq. apply monomial_not_0. }
-assert ((deg (poly_add (b :: r) (poly_mult (x :: t) (monomial (Z.to_nat (deg (b :: r) - deg (x :: t)))))))
-  < (deg (b :: r))). {
-apply (poly_add_degree_same (b :: r) (poly_mult (x :: t) (monomial (Z.to_nat (deg (b :: r) - deg (x :: t)))))).
-- assumption.
-- apply wf_poly_mult. assumption. apply wf_monomial.
-- assumption.
-- simpl. list_solve. } 
-subst. list_solve.
-Defined.
-Next Obligation.
-destruct ((poly_div a (x :: t) (poly_add q (monomial (Z.to_nat (deg r - deg (x :: t)))))
-           (poly_add r (poly_mult (x :: t) (monomial (Z.to_nat (deg r - deg (x :: t)))))) Hb
-           (wf_poly_add r (poly_mult (x :: t) (monomial (Z.to_nat (deg r - deg (x :: t))))))
-           (poly_div_func_obligation_3 (x :: t) r Hb Hr poly_div x t eq_refl H' Heq_anonymous))). simpl.
-(*in a more workable form - now to prove correctness - ie, that invariant is preserved*)
-destruct x0; simpl in *. 
-assert (wf_poly (poly_add q (monomial (Z.to_nat (deg r - (Zlength (x :: t) - 1)))))).
-apply wf_poly_add. specialize (a0 H H1). destruct a0. destruct H3. destruct H4. split.
-assumption. split. assumption. split. assumption. intros. apply H5. rewrite H6.
-remember (x :: t) as b.
-remember  (monomial (Z.to_nat (deg r - (Zlength b - 1)))) as pow.
-rewrite poly_mult_distr_l.
-symmetry. rewrite poly_add_assoc. f_equal. rewrite poly_add_comm.
-rewrite poly_add_assoc. rewrite poly_add_inv. rewrite poly_add_comm. apply poly_add_id. apply Hr.
-assumption. assumption. subst. apply wf_monomial.
-Defined.
-
-Definition poly_div_compute a b (Ha: wf_poly a) (Hb : wf_poly b) : poly * poly :=
-  proj1_sig (poly_div a b nil a Hb Ha).
-
-Definition testa := (1 :: 1 :: 0 :: 1 :: nil).
-Lemma wf_a : wf_poly testa.
-Proof.
-unfold wf_poly. unfold testa. simpl. intros. reflexivity.
-Qed.
-
-Definition testb := (1 :: 1 :: nil).
-Lemma wf_b : wf_poly testb.
-Proof.
-  unfold wf_poly. unfold testb. simpl. reflexivity.
-Qed.
-
-Eval compute in (poly_add(poly_mult (0 :: 1 :: 1 :: nil) (1 :: 1 :: nil)) (1 :: nil)).
-Eval compute in ( poly_div_compute testa testb wf_a wf_b  ).
-(*it works!*)
+End Ring.
   
