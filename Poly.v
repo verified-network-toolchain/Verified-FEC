@@ -87,6 +87,8 @@ Proof.
   split; intros. inversion H. subst. reflexivity. exist_eq. apply P.ith_eq; assumption.
 Qed. 
 
+(** Results about [deg] *)
+
 Lemma deg_zero: forall p,
   deg p < 0 <-> p = zero.
 Proof.
@@ -103,10 +105,19 @@ Proof.
   - destruct x. contradiction. unfold P.deg. list_solve.
 Qed.
 
+Lemma deg_one: forall p,
+  0%Z = deg p <-> p = one.
+Proof.
+  intros. unfold deg; unfold one; destruct p; simpl. split; intros.
+  - exist_eq. unfold P.deg in H. destruct x. inversion H. destruct x. 2 :  list_solve.
+    destruct b. unfold P.wf_poly in w. simpl in w. assert (0=1). apply w. solve_neq. inversion H0.
+    reflexivity.
+  - inversion H. simpl. reflexivity.
+Qed.
+
 (** Polynomial addition **)
 
 Definition poly_add (p1 p2 : poly) := exist _ (P.poly_add (proj1_sig p1) (proj1_sig p2)) (P.wf_poly_add _ _).
-
 Infix "+~" := poly_add (at level 50).
 
 Lemma poly_add_comm: forall p1 p2, p1 +~ p2 = p2 +~ p1.
