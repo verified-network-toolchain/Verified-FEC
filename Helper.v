@@ -117,3 +117,19 @@ Lemma Zlength_seq: forall start len,
 Proof.
   intros. rewrite Zlength_correct. rewrite seq_length. reflexivity.
 Qed. 
+
+(*If we have a list of A and a proof that each element in the list satisfies P x, then we can create a list
+  of {x : A | P x}*)
+Definition exist_list {A : Type} (P: A -> Prop) (l: list A) :
+  (forall x, In x l -> P x) ->
+  list ({ x : A | P x}).
+Proof.
+  intros. induction l.
+  - apply nil.
+  - apply cons. specialize (H a). assert (P a) by (apply H; left; reflexivity).
+    apply (exist P a H0). apply IHl. intros. apply H. right. apply H0.
+Defined.
+
+(* Likewise, we can turn a {x : A | P x} list into a list A by just unwrapping the types *)
+Definition dep_list_to_list {A: Type} (P: A -> Prop) (l: list {x : A | P x}) : list A :=
+  fold_right (fun x acc => (@proj1_sig A P x) :: acc) nil l.

@@ -1369,5 +1369,181 @@ Proof.
     + rewrite <- L. unfold shift. simpl. reflexivity.
 Qed.
 
+(** Enumerating polynomials **)
+
+(* returns a list of polys of deg <= n, followed by a list of polys of deg = n. We need both lists so that
+  we avoid duplicates in the output and avoid computing previous set twice*)
+Fixpoint list_of_polys (n: nat) : (list (list bit) * list (list bit)) :=
+  match n with
+  | O => ((1 :: nil) :: nil, (1 :: nil) :: nil)
+  | S(n') => let (all_leq, all_eq) := list_of_polys n' in
+             let all_of_curr_deg := (map (fun x => 0 :: x)) all_eq ++ (map (fun x => 1 :: x)) all_eq in
+             (all_leq ++ all_of_curr_deg, all_of_curr_deg)
+  end.
+
+Lemma zero_notin_list_fst: forall n,
+  ~ In nil (fst (list_of_polys n)).
+Proof.
+  intros. induction n; intro; simpl in H.
+  - destruct H. inversion H. destruct H.
+  - destruct (list_of_polys n) as [a b]. simpl in IHn.
+    apply in_app_or in H. destruct H. contradiction. apply in_app_or in H.
+    destruct H. rewrite in_map_iff in H. destruct H. destruct H. inversion H.
+    rewrite in_map_iff in H. destruct H. destruct H. inversion H.
+Qed. 
+
+Lemma zero_notin_list_snd: forall n,
+  ~ In nil (snd (list_of_polys n)).
+Proof.
+  intros. induction n; intro; simpl in H.
+  - destruct H. inversion H. destruct H.
+  - destruct (list_of_polys n) as [ a b]. simpl in IHn.
+    simpl in H. apply in_app_or in H. destruct H; rewrite in_map_iff in H; destruct H; destruct H; inversion H.
+Qed.
+
+Lemma wf_poly_one: wf_poly (1 :: nil).
+Proof.
+  unfold wf_poly; intros; reflexivity.
+Qed.
+
+(*need both for IH *)
+Lemma in_list_wf: forall n p,
+  (In p (fst (list_of_polys n)) -> wf_poly p) /\ (In p (snd (list_of_polys n)) -> wf_poly p).
+Proof.
+  intros n; induction n; intros.
+  - split; intros; simpl in H.
+    + destruct H. subst. apply wf_poly_one. destruct H.
+    + destruct H; subst. apply wf_poly_one. destruct H.
+  - split; intros; simpl in H.
+    + destruct (list_of_polys n) as [a b] eqn : P. simpl in H.
+      apply in_app_or in H. destruct H. simpl in IHn. specialize (IHn p).
+      destruct IHn. apply H0. assumption.
+      apply in_app_or in H. destruct H; rewrite in_map_iff in H; destruct H; destruct H. 
+      * subst. specialize (IHn x). destruct IHn. simpl in H1. unfold wf_poly in *; intros.
+        simpl. destruct x.  exfalso. apply (zero_notin_list_snd n). rewrite P. simpl. assumption.
+        apply H1. assumption. solve_neq.
+      * subst. specialize (IHn x). destruct IHn. simpl in H1. unfold wf_poly in *; intros.
+        simpl. destruct x. reflexivity. apply H1. assumption. solve_neq.
+    + destruct (list_of_polys n) as [a b] eqn : P. simpl in H. apply in_app_or in H; destruct H;
+      rewrite in_map_iff in H; destruct H; destruct H; subst; simpl in *; specialize (IHn x); destruct IHn.
+      * unfold wf_poly in *. intros. simpl. destruct x. exfalso.
+        apply (zero_notin_list_snd n). rewrite P. simpl; assumption. apply H1. assumption. solve_neq.
+      * unfold wf_poly in *. intros. simpl. destruct x. reflexivity. apply H1. assumption. solve_neq.
+      
+Qed.
+
+Lemma in_list_deg: forall n p,
+  (In p (fst (list_of_polys n)) -> deg p <= Z.of_nat n) /\ (In p (snd (list_of_polys n)) -> deg p = Z.of_nat n).
+Proof.
+  intros n; induction n; intros; split; intros; simpl in H.
+  - destruct H. subst. unfold deg. list_solve. destruct H.
+  - destruct H. subst. unfold deg. list_solve. destruct H.
+  - destruct (list_of_polys n) as [a b] eqn : P. simpl in H.
+    + apply in_app_or in H. destruct H. simpl in IHn. specialize (IHn p). destruct IHn.
+      apply H0 in H. lia. apply in_app_or in H; destruct H; rewrite in_map_iff in H; destruct H; destruct H;
+      simpl in IHn; specialize (IHn x); subst; rewrite deg_cons; destruct IHn; apply H1 in H0; lia.
+  - destruct (list_of_polys n) as [a b] eqn : P. simpl in H. apply in_app_or in H;
+     destruct H; rewrite in_map_iff in H; destruct H; destruct H;
+      simpl in IHn; specialize (IHn x); subst; rewrite deg_cons; destruct IHn; apply H1 in H0; lia.
+Qed.
+
+(*now for the reverse direction: all polynomials are included *)
+
+(*need separate lemma for 1, can't prove from IH*)
+Lemma one_in_list: forall n,
+  In (1 :: nil) (fst (list_of_polys n)).
+Proof.
+  intros n; induction n; simpl.
+  - left. reflexivity.
+  - destruct (list_of_polys n) as [a b] eqn : P. simpl. apply in_or_app. left.
+    simpl in IHn; assumption.
+Qed.
+
+Lemma all_in_list: forall n p,
+  p <> nil ->
+  (wf_poly p /\ deg p <= Z.of_nat n -> In p (fst (list_of_polys n))) /\
+  (wf_poly p /\ deg p = Z.of_nat n -> In p (snd (list_of_polys n))).
+Proof.
+  intros n; induction n; intros; split; intros; destruct H0; simpl.
+  - destruct p. contradiction. destruct p. destruct b. unfold wf_poly in H0.
+    simpl in H0. assert (0=1) by (apply H0; solve_neq). inversion H2.
+    left. reflexivity. unfold deg in H1. list_solve.
+  - destruct p. contradiction. destruct p. destruct b. unfold wf_poly in H0; simpl in H0.
+    assert (0=1) by (apply H0; solve_neq). inversion H2. auto. unfold deg in H1; list_solve.
+  - destruct (list_of_polys n) as [a b] eqn : P. simpl.
+    assert (deg p <= Z.of_nat n \/ deg p = Z.of_nat (S(n))) by lia. destruct H2.
+    + specialize (IHn p H). simpl in IHn; destruct IHn. 
+      apply in_or_app. left. apply H3; split; try assumption.
+    + destruct p. contradiction. destruct p. unfold wf_poly in H0. 
+      simpl in H0. assert (b0 = 1). apply H0; solve_neq. subst. apply in_or_app. left.
+      pose proof (one_in_list n). rewrite P in H3. simpl in H3. assumption.
+      remember (b1 :: p) as p'.
+      rewrite deg_cons in H2. assert (deg p' = Z.of_nat n) by lia.
+      apply in_or_app. right. simpl in IHn. assert (p' <> nil).
+      subst. solve_neq. specialize (IHn p' H4). destruct IHn. apply in_or_app.
+      destruct b0.
+      * left. rewrite in_map_iff. exists p'. split. reflexivity. apply H6. split.
+        rewrite wf_poly_cons in H0; assumption. assumption.
+      * right. rewrite in_map_iff. exists p'. split. reflexivity. apply H6.
+        split; try assumption. rewrite wf_poly_cons in H0; assumption.
+  - destruct (list_of_polys n) as [a b] eqn : P. simpl. (*same proof as above*)
+    destruct p. contradiction. destruct p. unfold wf_poly in H0. 
+      simpl in H0. assert (b0 = 1). apply H0; solve_neq. subst. unfold deg in H1.
+      list_solve. remember (b1 :: p) as p'.
+      rewrite deg_cons in H1. assert (deg p' = Z.of_nat n) by lia.
+      apply in_or_app. simpl in IHn. assert (p' <> nil).
+      subst. solve_neq. specialize (IHn p' H3). destruct IHn.
+      destruct b0.
+      * left. rewrite in_map_iff. exists p'. split. reflexivity. apply H5. split.
+        rewrite wf_poly_cons in H0; assumption. assumption.
+      * right. rewrite in_map_iff. exists p'. split. reflexivity. apply H5.
+        split; try assumption. rewrite wf_poly_cons in H0; assumption.
+Qed.
+
+(*the final specification *)
+
+Lemma list_of_polys_fst_spec: forall n p,
+  (In p (fst (list_of_polys n))) <-> ( p <> nil /\ wf_poly p /\ deg p <= Z.of_nat n).
+Proof.
+  intros. split; intros.
+  - split. intro. subst. apply (zero_notin_list_fst _ H).
+    split. pose proof (in_list_wf n p). destruct H0. apply H0. assumption.
+    pose proof (in_list_deg n p). destruct H0. apply H0. assumption.
+  - pose proof (all_in_list n p). destruct H. specialize (H0 H).
+    destruct H0. apply H0. assumption.
+Qed.
+
+Lemma list_of_polys_snd_spec: forall n p,
+  (In p (snd (list_of_polys n))) <-> ( p <> nil /\ wf_poly p /\ deg p = Z.of_nat n).
+Proof.
+  intros. split; intros.
+  - split. intro. subst. apply (zero_notin_list_snd _ H).
+    split. pose proof (in_list_wf n p). destruct H0. apply H1. assumption.
+    pose proof (in_list_deg n p). destruct H0. apply H1. assumption.
+  - pose proof (all_in_list n p). destruct H. specialize (H0 H).
+    destruct H0. apply H2. assumption.
+Qed.
+
+(*We wrap this into a list of dependent lists so it is compatible with [Poly.v], but just like with
+  poly_div, the method of using lists then wrapping after means that computation still evaluates with
+  no issues *)
+Definition list_of_polys_def (n: nat) : list ({p : poly | wf_poly p}) * list ({p : poly | wf_poly p}).
+Proof.
+remember (list_of_polys n) as l. destruct l.  pose proof (in_list_wf n). split. 
+apply (exist_list _ l). intros. specialize (H x). destruct H. apply H. rewrite <- Heql; simpl. assumption.
+apply (exist_list _ l0). intros. specialize (H x). destruct H. apply H1. rewrite <- Heql; simpl. assumption.
+Defined.
+
+(*
+Definition temp (n: nat) : list (poly) * list poly :=
+  match (list_of_polys_def n) with
+  | (x, y) => (dep_list_to_list _ x, dep_list_to_list _ y)
+  end.
+
+(*yay! even with all the wrapping/unwrapping of dependent types, it works!*)
+Eval compute in (temp 4).
+*)
+
+
 End P.
   
