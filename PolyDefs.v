@@ -1527,17 +1527,19 @@ Qed.
 (*We wrap this into a list of dependent lists so it is compatible with [Poly.v], but just like with
   poly_div, the method of using lists then wrapping after means that computation still evaluates with
   no issues *)
-Definition list_of_polys_def (n: nat) : list ({p : poly | wf_poly p}) * list ({p : poly | wf_poly p}).
+Definition list_of_polys_def (n: nat) : {l: list ({p : poly | wf_poly p}) |
+  (forall p, In p l <-> In (proj1_sig p) (fst (list_of_polys n)))} * {l: list ({p : poly | wf_poly p}) |
+  (forall p, In p l <-> In (proj1_sig p) (snd (list_of_polys n)))}.
 Proof.
-remember (list_of_polys n) as l. destruct l.  pose proof (in_list_wf n). split. 
-apply (exist_list _ l). intros. specialize (H x). destruct H. apply H. rewrite <- Heql; simpl. assumption.
-apply (exist_list _ l0). intros. specialize (H x). destruct H. apply H1. rewrite <- Heql; simpl. assumption.
+remember (list_of_polys n) as l. destruct l.  pose proof (in_list_wf n). split.
+apply (exist_list_strong _ l). intros. specialize (H x). destruct H. apply H. rewrite <- Heql; simpl. assumption.
+apply (exist_list_strong _ l0). intros. specialize (H x). destruct H. apply H1. rewrite <- Heql; simpl. assumption.
 Defined.
 
 (*
 Definition temp (n: nat) : list (poly) * list poly :=
   match (list_of_polys_def n) with
-  | (x, y) => (dep_list_to_list _ x, dep_list_to_list _ y)
+  | (x, y) => (dep_list_to_list _ (proj1_sig x), dep_list_to_list _ (proj1_sig y))
   end.
 
 (*yay! even with all the wrapping/unwrapping of dependent types, it works!*)

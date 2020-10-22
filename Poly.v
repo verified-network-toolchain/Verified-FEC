@@ -47,6 +47,13 @@ Proof.
   - right. intro. unfold zero; inversion H.
 Qed.
 
+Lemma poly_eq_dec: forall (p q : poly),
+  {p = q} + {p <> q}.
+Proof.
+  intros. destruct p. destruct q. pose proof (list_eq_dec bit_eq_dec x x0).
+  destruct H. left. subst. exist_eq. reflexivity. right. intro. inversion H. contradiction.
+Qed. 
+
 (** Results about [ith] *)
 Lemma ith_zero: forall i,
   ith zero i = 0.
@@ -113,6 +120,12 @@ Proof.
     destruct b. unfold P.wf_poly in w. simpl in w. assert (0=1). apply w. solve_neq. inversion H0.
     reflexivity.
   - inversion H. simpl. reflexivity.
+Qed.
+
+Lemma deg_lower_bound: forall p,
+  deg p >= -1.
+Proof.
+  intros. destruct p. unfold deg. simpl. destruct x; unfold PolyDefs.P.deg; list_solve.
 Qed.
 
 (** Polynomial addition **)
@@ -369,6 +382,25 @@ Proof.
   intros. unfold ith; unfold summation; unfold poly_mult; destruct f; destruct g; simpl; apply P.ith_poly_mult; assumption.
 Qed.
 
+Lemma poly_mult_id: forall f g, f *~ g = f -> f = zero \/ g = one.
+Proof.
+  intros. destruct (destruct_poly f). subst. left. reflexivity.
+  destruct (destruct_poly g). subst. rewrite poly_mult_0_r in H. subst. contradiction.
+  assert (deg (f *~ g) = deg f) by (rewrite H; reflexivity). rewrite poly_mult_deg in H0; try assumption.
+  assert (deg g = 0%Z) by lia. symmetry in H1. rewrite deg_one in H1. right. assumption.
+Qed. 
+
+Lemma poly_mult_eq_one: forall f g, f *~ g = one -> f = one /\ g = one.
+Proof.
+  intros. destruct (destruct_poly f). subst. rewrite poly_mult_0_l in H. inversion H.
+  destruct (destruct_poly g). subst. rewrite poly_mult_0_r in H. inversion H. 
+  assert (deg (f *~ g) = deg one) by (rewrite H; reflexivity). rewrite poly_mult_deg in H0;
+  try assumption. assert (deg one = 0%Z) by (symmetry; rewrite deg_one; reflexivity).
+  rewrite H1 in H0. rewrite <- deg_nonzero in n. rewrite <- deg_nonzero in n0. 
+  assert (0%Z = deg g) by lia. assert (0%Z = deg f) by lia. rewrite deg_one in H2.
+  rewrite deg_one in H3. subst. split; reflexivity.
+Qed.
+
 Lemma shift_monomial: forall f n,
   shift f n = (monomial n) *~ f.
 Proof.
@@ -440,7 +472,7 @@ Proof.
     rewrite poly_mult_comm. unfold poly_mult; unfold poly_add; simpl. destruct a; simpl in *; exist_eq.
     apply H3. rewrite P.poly_add_id. reflexivity. assumption. assumption. destruct H4. auto.
 Qed.
-
+(*
 (*begin hide*)
 Definition testa := from_list (0 :: 1 :: 0 :: 0 :: 1 :: nil).
 Definition testb := from_list (1 :: 0 :: 1 :: nil).
@@ -452,5 +484,44 @@ Definition test (x : poly * poly) : list bit * list bit :=
 
 Eval compute in (test (poly_div testa testb)).
 (*end hide*)
+*)
+
+(** Enumerating Polynomials over GF(2) *)
+
+(*get all polynomials of degree at most n - exponential complexity obviously*)
+Definition polys_leq_degree (n: nat) : list poly := zero :: proj1_sig (fst (P.list_of_polys_def n)).
+
+Lemma polys_leq_degree_spec: forall n p,
+  (deg p <= Z.of_nat n) <-> In p (polys_leq_degree n).
+Proof.
+  intros. split; intros.
+  - unfold polys_leq_degree. destruct (destruct_poly p). left. subst. reflexivity.
+    right. destruct (P.list_of_polys_def n). simpl. destruct s. simpl. apply i.
+    apply P.list_of_polys_fst_spec. split. rewrite nonzero_not_nil in n0. assumption.
+    split. destruct p; assumption. unfold deg in H. apply H.
+  - unfold polys_leq_degree in H. destruct H. subst. assert (deg zero < 0) by (apply deg_zero; reflexivity).
+    lia. destruct (P.list_of_polys_def n). simpl in H. destruct s. simpl in H.
+    apply i in H. rewrite P.list_of_polys_fst_spec in H. destruct H. destruct H0. unfold deg; assumption.
+Qed.
+(*It computes!
+Require Import Helper.
+Eval compute in (dep_list_to_list _ (polys_leq_degree 4)).
+*)
+
+(*get all polynomials of degree exactly n*)
+Definition polys_of_degree (n: nat) : list poly := proj1_sig (snd (P.list_of_polys_def n)).
+
+Lemma polys_of_degree_spec: forall n p,
+  (deg p = Z.of_nat n) <-> In p (polys_of_degree n).
+Proof.
+  intros. split; intros. 
+  - unfold polys_of_degree. destruct (P.list_of_polys_def n). destruct s0. simpl.
+    apply i. apply P.list_of_polys_snd_spec. split.
+    apply nonzero_not_nil'. intro. subst. assert (deg zero < 0) by (apply deg_zero; reflexivity). lia.
+    split. destruct p; assumption. unfold deg in H. assumption.
+  - unfold polys_of_degree in H. destruct (P.list_of_polys_def n). destruct s0; simpl in H.
+    apply i in H. rewrite P.list_of_polys_snd_spec in H. destruct H. destruct H0. unfold deg; assumption.
+Qed.
+
 
 End WPoly.

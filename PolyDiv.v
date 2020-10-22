@@ -73,3 +73,4 @@ symmetry. rewrite poly_add_assoc. f_equal. rewrite poly_add_comm.
 rewrite poly_add_assoc. rewrite poly_add_inv. rewrite poly_add_comm. apply poly_add_id. apply Hr.
 assumption. assumption. subst. apply wf_monomial.
 Defined.
+

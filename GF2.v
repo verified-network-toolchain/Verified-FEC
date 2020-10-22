@@ -136,4 +136,10 @@ apply mk_field.
 - intros. solve_bit. contradiction.
 Defined.
 
-
+Lemma bit_eq_dec: forall (b1 b2 : bit),
+  {b1 = b2} + {b1 <> b2}.
+Proof.
+  intros. destruct (eq_bit b1 b2) eqn : E.
+  - rewrite eq_bit_eq in E. left. assumption.
+  - right. intro. subst. destruct b2; inversion E.
+Qed.

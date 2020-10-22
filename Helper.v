@@ -122,12 +122,29 @@ Qed.
   of {x : A | P x}*)
 Definition exist_list {A : Type} (P: A -> Prop) (l: list A) :
   (forall x, In x l -> P x) ->
-  list ({ x : A | P x}).
+  list ({ x : A | P x}) .
 Proof.
   intros. induction l.
   - apply nil.
-  - apply cons. specialize (H a). assert (P a) by (apply H; left; reflexivity).
-    apply (exist P a H0). apply IHl. intros. apply H. right. apply H0.
+  - apply cons. apply (exist _ a). apply H. left. reflexivity.
+    apply IHl. intuition.
+Defined.
+
+(*Not only do we have a list of dependent types, but that list has the exact same elements (I suppose
+  we could prove an even stronger property with map, but we don't need that here*)
+Definition exist_list_strong {A : Type} (P: A -> Prop) (l: list A) :
+  (forall x, In x l -> P x) ->
+  {l': list ({ x : A | P x}) | forall x, In x l' <-> In (proj1_sig x) l} .
+Proof.
+  intros. induction l.
+  - apply (exist _ nil). intros. reflexivity.
+  - assert (P a). apply H. left. reflexivity.  Check (exist (fun x => P x) a H0).
+    assert (forall x : A, In x l -> P x). intuition. specialize (IHl H1).
+    destruct IHl. apply (exist _ (cons (exist _ a H0) x)). intros.
+    split; intros. simpl in H2. destruct H2. left. subst. reflexivity.
+    right. apply i. apply H2. destruct H2. left. subst. destruct x0.
+    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. reflexivity.
+    right. apply i. apply H2.
 Defined.
 
 (* Likewise, we can turn a {x : A | P x} list into a list A by just unwrapping the types *)
