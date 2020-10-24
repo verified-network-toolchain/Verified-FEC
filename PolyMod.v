@@ -3,6 +3,10 @@ Require Import VST.floyd.functional_base.
 Require Import Poly.
 Require Import Coq.Classes.RelationClasses.
 Require Import Coq.Classes.Morphisms.
+Require Import Coq.Logic.FinFun.
+Require Import Helper.
+Require Import Coq.setoid_ring.Field_theory.
+
 
 Import WPoly.
 
@@ -215,103 +219,9 @@ Proof.
     rewrite poly_add_0_r in H. apply pmod_multiple_of_f. exists x. rewrite poly_add_comm.
     rewrite <- poly_add_cancel_1. apply H.
 Qed. 
-    
-
-(** Ring instances for GF2(x)/(f), where f is a nonzero polynomial *)
-
-(* First, We restrict the size of polynomials and prove that under addition and multiplication modulo f,
-  this is a ring. We will need this to define finite fields.*)
-Definition qpoly : Type := { p: poly | deg p < deg f}.
-
-Definition poly_mult_mod g h : poly :=
-  (g *~ h) %~ f.
-
-Lemma poly_mult_mod_lt_deg: forall g h,
-  deg (poly_mult_mod g h) < deg f.
-Proof.
-  intros. unfold poly_mult_mod. apply pmod_lt_deg.
-Qed.
-
-Definition poly_add_mod g h : poly :=
-  (g +~ h) %~ f.
-
-Lemma poly_add_mod_lt_deg: forall g h,
-  deg (poly_add_mod g h) < deg f.
-Proof.
-  unfold poly_add_mod. intros. apply pmod_lt_deg.
-Qed.
-
-Lemma zero_lt_deg: deg zero < deg f.
-Proof.
-pose proof (deg_zero zero). assert (deg zero < 0) by (apply H; reflexivity). lia.
-Qed.
-
-Lemma one_lt_deg: deg one < deg f.
-Proof.
-assert (deg one = 0%Z). symmetry. rewrite deg_one. reflexivity. lia.
-Qed.
-
-Definition r0 : qpoly := exist _ zero zero_lt_deg.
-Definition r1 : qpoly := exist _ one one_lt_deg.
-Definition r_add (g h : qpoly) : qpoly := exist _ (poly_add_mod (proj1_sig g) (proj1_sig h)) 
-  (poly_add_mod_lt_deg (proj1_sig g) (proj1_sig h)).
-Definition r_mul (g h : qpoly) : qpoly := exist _ (poly_mult_mod (proj1_sig g) (proj1_sig h)) 
-  (poly_mult_mod_lt_deg _ _).
-
-(** For polynomial f of degree n > 0, the set of polynomials with degree < n forms a ring under
-  addition and multiplications modulo f *)
-Definition qpoly_quotient_ring : @ring_theory qpoly r0 r1 r_add r_mul r_add id eq.
-Proof.
-  apply mk_rt.
-  - intros. unfold r_add. destruct x. simpl. exist_eq.
-    unfold poly_add_mod. rewrite poly_add_0_l. apply pmod_refl. assumption.
-  - intros. unfold r_add. destruct x; destruct y; simpl. exist_eq.
-    unfold poly_add_mod. rewrite poly_add_comm. reflexivity.
-  - intros. unfold r_add; destruct x; destruct y; destruct z; simpl.
-    exist_eq. unfold poly_add_mod.
-    rewrite pmod_add_reduce. rewrite (poly_add_comm ((x +~ x0) %~ f)).
-    rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm x1). reflexivity.
-  - intros. unfold r_mul. destruct x; simpl. exist_eq. unfold poly_mult_mod.
-    rewrite poly_mult_1_l. apply pmod_refl. assumption.
-  - intros. unfold r_mul. exist_eq. destruct x; destruct y; simpl. 
-    unfold poly_mult_mod. rewrite poly_mult_comm. reflexivity.
-  - intros. unfold r_mul; destruct x; destruct y; destruct z; simpl. exist_eq. unfold poly_mult_mod.
-    rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x *~ x0) %~ f)). rewrite pmod_mult_reduce.
-    rewrite <- poly_mult_assoc. rewrite (poly_mult_comm _ x1). reflexivity.
-  - intros. unfold r_mul; unfold r_add; destruct x; destruct y; exist_eq; simpl.
-    unfold poly_mult_mod; unfold poly_add_mod. destruct z; simpl.
-    rewrite? pmod_add_reduce. rewrite <- (poly_add_comm (x0 *~ x1)). 
-    rewrite pmod_add_reduce. 
-    rewrite poly_mult_comm. rewrite pmod_mult_reduce. rewrite poly_mult_comm.
-    rewrite poly_add_comm.
-    rewrite poly_mult_distr_r. reflexivity.
-  - reflexivity.
-  - intros. unfold r_add; destruct x; unfold r0; simpl; exist_eq. unfold poly_add_mod.
-    rewrite poly_add_inv. apply pmod_zero. 
-Defined.
-
-(** Alternately, the polynomials form a ring under addition and multiplication modulo f, where equivalence
-  is taken modulo f *)
-Definition poly_quotient_ring: @ring_theory poly zero one poly_add_mod poly_mult_mod poly_add_mod id (eq_pmod f).
-Proof.
-  apply mk_rt; try unfold eq_pmod; intros; unfold poly_add_mod; unfold poly_mult_mod.
-  - rewrite poly_add_0_l. apply pmod_twice. 
-  - rewrite poly_add_comm. reflexivity.
-  - rewrite? pmod_add_reduce. rewrite pmod_twice.
-    rewrite pmod_twice. rewrite (poly_add_comm ((x +~ y) %~ f)). 
-    rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm z). reflexivity.
-  - rewrite poly_mult_1_l. apply pmod_twice.
-  - rewrite poly_mult_comm. reflexivity.
-  - rewrite? pmod_twice. rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x *~ y) %~ f)).
-    rewrite pmod_mult_reduce. rewrite <- poly_mult_assoc. rewrite poly_mult_comm. reflexivity.
-  - rewrite? pmod_twice. rewrite (poly_mult_comm _ z). rewrite pmod_mult_reduce.
-    rewrite <- (pmod_add_distr (x *~ z) (y *~ z)). rewrite (poly_mult_comm z). rewrite poly_mult_distr_r.
-    reflexivity.
-  - reflexivity.
-  - unfold id. rewrite pmod_twice. rewrite poly_add_inv. reflexivity.
-Defined.
 
 End Mod.
+    
 
 (** Polynomial GCD *)
 
@@ -511,7 +421,6 @@ Eval compute in (to_list (gcd (from_list (0 :: 1 :: 1 :: nil)) (from_list (0 :: 
 Eval compute in (to_list (proj1_sig (gcd_aux (from_list (0 :: 1 :: 1 :: nil)) (from_list (0 :: 0 :: 1 :: nil))))).
 *)
 
-
 (** Irreducible Polynomials *)
 
 Definition reducible p := exists q, deg q > 0 /\ q <> p /\ q |~ p.
@@ -608,18 +517,110 @@ Proof.
   apply prime_is_irreducible; assumption.
 Qed.
 
-(* Now, we can prove the existence of inverses for the ring Z2[x]/(f), where f is irreducible*)
-    
-Require Import Coq.Logic.FinFun.
-Require Import Helper.
 
-Section FiniteField.
+(** Ring instances for GF2(x)/(f), where f is a nonzero polynomial *)
+
+Section Ring.
 
 Variable f : poly.
-Variable Hnontrivial: deg f > 0.
-Variable Hirred : irreducible f.
+Variable Hnonneg: deg f > 0.
 
-Definition z := (r0 f Hnontrivial).
+(* First, We restrict the size of polynomials and prove that under addition and multiplication modulo f,
+  this is a ring. We will need this to define finite fields.*)
+Definition qpoly : Type := { p: poly | deg p < deg f}.
+
+Definition poly_mult_mod g h : poly :=
+  (g *~ h) %~ f.
+
+Lemma poly_mult_mod_lt_deg: forall g h,
+  deg (poly_mult_mod g h) < deg f.
+Proof.
+  intros. unfold poly_mult_mod. apply pmod_lt_deg. assumption.
+Qed.
+
+Definition poly_add_mod g h : poly :=
+  (g +~ h) %~ f.
+
+Lemma poly_add_mod_lt_deg: forall g h,
+  deg (poly_add_mod g h) < deg f.
+Proof.
+  unfold poly_add_mod. intros. apply pmod_lt_deg. assumption.
+Qed.
+
+Lemma zero_lt_deg: deg zero < deg f.
+Proof.
+pose proof (deg_zero zero). assert (deg zero < 0) by (apply H; reflexivity). lia.
+Qed.
+
+Lemma one_lt_deg: deg one < deg f.
+Proof.
+assert (deg one = 0%Z). symmetry. rewrite deg_one. reflexivity. lia.
+Qed.
+
+Definition r0 : qpoly := exist _ zero zero_lt_deg.
+Definition r1 : qpoly := exist _ one one_lt_deg.
+Definition r_add (g h : qpoly) : qpoly := exist _ (poly_add_mod (proj1_sig g) (proj1_sig h)) 
+  (poly_add_mod_lt_deg (proj1_sig g) (proj1_sig h)).
+Definition r_mul (g h : qpoly) : qpoly := exist _ (poly_mult_mod (proj1_sig g) (proj1_sig h)) 
+  (poly_mult_mod_lt_deg _ _).
+
+(** For polynomial f of degree n > 0, the set of polynomials with degree < n forms a ring under
+  addition and multiplications modulo f *)
+Definition qpoly_quotient_ring : @ring_theory qpoly r0 r1 r_add r_mul r_add id eq.
+Proof.
+  apply mk_rt.
+  - intros. unfold r_add. destruct x. simpl. exist_eq.
+    unfold poly_add_mod. rewrite poly_add_0_l. apply pmod_refl. assumption. assumption.
+  - intros. unfold r_add. destruct x; destruct y; simpl. exist_eq.
+    unfold poly_add_mod. rewrite poly_add_comm. reflexivity.
+  - intros. unfold r_add; destruct x; destruct y; destruct z; simpl.
+    exist_eq. unfold poly_add_mod.
+    rewrite pmod_add_reduce. rewrite (poly_add_comm ((x +~ x0) %~ f)).
+    rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm x1). reflexivity.
+    all: assumption.
+  - intros. unfold r_mul. destruct x; simpl. exist_eq. unfold poly_mult_mod. 
+    rewrite poly_mult_1_l. apply pmod_refl. assumption. assumption.
+  - intros. unfold r_mul. exist_eq. destruct x; destruct y; simpl. 
+    unfold poly_mult_mod. rewrite poly_mult_comm. reflexivity.
+  - intros. unfold r_mul; destruct x; destruct y; destruct z; simpl. exist_eq. unfold poly_mult_mod.
+    rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x *~ x0) %~ f)). rewrite pmod_mult_reduce.
+    rewrite <- poly_mult_assoc. rewrite (poly_mult_comm _ x1). reflexivity. all: assumption.
+  - intros. unfold r_mul; unfold r_add; destruct x; destruct y; exist_eq; simpl.
+    unfold poly_mult_mod; unfold poly_add_mod. destruct z; simpl.
+    rewrite? pmod_add_reduce. rewrite <- (poly_add_comm (x0 *~ x1)). 
+    rewrite pmod_add_reduce. 
+    rewrite poly_mult_comm. rewrite pmod_mult_reduce. rewrite poly_mult_comm.
+    rewrite poly_add_comm.
+    rewrite poly_mult_distr_r. reflexivity. all: assumption.
+  - reflexivity.
+  - intros. unfold r_add; destruct x; unfold r0; simpl; exist_eq. unfold poly_add_mod.
+    rewrite poly_add_inv. apply pmod_zero. assumption.
+Defined.
+
+(** Alternately, the polynomials form a ring under addition and multiplication modulo f, where equivalence
+  is taken modulo f *)
+Definition poly_quotient_ring: @ring_theory poly zero one poly_add_mod poly_mult_mod poly_add_mod id (eq_pmod f).
+Proof.
+  apply mk_rt; try unfold eq_pmod; intros; unfold poly_add_mod; unfold poly_mult_mod.
+  - rewrite poly_add_0_l. apply pmod_twice. assumption. 
+  - rewrite poly_add_comm. reflexivity.
+  - rewrite? pmod_add_reduce. rewrite pmod_twice.
+    rewrite pmod_twice. rewrite (poly_add_comm ((x +~ y) %~ f)). 
+    rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm z). reflexivity. all: assumption.
+  - rewrite poly_mult_1_l. apply pmod_twice. assumption.
+  - rewrite poly_mult_comm. reflexivity.
+  - rewrite? pmod_twice. rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x *~ y) %~ f)).
+    rewrite pmod_mult_reduce. rewrite <- poly_mult_assoc. rewrite poly_mult_comm. reflexivity. all: assumption.
+  - rewrite? pmod_twice. rewrite (poly_mult_comm _ z). rewrite pmod_mult_reduce. 
+    rewrite <- (pmod_add_distr f Hnonneg (x *~ z) (y *~ z)). rewrite (poly_mult_comm z). rewrite poly_mult_distr_r.
+    reflexivity. all: assumption.
+  - reflexivity.
+  - unfold id. rewrite pmod_twice. rewrite poly_add_inv. reflexivity. assumption.
+Defined.
+
+(** Finite Fields (ie, the above rings when f is irreducible*)
+
+Variable Hirred : irreducible f.
 
 (*First, we prove that GF(2)/(f) is an integral domain when f is irreducible. This will prove that it is
   a field, since any finite integral domain is a field. There is a bit more work to do in Coq, though*)
@@ -640,7 +641,7 @@ Qed.
 
 (*have to wrap list polys_leq_degree in a dependent type to make it a list of qpolys (so that we can show
   that the set of qpolys is finite*)
-Definition list_of_qpoly : {l: list (qpoly f)| forall x, In x l}.
+Definition list_of_qpoly : {l: list qpoly| forall x, In x l}.
 Proof.
 remember (exist_list_strong (fun x => deg x < deg f) (polys_leq_degree (Z.to_nat (deg f) - 1))) as l.
 assert (forall x : poly,
@@ -650,20 +651,17 @@ apply l in H. destruct H. eapply exist. intros. rewrite i.
 apply polys_leq_degree_spec. unfold qpoly in x0. destruct x0. simpl. lia.
 Defined. 
 
-Lemma qpoly_finite: Finite (qpoly f).
+Lemma qpoly_finite: Finite qpoly.
 Proof.
   unfold Finite. exists (proj1_sig list_of_qpoly). destruct list_of_qpoly. simpl.
   unfold Full. apply i.
 Qed.
 
-Definition mult_map (a b : qpoly f) := (r_mul f Hnontrivial) a b.
-Print Injective.
-Lemma mult_map_injective: forall (a: qpoly f),
-  a <> z ->
-  Injective (mult_map a).
+Lemma mult_map_injective: forall (a: qpoly),
+  a <> r0 ->
+  Injective (r_mul a).
 Proof.
-  intros. unfold Injective. intros. unfold mult_map in H0.
-  unfold r_mul in H0. destruct x; destruct y; destruct a; simpl in *. inversion H0.
+  intros. unfold Injective. intros.  destruct x; destruct y; destruct a; simpl in *. inversion H0.
   exist_eq. unfold poly_mult_mod in H2. apply pmod_cancel in H2; try assumption.
   rewrite <- poly_mult_distr_l in H2. apply  irreducible_integral_domain in H2.
   destruct H2.
@@ -672,9 +670,9 @@ Proof.
     lia. pose proof (poly_add_deg_max x x0). lia.
 Qed.
 
-Lemma mult_map_surjective: forall (a: qpoly f),
-  a <> z ->
-  Surjective (mult_map a).
+Lemma mult_map_surjective: forall (a: qpoly),
+  a <> r0 ->
+  Surjective (r_mul a).
 Proof.
   intros. apply Endo_Injective_Surjective. apply qpoly_finite.
   unfold ListDec.decidable_eq. intros. unfold Decidable.decidable. 
@@ -684,31 +682,320 @@ Proof.
   - apply mult_map_injective. assumption.
 Qed.
 
-Lemma inverses_exist: forall (a: qpoly f),
-  a <> z ->
-  exists b, r_mul f Hnontrivial a b = (r1 f Hnontrivial).
+Lemma inverses_exist: forall (a: qpoly),
+  a <> r0 ->
+  exists b, r_mul a b = r1.
 Proof.
   intros. pose proof (mult_map_surjective a H). unfold Surjective in H0.
-  specialize (H0 (r1 f Hnontrivial)). unfold mult_map in H0. apply H0.
+  specialize (H0 r1). apply H0.
 Qed.
 
 (*coq's fields require a computable inverse function, so we have to iterate through the whole list to find
-  the appropriate element. This is not hard. Will do next (+ prove specific polys irred*)
-End FiniteField.
-(*begin hide*)
-(* test *)
-(*
-Definition testf := from_list (1 :: 0 :: 0 :: 1 :: nil).
+  the appropriate element. This is not too hard*)
 
-Lemma testf_deg: deg testf > 0.
+(* TODO: maybe move*)
+Definition find_default {A: Type} (l: list A) (x: A) (P: A -> A -> bool) (default : A) : A :=
+  fold_right (fun hd acc => if (P x hd) then hd else acc) default l.
+
+Lemma find_default_in: forall {A: Type} (l: list A) x P default,
+  (forall a b, P a b = true -> b <> default) ->
+  (exists y, In y l /\ P x y = true) <-> P x (find_default l x P default) = true.
 Proof.
-  (*dont think there is way to do this except with just calcuating or breaking abstraction*)
-  assert (deg testf = 3). reflexivity.
-  lia.
+  intros. induction l; split; intros.
+  - destruct H0. inversion H0. inversion H1.
+  - simpl in H0. apply H in H0. contradiction.
+  - simpl. destruct (P x a) eqn : E. assumption.
+    simpl in H0. destruct H0 as [y]. destruct H0.
+    destruct H0. subst. rewrite E in H1. inversion H1. 
+    apply IHl. exists y; auto.
+  - simpl in H0. destruct (P x a) eqn : E.
+    exists a. intuition. apply IHl in H0. destruct H0 as [y]. exists y. intuition.
 Qed.
 
-Definition testg := from_list (1 :: 0 :: 0 :: 1 :: 1 :: 1 :: nil).
+Lemma qpoly_eq_dec: forall (a b: qpoly) ,
+  {a = b} + { a <> b}.
+Proof.
+  intros. destruct a. destruct b.
+  destruct (poly_eq_dec x x0).
+  - left. subst. exist_eq. reflexivity.
+  - right. intro. inversion H. contradiction.
+Qed.
 
-Eval compute in (proj1_sig (testg %~ testf)).
-*)
-(*end hide*)
+(*inv_bool a b = true iff a and b are inverses*)
+Definition inv_bool (a b : qpoly) : bool :=
+  if (qpoly_eq_dec (r_mul a b) r1) then true else false.
+
+Definition find_inv (a: qpoly) : qpoly :=
+  find_default (proj1_sig (list_of_qpoly)) a inv_bool r0.
+
+Lemma find_inv_correct: forall a,
+  a <> r0 ->
+  r_mul a (find_inv a) = r1.
+Proof.
+  intros. unfold find_inv. pose proof (find_default_in (proj1_sig list_of_qpoly) a inv_bool r0).
+  assert (forall a b : qpoly, inv_bool a b = true -> b <> r0). intros. unfold inv_bool in H1.
+  destruct (qpoly_eq_dec (r_mul a0 b) r1). intro. subst. 
+  unfold r_mul in e. unfold r1 in e. unfold r0 in e. simpl in e. inversion e.
+  unfold poly_mult_mod in H3. rewrite poly_mult_0_r in H3. rewrite pmod_zero in H3; try assumption.
+  inversion H3. inversion H1. apply H0 in H1; clear H0.
+  destruct H1. clear H1.
+  assert (exists y : qpoly, In y (proj1_sig list_of_qpoly) /\ inv_bool a y = true).
+  pose proof (inverses_exist a H). destruct H1 as [b]. exists b. split.
+  destruct list_of_qpoly. simpl. apply i. unfold inv_bool.
+  if_tac. reflexivity. contradiction. apply H0 in H1; clear H0.
+  unfold inv_bool at 1 in H1. 
+  destruct (qpoly_eq_dec (r_mul a (find_default (proj1_sig list_of_qpoly) a inv_bool r0)) r1).
+  assumption. inversion H1.
+Qed.
+
+Definition r_div (a: qpoly) (b: qpoly) := r_mul a (find_inv b).
+
+(** The polynomials of degree < deg f form a field*)
+Definition qpoly_field: @field_theory qpoly r0 r1 r_add r_mul r_add id r_div find_inv eq.
+Proof.
+  apply mk_field.
+  - apply qpoly_quotient_ring.
+  - intro. inversion H.
+  - unfold r_div. reflexivity.
+  - intros. rewrite <- (find_inv_correct p); try assumption. unfold r_mul. exist_eq.
+    unfold poly_mult_mod. rewrite poly_mult_comm. reflexivity.
+Defined.
+
+(** The polynomials form a field, where operations are performed mod f, an irreducible poly*)
+
+Definition poly_to_qpoly (p: poly) : qpoly :=exist (fun x => deg x < deg f)  (p %~ f) (pmod_lt_deg f Hnonneg p).
+
+Definition poly_inv (a: poly) := proj1_sig (find_inv (poly_to_qpoly a)). 
+
+Definition poly_field_div (a b: poly) := poly_mult_mod a (poly_inv b).
+
+Definition poly_field: @field_theory poly zero one poly_add_mod poly_mult_mod poly_add_mod id poly_field_div poly_inv (eq_pmod f).
+Proof.
+  apply mk_field.
+  - apply poly_quotient_ring.
+  - intro. unfold eq_pmod in H. rewrite pmod_refl in H. rewrite pmod_refl in H. inversion H.
+    all: try assumption. assert (deg zero < 0) by (rewrite deg_zero; reflexivity). lia.
+    assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
+  - intros. unfold eq_pmod. unfold poly_div. reflexivity.
+  - intros. unfold eq_pmod in *. unfold poly_inv. destruct ((find_inv (poly_to_qpoly p))) eqn : E.
+    simpl. unfold poly_mult_mod. rewrite pmod_twice; try assumption. 
+    pose proof find_inv_correct (poly_to_qpoly p).
+    assert (poly_to_qpoly p <> r0 ). intro. unfold poly_to_qpoly in H1. unfold r0 in H1.
+    inversion H1. rewrite H3 in H. apply H. rewrite pmod_zero. reflexivity. assumption.
+    apply H0 in H1; clear H0. rewrite E in H1. unfold r_mul in H1. unfold r1 in H1. inversion H1.
+    rewrite H2. unfold poly_mult_mod in H2. 
+    rewrite poly_mult_comm in H2. rewrite pmod_mult_reduce in H2. rewrite H2. 
+    rewrite pmod_refl. reflexivity. all: try assumption. assert (0%Z = deg one) by (rewrite deg_one; reflexivity).
+    lia.
+Defined.
+
+End Ring.
+
+(** Constructing Finite Fields *)
+
+(* To construct an actual finite field, we just need an irreducible polynomial. We provide a function to determine
+  if a given polynomial is irreducible*)
+
+(*Yet another characterization of reducibility that makes things easier for us. In particular, we only need
+  to check polynomials up to (deg f)/2*)
+
+(*If we are given a nonzero and a bound n such that deg p <= 2 *n, it suffices to check all polynomials up 
+  to degree n for reducibility*)
+Lemma reducible_check: forall p n,
+  p <> zero ->
+  n < deg p <= 2 * n ->
+  reducible p <-> exists g, deg g > 0 /\ deg g <= n /\ p %~ g = zero.
+Proof.
+  intros. split; intros.
+  - rewrite reducible_alt in H1; try assumption. destruct H1 as [a]. destruct H1 as [b].
+    destruct H1. destruct H2. 
+    (*since deg a + deg b = deg p, both cannot be greater than n*)
+    assert (deg p = deg a + deg b). rewrite H3. rewrite poly_mult_deg. reflexivity.
+    all: try(intro; subst; assert (deg zero < 0) by (rewrite deg_zero; reflexivity); lia).
+    assert (deg a <= n \/ deg b <= n) by lia.
+    destruct H5.
+    + exists a. split3; try assumption. rewrite H3. rewrite <- (pmod_zero a); try assumption.
+      rewrite <- pmod_multiple_of_f. exists b. rewrite poly_add_0_r. apply poly_mult_comm. assumption.
+    + exists b. split3; try assumption. rewrite H3. rewrite <- (pmod_zero b); try assumption.
+      rewrite <- pmod_multiple_of_f. exists a. symmetry. apply poly_add_0_r. assumption.
+  - unfold reducible. destruct H1 as [g]. exists g. destruct H1. destruct H2. split3; try assumption.
+    intro. subst. lia. rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. intro.
+    subst. assert (deg zero < 0) by (rewrite deg_zero; reflexivity); lia.
+Qed.
+
+(*This gives us a natural algorithm: check all polynomials up to degree n*)
+(*we make a generic version with an arbitrary list for induction purposes*)
+Definition find_factor_aux (p: poly) (l: list poly) : option poly :=
+  fold_right (fun q acc => 
+    match (poly_div p q) with
+    | (_, r) =>
+      match (proj1_sig r) with
+      | nil => Some q
+      | _ :: _ => acc
+      end
+     end) None l.
+
+Lemma find_factor_aux_finds_factor: forall p l y,
+  ~ In zero l ->
+  find_factor_aux p l = Some y -> y |~ p.
+Proof.
+  intros. induction l.
+  - simpl in H0. inversion H0.
+  - simpl in H0. destruct (poly_div p a) as [q r] eqn : P.
+    destruct (destruct_poly r).
+    + subst. simpl in H0. inversion H0; subst.
+      unfold divides. rewrite poly_div_correct in P.
+      destruct P. exists q. rewrite H1. rewrite poly_add_0_r. apply poly_mult_comm.
+      intro. subst. apply H. left. reflexivity.
+    + rewrite nonzero_not_nil in n. destruct (proj1_sig r) eqn : M. contradiction.
+      apply IHl. intuition. apply H0.
+Qed.
+
+Lemma find_factor_aux_some_iff: forall p l,
+  ~In zero l ->
+  (exists y, find_factor_aux p l = Some y) <-> (exists y, In y l /\ y |~ p).
+Proof.
+  intros. induction l; split; intros.
+  - simpl in H0. destruct H0. inversion H0.
+  - destruct H0. destruct H0. inversion H0.
+  - destruct H0 as [y]. assert (A:= H0).
+    simpl in H0.
+    destruct (poly_div p a) as [q r] eqn : P.
+    destruct (proj1_sig r) eqn : E.
+    + inversion H0; subst. exists y. intuition. eapply find_factor_aux_finds_factor. 2 : apply A.
+      intro. apply H; assumption.
+    + assert (~ In zero l ) by intuition. apply IHl in H1; clear IHl. destruct H1. clear H2.
+      assert (exists y : poly, In y l /\ y |~ p). apply H1. exists y. assumption.
+      destruct H2. exists x. intuition.
+  - simpl. destruct (poly_div p a) as [ q r] eqn : P. simpl in H0. destruct H0.
+    destruct H0. destruct H0.
+    + subst. destruct (proj1_sig r) eqn : E. exists x. reflexivity.
+      rewrite poly_div_correct in P. destruct P. 
+      unfold divides in H1. destruct H1 as [a]. rewrite <- H1 in H0.
+      rewrite poly_mult_comm in H0. 
+      rewrite <- poly_add_cancel_1 in H0. rewrite <- poly_mult_distr_r in H0.
+      destruct (destruct_poly (a +~ q)).
+      * rewrite e in H0. rewrite poly_mult_0_l in H0. subst.
+        inversion E.
+      * destruct(destruct_poly x). 
+        -- rewrite e in H2. assert (deg zero < 0) by (subst; rewrite deg_zero; reflexivity).
+           assert (deg zero >= -1) by (apply deg_lower_bound). 
+           assert (deg r >= -1) by (apply deg_lower_bound). lia.
+        -- assert (deg r = deg (a +~ q) + deg x). rewrite <- H0.
+           rewrite poly_mult_deg. reflexivity. all: try assumption.
+           assert (0 <= deg (a +~ q)). apply deg_nonzero. assumption. lia.
+      * intro. subst. intuition.
+    + destruct (proj1_sig r) eqn : E. exists a. reflexivity.
+      apply IHl. intuition. exists x. split; assumption.
+Qed. 
+
+Lemma negate_iff: forall P Q,
+  (P <-> Q) <-> (~P <-> ~ Q).
+Proof.
+intros. tauto.
+Qed.
+
+(*find a factor of degree at most n if one exists*)
+Definition find_factor p n :=
+  find_factor_aux p (polys_leq_degree_nontrivial n).
+
+Lemma find_factor_some_iff: forall p n,
+  p <> zero ->
+  n < deg p <= 2 * n ->
+  (exists y, find_factor p (Z.to_nat n) = Some y) <-> (reducible p).
+Proof.
+  intros. split; intros.
+  -  apply find_factor_aux_some_iff in H1.
+    + unfold reducible. destruct H1 as [q]. exists q. 
+      destruct H1. rewrite <- polys_leq_degree_nonzero_spec in H1.
+      destruct H1. destruct H3. split. assert (0 <= deg q) by (apply deg_nonzero; assumption).
+      assert (0%Z = deg q \/ 0 < deg q) by lia. destruct H6.
+      rewrite deg_one in H6. contradiction. lia. split. intro. subst.
+      lia. assumption.
+    + intro. rewrite <- polys_leq_degree_nonzero_spec in H3.
+      destruct H3. contradiction.
+  - rewrite reducible_check in H1. 3 : { apply H0. } 2 : assumption. unfold find_factor.
+    rewrite find_factor_aux_some_iff.
+    + destruct H1 as [g]. exists g. assert (g <> zero). intro; subst.
+      assert (deg zero < 0) by (apply deg_zero; reflexivity); lia.
+      destruct H1. destruct H3.
+      split. rewrite <- polys_leq_degree_nonzero_spec. split. assumption.
+      split. intro; subst. assert (0%Z = deg one) by (apply deg_one; reflexivity). lia.
+      lia. rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. assumption.
+    + intro. rewrite <- polys_leq_degree_nonzero_spec in H2. destruct H2. contradiction.
+Qed.
+
+(*An easy corollary - gives us a necessary and sufficient test for irreducibility*)
+Lemma irreducible_test: forall p n,
+  n < deg p <= 2 * n ->
+  find_factor p (Z.to_nat n) = None <-> irreducible p.
+Proof.
+  intros. assert (p <> zero). intro. subst.
+  assert ( deg zero < 0) by (apply deg_zero; reflexivity). lia.
+  pose proof (find_factor_some_iff _ _ H0 H). apply negate_iff in H1.
+  unfold irreducible. rewrite <- H1. split; intros.
+  - rewrite H2. intro. destruct H3. inversion H3.
+  - destruct (find_factor p (Z.to_nat n)). exfalso. apply H2. exists p0. reflexivity. reflexivity.
+Qed.
+
+(** Concrete irreducible polynomials*)
+
+(*1011*)
+Definition p8 := from_list (1 :: 1 :: 0 :: 1 :: nil).
+
+(*10011*)
+Definition p16 := from_list (1 :: 1 :: 0 :: 0 :: 1 :: nil).
+
+(*100101*)
+Definition p32 := from_list (1 :: 0 :: 1 :: 0 :: 0 :: 1 :: nil).
+
+(*1000011*)
+Definition p64 := from_list (1 :: 1 :: 0 :: 0 :: 0 :: 0 :: 1 :: nil).
+
+(*10001001*)
+Definition p128:= from_list (1 :: 0 :: 0 :: 1 :: 0 :: 0 :: 0 :: 1 :: nil).
+
+(*100011101*)
+Definition p256 := from_list (1 :: 0 :: 1 :: 1 :: 1 :: 0 :: 0 :: 0 :: 1 :: nil).
+
+Lemma p8_irred: irreducible p8.
+Proof.
+  apply (irreducible_test p8 2).
+  - assert (deg p8 = 3). reflexivity. lia.
+  - simpl. reflexivity.
+Qed.
+
+Lemma p16_irred: irreducible p16.
+Proof.
+  apply (irreducible_test p16 2).
+  - assert (deg p16 = 4) by reflexivity. lia.
+  - reflexivity.
+Qed.
+
+Lemma p32_irred: irreducible p32.
+Proof.
+  apply (irreducible_test p32 3).
+  - assert (deg p32 = 5) by reflexivity. lia.
+  - reflexivity.
+Qed.
+
+Lemma p64_irred: irreducible p64.
+Proof.
+  apply (irreducible_test p64 3).
+  - assert (deg p64 = 6) by reflexivity. lia.
+  - reflexivity.
+Qed.
+
+Lemma p128_irred: irreducible p128.
+Proof.
+  apply (irreducible_test p128 4).
+  - assert (deg p128 = 7) by reflexivity. lia.
+  - reflexivity.
+Qed.
+
+Lemma p256_irred: irreducible p256.
+Proof.
+  apply (irreducible_test p256 4).
+  - assert (deg p256 = 8) by reflexivity. lia.
+  - reflexivity.
+Qed.

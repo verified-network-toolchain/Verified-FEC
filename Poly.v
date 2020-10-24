@@ -503,10 +503,29 @@ Proof.
     lia. destruct (P.list_of_polys_def n). simpl in H. destruct s. simpl in H.
     apply i in H. rewrite P.list_of_polys_fst_spec in H. destruct H. destruct H0. unfold deg; assumption.
 Qed.
+
 (*It computes!
 Require Import Helper.
 Eval compute in (dep_list_to_list _ (polys_leq_degree 4)).
 *)
+
+(*A version without zero and one is helpful*)
+Definition polys_leq_degree_nontrivial (n: nat) : list poly := proj1_sig (P.list_of_nontrivial_polys n).
+
+Lemma polys_leq_degree_nonzero_spec: forall n p,
+  (p <> zero /\ p <> one /\ deg p <= Z.of_nat n) <-> In p (polys_leq_degree_nontrivial n).
+Proof.
+  intros. split; intros.
+  - unfold polys_leq_degree_nontrivial. destruct (P.list_of_nontrivial_polys n). simpl.
+    rewrite i. apply P.list_of_nontrivial_polys_spec. destruct H. destruct H0.
+    split. intro. apply H. destruct p. unfold zero. exist_eq. simpl in H2. assumption.
+    split. intro. apply H0. destruct p; unfold one; simpl in H2. exist_eq. assumption.
+    split. destruct p. simpl. assumption. unfold deg in H1. assumption.
+  - unfold polys_leq_degree_nontrivial in H. destruct (P.list_of_nontrivial_polys n).
+    simpl in H. rewrite i in H. apply P.list_of_nontrivial_polys_spec in H.
+    destruct H. destruct H0. destruct H1. split3. intro; subst.
+    apply H. reflexivity. intro; subst. apply H0. reflexivity. unfold deg; assumption.
+Qed.
 
 (*get all polynomials of degree exactly n*)
 Definition polys_of_degree (n: nat) : list poly := proj1_sig (snd (P.list_of_polys_def n)).

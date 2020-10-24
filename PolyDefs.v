@@ -1380,6 +1380,7 @@ Fixpoint list_of_polys (n: nat) : (list (list bit) * list (list bit)) :=
              let all_of_curr_deg := (map (fun x => 0 :: x)) all_eq ++ (map (fun x => 1 :: x)) all_eq in
              (all_leq ++ all_of_curr_deg, all_of_curr_deg)
   end.
+  
 
 Lemma zero_notin_list_fst: forall n,
   ~ In nil (fst (list_of_polys n)).
@@ -1400,6 +1401,38 @@ Proof.
   - destruct (list_of_polys n) as [ a b]. simpl in IHn.
     simpl in H. apply in_app_or in H. destruct H; rewrite in_map_iff in H; destruct H; destruct H; inversion H.
 Qed.
+
+(*TODO: move*)
+Lemma in_tl_in_list: forall {A: Type } (x: A) l,
+  In x (tl l) ->  
+  In x l.
+Proof.
+  intros. unfold tl in H. destruct l. assumption. right. assumption.
+Qed.
+
+Lemma one_notin_fst_tl: forall n, 
+  ~In (1 :: nil) (tl (fst (list_of_polys n))).
+Proof.
+  intros. induction n.
+  - intro. simpl in H. inversion H.
+  - simpl. destruct (list_of_polys n) eqn : E. simpl. intro.
+    assert (In (1 :: nil) (map (fun x : list bit => 0 :: x) l0 ++ map (fun x : list bit => 1 :: x) l0) -> False).
+    { intro. apply in_app_or in H0. destruct H0; rewrite in_map_iff in H0; destruct H0; destruct H0; inversion H0; subst.
+     apply (zero_notin_list_snd n). rewrite E. simpl. assumption. }
+    destruct l. simpl in H. apply H0. apply in_tl_in_list. assumption.
+    simpl in H. apply in_app_or in H. destruct H. 
+    simpl in IHn. contradiction. apply H0. assumption.
+Qed.
+
+Lemma one_fst_elt: forall n,
+  hd_error (fst (list_of_polys n)) = Some (1 :: nil).
+Proof.
+  intros. induction n.
+  - simpl. reflexivity.
+  - simpl. destruct (list_of_polys n) eqn : E.
+    simpl in IHn. simpl. destruct l. inversion IHn. simpl. simpl in IHn. assumption.
+Qed.
+
 
 Lemma wf_poly_one: wf_poly (1 :: nil).
 Proof.
@@ -1524,6 +1557,21 @@ Proof.
     destruct H0. apply H2. assumption.
 Qed.
 
+Lemma list_of_nontrivial_polys_spec: forall n p,
+  In p (tl (fst (list_of_polys n))) <-> (p <> nil /\ p <> (1 :: nil) /\ wf_poly p /\ deg p <= Z.of_nat n).
+Proof.
+  intros. destruct (fst (list_of_polys n)) eqn : F.
+  - pose proof (one_in_list n). rewrite F in H. inversion H.
+  - split; intros.
+    + rewrite <- F in H. assert (A:= H). apply in_tl_in_list in H.
+      apply list_of_polys_fst_spec in H. split. apply H. split. intro. subst.
+      apply (one_notin_fst_tl n). assumption. apply H.
+    + assert (In p (l :: l0)). rewrite <- F. apply list_of_polys_fst_spec. split; apply H.
+      simpl in H0. destruct H0. simpl.  apply in_tl_in_list.
+      pose proof (one_fst_elt n). rewrite F in H1. simpl in H1. inversion H1; subst.
+      destruct H. destruct H0. contradiction. apply H0.
+Qed.
+
 (*We wrap this into a list of dependent lists so it is compatible with [Poly.v], but just like with
   poly_div, the method of using lists then wrapping after means that computation still evaluates with
   no issues *)
@@ -1534,6 +1582,14 @@ Proof.
 remember (list_of_polys n) as l. destruct l.  pose proof (in_list_wf n). split.
 apply (exist_list_strong _ l). intros. specialize (H x). destruct H. apply H. rewrite <- Heql; simpl. assumption.
 apply (exist_list_strong _ l0). intros. specialize (H x). destruct H. apply H1. rewrite <- Heql; simpl. assumption.
+Defined.
+
+Definition list_of_nontrivial_polys (n: nat) : {l: list { p : poly | wf_poly p} |
+  (forall p, In p l <-> In (proj1_sig p) (tl (fst(list_of_polys n))))}.
+Proof.
+remember (list_of_polys n) as l. destruct l. pose proof (in_list_wf n).
+apply (exist_list_strong _ (tl l)). intros. specialize (H x). destruct H. apply H.
+rewrite <- Heql. simpl. apply in_tl_in_list. assumption.
 Defined.
 
 (*
