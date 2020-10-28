@@ -489,57 +489,98 @@ Eval compute in (test (poly_div testa testb)).
 (** Enumerating Polynomials over GF(2) *)
 
 (*get all polynomials of degree at most n - exponential complexity obviously*)
-Definition polys_leq_degree (n: nat) : list poly := zero :: proj1_sig (fst (P.list_of_polys_def n)).
+Definition polys_leq_degree (n: nat) : list poly := zero :: (P.list_of_polys_fst n).
 
 Lemma polys_leq_degree_spec: forall n p,
   (deg p <= Z.of_nat n) <-> In p (polys_leq_degree n).
 Proof.
-  intros. split; intros.
-  - unfold polys_leq_degree. destruct (destruct_poly p). left. subst. reflexivity.
-    right. destruct (P.list_of_polys_def n). simpl. destruct s. simpl. apply i.
-    apply P.list_of_polys_fst_spec. split. rewrite nonzero_not_nil in n0. assumption.
-    split. destruct p; assumption. unfold deg in H. apply H.
-  - unfold polys_leq_degree in H. destruct H. subst. assert (deg zero < 0) by (apply deg_zero; reflexivity).
-    lia. destruct (P.list_of_polys_def n). simpl in H. destruct s. simpl in H.
-    apply i in H. rewrite P.list_of_polys_fst_spec in H. destruct H. destruct H0. unfold deg; assumption.
+  intros. 
+  unfold polys_leq_degree. destruct (destruct_poly p).
+  - subst. simpl. split; intros. left. reflexivity.
+    assert (deg zero < 0) by (rewrite deg_zero; reflexivity). lia.
+  - split; intros. right.  rewrite P.in_list_of_polys_fst. rewrite P.list_of_polys_fst_spec.
+    split. apply nonzero_not_nil'. assumption. split. destruct p. simpl. assumption.
+    unfold deg in H. assumption.
+    simpl in H. destruct H. subst. contradiction. rewrite P.in_list_of_polys_fst in H.
+    rewrite P.list_of_polys_fst_spec in H. destruct H. destruct H0. unfold deg; assumption.
+Qed.
+
+Lemma polys_leq_degree_length: forall n,
+  length (polys_leq_degree n) = (2^(n+1))%nat.
+Proof.
+  intros. unfold polys_leq_degree. simpl.
+  rewrite P.list_of_polys_fst_length.
+  assert ((2^(n+1) > 0)%nat). remember (2^(n+1))%nat as m.
+  assert (m = 0%nat \/ (m > 0)%nat) by lia. destruct H.
+  subst. rewrite Nat.pow_eq_0_iff in H. destruct H. inversion H0. assumption.
+  lia.
+Qed.
+
+(*we need this list for the map from powers of primitive element -> polynomials*)
+Definition polys_leq_degree_nonzero (n: nat) : list poly := (P.list_of_polys_fst n).
+
+Lemma polys_leq_degree_nonzero_spec: forall n p,
+  (p <> zero /\ deg p <= Z.of_nat n) <-> In p (polys_leq_degree_nonzero n).
+Proof.
+  intros. unfold polys_leq_degree_nonzero. rewrite P.in_list_of_polys_fst.
+  rewrite P.list_of_polys_fst_spec. split; intros.
+  - destruct H. split. apply nonzero_not_nil. assumption. split. destruct p; simpl. assumption.
+    unfold deg; assumption.
+  - destruct H. destruct H0. split. apply nonzero_not_nil. assumption. unfold deg; assumption.
+Qed.
+
+Lemma polys_leq_degree_nonzero_length: forall n,
+  length (polys_leq_degree_nonzero n) = (2^(n+1) - 1)%nat.
+Proof.
+  unfold polys_leq_degree_nonzero. apply P.list_of_polys_fst_length.
+Qed.
+
+(*True for the others too but we dont need it for now*)
+Lemma polys_leq_degree_nonzero_NoDup: forall n,
+  NoDup (polys_leq_degree_nonzero n).
+Proof.
+  intros. unfold polys_leq_degree_nonzero. apply P.list_of_polys_fst_NoDup.
 Qed.
 
 (*It computes!
 Require Import Helper.
 Eval compute in (dep_list_to_list _ (polys_leq_degree 4)).
 *)
+ 
+(*A version without zero and one is helpful for computing irreducibility*)
+Definition polys_leq_degree_nontrivial (n: nat) : list poly := (P.list_of_nontrivial_polys n).
 
-(*A version without zero and one is helpful*)
-Definition polys_leq_degree_nontrivial (n: nat) : list poly := proj1_sig (P.list_of_nontrivial_polys n).
-
-Lemma polys_leq_degree_nonzero_spec: forall n p,
+Lemma polys_leq_degree_nontrivial_spec: forall n p,
   (p <> zero /\ p <> one /\ deg p <= Z.of_nat n) <-> In p (polys_leq_degree_nontrivial n).
 Proof.
-  intros. split; intros.
-  - unfold polys_leq_degree_nontrivial. destruct (P.list_of_nontrivial_polys n). simpl.
-    rewrite i. apply P.list_of_nontrivial_polys_spec. destruct H. destruct H0.
-    split. intro. apply H. destruct p. unfold zero. exist_eq. simpl in H2. assumption.
-    split. intro. apply H0. destruct p; unfold one; simpl in H2. exist_eq. assumption.
-    split. destruct p. simpl. assumption. unfold deg in H1. assumption.
-  - unfold polys_leq_degree_nontrivial in H. destruct (P.list_of_nontrivial_polys n).
-    simpl in H. rewrite i in H. apply P.list_of_nontrivial_polys_spec in H.
-    destruct H. destruct H0. destruct H1. split3. intro; subst.
-    apply H. reflexivity. intro; subst. apply H0. reflexivity. unfold deg; assumption.
+  intros. unfold polys_leq_degree_nontrivial. rewrite P.list_of_nontrivial_polys_in.
+  rewrite P.list_of_nontrivial_polys_spec. split; intros.
+  - destruct H. destruct H0. split. apply nonzero_not_nil. assumption. split.
+    intro. apply H0. unfold one. destruct p. simpl in H2. subst. exist_eq. reflexivity.
+    split. destruct p; simpl; assumption. unfold deg in H1; assumption.
+  - destruct H. destruct H0. destruct H1. split. apply nonzero_not_nil. assumption.
+    split. intro. apply H0. destruct p. unfold one in H3. inversion H3.
+    subst. simpl. reflexivity. unfold deg; assumption.
 Qed.
 
 (*get all polynomials of degree exactly n*)
-Definition polys_of_degree (n: nat) : list poly := proj1_sig (snd (P.list_of_polys_def n)).
+Definition polys_of_degree (n: nat) : list poly :=(P.list_of_polys_snd n).
 
 Lemma polys_of_degree_spec: forall n p,
   (deg p = Z.of_nat n) <-> In p (polys_of_degree n).
 Proof.
-  intros. split; intros. 
-  - unfold polys_of_degree. destruct (P.list_of_polys_def n). destruct s0. simpl.
-    apply i. apply P.list_of_polys_snd_spec. split.
-    apply nonzero_not_nil'. intro. subst. assert (deg zero < 0) by (apply deg_zero; reflexivity). lia.
-    split. destruct p; assumption. unfold deg in H. assumption.
-  - unfold polys_of_degree in H. destruct (P.list_of_polys_def n). destruct s0; simpl in H.
-    apply i in H. rewrite P.list_of_polys_snd_spec in H. destruct H. destruct H0. unfold deg; assumption.
+  intros. unfold polys_of_degree. rewrite P.in_list_of_polys_snd.
+  rewrite P.list_of_polys_snd_spec. split; intros.
+  - split. rewrite <- nonzero_not_nil. intro. subst.
+    assert (deg zero  < 0) by (rewrite deg_zero; reflexivity). lia. split. destruct p; simpl; assumption.
+    unfold deg in H. assumption.
+  - destruct H. destruct H0. unfold deg. assumption.
+Qed.
+
+Lemma polys_of_degree_length: forall n,
+  length (polys_of_degree n) = (2^n)%nat.
+Proof.
+  intros. unfold polys_of_degree. apply P.list_of_polys_snd_length. 
 Qed.
 
 

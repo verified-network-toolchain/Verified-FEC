@@ -641,20 +641,24 @@ Qed.
 
 (*have to wrap list polys_leq_degree in a dependent type to make it a list of qpolys (so that we can show
   that the set of qpolys is finite*)
-Definition list_of_qpoly : {l: list qpoly| forall x, In x l}.
+Lemma in_leq_degree: forall x,
+  In x(polys_leq_degree (Z.to_nat (deg f) - 1)) -> deg x < deg f.
 Proof.
-remember (exist_list_strong (fun x => deg x < deg f) (polys_leq_degree (Z.to_nat (deg f) - 1))) as l.
-assert (forall x : poly,
-     In x (polys_leq_degree (Z.to_nat (deg f) - 1)) -> (fun x0 : poly => deg x0 < deg f) x).
-intros. rewrite <- (polys_leq_degree_spec (Z.to_nat (deg f) - 1)) in H. lia.
-apply l in H. destruct H. eapply exist. intros. rewrite i. 
-apply polys_leq_degree_spec. unfold qpoly in x0. destruct x0. simpl. lia.
-Defined. 
+  intros. apply polys_leq_degree_spec in H. lia.
+Qed.
+
+Definition list_of_qpoly : list qpoly := exist_list (fun x => deg x < deg f) 
+  (polys_leq_degree (Z.to_nat (deg f) - 1)) in_leq_degree.
+
+Lemma list_of_qpoly_in: forall (x: qpoly), In x list_of_qpoly.
+Proof.
+  intros. unfold list_of_qpoly. apply exist_list_in.
+  apply polys_leq_degree_spec. destruct x. simpl. lia.
+Qed. 
 
 Lemma qpoly_finite: Finite qpoly.
 Proof.
-  unfold Finite. exists (proj1_sig list_of_qpoly). destruct list_of_qpoly. simpl.
-  unfold Full. apply i.
+  unfold Finite. exists (list_of_qpoly). unfold Full. apply list_of_qpoly_in. 
 Qed.
 
 Lemma mult_map_injective: forall (a: qpoly),
@@ -726,25 +730,25 @@ Definition inv_bool (a b : qpoly) : bool :=
   if (qpoly_eq_dec (r_mul a b) r1) then true else false.
 
 Definition find_inv (a: qpoly) : qpoly :=
-  find_default (proj1_sig (list_of_qpoly)) a inv_bool r0.
+  find_default list_of_qpoly a inv_bool r0.
 
 Lemma find_inv_correct: forall a,
   a <> r0 ->
   r_mul a (find_inv a) = r1.
 Proof.
-  intros. unfold find_inv. pose proof (find_default_in (proj1_sig list_of_qpoly) a inv_bool r0).
+  intros. unfold find_inv. pose proof (find_default_in list_of_qpoly a inv_bool r0).
   assert (forall a b : qpoly, inv_bool a b = true -> b <> r0). intros. unfold inv_bool in H1.
   destruct (qpoly_eq_dec (r_mul a0 b) r1). intro. subst. 
   unfold r_mul in e. unfold r1 in e. unfold r0 in e. simpl in e. inversion e.
   unfold poly_mult_mod in H3. rewrite poly_mult_0_r in H3. rewrite pmod_zero in H3; try assumption.
   inversion H3. inversion H1. apply H0 in H1; clear H0.
   destruct H1. clear H1.
-  assert (exists y : qpoly, In y (proj1_sig list_of_qpoly) /\ inv_bool a y = true).
+  assert (exists y : qpoly, In y list_of_qpoly /\ inv_bool a y = true).
   pose proof (inverses_exist a H). destruct H1 as [b]. exists b. split.
-  destruct list_of_qpoly. simpl. apply i. unfold inv_bool.
+  apply list_of_qpoly_in. unfold inv_bool.
   if_tac. reflexivity. contradiction. apply H0 in H1; clear H0.
   unfold inv_bool at 1 in H1. 
-  destruct (qpoly_eq_dec (r_mul a (find_default (proj1_sig list_of_qpoly) a inv_bool r0)) r1).
+  destruct (qpoly_eq_dec (r_mul a (find_default list_of_qpoly a inv_bool r0)) r1).
   assumption. inversion H1.
 Qed.
 
@@ -907,22 +911,22 @@ Proof.
   intros. split; intros.
   -  apply find_factor_aux_some_iff in H1.
     + unfold reducible. destruct H1 as [q]. exists q. 
-      destruct H1. rewrite <- polys_leq_degree_nonzero_spec in H1.
+      destruct H1. rewrite <- polys_leq_degree_nontrivial_spec in H1.
       destruct H1. destruct H3. split. assert (0 <= deg q) by (apply deg_nonzero; assumption).
       assert (0%Z = deg q \/ 0 < deg q) by lia. destruct H6.
       rewrite deg_one in H6. contradiction. lia. split. intro. subst.
       lia. assumption.
-    + intro. rewrite <- polys_leq_degree_nonzero_spec in H3.
+    + intro. rewrite <- polys_leq_degree_nontrivial_spec in H3.
       destruct H3. contradiction.
   - rewrite reducible_check in H1. 3 : { apply H0. } 2 : assumption. unfold find_factor.
     rewrite find_factor_aux_some_iff.
     + destruct H1 as [g]. exists g. assert (g <> zero). intro; subst.
       assert (deg zero < 0) by (apply deg_zero; reflexivity); lia.
       destruct H1. destruct H3.
-      split. rewrite <- polys_leq_degree_nonzero_spec. split. assumption.
+      split. rewrite <- polys_leq_degree_nontrivial_spec. split. assumption.
       split. intro; subst. assert (0%Z = deg one) by (apply deg_one; reflexivity). lia.
       lia. rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. assumption.
-    + intro. rewrite <- polys_leq_degree_nonzero_spec in H2. destruct H2. contradiction.
+    + intro. rewrite <- polys_leq_degree_nontrivial_spec in H2. destruct H2. contradiction.
 Qed.
 
 (*An easy corollary - gives us a necessary and sufficient test for irreducibility*)
@@ -938,64 +942,178 @@ Proof.
   - destruct (find_factor p (Z.to_nat n)). exfalso. apply H2. exists p0. reflexivity. reflexivity.
 Qed.
 
-(** Concrete irreducible polynomials*)
 
-(*1011*)
-Definition p8 := from_list (1 :: 1 :: 0 :: 1 :: nil).
 
-(*10011*)
-Definition p16 := from_list (1 :: 1 :: 0 :: 0 :: 1 :: nil).
+(** Primitive Polynomials *)
+Section Primitive.
 
-(*100101*)
-Definition p32 := from_list (1 :: 0 :: 1 :: 0 :: 0 :: 1 :: nil).
+(*The polynomial x^n - 1 (=x^n + 1 over GF(2)*)
+Definition nth_minus_one (n: nat) := (monomial n) +~ one.
 
-(*1000011*)
-Definition p64 := from_list (1 :: 1 :: 0 :: 0 :: 0 :: 0 :: 1 :: nil).
+(*A primitive polynomial is an irreducible polynomial and the first n such that p divides x^n-1 is 2^(deg p)*)
+Definition primitive (p: poly) :=
+  0 < deg p /\ irreducible p /\ p |~ (nth_minus_one (Nat.pow 2 (Z.to_nat (deg p)) - 1))
+  /\ forall n, p |~ (nth_minus_one n) -> (n = 0%nat \/ n >= Nat.pow 2 (Z.to_nat (deg p)) - 1)%nat.
 
-(*10001001*)
-Definition p128:= from_list (1 :: 0 :: 0 :: 1 :: 0 :: 0 :: 0 :: 1 :: nil).
+(*check if p divides any polynomial in the list - reverse of find_factor_aux*)
+Definition find_nth_aux (p: poly) l :=
+  fold_right (fun f acc =>
+    match (poly_div f p) with
+    | (_, r) => match (proj1_sig r) with
+                | nil => Some f
+                | _ :: _ => acc
+                end
+    end) None l.
 
-(*100011101*)
-Definition p256 := from_list (1 :: 0 :: 1 :: 1 :: 1 :: 0 :: 0 :: 0 :: 1 :: nil).
-
-Lemma p8_irred: irreducible p8.
+Lemma find_nth_aux_some_iff: forall p l,
+  p <> zero ->
+  (exists f, find_nth_aux p l = Some f) <-> (exists f, In f l /\ p |~ f).
 Proof.
-  apply (irreducible_test p8 2).
-  - assert (deg p8 = 3). reflexivity. lia.
-  - simpl. reflexivity.
+  intros. induction l; intros.
+  - simpl. split; intros H0; destruct H0; try inversion H0. destruct H1.
+  - simpl. split; intros.
+    + destruct H0 as [f]. destruct (poly_div a p) as [q r] eqn : P.
+      destruct (proj1_sig r) eqn : R.
+      * inversion H0; subst. exists f. split. left. reflexivity.
+        rewrite poly_div_correct in P; try assumption. destruct P.
+        assert (r = zero). destruct (destruct_poly r). assumption. apply nonzero_not_nil in n.
+        contradiction. subst. clear R. rewrite poly_add_0_r. apply divides_factor_l. apply divides_refl.
+      * destruct IHl. clear H2. assert (exists f, find_nth_aux p l = Some f). exists f. assumption.
+        apply H1 in H2; clear H1. destruct H2 as [f']. exists f'. intuition.
+    + destruct H0 as [f]. destruct H0. destruct (poly_div a p) as [q r] eqn : P.
+      rewrite poly_div_correct in P; try assumption. destruct P. destruct H0.
+      * subst. destruct (proj1_sig r) eqn : R.
+        -- exists (q *~ p +~ r). reflexivity.
+        -- unfold divides in H1. destruct H1 as [x].
+           rewrite <- poly_add_cancel_1 in H0. rewrite poly_mult_comm in H0.
+           rewrite <- poly_mult_distr_r in H0. 
+           assert (r <> zero). destruct (destruct_poly r). rewrite e in R. simpl in R. inversion R.
+           assumption. assert (deg r = deg ((x+~ q) *~ p)). rewrite H0. reflexivity.
+           destruct (destruct_poly (x +~ q)). rewrite e in H0. rewrite poly_mult_0_l in H0.
+           subst. contradiction. rewrite poly_mult_deg in H2; try assumption. 
+           rewrite <- deg_nonzero in n. lia.
+      * assert (exists f, In f l /\ p |~ f). exists f. auto. apply IHl in H4; clear IHl. destruct H4 as [f'].
+        destruct (proj1_sig r). exists a. reflexivity. exists f'. assumption.
 Qed.
 
-Lemma p16_irred: irreducible p16.
+Lemma find_nth_aux_none_iff: forall p l,
+  p <> zero ->
+  (find_nth_aux p l = None) <-> (forall f, In f l -> ~(p |~ f)).
 Proof.
-  apply (irreducible_test p16 2).
-  - assert (deg p16 = 4) by reflexivity. lia.
-  - reflexivity.
+  intros. apply (find_nth_aux_some_iff p l) in H. apply negate_iff in H.
+  split; intros. intro. destruct H. apply H. intro. destruct H4. rewrite H4 in H0. inversion H0.
+  exists f. auto.
+  destruct H. destruct (find_nth_aux p l) eqn : P. 
+  exfalso. apply H1. intro. destruct H2. destruct H2. apply H0 in H2. contradiction.
+  exists p0. reflexivity. reflexivity.
+Qed. 
+
+(*all x^n + 1 from x + 1 to x^(bound - 1) + 1*)
+Fixpoint all_nth_polys (bound: nat) :=
+  match bound with
+  | O => nil
+  | S O => nil
+  | S(n') => nth_minus_one (n') :: all_nth_polys n'
+  end.
+
+(*TODO move*)
+Lemma monomial_0: monomial 0%nat = one.
+Proof.
+  unfold monomial; unfold one; exist_eq. unfold PolyDefs.P.monomial. if_tac.
+  reflexivity. lia.
 Qed.
 
-Lemma p32_irred: irreducible p32.
+Lemma all_nth_polys_spec: forall bound (p: poly),
+  In p (all_nth_polys bound) <-> exists n, (0 < n < bound)%nat /\ p = nth_minus_one n.
 Proof.
-  apply (irreducible_test p32 3).
-  - assert (deg p32 = 5) by reflexivity. lia.
-  - reflexivity.
+  intros. induction bound.
+  - simpl. split; intros.
+    + destruct H.
+    + destruct H as [n]. lia.
+  - simpl. destruct bound.
+    + simpl. split; intros. destruct H. destruct H. lia.
+    + split; intros. destruct H.
+      * exists (S bound). split. lia. rewrite H. reflexivity.
+      * apply IHbound in H. destruct H as [n]. exists n. split. lia. apply H.
+      * destruct H as [n]. destruct H. assert ((0 < n < S bound)%nat \/ (n = S bound)%nat) by lia.
+        destruct H1. right. apply IHbound. exists n. split. lia. assumption. left. subst. reflexivity.
 Qed.
 
-Lemma p64_irred: irreducible p64.
+(*
+Lemma all_nth_polys_spec: forall bound (p: poly),
+  (0 < bound)%nat -> 
+  In p (all_nth_polys bound) <-> exists n, (0 < n < bound)%nat /\ p = nth_minus_one n.
 Proof.
-  apply (irreducible_test p64 3).
-  - assert (deg p64 = 6) by reflexivity. lia.
-  - reflexivity.
+  intros. induction bound. lia.
+  assert ((0 < bound)%nat \/ 0%nat = bound) by lia.
+  destruct H0.
+  - apply IHbound in H0; clear IHbound. simpl. split; intros.
+    + destruct H1. exists bound. split. lia. subst. reflexivity.
+      apply H0 in H1. destruct H1 as [n]. destruct H1. exists n. split. lia. assumption.
+    + destruct H1 as [n]. destruct H1. assert ( (0 <= n < bound)%nat \/ n = bound) by lia.
+      destruct H3. right. apply H0. exists n. intuition. subst. left. reflexivity.
+  - subst. simpl. split; intros.
+    + destruct H0. exists 0%nat. split. lia. subst. reflexivity.
+      destruct H0. subst. exists 0%nat. split. lia.  unfold nth_minus_one. rewrite monomial_0.
+      rewrite poly_add_inv. reflexivity. destruct H0.
+    + destruct H0 as [n]. destruct H0. assert (n = 0%nat) by lia. subst.
+      left. reflexivity.
+Qed. *)
+
+Lemma nat_mul_1_iff: forall (m n : nat),
+  (m * n = 1)%nat <-> n = 1%nat /\ m = 1%nat.
+Proof.
+  intros. split; intros. induction m.
+  - simpl in H. inversion H.
+  - simpl in H. assert (n = 0%nat \/ n = 1%nat) by lia. destruct H0.
+    + subst. lia.
+    + split. assumption. subst. lia.
+  - destruct H; subst. reflexivity.
+Qed. 
+
+Lemma pow_1_iff: forall (m n: nat),
+  (m ^ n)%nat = 1%nat <-> m = 1%nat \/ (n = 0%nat).
+Proof.
+  intros. split; intros.
+  - induction n.
+    + right. reflexivity.
+    + simpl in H. apply nat_mul_1_iff in H. destruct H.
+      subst. left. reflexivity.
+  - destruct H. subst. induction n. reflexivity.
+    simpl. lia. subst. reflexivity.
+Qed.
+ 
+
+(*The 4 (computable) things we have to check to prove a polynomial is primitive*)
+Lemma test_primitive (p: poly) :
+  (0 < deg p /\
+  irreducible p /\
+  divides_pmod p (nth_minus_one (Nat.pow 2 (Z.to_nat (deg p)) - 1))  /\
+  (find_nth_aux p (all_nth_polys (Nat.pow 2 (Z.to_nat (deg p))- 1)) = None)) <-> primitive p.
+Proof.
+  unfold primitive; split; intros.
+  - destruct H. destruct H0. destruct H1.
+    assert (p <> zero). 
+    rewrite <- deg_nonzero. lia. split. assumption. split. assumption. split.
+    rewrite divides_pmod_iff. assumption. left. assumption. intros.
+    assert (Z: n = 0%nat \/ (n > 0)%nat) by lia. destruct Z. left. assumption. rename H5 into Z.
+    assert (((0 <= n < 2 ^ Z.to_nat (deg p) - 1)%nat) \/ (n >= 2 ^ Z.to_nat (deg p) - 1)%nat) by lia.
+    destruct H5.
+    + assert ((2 ^ Z.to_nat (deg p) - 1) > 0)%nat. lia.
+      pose proof  (all_nth_polys_spec (2 ^ Z.to_nat (deg p) - 1)%nat (nth_minus_one n)). 
+      rewrite find_nth_aux_none_iff in H2; try assumption.
+      destruct H7. clear H7. 
+      assert (In (nth_minus_one n) (all_nth_polys (2 ^ Z.to_nat (deg p) - 1))). apply H8.
+      exists n. split. lia. reflexivity. clear H8.
+      apply H2 in H7. contradiction.
+    + right. assumption.
+  - destruct H. destruct H0. destruct H1.
+    split. assumption. split. assumption. split.
+    rewrite <- divides_pmod_iff. assumption. left. rewrite <- deg_nonzero. lia.
+    rewrite find_nth_aux_none_iff; try assumption. intros.
+    intro.
+    apply all_nth_polys_spec in H3. 
+    destruct H3 as [n]. destruct H3. rewrite H5 in H4. apply H2 in H4. lia. rewrite <- deg_nonzero. lia.
 Qed.
 
-Lemma p128_irred: irreducible p128.
-Proof.
-  apply (irreducible_test p128 4).
-  - assert (deg p128 = 7) by reflexivity. lia.
-  - reflexivity.
-Qed.
-
-Lemma p256_irred: irreducible p256.
-Proof.
-  apply (irreducible_test p256 4).
-  - assert (deg p256 = 8) by reflexivity. lia.
-  - reflexivity.
-Qed.
+End Primitive.

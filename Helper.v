@@ -130,6 +130,52 @@ Proof.
     apply IHl. intuition.
 Defined.
 
+(*Properties of [exist_list]*)
+Lemma exist_list_length: forall {A: Type} (P: A -> Prop) (l: list A) (H: forall x, In x l -> P x),
+  length (exist_list P l H) = length l.
+Proof.
+  induction l.
+  - simpl. intros. reflexivity.
+  - simpl. intros. rewrite IHl. reflexivity.
+Qed.
+
+Lemma exist_list_in: forall {A} (P : A -> Prop) l (H: forall x, In x l -> P x) x,
+  In x (exist_list P l H) <-> In (proj1_sig x) l.
+Proof.
+  intros; induction l; simpl.
+  - reflexivity.
+  - split; intros.
+    + destruct H0. subst. simpl. left. reflexivity.
+      right. eapply IHl. apply H0.
+    + destruct H0. left. subst. destruct x.
+      apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. reflexivity.
+      right. apply IHl. apply H0.
+Qed.
+
+Lemma exist_list_NoDup: forall {A} (P: A -> Prop) l (H: forall x, In x l -> P x),
+  NoDup (exist_list P l H) <-> NoDup l.
+Proof.
+  intros. induction l; simpl.
+  - split; constructor.
+  - split; intros. inversion H0. constructor. subst. intro. apply H3.
+    rewrite exist_list_in. simpl. assumption. eapply IHl. apply H4.
+    inversion H0; subst. constructor. intro. apply H3. rewrite exist_list_in in H1.
+    simpl in H1. assumption. apply IHl. assumption.
+Qed. 
+
+Lemma NoDup_app: forall {A: Type} (l1 l2:list A),
+  NoDup l1 ->
+  NoDup l2 ->
+  (forall x, In x l1 -> ~In x l2) ->
+  NoDup (l1 ++ l2).
+Proof.
+  intros A l1; induction l1; intros.
+  - simpl. assumption.
+  - simpl. inversion H; subst. constructor. intro.
+    apply in_app_or in H2. destruct H2. contradiction. apply (H1 a). left. reflexivity. assumption.
+    apply IHl1. assumption. assumption. intros. apply H1. right. assumption.
+Qed.
+(*
 (*Not only do we have a list of dependent types, but that list has the exact same elements (I suppose
   we could prove an even stronger property with map, but we don't need that here*)
 Definition exist_list_strong {A : Type} (P: A -> Prop) (l: list A) :
@@ -146,7 +192,7 @@ Proof.
     apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. reflexivity.
     right. apply i. apply H2.
 Defined.
-
+*)
 (* Likewise, we can turn a {x : A | P x} list into a list A by just unwrapping the types *)
 Definition dep_list_to_list {A: Type} (P: A -> Prop) (l: list {x : A | P x}) : list A :=
   fold_right (fun x acc => (@proj1_sig A P x) :: acc) nil l.

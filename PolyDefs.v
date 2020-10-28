@@ -1572,9 +1572,132 @@ Proof.
       destruct H. destruct H0. contradiction. apply H0.
 Qed.
 
+Lemma power_2_add_twice: forall (n: nat),
+  (2 ^n + 2^n)%nat = (2^(n+1))%nat.
+Proof.
+  induction n; simpl; lia.
+Qed.
+
+Lemma length_of_poly_lists: forall n,
+  length (fst (list_of_polys n)) = ((2 ^ (n+1)%nat) - 1)%nat /\ length (snd (list_of_polys n)) = (2^n)%nat.
+Proof.
+  intros. induction n.
+  - simpl. auto.
+  - simpl. destruct (list_of_polys n) eqn : P.
+    + simpl. split. rewrite app_length. rewrite app_length. rewrite map_length.
+      rewrite map_length. simpl in IHn. destruct IHn. rewrite H. rewrite H0.
+      rewrite power_2_add_twice. lia. rewrite app_length. 
+      rewrite? map_length. simpl in IHn. lia.
+Qed.
+
+Lemma list_of_polys_NoDup: forall n,
+  NoDup (fst (list_of_polys n)) /\ NoDup (snd (list_of_polys n)).
+Proof.
+  induction n.
+  - simpl. split; constructor. all: try constructor. all: intro H; destruct H. 
+  - simpl. destruct (list_of_polys n) eqn : E. simpl. simpl in IHn.
+    assert (NoDup (map (fun x : list bit => 0 :: x) l0 ++ map (fun x : list bit => 1 :: x) l0)). {
+    apply NoDup_app.
+    + apply FinFun.Injective_map_NoDup. unfold FinFun.Injective. intros. inversion H; subst. reflexivity.
+      apply IHn.
+    + apply FinFun.Injective_map_NoDup. unfold FinFun.Injective. intros. inversion H; subst; reflexivity.
+      apply IHn.
+    + intros. intro. rewrite in_map_iff in H. rewrite in_map_iff in H0. destruct H. destruct H.
+      destruct H0. destruct H0. subst. inversion H0. }
+    split. apply NoDup_app. apply IHn. apply H.
+    intros. intro.
+    assert (deg x <= Z.of_nat n). apply list_of_polys_fst_spec. rewrite E. simpl. apply H0.
+    apply in_app_or in H1. destruct H1.
+    + rewrite in_map_iff in H1. destruct H1. destruct H1.
+      assert (deg x0 = Z.of_nat n). apply list_of_polys_snd_spec. rewrite E. simpl. assumption.
+      rewrite <- H1 in H2. rewrite deg_cons in H2. lia.
+    + rewrite in_map_iff in H1. destruct H1. destruct H1.
+      assert (deg x0 = Z.of_nat n). apply list_of_polys_snd_spec. rewrite E. simpl. assumption.
+      rewrite <- H1 in H2. rewrite deg_cons in H2. lia.
+    + assumption.
+Qed.
+
+(*for the dependent type, helps to have separate lemma*)
+Lemma list_of_polys_in_fst: forall n x,
+  In x (fst (list_of_polys n)) -> wf_poly x.
+Proof.
+  intros. apply in_list_wf in H. assumption.
+Qed.
+
+Lemma list_of_polys_in_snd: forall n x,
+  In x (snd (list_of_polys n)) -> wf_poly x.
+Proof.
+  intros. apply in_list_wf in H. assumption.
+Qed.
+
+Lemma list_of_nontrivial_in: forall n x,
+  In x (tl (fst (list_of_polys n))) -> wf_poly x.
+Proof.
+  intros. apply in_tl_in_list in H. apply list_of_polys_in_fst in H. apply H.
+Qed.
+
 (*We wrap this into a list of dependent lists so it is compatible with [Poly.v], but just like with
   poly_div, the method of using lists then wrapping after means that computation still evaluates with
   no issues *)
+(*would be more efficient to have it return a tuple, since it computes both anyway, but we only ever
+  need one at a time, and it makes the proofs much more annoying because of the dependent types*)
+Definition list_of_polys_fst (n: nat) : list ({p : poly | wf_poly p}) :=
+  exist_list _ (fst (list_of_polys n)) (list_of_polys_in_fst n).
+
+Definition list_of_polys_snd (n: nat) : list ({p : poly | wf_poly p}) :=
+  exist_list _ (snd (list_of_polys n)) (list_of_polys_in_snd n).
+
+Lemma in_list_of_polys_fst: forall n p,
+  In p (list_of_polys_fst n) <-> In (proj1_sig p) (fst (list_of_polys n)).
+Proof.
+  intros. unfold list_of_polys_fst. apply exist_list_in.
+Qed.
+
+Lemma list_of_polys_fst_length: forall n,
+  length (list_of_polys_fst n) = (2^(n+1) - 1)%nat.
+Proof.
+  intros. destruct (length_of_poly_lists n). unfold list_of_polys_fst.
+  rewrite exist_list_length. apply H.
+Qed.
+
+Lemma list_of_polys_fst_NoDup: forall n,
+  NoDup (list_of_polys_fst n).
+Proof.
+  intros. unfold list_of_polys_fst. rewrite exist_list_NoDup.
+  apply list_of_polys_NoDup.
+Qed.
+
+Lemma in_list_of_polys_snd: forall n p,
+  In p (list_of_polys_snd n) <-> In (proj1_sig p) (snd (list_of_polys n)).
+Proof.
+  intros. unfold list_of_polys_snd. apply exist_list_in.
+Qed.
+
+Lemma list_of_polys_snd_length: forall n,
+  length (list_of_polys_snd n) = (2^n)%nat.
+Proof.
+  intros. destruct (length_of_poly_lists n). unfold list_of_polys_snd.
+  rewrite exist_list_length. apply H0.
+Qed.
+
+Lemma list_of_polys_snd_NoDup: forall n,
+  NoDup (list_of_polys_snd n).
+Proof.
+  intros. unfold list_of_polys_snd. rewrite exist_list_NoDup.
+  apply list_of_polys_NoDup.
+Qed.
+
+Definition list_of_nontrivial_polys (n: nat) : list {p: poly | wf_poly p} :=
+  exist_list _ (tl (fst (list_of_polys n))) (list_of_nontrivial_in n).
+
+Lemma list_of_nontrivial_polys_in: forall n p,
+  In p (list_of_nontrivial_polys n) <-> In (proj1_sig p) (tl (fst (list_of_polys n))).
+Proof.
+  intros. unfold list_of_nontrivial_polys. rewrite exist_list_in. reflexivity.
+Qed.
+(*
+
+
 Definition list_of_polys_def (n: nat) : {l: list ({p : poly | wf_poly p}) |
   (forall p, In p l <-> In (proj1_sig p) (fst (list_of_polys n)))} * {l: list ({p : poly | wf_poly p}) |
   (forall p, In p l <-> In (proj1_sig p) (snd (list_of_polys n)))}.
@@ -1591,6 +1714,7 @@ remember (list_of_polys n) as l. destruct l. pose proof (in_list_wf n).
 apply (exist_list_strong _ (tl l)). intros. specialize (H x). destruct H. apply H.
 rewrite <- Heql. simpl. apply in_tl_in_list. assumption.
 Defined.
+*)
 
 (*
 Definition temp (n: nat) : list (poly) * list poly :=
