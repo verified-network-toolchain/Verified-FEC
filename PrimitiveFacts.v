@@ -281,5 +281,48 @@ Proof.
   simpl. reflexivity.
 Qed.
 
-(*TODO: function that finds power of primitive element - then start C code*)
+Definition find_power_aux (l: list Z) (p: poly) : Z :=
+  fold_right (fun z acc => if (poly_eq_dec p ((monomial (Z.to_nat z)) %~ f)) then z else acc) (-1) l.
+
+Lemma find_power_aux_spec: forall l p,
+  (forall z, In z l -> 0 <= z < Z.of_nat field_size)%Z ->
+   (exists z, In z l /\ monomial (Z.to_nat z) %~ f = p) ->
+  p = monomial (Z.to_nat (find_power_aux l p)) %~ f /\ In (find_power_aux l p) l.
+Proof.
+  intros. induction l.
+  - simpl. simpl in H0. destruct H0. destruct H0. destruct H0.
+  - simpl. split. destruct H0. destruct H0. destruct H0. subst. if_tac. reflexivity. contradiction.
+    if_tac. assumption. apply IHl. intros. apply H. right. assumption.
+    exists x0. split; assumption. if_tac. left. reflexivity.
+    destruct H0. destruct H0. destruct H0. subst. contradiction. 
+    right. apply IHl. intros. apply H. right. assumption. exists x0. split; assumption.
+Qed.
+
+
+Definition find_power (p: poly) : Z :=
+  find_power_aux (all_bounded_ints_non_dep field_size) p.
+
+Lemma find_power_spec: forall p,
+  p <> zero ->
+  deg p < deg f ->
+  p = monomial (Z.to_nat (find_power p)) %~ f /\ 0 <= (find_power p) < Z.of_nat field_size.
+Proof.
+  intros. pose proof (find_power_aux_spec (all_bounded_ints_non_dep field_size) p).
+  unfold find_power.
+  assert (forall z : Z, In z (all_bounded_ints_non_dep field_size) -> 0 <= z < Z.of_nat field_size). {
+  apply all_bounded_ints_non_dep_spec. }
+  specialize (H1 H2); clear H2.
+  assert (exists z : Z, In z (all_bounded_ints_non_dep field_size) /\ monomial (Z.to_nat z) %~ f = p). {
+  pose proof primitive_power_exists.
+  remember  ((exist (fun x => deg x < deg f) p H0)) as q. specialize (H2 q).
+  assert (proj1_sig q <> zero). intro. rewrite Heqq in H3. simpl in H3. contradiction.
+  apply H2 in H3. destruct H3. exists x0. destruct H3. split. 
+  apply all_bounded_ints_non_dep_spec. apply H3. rewrite Heqq in H4. simpl in H4.
+  apply H4. }
+  specialize (H1 H2); clear H2.
+  destruct H1. split. assumption. 
+  apply all_bounded_ints_non_dep_spec in H2. apply H2.
+Qed.
+
+
 End Primitive.
