@@ -5,6 +5,8 @@ PolyDefs.v
 PolyDiv.v
 Poly.v
 PolyMod.v
-#ConcretePolys.v - takes about 20 mins
+ConcretePolys.v
+# - takes about 20 mins
 InjectiveSurjective.v
 PrimitiveFacts.v
+FieldDemo.v
