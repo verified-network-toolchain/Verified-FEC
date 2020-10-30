@@ -89,7 +89,7 @@ Proof.
   intros. unfold all_nonzero_qpolys. rewrite (exist_list_in (fun x : qpoly f => proj1_sig x <> zero) ).
   unfold list_of_qpoly_nonzero'. rewrite (exist_list_in  (fun x : poly => deg x < deg f)).
   apply polys_leq_degree_nonzero_spec. destruct q. simpl. split. assumption.
-  destruct x. simpl. lia.
+  destruct x0. simpl. lia.
 Qed.
 
 Definition field_size := (2 ^ (Z.to_nat (deg f)) - 1)%nat.
@@ -124,76 +124,9 @@ Qed.
 (*We now define the map i -> (x^i %f) for 0 <= i < 2^(deg f) - 1 and show that it is injective. Since boundedInts
   are finite, it is surjective as well*)
 
-
-
 Definition primitive_map' (b: bounded_int field_size) : qpoly f :=
   exist _ (monomial (Z.to_nat (proj1_sig b)) %~ f) (pmod_lt_deg f Hnontrivial _).
 
-(*TODO move*)
-Lemma monomial_exp_law: forall a b,
-  monomial a *~ monomial b = monomial (a + b).
-Proof.
-  intros. rewrite <- shift_monomial. unfold monomial. unfold shift. 
-  destruct (destruct_poly (exist PolyDefs.P.wf_poly (PolyDefs.P.monomial b) (PolyDefs.P.wf_monomial b))).
-  - unfold zero in e. inversion e. exfalso. eapply PolyDefs.P.monomial_not_0. apply H0.
-  - exist_eq. simpl. unfold PolyDefs.P.shift.
-    unfold PolyDefs.P.monomial. if_tac.
-    + subst. if_tac. assert (a = 0%nat) by lia. subst. simpl. reflexivity. unfold PolyDefs.P.shift.
-      replace (a + 0)%nat with (a) by lia. reflexivity.
-    + if_tac. lia. unfold PolyDefs.P.shift.
-      rewrite <- list_repeat_app. rewrite app_assoc. reflexivity.
-Qed.
-
-(*move this too*)
-Definition x : poly := monomial 1.
-
-Lemma deg_x: deg x = 1%Z.
-Proof.
-  intros. unfold x. unfold monomial. unfold deg. simpl. reflexivity.
-Qed.
-
-Lemma monomial_expand: forall n,
-  monomial (S(n)) = x *~ monomial n.
-Proof.
-  intros. replace (S(n)) with (n+1)%nat by lia. rewrite <- monomial_exp_law.
-  unfold x. apply poly_mult_comm.
-Qed.
-
-Lemma divides_x: forall (g: poly),
-  deg g > 0 ->
-  g |~ x <-> g = x.
-Proof.
-  intros.
-  - unfold divides. split; intros.
-    + destruct H0. assert (deg (g *~ x0) = deg x) by (rewrite H0; reflexivity).
-      destruct (destruct_poly x0). subst.
-      rewrite poly_mult_0_r in H0. inversion H0.
-      rewrite poly_mult_deg in H1. rewrite deg_x in H1.
-      rewrite <- deg_nonzero in n.
-      assert (deg g = 1%Z /\ deg x0 = 0%Z) by lia. destruct H2.
-      symmetry in H3. rewrite deg_one in H3. subst. rewrite poly_mult_1_r in H0.
-      assumption. apply f_nonzero. assumption. assumption.
-    + subst. exists one. apply poly_mult_1_r.
-Qed.
-
-(*maybe move also*)
-(*x is an annoying special case - x is irreducible but no other powers of x are *)
-Lemma irred_doesnt_divide_monomial: forall (g: poly) (n: nat),
-  deg g > 0 ->
-  irreducible g ->
-  g <> x ->
-  ~ (g |~ (monomial n)).
-Proof.
-  intros. induction n.
-  - rewrite monomial_0. intro. unfold divides in H2. destruct H2.
-    apply poly_mult_eq_one in H2. destruct H2. subst.
-    assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
-  - rewrite monomial_expand. intro. 
-    apply irreducible_is_prime in H0. unfold prime in H0. apply H0 in H2.
-    destruct H2. 
-    + apply divides_x in H2. subst. contradiction. assumption.
-    + contradiction.
-Qed.
 
 (*If f = x, GF(2)/(f) = gf(2). This is a trivial case that is annoying and we don't need*)
 Variable Hnotx : f <> x.

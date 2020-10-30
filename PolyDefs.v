@@ -7,8 +7,6 @@ Require Import Coq.setoid_ring.Ring_theory.
 (** Computable Polynomials over GF(2) - here we provide executable definitions of polynomial addition and multiplication
   and prove that GF(2)\[x\] is a ring *)
 
-Ltac solve_neq := intro C; inversion C.
-
 Module P.
 
 (** * Definitions *)
@@ -96,6 +94,11 @@ Proof.
   intros. unfold wf_poly in H. simpl in H. assert (0=1) by (apply H; solve_neq). inversion H0.
 Qed.
 
+Lemma wf_nil : wf_poly nil.
+Proof.
+  unfold wf_poly. intro. contradiction.
+Qed.
+
 (** [deg] *)
 
 Lemma deg_cons: forall x l,
@@ -119,6 +122,13 @@ Proof.
   intros. rewrite In_Znth_iff in H.
   unfold ith. destruct H. exists x0. split; apply H.
 Qed. 
+
+Lemma ith_cons: forall (f: poly) (n : Z) (x: bit),
+  n > 0 ->
+  ith (x :: f) n = ith f (n-1).
+Proof.
+  intros. unfold ith. list_solve.
+Qed.
 
 (* every polynomial of degree nth has a nonzero nth coefficient *)
 Lemma ith_deg: forall p,
@@ -787,7 +797,7 @@ Definition summation_gen (u: Z) (f g : poly) lower :=
 Definition summation (u: Z) (f g : poly) :=
   summation_gen u f g 0.
 (* begin hide *)
-(*TODO: move*)
+
 Lemma summation_nil_aux_l: forall u g l',
   summation_aux u nil g l' 0 = 0.
 Proof.
@@ -816,7 +826,6 @@ Proof.
   intros. unfold summation. unfold summation_gen. if_tac. reflexivity. apply summation_nil_aux_r.
 Qed.
 
-(*TODO: maybe go back and use this for other summation proofs*)
 Lemma summation_aux_app: forall i f g base l l',
   summation_aux i f g (l ++ l') base = (summation_aux i f g l (summation_aux i f g l' base)).
 Proof.
@@ -1007,7 +1016,6 @@ Proof.
   - simpl. rewrite bit_add_0_r. reflexivity.
   - simpl. remember (i - Z.of_nat a) as k. replace (i - 1 - Z.of_nat a) with (k-1) by lia.
     unfold ith at 1. unfold ith at 4. rewrite Znth_pos_cons. rewrite <- IHl.
-    (*now it is just using asoc and comm to simplify - TODO: maybe use ring once i have a ring*)
   rewrite <- bit_add_assoc.
     simpl.
     remember (fold_right
@@ -1380,7 +1388,6 @@ Fixpoint list_of_polys (n: nat) : (list (list bit) * list (list bit)) :=
              let all_of_curr_deg := (map (fun x => 0 :: x)) all_eq ++ (map (fun x => 1 :: x)) all_eq in
              (all_leq ++ all_of_curr_deg, all_of_curr_deg)
   end.
-  
 
 Lemma zero_notin_list_fst: forall n,
   ~ In nil (fst (list_of_polys n)).
@@ -1400,14 +1407,6 @@ Proof.
   - destruct H. inversion H. destruct H.
   - destruct (list_of_polys n) as [ a b]. simpl in IHn.
     simpl in H. apply in_app_or in H. destruct H; rewrite in_map_iff in H; destruct H; destruct H; inversion H.
-Qed.
-
-(*TODO: move*)
-Lemma in_tl_in_list: forall {A: Type } (x: A) l,
-  In x (tl l) ->  
-  In x l.
-Proof.
-  intros. unfold tl in H. destruct l. assumption. right. assumption.
 Qed.
 
 Lemma one_notin_fst_tl: forall n, 
@@ -1432,7 +1431,6 @@ Proof.
   - simpl. destruct (list_of_polys n) eqn : E.
     simpl in IHn. simpl. destruct l. inversion IHn. simpl. simpl in IHn. assumption.
 Qed.
-
 
 Lemma wf_poly_one: wf_poly (1 :: nil).
 Proof.

@@ -51,11 +51,11 @@ Instance eq_pmod_proper_poly_add: forall g, Proper (eq_pmod f ==> eq_pmod f) (po
 Proof.
   intros. unfold Proper. unfold respectful. intros.
   unfold eq_pmod in *. unfold pmod in *.
-  destruct (poly_div x f) as [q1 r1] eqn : P1.
+  destruct (poly_div x0 f) as [q1 r1] eqn : P1.
   destruct (poly_div y f) as [q2 r2] eqn : P2.
   simpl in H. subst. rewrite poly_div_correct in P1. rewrite poly_div_correct in P2.
   destruct P1. destruct P2.
-  destruct (poly_div (g +~ x) f) as [q3 r3] eqn : P3.
+  destruct (poly_div (g +~ x0) f) as [q3 r3] eqn : P3.
   simpl. rewrite poly_div_correct in P3. destruct P3.
   rewrite H in H3.
   assert (g +~ y = g +~ y) by reflexivity. rewrite H1 in H5 at 2.
@@ -84,11 +84,11 @@ Instance eq_pmod_proper_poly_mult: forall g, Proper (eq_pmod f ==> eq_pmod f) (p
 Proof.
   intros. unfold respectful. unfold Proper. intros.
   unfold eq_pmod in *; unfold pmod in *.
-  destruct (poly_div x f) as [q1 r1] eqn : P1.
+  destruct (poly_div x0 f) as [q1 r1] eqn : P1.
   destruct (poly_div y f) as [q2 r2] eqn : P2.
   simpl in H. subst. rewrite poly_div_correct in P1; try assumption.
   rewrite poly_div_correct in P2; try assumption. destruct P1. destruct P2.
-  destruct (poly_div (g *~ x) f) as [q3 r3] eqn : P3.
+  destruct (poly_div (g *~ x0) f) as [q3 r3] eqn : P3.
   destruct (poly_div (g *~ y) f) as [q4 r4] eqn : P4.
   rewrite poly_div_correct in P3; try (apply f_nonzero).
   rewrite poly_div_correct in P4; try (apply f_nonzero).
@@ -122,6 +122,21 @@ Proof.
   assert (poly_div g f = (zero, g)). rewrite poly_div_correct.
   split. rewrite poly_mult_0_l. rewrite poly_add_0_l. reflexivity.
   assumption. apply f_nonzero. rewrite H0. reflexivity.
+Qed.
+
+Lemma pmod_same: 
+  f %~ f = zero.
+Proof.
+  unfold pmod. destruct (poly_div f f) as [q r] eqn : P.
+  rewrite poly_div_correct in P.
+  - destruct P. rewrite <- poly_add_cancel_1 in H.
+    rewrite <- (poly_mult_1_l f) in H at 1. rewrite <- poly_mult_distr_r in H.
+    simpl. assert (deg r = deg r) by reflexivity. rewrite <- H in H1 at 1.
+    destruct (destruct_poly (one +~ q)). rewrite e in H.
+    rewrite poly_mult_0_l in H. subst. reflexivity.
+    rewrite poly_mult_deg in H1. rewrite <- deg_nonzero in n. lia.
+    assumption. apply f_nonzero; assumption.
+  - apply f_nonzero; assumption.
 Qed.
 
 (*key property (or definition) of mod*)
@@ -213,10 +228,10 @@ Proof.
   intros. split; intros. 
   - rewrite <- pmod_multiple_of_f in H. destruct H. rewrite poly_add_comm in H.
     rewrite <- poly_add_cancel_1 in H. 
-    rewrite <- pmod_zero. apply pmod_multiple_of_f. exists x. rewrite H. rewrite poly_add_0_r.
+    rewrite <- pmod_zero. apply pmod_multiple_of_f. exists x0. rewrite H. rewrite poly_add_0_r.
     reflexivity.
   - rewrite <- pmod_zero in H. rewrite <- pmod_multiple_of_f in H. destruct H.
-    rewrite poly_add_0_r in H. apply pmod_multiple_of_f. exists x. rewrite poly_add_comm.
+    rewrite poly_add_0_r in H. apply pmod_multiple_of_f. exists x0. rewrite poly_add_comm.
     rewrite <- poly_add_cancel_1. apply H.
 Qed. 
 
@@ -228,7 +243,7 @@ End Mod.
 (*p divides q if p is a factor of q, ie, q % p = 0 *)
 (*we use a definition in terms of existence (rather than just pmod) to handle to zero cases, since 0 | 0 is true
 but 0 | p is false for any p <> zero*)
-Definition divides p q := exists x, p *~ x = q.
+Definition divides p q := exists m, p *~ m = q.
 
 Definition divides_pmod p q := q %~ p = zero.
 
@@ -240,9 +255,9 @@ Proof.
       simpl. destruct P. destruct H0. rewrite <- H0 in H1.
       rewrite <- poly_add_cancel_1 in H1. rewrite poly_mult_comm in H1.
       rewrite <- poly_mult_distr_r in H1.
-      destruct (destruct_poly (x +~ a)).
+      destruct (destruct_poly (x0 +~ a)).
       rewrite e in H1. rewrite poly_mult_0_l in H1. subst. reflexivity.
-      assert (deg b = deg ((x+~ a) *~ p)) by (rewrite H1; reflexivity).
+      assert (deg b = deg ((x0 +~ a) *~ p)) by (rewrite H1; reflexivity).
       rewrite poly_mult_deg in H3; try assumption. 
       rewrite <- deg_nonzero in n. lia.
     + subst. destruct (destruct_poly p).
@@ -283,7 +298,7 @@ Qed.
 
 Lemma divides_factor_r: forall a b c, a |~ b -> a |~ (b *~ c).
 Proof.
-  intros. unfold divides in *. destruct H. subst. exists (x *~ c). rewrite poly_mult_assoc. reflexivity.
+  intros. unfold divides in *. destruct H. subst. exists (x0 *~ c). rewrite poly_mult_assoc. reflexivity.
 Qed.
 
 Lemma divides_factor_l: forall a b c, a |~ c -> a |~ (b *~ c).
@@ -305,10 +320,27 @@ Qed.
 Lemma divides_smaller_zero: forall (f g: poly), deg g < deg f -> f |~ g -> g = zero.
 Proof.
   intros. unfold divides in H0. destruct H0. 
-  destruct (destruct_poly x). subst. apply poly_mult_0_r.
+  destruct (destruct_poly x0). subst. apply poly_mult_0_r.
   destruct (destruct_poly f). subst. rewrite poly_mult_0_l in H. lia.
   rewrite <- H0 in H. rewrite poly_mult_deg in H; try assumption.
   rewrite <- deg_nonzero in n. lia.
+Qed.
+
+Lemma divides_x: forall (g: poly),
+  deg g > 0 ->
+  g |~ x <-> g = x.
+Proof.
+  intros.
+  - unfold divides. split; intros.
+    + destruct H0. assert (deg (g *~ x0) = deg x) by (rewrite H0; reflexivity).
+      destruct (destruct_poly x0). subst.
+      rewrite poly_mult_0_r in H0. inversion H0.
+      rewrite poly_mult_deg in H1. rewrite deg_x in H1.
+      rewrite <- deg_nonzero in n.
+      assert (deg g = 1%Z /\ deg x0 = 0%Z) by lia. destruct H2.
+      symmetry in H3. rewrite deg_one in H3. subst. rewrite poly_mult_1_r in H0.
+      assumption. apply f_nonzero. assumption. assumption.
+    + subst. exists one. apply poly_mult_1_r.
 Qed.
 
 (*expresses "g is the gcd of a and b"*)
@@ -318,7 +350,7 @@ Definition gcd_def g a b :=
 (*test*)
 (*unfortunately, have to break the abstraction to define GCD - need to destruct on list, not use [destruct_poly]*)
 Program Fixpoint gcd_aux (a b : poly) {measure (Z.to_nat (deg b + 1))} : {g: poly | deg b <= deg a ->
-  gcd_def g a b /\ exists x y, (a *~ x) +~ (b *~ y) = g} :=
+  gcd_def g a b /\ exists x' y', (a *~ x') +~ (b *~ y') = g} :=
   match (proj1_sig b) with
   | nil => exist _ a _
   | _ :: _ => match (poly_div a b) with
@@ -413,7 +445,7 @@ Proof.
     apply a0. assumption.
   - destruct (gcd_aux b a). simpl.
     assert (deg a <= deg b) by lia. apply a0 in H0; clear a0. destruct H0.
-    destruct H1. destruct H1. exists x1. exists x0. rewrite <- H1. rewrite poly_add_comm. reflexivity.
+    destruct H1. destruct H1. exists x2. exists x1. rewrite <- H1. rewrite poly_add_comm. reflexivity.
 Qed.
 (*[gcd] does not compute bc we match on <=, but [gcd_aux] does. This is OK for our purposes, maybe try to fix *)
 (*
@@ -569,31 +601,31 @@ Definition r_mul (g h : qpoly) : qpoly := exist _ (poly_mult_mod (proj1_sig g) (
 Definition qpoly_quotient_ring : @ring_theory qpoly r0 r1 r_add r_mul r_add id eq.
 Proof.
   apply mk_rt.
-  - intros. unfold r_add. destruct x. simpl. exist_eq.
+  - intros. unfold r_add. destruct x0. simpl. exist_eq.
     unfold poly_add_mod. rewrite poly_add_0_l. apply pmod_refl. assumption. assumption.
-  - intros. unfold r_add. destruct x; destruct y; simpl. exist_eq.
+  - intros. unfold r_add. destruct x0; destruct y; simpl. exist_eq.
     unfold poly_add_mod. rewrite poly_add_comm. reflexivity.
-  - intros. unfold r_add; destruct x; destruct y; destruct z; simpl.
+  - intros. unfold r_add; destruct x0; destruct y; destruct z; simpl.
     exist_eq. unfold poly_add_mod.
-    rewrite pmod_add_reduce. rewrite (poly_add_comm ((x +~ x0) %~ f)).
-    rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm x1). reflexivity.
+    rewrite pmod_add_reduce. rewrite (poly_add_comm ((x0 +~ x1) %~ f)).
+    rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm x2). reflexivity.
     all: assumption.
-  - intros. unfold r_mul. destruct x; simpl. exist_eq. unfold poly_mult_mod. 
+  - intros. unfold r_mul. destruct x0; simpl. exist_eq. unfold poly_mult_mod. 
     rewrite poly_mult_1_l. apply pmod_refl. assumption. assumption.
-  - intros. unfold r_mul. exist_eq. destruct x; destruct y; simpl. 
+  - intros. unfold r_mul. exist_eq. destruct x0; destruct y; simpl. 
     unfold poly_mult_mod. rewrite poly_mult_comm. reflexivity.
-  - intros. unfold r_mul; destruct x; destruct y; destruct z; simpl. exist_eq. unfold poly_mult_mod.
-    rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x *~ x0) %~ f)). rewrite pmod_mult_reduce.
-    rewrite <- poly_mult_assoc. rewrite (poly_mult_comm _ x1). reflexivity. all: assumption.
-  - intros. unfold r_mul; unfold r_add; destruct x; destruct y; exist_eq; simpl.
+  - intros. unfold r_mul; destruct x0; destruct y; destruct z; simpl. exist_eq. unfold poly_mult_mod.
+    rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x0 *~ x1) %~ f)). rewrite pmod_mult_reduce.
+    rewrite <- poly_mult_assoc. rewrite (poly_mult_comm _ x2). reflexivity. all: assumption.
+  - intros. unfold r_mul; unfold r_add; destruct x0; destruct y; exist_eq; simpl.
     unfold poly_mult_mod; unfold poly_add_mod. destruct z; simpl.
-    rewrite? pmod_add_reduce. rewrite <- (poly_add_comm (x0 *~ x1)). 
+    rewrite? pmod_add_reduce. rewrite <- (poly_add_comm (x1 *~ x2)). 
     rewrite pmod_add_reduce. 
     rewrite poly_mult_comm. rewrite pmod_mult_reduce. rewrite poly_mult_comm.
     rewrite poly_add_comm.
     rewrite poly_mult_distr_r. reflexivity. all: assumption.
   - reflexivity.
-  - intros. unfold r_add; destruct x; unfold r0; simpl; exist_eq. unfold poly_add_mod.
+  - intros. unfold r_add; destruct x0; unfold r0; simpl; exist_eq. unfold poly_add_mod.
     rewrite poly_add_inv. apply pmod_zero. assumption.
 Defined.
 
@@ -605,14 +637,14 @@ Proof.
   - rewrite poly_add_0_l. apply pmod_twice. assumption. 
   - rewrite poly_add_comm. reflexivity.
   - rewrite? pmod_add_reduce. rewrite pmod_twice.
-    rewrite pmod_twice. rewrite (poly_add_comm ((x +~ y) %~ f)). 
+    rewrite pmod_twice. rewrite (poly_add_comm ((x0 +~ y) %~ f)). 
     rewrite pmod_add_reduce. rewrite <- poly_add_assoc. rewrite (poly_add_comm z). reflexivity. all: assumption.
   - rewrite poly_mult_1_l. apply pmod_twice. assumption.
   - rewrite poly_mult_comm. reflexivity.
-  - rewrite? pmod_twice. rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x *~ y) %~ f)).
+  - rewrite? pmod_twice. rewrite pmod_mult_reduce. rewrite (poly_mult_comm ((x0 *~ y) %~ f)).
     rewrite pmod_mult_reduce. rewrite <- poly_mult_assoc. rewrite poly_mult_comm. reflexivity. all: assumption.
   - rewrite? pmod_twice. rewrite (poly_mult_comm _ z). rewrite pmod_mult_reduce. 
-    rewrite <- (pmod_add_distr f Hnonneg (x *~ z) (y *~ z)). rewrite (poly_mult_comm z). rewrite poly_mult_distr_r.
+    rewrite <- (pmod_add_distr f Hnonneg (x0 *~ z) (y *~ z)). rewrite (poly_mult_comm z). rewrite poly_mult_distr_r.
     reflexivity. all: assumption.
   - reflexivity.
   - unfold id. rewrite pmod_twice. rewrite poly_add_inv. reflexivity. assumption.
@@ -653,7 +685,7 @@ Definition list_of_qpoly : list qpoly := exist_list (fun x => deg x < deg f)
 Lemma list_of_qpoly_in: forall (x: qpoly), In x list_of_qpoly.
 Proof.
   intros. unfold list_of_qpoly. apply exist_list_in.
-  apply polys_leq_degree_spec. destruct x. simpl. lia.
+  apply polys_leq_degree_spec. destruct x0. simpl. lia.
 Qed. 
 
 Lemma qpoly_finite: Finite qpoly.
@@ -665,13 +697,13 @@ Lemma mult_map_injective: forall (a: qpoly),
   a <> r0 ->
   Injective (r_mul a).
 Proof.
-  intros. unfold Injective. intros.  destruct x; destruct y; destruct a; simpl in *. inversion H0.
+  intros. unfold Injective. intros.  destruct x0; destruct y; destruct a; simpl in *. inversion H0.
   exist_eq. unfold poly_mult_mod in H2. apply pmod_cancel in H2; try assumption.
   rewrite <- poly_mult_distr_l in H2. apply  irreducible_integral_domain in H2.
   destruct H2.
   - rewrite pmod_refl in H1; try lia. subst. exfalso. apply H. exist_eq. reflexivity.
   - rewrite pmod_refl in H1. rewrite poly_add_inv_iff in H1. assumption.
-    lia. pose proof (poly_add_deg_max x x0). lia.
+    lia. pose proof (poly_add_deg_max x0 x1). lia.
 Qed.
 
 Lemma mult_map_surjective: forall (a: qpoly),
@@ -680,7 +712,7 @@ Lemma mult_map_surjective: forall (a: qpoly),
 Proof.
   intros. apply Endo_Injective_Surjective. apply qpoly_finite.
   unfold ListDec.decidable_eq. intros. unfold Decidable.decidable. 
-  destruct x; destruct y. destruct (poly_eq_dec x x0).
+  destruct x0; destruct y. destruct (poly_eq_dec x0 x1).
   - left. subst. exist_eq. reflexivity.
   - right. intro. inversion H0. contradiction.
   - apply mult_map_injective. assumption.
@@ -697,30 +729,11 @@ Qed.
 (*coq's fields require a computable inverse function, so we have to iterate through the whole list to find
   the appropriate element. This is not too hard*)
 
-(* TODO: maybe move*)
-Definition find_default {A: Type} (l: list A) (x: A) (P: A -> A -> bool) (default : A) : A :=
-  fold_right (fun hd acc => if (P x hd) then hd else acc) default l.
-
-Lemma find_default_in: forall {A: Type} (l: list A) x P default,
-  (forall a b, P a b = true -> b <> default) ->
-  (exists y, In y l /\ P x y = true) <-> P x (find_default l x P default) = true.
-Proof.
-  intros. induction l; split; intros.
-  - destruct H0. inversion H0. inversion H1.
-  - simpl in H0. apply H in H0. contradiction.
-  - simpl. destruct (P x a) eqn : E. assumption.
-    simpl in H0. destruct H0 as [y]. destruct H0.
-    destruct H0. subst. rewrite E in H1. inversion H1. 
-    apply IHl. exists y; auto.
-  - simpl in H0. destruct (P x a) eqn : E.
-    exists a. intuition. apply IHl in H0. destruct H0 as [y]. exists y. intuition.
-Qed.
-
 Lemma qpoly_eq_dec: forall (a b: qpoly) ,
   {a = b} + { a <> b}.
 Proof.
   intros. destruct a. destruct b.
-  destruct (poly_eq_dec x x0).
+  destruct (poly_eq_dec x0 x1).
   - left. subst. exist_eq. reflexivity.
   - right. intro. inversion H. contradiction.
 Qed.
@@ -870,10 +883,10 @@ Proof.
       intro. apply H; assumption.
     + assert (~ In zero l ) by intuition. apply IHl in H1; clear IHl. destruct H1. clear H2.
       assert (exists y : poly, In y l /\ y |~ p). apply H1. exists y. assumption.
-      destruct H2. exists x. intuition.
+      destruct H2. exists x0. intuition.
   - simpl. destruct (poly_div p a) as [ q r] eqn : P. simpl in H0. destruct H0.
     destruct H0. destruct H0.
-    + subst. destruct (proj1_sig r) eqn : E. exists x. reflexivity.
+    + subst. destruct (proj1_sig r) eqn : E. exists x0. reflexivity.
       rewrite poly_div_correct in P. destruct P. 
       unfold divides in H1. destruct H1 as [a]. rewrite <- H1 in H0.
       rewrite poly_mult_comm in H0. 
@@ -881,16 +894,16 @@ Proof.
       destruct (destruct_poly (a +~ q)).
       * rewrite e in H0. rewrite poly_mult_0_l in H0. subst.
         inversion E.
-      * destruct(destruct_poly x). 
+      * destruct(destruct_poly x0). 
         -- rewrite e in H2. assert (deg zero < 0) by (subst; rewrite deg_zero; reflexivity).
            assert (deg zero >= -1) by (apply deg_lower_bound). 
            assert (deg r >= -1) by (apply deg_lower_bound). lia.
-        -- assert (deg r = deg (a +~ q) + deg x). rewrite <- H0.
+        -- assert (deg r = deg (a +~ q) + deg x0). rewrite <- H0.
            rewrite poly_mult_deg. reflexivity. all: try assumption.
            assert (0 <= deg (a +~ q)). apply deg_nonzero. assumption. lia.
       * intro. subst. intuition.
     + destruct (proj1_sig r) eqn : E. exists a. reflexivity.
-      apply IHl. intuition. exists x. split; assumption.
+      apply IHl. intuition. exists x0. split; assumption.
 Qed. 
 
 Lemma negate_iff: forall P Q,
@@ -942,7 +955,23 @@ Proof.
   - destruct (find_factor p (Z.to_nat n)). exfalso. apply H2. exists p0. reflexivity. reflexivity.
 Qed.
 
-
+(*x is an annoying special case - x is irreducible but no other powers of x are *)
+Lemma irred_doesnt_divide_monomial: forall (g: poly) (n: nat),
+  deg g > 0 ->
+  irreducible g ->
+  g <> x ->
+  ~ (g |~ (monomial n)).
+Proof.
+  intros. induction n.
+  - rewrite monomial_0. intro. unfold divides in H2. destruct H2.
+    apply poly_mult_eq_one in H2. destruct H2. subst.
+    assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
+  - rewrite monomial_expand. intro. 
+    apply irreducible_is_prime in H0. unfold prime in H0. apply H0 in H2.
+    destruct H2. 
+    + apply divides_x in H2. subst. contradiction. assumption.
+    + contradiction.
+Qed.
 
 (** Primitive Polynomials *)
 Section Primitive.
@@ -1016,13 +1045,6 @@ Fixpoint all_nth_polys (bound: nat) :=
   | S(n') => nth_minus_one (n') :: all_nth_polys n'
   end.
 
-(*TODO move*)
-Lemma monomial_0: monomial 0%nat = one.
-Proof.
-  unfold monomial; unfold one; exist_eq. unfold PolyDefs.P.monomial. if_tac.
-  reflexivity. lia.
-Qed.
-
 Lemma all_nth_polys_spec: forall bound (p: poly),
   In p (all_nth_polys bound) <-> exists n, (0 < n < bound)%nat /\ p = nth_minus_one n.
 Proof.
@@ -1038,27 +1060,6 @@ Proof.
       * destruct H as [n]. destruct H. assert ((0 < n < S bound)%nat \/ (n = S bound)%nat) by lia.
         destruct H1. right. apply IHbound. exists n. split. lia. assumption. left. subst. reflexivity.
 Qed.
-
-(*
-Lemma all_nth_polys_spec: forall bound (p: poly),
-  (0 < bound)%nat -> 
-  In p (all_nth_polys bound) <-> exists n, (0 < n < bound)%nat /\ p = nth_minus_one n.
-Proof.
-  intros. induction bound. lia.
-  assert ((0 < bound)%nat \/ 0%nat = bound) by lia.
-  destruct H0.
-  - apply IHbound in H0; clear IHbound. simpl. split; intros.
-    + destruct H1. exists bound. split. lia. subst. reflexivity.
-      apply H0 in H1. destruct H1 as [n]. destruct H1. exists n. split. lia. assumption.
-    + destruct H1 as [n]. destruct H1. assert ( (0 <= n < bound)%nat \/ n = bound) by lia.
-      destruct H3. right. apply H0. exists n. intuition. subst. left. reflexivity.
-  - subst. simpl. split; intros.
-    + destruct H0. exists 0%nat. split. lia. subst. reflexivity.
-      destruct H0. subst. exists 0%nat. split. lia.  unfold nth_minus_one. rewrite monomial_0.
-      rewrite poly_add_inv. reflexivity. destruct H0.
-    + destruct H0 as [n]. destruct H0. assert (n = 0%nat) by lia. subst.
-      left. reflexivity.
-Qed. *)
 
 Lemma nat_mul_1_iff: forall (m n : nat),
   (m * n = 1)%nat <-> n = 1%nat /\ m = 1%nat.

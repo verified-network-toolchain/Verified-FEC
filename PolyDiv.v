@@ -1,4 +1,5 @@
 Require Import VST.floyd.functional_base.
+Require Import Helper.
 Require Import GF2.
 Require Import PolyDefs.
 (** * A verified, executable version of Euclidean division on polynomials over GF2 *)

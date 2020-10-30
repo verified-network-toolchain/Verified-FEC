@@ -1,3 +1,4 @@
+Require Import Helper.
 Require Import PolyDefs.
 Require Import PolyDiv.
 Require Import Coq.Lists.List.
@@ -229,6 +230,12 @@ Proof.
   apply (P.monomial_not_0 _ H1).
 Qed.
 
+Lemma monomial_0: monomial 0%nat = one.
+Proof.
+  unfold monomial; unfold one; exist_eq. unfold PolyDefs.P.monomial. if_tac.
+  reflexivity. lia.
+Qed.
+
 (** Shift (ie, multiply by x^n) *)
 
 Lemma nonzero_not_nil': forall f,
@@ -410,6 +417,37 @@ Proof.
     apply P.shift_monomial. intro. subst. apply nonzero_not_nil' in n0. simpl in n0. contradiction.
 Qed.
 
+Lemma monomial_exp_law: forall a b,
+  monomial a *~ monomial b = monomial (a + b).
+Proof.
+  intros. rewrite <- shift_monomial. unfold monomial. unfold shift. 
+  destruct (destruct_poly (exist PolyDefs.P.wf_poly (PolyDefs.P.monomial b) (PolyDefs.P.wf_monomial b))).
+  - unfold zero in e. inversion e. exfalso. eapply PolyDefs.P.monomial_not_0. apply H0.
+  - exist_eq. simpl. unfold PolyDefs.P.shift.
+    unfold PolyDefs.P.monomial. if_tac.
+    + subst. if_tac. assert (a = 0%nat) by lia. subst. simpl. reflexivity. unfold PolyDefs.P.shift.
+      replace (a + 0)%nat with (a) by lia. reflexivity.
+    + if_tac. lia. unfold PolyDefs.P.shift.
+      rewrite <- list_repeat_app. rewrite app_assoc. reflexivity.
+Qed.
+
+(** The polynomial "x" *)
+
+Definition x : poly := monomial 1.
+
+Lemma deg_x: deg x = 1%Z.
+Proof.
+  intros. unfold x. unfold monomial. unfold deg. simpl. reflexivity.
+Qed.
+
+Lemma monomial_expand: forall n,
+  monomial (S(n)) = x *~ monomial n.
+Proof.
+  intros. replace (S(n)) with (n+1)%nat by lia. rewrite <- monomial_exp_law.
+  unfold x. apply poly_mult_comm.
+Qed.
+
+
 (** Ring structure of GF2(x) *)
 Definition poly_ring: ring_theory zero one poly_add poly_mult poly_add id eq.
 Proof.
@@ -467,7 +505,7 @@ Proof.
   - destruct H0. unfold poly_div. destruct 
     (poly_div_aux (proj1_sig a) (proj1_sig b) nil (proj1_sig a) (proj2_sig b) (proj2_sig a) wf_zero).
     simpl. assert (A:= H). rewrite nonzero_not_nil in H. specialize (a0 H). destruct a0.
-    destruct x as [q' r']. simpl in H3.
+    destruct x0 as [q' r']. simpl in H3.
     assert (q' = q /\ r' = r). eapply remainder_unique with(a:=a). apply A. unfold deg; assumption. assumption.
     rewrite poly_mult_comm. unfold poly_mult; unfold poly_add; simpl. destruct a; simpl in *; exist_eq.
     apply H3. rewrite P.poly_add_id. reflexivity. assumption. assumption. destruct H4. auto.

@@ -3,11 +3,20 @@ Require Import Coq.Bool.Bool.
 Require Import VST.floyd.functional_base.
 (** Contains definitions and lemmas that are useful more generally *)
 
+Ltac solve_neq := intro C; inversion C.
+
 Definition null {A} (l: list A) :=
   match l with
   | nil => true
   | _ => false
   end.
+
+Lemma in_tl_in_list: forall {A: Type } (x: A) l,
+  In x (tl l) ->  
+  In x l.
+Proof.
+  intros. unfold tl in H. destruct l. assumption. right. assumption.
+Qed.
 
 (* function (from Haskell) to remove all values from end of list that satisfy a predicate. *)
 Definition dropWhileEnd {A} (p: A -> bool)(l: list A)  : list A :=
@@ -175,24 +184,26 @@ Proof.
     apply in_app_or in H2. destruct H2. contradiction. apply (H1 a). left. reflexivity. assumption.
     apply IHl1. assumption. assumption. intros. apply H1. right. assumption.
 Qed.
-(*
-(*Not only do we have a list of dependent types, but that list has the exact same elements (I suppose
-  we could prove an even stronger property with map, but we don't need that here*)
-Definition exist_list_strong {A : Type} (P: A -> Prop) (l: list A) :
-  (forall x, In x l -> P x) ->
-  {l': list ({ x : A | P x}) | forall x, In x l' <-> In (proj1_sig x) l} .
-Proof.
-  intros. induction l.
-  - apply (exist _ nil). intros. reflexivity.
-  - assert (P a). apply H. left. reflexivity.  Check (exist (fun x => P x) a H0).
-    assert (forall x : A, In x l -> P x). intuition. specialize (IHl H1).
-    destruct IHl. apply (exist _ (cons (exist _ a H0) x)). intros.
-    split; intros. simpl in H2. destruct H2. left. subst. reflexivity.
-    right. apply i. apply H2. destruct H2. left. subst. destruct x0.
-    apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat. reflexivity.
-    right. apply i. apply H2.
-Defined.
-*)
+
 (* Likewise, we can turn a {x : A | P x} list into a list A by just unwrapping the types *)
 Definition dep_list_to_list {A: Type} (P: A -> Prop) (l: list {x : A | P x}) : list A :=
   fold_right (fun x acc => (@proj1_sig A P x) :: acc) nil l.
+
+(* Function to find the first element in a list satisfying a predicate*)
+Definition find_default {A: Type} (l: list A) (x: A) (P: A -> A -> bool) (default : A) : A :=
+  fold_right (fun hd acc => if (P x hd) then hd else acc) default l.
+
+Lemma find_default_in: forall {A: Type} (l: list A) x P default,
+  (forall a b, P a b = true -> b <> default) ->
+  (exists y, In y l /\ P x y = true) <-> P x (find_default l x P default) = true.
+Proof.
+  intros. induction l; split; intros.
+  - destruct H0. inversion H0. inversion H1.
+  - simpl in H0. apply H in H0. contradiction.
+  - simpl. destruct (P x a) eqn : E. assumption.
+    simpl in H0. destruct H0 as [y]. destruct H0.
+    destruct H0. subst. rewrite E in H1. inversion H1. 
+    apply IHl. exists y; auto.
+  - simpl in H0. destruct (P x a) eqn : E.
+    exists a. intuition. apply IHl in H0. destruct H0 as [y]. exists y. intuition.
+Qed.
