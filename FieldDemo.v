@@ -251,7 +251,7 @@ Definition f_multiply := {|
   fn_callconv := cc_default;
   fn_params := ((_a, tuchar) :: (_b, tuchar) :: nil);
   fn_vars := nil;
-  fn_temps := ((_pow, tuchar) :: (_t'1, tint) :: (_t'7, tuchar) ::
+  fn_temps := ((_pow, tint) :: (_t'1, tint) :: (_t'7, tuchar) ::
                (_t'6, tuchar) :: (_t'5, tuchar) :: (_t'4, tint) ::
                (_t'3, tuchar) :: (_t'2, tint) :: nil);
   fn_body :=
@@ -272,12 +272,10 @@ Definition f_multiply := {|
               (Ebinop Oadd (Evar _fec_2_power (tarray tuchar 128))
                 (Etempvar _b tuchar) (tptr tuchar)) tuchar))
           (Sset _pow
-            (Ecast
-              (Ebinop Oadd (Etempvar _t'6 tuchar) (Etempvar _t'7 tuchar)
-                tint) tuchar))))
+            (Ebinop Oadd (Etempvar _t'6 tuchar) (Etempvar _t'7 tuchar) tint))))
       (Ssequence
         (Sset _t'2 (Evar _FEC_N tint))
-        (Sifthenelse (Ebinop Ogt (Etempvar _pow tuchar)
+        (Sifthenelse (Ebinop Ogt (Etempvar _pow tint)
                        (Ebinop Osub (Etempvar _t'2 tint)
                          (Econst_int (Int.repr 1) tint) tint) tint)
           (Ssequence
@@ -286,7 +284,7 @@ Definition f_multiply := {|
               (Sset _t'5
                 (Ederef
                   (Ebinop Oadd (Evar _fec_2_index (tarray tuchar 128))
-                    (Ebinop Osub (Etempvar _pow tuchar)
+                    (Ebinop Osub (Etempvar _pow tint)
                       (Ebinop Osub (Etempvar _t'4 tint)
                         (Econst_int (Int.repr 1) tint) tint) tint)
                     (tptr tuchar)) tuchar))
@@ -295,7 +293,7 @@ Definition f_multiply := {|
             (Sset _t'3
               (Ederef
                 (Ebinop Oadd (Evar _fec_2_index (tarray tuchar 128))
-                  (Etempvar _pow tuchar) (tptr tuchar)) tuchar))
+                  (Etempvar _pow tint) (tptr tuchar)) tuchar))
             (Sreturn (Some (Etempvar _t'3 tuchar)))))))
     (Sreturn (Some (Econst_int (Int.repr 0) tint)))))
 |}.

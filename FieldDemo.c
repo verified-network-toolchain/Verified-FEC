@@ -24,6 +24,8 @@ void generate_index_power_tables(void) {
         }
       }
       fec_2_power[fec_2_index[i]] = i;	/* 0'th index is not used */
+      //note: this makes the proofs more complicated - fec_2_index[0] = fec_2_index[FEC_N - 1] - this cell in fec_2_power is set twice and ends with the second value
+      //it would be much simpler if it used 0 instead
   }
 }
 
@@ -35,7 +37,7 @@ void generate_inverse_table(void) {
 
 unsigned char multiply (unsigned char a, unsigned char b) {
   if (a && b) {
-    unsigned char pow = fec_2_power[a] + fec_2_power[b];
+    int pow = fec_2_power[a] + fec_2_power[b]; //i think this is how char addition works as in the original code
     if(pow > FEC_N - 1) {
       return (fec_2_index[(pow - (FEC_N - 1))]);
     }

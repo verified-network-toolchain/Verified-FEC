@@ -14,6 +14,21 @@ Variable f : poly.
 Variable Hnontrivial: deg f > 0.
 Variable Hprim: primitive f.
 
+Definition field_size := (2 ^ (Z.to_nat (deg f)) - 1)%nat.
+
+(*A useful fact about modding by a primitive poly*)
+
+Lemma monomial_add_field_size: forall n,
+  (monomial n) %~ f = monomial (n + field_size) %~ f.
+Proof.
+  intros. rewrite <- monomial_exp_law. rewrite pmod_mult_distr; try assumption.
+  unfold primitive in Hprim. destruct Hprim. destruct H0. destruct H1.
+  rewrite divides_pmod_iff in H1. unfold divides_pmod in H1. unfold field_size.
+  unfold nth_minus_one in H1. rewrite <- pmod_cancel in H1. rewrite H1. 
+  rewrite <- pmod_mult_distr. rewrite poly_mult_1_r. reflexivity. all: try assumption.
+  left. apply f_nonzero; assumption.
+Qed.
+
 (*we want to prove that x is a primitive element of GF(2)/(f) - ie, for any nonzero
   poly p with degree smaller than deg f,
   there is some 0 <= i < 2^(deg f) - 1 such that (x^i = p) mod f*)
@@ -92,7 +107,7 @@ Proof.
   destruct x0. simpl. lia.
 Qed.
 
-Definition field_size := (2 ^ (Z.to_nat (deg f)) - 1)%nat.
+
 
 Lemma all_nonzero_qpolys_length: length (all_nonzero_qpolys) = field_size.
 Proof.
@@ -279,6 +294,8 @@ Proof.
   intro. apply (irred_doesnt_divide_monomial f (Z.to_nat z)); try assumption. apply Hprim.
   rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. apply f_nonzero. assumption.
 Qed. 
+
+
 
 
 End Primitive.

@@ -765,6 +765,36 @@ Proof.
   assumption. inversion H1.
 Qed.
 
+Lemma negate_iff: forall P Q,
+  (P <-> Q) <-> (~P <-> ~ Q).
+Proof.
+intros. tauto.
+Qed.
+
+
+Lemma find_inv_zero: forall a,
+  a = r0 <-> find_inv a = r0.
+Proof.
+  intros. unfold find_inv.
+  pose proof (find_default_notin list_of_qpoly a inv_bool r0).
+   assert (forall a b : qpoly, inv_bool a b = true -> b <> r0). intros. unfold inv_bool in H0.
+  destruct (qpoly_eq_dec (r_mul a0 b) r1). intro. subst. 
+  unfold r_mul in e. unfold r1 in e. unfold r0 in e. simpl in e. inversion e.
+  unfold poly_mult_mod in H2. rewrite poly_mult_0_r in H2. rewrite pmod_zero in H2; try assumption.
+  inversion H2. inversion H0. apply H in H0; clear H.
+  destruct H0. split; intros.
+  - subst. rewrite H. reflexivity. intros. unfold inv_bool. destruct (qpoly_eq_dec (r_mul r0 y) r1).
+    + unfold r_mul in e. unfold r1 in e. inversion e. unfold poly_mult_mod in H3.
+      rewrite poly_mult_0_l in H3. rewrite pmod_zero in H3. inversion H3. assumption.
+    + reflexivity.
+  - destruct (qpoly_eq_dec a r0).
+    + assumption.
+    + apply inverses_exist in n. destruct n as [i].
+      apply H0 with(y:=i) in H1. unfold inv_bool in H1.
+      destruct (qpoly_eq_dec (r_mul a i) r1). inversion H1. contradiction.
+      apply list_of_qpoly_in.
+Qed.
+
 Definition r_div (a: qpoly) (b: qpoly) := r_mul a (find_inv b).
 
 (** The polynomials of degree < deg f form a field*)
@@ -786,6 +816,86 @@ Definition poly_inv (a: poly) := proj1_sig (find_inv (poly_to_qpoly a)).
 
 Definition poly_field_div (a b: poly) := poly_mult_mod a (poly_inv b).
 
+(*Proving that inverses are unique *)
+Lemma poly_inv_unique: forall p q1 q2,
+  p %~ f <> zero ->
+  (p *~ q1) %~ f = one ->
+  (p *~ q2) %~ f = one ->
+  deg q1 < deg f ->
+  deg q2 < deg f ->
+  q1 %~ f = q2 %~ f.
+Proof.
+  intros. assert ((p *~ q1) %~ f = (p *~ q2) %~ f). rewrite H0. rewrite H1. reflexivity.
+  rewrite pmod_cancel in H4; try assumption. 
+  rewrite <- poly_mult_distr_l in H4.
+  apply irreducible_integral_domain in H4.
+  destruct H4.
+  - contradiction.
+  - rewrite pmod_refl in H4. rewrite poly_add_inv_iff in H4. subst. reflexivity. assumption.
+    pose proof (poly_add_deg_max q1 q2). lia.
+Qed.
+
+Lemma poly_inv_spec: forall p,
+  p %~ f <> zero ->
+  (p *~ (poly_inv p)) %~ f = one /\ deg (poly_inv p) < deg f.
+Proof.
+  intros. unfold poly_inv. destruct (find_inv (poly_to_qpoly p)) eqn : F. simpl.
+  pose proof (find_inv_correct (poly_to_qpoly p)).
+  assert (poly_to_qpoly p <> r0). intro. unfold poly_to_qpoly in H1.
+  unfold r0 in H1. inversion H1. contradiction. apply H0 in H1; clear H0.
+  unfold r_mul in H1. unfold r1 in H1. inversion H1.
+  unfold poly_mult_mod. rewrite F. simpl. split.
+  - symmetry. rewrite poly_mult_comm. rewrite pmod_mult_reduce. rewrite poly_mult_comm. reflexivity. assumption.
+  - assumption.
+Qed.
+
+Lemma poly_inv_iff: forall p q,
+  p %~ f <> zero ->
+  (p *~ q) %~ f = one /\ deg q < deg f <-> q = poly_inv p.
+Proof.
+  intros. split; intros.
+  - pose proof (poly_inv_spec p H).
+    destruct H0. destruct H1. rewrite <- (pmod_refl f); try assumption.
+    symmetry. rewrite <- (pmod_refl f); try assumption.
+    apply (poly_inv_unique p); assumption.
+  - subst. apply poly_inv_spec. assumption.
+Qed.
+
+Lemma poly_inv_refl: forall p q,
+  deg p < deg f ->
+  deg q < deg f ->
+  p <> zero ->
+  q <> zero ->
+  (q = poly_inv p) <-> (p = poly_inv q).
+Proof.
+  intros. assert (p %~ f <> zero). intro. rewrite pmod_refl in H3. contradiction. assumption.
+  assumption. assert (q %~ f <> zero). intro. rewrite pmod_refl in H4. contradiction. assumption.
+  assumption.
+ split; intros.
+  - rewrite <- poly_inv_iff. rewrite <- poly_inv_iff in H5. destruct H5.
+    split. rewrite poly_mult_comm. all: assumption.
+  - rewrite <- poly_inv_iff. rewrite <- poly_inv_iff in H5. destruct H5.
+    split. rewrite poly_mult_comm. all: assumption.
+Qed.
+
+
+(*we define 0's inverse to be 0 to make things simpler*)
+Lemma poly_inv_zero: forall p,
+  p %~ f = zero <-> 
+  poly_inv p = zero.
+Proof.
+  intros. pose proof (find_inv_zero (poly_to_qpoly p)). destruct H. unfold poly_inv.
+  destruct (poly_to_qpoly p) eqn : Q.
+  split; intros.
+  - rewrite H. reflexivity. unfold r0. exist_eq. unfold poly_to_qpoly in Q. inversion Q.
+    assumption.
+  - assert (exist (fun p : poly => deg p < deg f) x0 l = r0). apply H0. 
+    unfold r0. apply exist_ext'. simpl. assumption.
+    unfold r0 in H2. inversion H2.
+    unfold poly_to_qpoly in Q. inversion Q. subst. assumption.
+Qed.
+  
+
 Definition poly_field: @field_theory poly zero one poly_add_mod poly_mult_mod poly_add_mod id poly_field_div poly_inv (eq_pmod f).
 Proof.
   apply mk_field.
@@ -794,16 +904,12 @@ Proof.
     all: try assumption. assert (deg zero < 0) by (rewrite deg_zero; reflexivity). lia.
     assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
   - intros. unfold eq_pmod. unfold poly_div. reflexivity.
-  - intros. unfold eq_pmod in *. unfold poly_inv. destruct ((find_inv (poly_to_qpoly p))) eqn : E.
-    simpl. unfold poly_mult_mod. rewrite pmod_twice; try assumption. 
-    pose proof find_inv_correct (poly_to_qpoly p).
-    assert (poly_to_qpoly p <> r0 ). intro. unfold poly_to_qpoly in H1. unfold r0 in H1.
-    inversion H1. rewrite H3 in H. apply H. rewrite pmod_zero. reflexivity. assumption.
-    apply H0 in H1; clear H0. rewrite E in H1. unfold r_mul in H1. unfold r1 in H1. inversion H1.
-    rewrite H2. unfold poly_mult_mod in H2. 
-    rewrite poly_mult_comm in H2. rewrite pmod_mult_reduce in H2. rewrite H2. 
-    rewrite pmod_refl. reflexivity. all: try assumption. assert (0%Z = deg one) by (rewrite deg_one; reflexivity).
-    lia.
+  - intros. unfold eq_pmod in *. unfold poly_mult_mod. rewrite pmod_twice; try assumption.
+    assert (zero = zero %~ f). rewrite pmod_refl. reflexivity. assumption.
+    assert (deg zero < 0%Z) by (rewrite deg_zero; reflexivity). lia.
+    rewrite <- H0 in H.
+    pose proof (poly_inv_spec _ H). destruct H1. rewrite poly_mult_comm. rewrite H1. symmetry.
+    apply pmod_refl. assumption. assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
 Defined.
 
 End Ring.
@@ -906,11 +1012,6 @@ Proof.
       apply IHl. intuition. exists x0. split; assumption.
 Qed. 
 
-Lemma negate_iff: forall P Q,
-  (P <-> Q) <-> (~P <-> ~ Q).
-Proof.
-intros. tauto.
-Qed.
 
 (*find a factor of degree at most n if one exists*)
 Definition find_factor p n :=

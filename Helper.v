@@ -207,3 +207,18 @@ Proof.
   - simpl in H0. destruct (P x a) eqn : E.
     exists a. intuition. apply IHl in H0. destruct H0 as [y]. exists y. intuition.
 Qed.
+
+Lemma find_default_notin: forall {A: Type} (l: list A) x P default,
+  (forall a b, P a b = true -> b <> default) ->
+  (forall y, In y l -> P x y = false) <-> find_default l x P default = default.
+Proof.
+  intros. induction l; split; intros.
+  - reflexivity.
+  - inversion H1.
+  - simpl. destruct (P x a) eqn : E.
+    + rewrite H0 in E. inversion E. left. reflexivity.
+    + apply IHl. intuition.
+  - simpl in H0. destruct (P x a) eqn : E.
+    + subst. apply H in E. contradiction.
+    + simpl in H1. destruct H1. subst. assumption. apply IHl; assumption.
+Qed. 
