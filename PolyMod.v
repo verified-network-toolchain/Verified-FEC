@@ -861,24 +861,6 @@ Proof.
   - subst. apply poly_inv_spec. assumption.
 Qed.
 
-Lemma poly_inv_refl: forall p q,
-  deg p < deg f ->
-  deg q < deg f ->
-  p <> zero ->
-  q <> zero ->
-  (q = poly_inv p) <-> (p = poly_inv q).
-Proof.
-  intros. assert (p %~ f <> zero). intro. rewrite pmod_refl in H3. contradiction. assumption.
-  assumption. assert (q %~ f <> zero). intro. rewrite pmod_refl in H4. contradiction. assumption.
-  assumption.
- split; intros.
-  - rewrite <- poly_inv_iff. rewrite <- poly_inv_iff in H5. destruct H5.
-    split. rewrite poly_mult_comm. all: assumption.
-  - rewrite <- poly_inv_iff. rewrite <- poly_inv_iff in H5. destruct H5.
-    split. rewrite poly_mult_comm. all: assumption.
-Qed.
-
-
 (*we define 0's inverse to be 0 to make things simpler*)
 Lemma poly_inv_zero: forall p,
   p %~ f = zero <-> 
@@ -894,7 +876,36 @@ Proof.
     unfold r0 in H2. inversion H2.
     unfold poly_to_qpoly in Q. inversion Q. subst. assumption.
 Qed.
-  
+
+Lemma poly_inv_of_zero: poly_inv zero = zero.
+Proof.
+  apply poly_inv_zero. apply pmod_zero. assumption.
+Qed.
+
+Lemma poly_inv_sym: forall p q,
+  deg p < deg f ->
+  deg q < deg f ->
+  (q = poly_inv p) <-> (p = poly_inv q).
+Proof.
+  intros. destruct (destruct_poly p).
+  - subst. split; intros. symmetry. apply poly_inv_zero. rewrite poly_inv_of_zero in H1.
+    subst. rewrite pmod_zero. reflexivity. assumption.
+    symmetry in H1. apply poly_inv_zero in H1. rewrite pmod_refl in H1. subst.
+     rewrite poly_inv_of_zero. reflexivity. all: assumption.
+  - destruct (destruct_poly q).
+    + subst. split; intros. symmetry in H1. apply poly_inv_zero in H1. rewrite pmod_refl in H1.
+      subst. rewrite poly_inv_of_zero. reflexivity. all: try assumption.
+      rewrite poly_inv_of_zero in H1. subst. rewrite poly_inv_of_zero. reflexivity.
+    + assert (p %~ f <> zero). intro. rewrite pmod_refl in H1. contradiction. assumption.
+      assumption. assert (q %~ f <> zero). intro. rewrite pmod_refl in H2. contradiction. assumption.
+      assumption.
+      split; intros.
+      * rewrite <- poly_inv_iff. rewrite <- poly_inv_iff in H3. destruct H3.
+        split. rewrite poly_mult_comm. all: assumption.
+      * rewrite <- poly_inv_iff. rewrite <- poly_inv_iff in H3. destruct H3.
+        split. rewrite poly_mult_comm. all: assumption.
+Qed.
+
 
 Definition poly_field: @field_theory poly zero one poly_add_mod poly_mult_mod poly_add_mod id poly_field_div poly_inv (eq_pmod f).
 Proof.
