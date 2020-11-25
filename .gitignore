@@ -33,3 +33,5 @@ nlia.cache
 nra.cache
 
 *.conf
+*.html
+*.crashcoqide

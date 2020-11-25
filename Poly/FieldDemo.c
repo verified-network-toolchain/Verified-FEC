@@ -50,6 +50,13 @@ unsigned char multiply (unsigned char a, unsigned char b) {
   }
 }
 
+unsigned char demo (unsigned char a) {
+  if (a <= 0 || a > FEC_N) {
+    return 1;
+  }
+  return multiply (a, fec_invefec[a]);
+}
+
 void generate_mult_table(void) {
   for (int i = 0; i < FEC_N; i++) {
       for (int j = 0; j < FEC_N; j++) {
