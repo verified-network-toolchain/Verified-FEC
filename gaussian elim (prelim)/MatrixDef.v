@@ -68,10 +68,10 @@ Module Type Matrix(A: RingMod).
 
 Definition A:= A.A.
 
-Program Instance test : `{Inhabitant A}.
-Next Obligation.
+Instance default : `{Inhabitant A}.
 apply A.zero.
 Defined.
+
 
 (*row, columns *)
 Parameter matrix : nat -> nat -> Type.
@@ -152,6 +152,25 @@ Axiom swap_rows_spec: forall {m n} (mx: matrix m n) i j r1 r2,
     else if (Nat.eq_dec i r2) then get mx r1 j
     else get mx i j.
 
+(*row r2 = k * row r1  + row r2 *)
+Parameter add_multiple: forall {m n : nat}, (matrix m n) -> nat -> nat -> A -> (matrix m n).
+
+Axiom add_multiple_spec: forall {m n} (mx: matrix m n) i j r1 r2 c,
+  (i < m)%nat ->
+  (j < n)%nat ->
+  (r1 < m)%nat ->
+  (r2 < m)%nat ->
+  r1 <> r2 ->
+  get (add_multiple mx r1 r2 c) i j =
+    if (Nat.eq_dec i r2) then A.plus (A.mult c (get mx r1 j)) (get mx r2 j)
+    else get mx i j. 
+
+
+
+
+
+(*
+
 (* row r1 = row r1 - row r2 *)
 Parameter subtract_rows: forall {m n: nat}, (matrix m n) -> nat -> nat -> (matrix m n).
 
@@ -166,7 +185,11 @@ Axiom subtract_rows_spec: forall {m n} (mx: matrix m n) i j r1 r2,
     if (Nat.eq_dec i r1) then A.sub (get mx r1 j) (get mx r2 j)
     else get mx i j.
 
+*)
+
 End Matrix.
+
+(*TODO: redo maybe with new [add_multiple] 
 
 Module FnMatrix(T: RingMod) <: Matrix T.
 
@@ -815,4 +838,5 @@ and row equiv - think about this a bit more
   -- find the largest in the current row (maybe add to mx), do a swap
   -- if largest is already at pivot, then multiply each row in pivot and below by unit (separate function)
      then subtrac *)
+*)
 
