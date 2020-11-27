@@ -4,6 +4,9 @@ Require Import VST.floyd.functional_base.
 Require Import PropList.
 Require Import Field.
 
+(*since the lemma is super long*)
+Ltac exist_eq := apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat.
+
 (*pairwise operations over lists - TODO maybe move*)
 Fixpoint combine {X Y Z: Type} (l1 : list X) (l2: list Y) (f: X -> Y -> Z) : list Z :=
   match (l1, l2) with
@@ -141,43 +144,96 @@ Proof.
            intro. destruct H11; subst; contradiction.
 Qed.
 
+Lemma all_list: forall {A: Type} (a : A) (l: list A) (p: A -> Prop),
+  (forall x, In x (a :: l) -> p x) ->
+  forall x, In x l -> p x.
+Proof.
+  intros. apply H. right. assumption.
+Qed.
+
+Lemma fst_list: forall {A: Type} (a : A) (l: list A) (p: A -> Prop),
+  (forall x, In x (a :: l) -> p x) ->
+  p a.
+Proof.
+  intros. apply H. left. reflexivity.
+Qed.
+
+(*We work over an arbitrary field, and pack the operations and proofs into a single typeclass.
+  Some of the basic definitions only require rings, but it is more convenient to avoid having different ring
+  structures*) 
+(*
+Record ring_type (A: Type) := 
+  {r_plus : A -> A -> A ;
+  r_mult : A -> A -> A;
+  r_sub : A -> A -> A;
+  r_opp: A -> A ;
+  r_zero : A;
+  r_one : A;
+  r_Rth : @ring_theory A r_zero r_one r_plus r_mult r_sub r_opp eq}.
+*)
+Record field_type (A: Type) :=
+  { f_plus : A -> A -> A ;
+    f_mult : A -> A -> A;
+    f_sub : A -> A -> A;
+    f_opp: A -> A ;
+    f_zero : A;
+    f_one : A;
+    f_div : A -> A -> A;
+    f_inv : A -> A;
+    f_Fth: field_theory f_zero f_one f_plus f_mult f_sub f_opp f_div f_inv eq;
+     }.
+
 (*Matrices*)
 
 Section MatrixDef.
 
 (*matrices are defined over arbitrary rings*)
-Context {A: Type} {plus : A -> A -> A} {mult: A -> A -> A} {sub: A -> A -> A} {opp: A -> A} {zero: A} {one: A}
-  (Rth: @ring_theory A zero one plus mult sub opp eq).
-(*
-Variable {A : Type}.
-Variable plus : A -> A -> A.
-Variable mult: A -> A -> A.
-Variable sub: A -> A -> A.
-Variable opp: A -> A.
-Variable zero: A.
-Variable one: A.
-Variable Rth: 
-*)
-Add Ring r : Rth.
+Context {A: Type} (F: field_type A).
+
+(*So we don't have to pass F around everywhere*)
+
+Definition plus := f_plus A F.
+Definition mult := f_mult A F.
+Definition sub := f_sub A F.
+Definition opp := f_opp A F.
+Definition zero := f_zero A F.
+Definition one := f_one A F.
+Definition div := f_div A F.
+Definition inv := f_inv A F.
+Definition Rth := F_R (f_Fth A F).
+Definition Fth := f_Fth A F. 
+
+Ltac ring_unfold H := unfold plus in H; unfold mult in H; unfold sub in H; unfold opp in H; unfold zero in H;
+  unfold one in H.
+Ltac field_unfold H := ring_unfold H; unfold div in H; unfold inv in H.
+Ltac ring' := unfold plus; unfold mult; unfold sub; unfold opp; unfold zero; unfold one; ring.
+Ltac ring_simplify' := unfold plus; unfold mult; unfold sub; unfold opp; unfold zero; unfold one; ring_simplify.
+Ltac field' := unfold plus; unfold mult; unfold sub; unfold opp; unfold zero; unfold one; unfold div; unfold inv; field.
+Ltac field_simplify' := unfold plus; unfold mult; unfold sub; unfold opp; unfold zero; unfold one; unfold div; 
+  unfold inv; field_simplify.
+
+Add Field f : Fth.
 
 Instance default : `{Inhabitant A}.
 apply zero.
 Defined.
 
-Definition matrix := list (list A).
+Section MatrixList.
 
-Definition wf_matrix (mx: matrix) (m n : Z) :=
+Definition matrix_type := list (list A).
+
+Definition wf_matrix (mx: matrix_type) (m n : Z) :=
   Zlength mx = m /\ forall x, In x mx -> Zlength x = n.
 
 (*get the (i,j)th entry of a matrix*)
-Definition get (mx: matrix) (i j : Z) :=
+Definition get_aux (mx: matrix_type) (i j : Z) :=
   let row := Znth i mx in
   Znth j row.
 
-Lemma matrix_equiv: forall (m1 m2: matrix) (m n: Z),
+Lemma matrix_equiv_aux: forall (m1 m2: matrix_type) (m n: Z),
   wf_matrix m1 m n ->
   wf_matrix m2 m n ->
-  m1 = m2 <-> forall i j, (0 <= i<m) -> (0 <= j<n) -> get m1 i j = get m2 i j.
+  m1 = m2 <-> forall i j, (0 <= i<m) -> (0 <= j<n) -> get_aux m1 i j = get_aux m2 i j.
 Proof.
   intros. unfold wf_matrix in *. destruct H. destruct H0. split; intros.
   - subst. reflexivity.
@@ -189,44 +245,41 @@ Proof.
 Qed.
 
 (*create a m x n matrix with entries given by a function*)
-Definition mk_matrix (m n : Z) (f: Z -> Z -> A) :=
+Definition mk_matrix_aux (m n : Z) (f: Z -> Z -> A) : matrix_type :=
   prop_list (fun i => (prop_list (fun j => f i j) n)) m.
 
-Lemma mk_matrix_wf: forall m n f, (0 <= m) -> (0<= n) -> wf_matrix (mk_matrix m n f) m n.
+Lemma mk_matrix_aux_wf: forall m n f, (0 <= m) -> (0<= n) -> wf_matrix (mk_matrix_aux m n f) m n.
 Proof.
-  intros. unfold wf_matrix. unfold mk_matrix. split. rewrite prop_list_length. reflexivity. assumption.
+  intros. unfold wf_matrix. unfold mk_matrix_aux. split. rewrite prop_list_length. reflexivity. assumption.
   intros. rewrite In_Znth_iff in H1. destruct H1. destruct H1.
   rewrite prop_list_Znth in H2. subst. rewrite prop_list_length. reflexivity. assumption.
   rewrite prop_list_length in H1. lia. assumption.
 Qed.
 
-Lemma mk_matrix_spec: forall m n f i j,
+Lemma mk_matrix_aux_spec: forall m n f i j,
   (0 <= i< m) ->
   (0 <= j< n) ->
-  get (mk_matrix m n f) i j = f i j.
+  get_aux (mk_matrix_aux m n f) i j = f i j.
 Proof.
-  intros. unfold mk_matrix. unfold get. rewrite prop_list_Znth. 2 : assumption.
+  intros. unfold mk_matrix_aux. unfold get_aux. rewrite prop_list_Znth. 2 : assumption.
   rewrite prop_list_Znth. reflexivity. assumption.
 Qed.
-
-(*because we have [mk_matrix] and [matrix_equiv], we can define all matrix operations in terms of mk_matrix; any 
-  other implementatoin must then be equal*)
 
 (*row operations*)
 
 (*1. multiply row r by scalar k *)
-Definition scalar_mul_row (mx: matrix) (r: Z) (k: A) : matrix :=
+Definition scalar_mul_row_aux (mx: matrix_type) (r: Z) (k: A) : matrix_type :=
   let old_row := Znth r mx in
   let new_row := map (fun x => mult k x) old_row in
   upd_Znth r mx new_row. 
 
-Lemma scalar_mul_row_wf: forall mx m n r k,
+Lemma scalar_mul_row_aux_wf: forall mx m n r k,
   (0 <= m) ->
   (0 <= n) ->
   wf_matrix mx m n ->
-  wf_matrix (scalar_mul_row mx r k) m n.
+  wf_matrix (scalar_mul_row_aux mx r k) m n.
 Proof.
-  intros. unfold scalar_mul_row. unfold wf_matrix in *. destruct H1.
+  intros. unfold scalar_mul_row_aux. unfold wf_matrix in *. destruct H1.
   split. list_solve. intros. rewrite In_Znth_iff in H3. destruct H3 as [i].
   destruct H3. 
   assert ((( 0 > r) \/ r >= m) \/ (0 <= r < m)) by lia. destruct H5.
@@ -237,34 +290,34 @@ Proof.
     subst. apply H2. apply Znth_In. list_solve. list_solve.  lia.
 Qed. 
 
-Lemma scalar_mul_row_spec: forall mx m n r k i j,
+Lemma scalar_mul_row_aux_spec: forall mx m n r k i j,
   wf_matrix mx m n ->
   (0 <= i < m) ->
   (0 <= j < n) ->
   (0 <= r < m) ->
-  get (scalar_mul_row mx r k) i j =
-    if (Z.eq_dec i r) then  mult k (get mx i j) else get mx i j.
+  get_aux (scalar_mul_row_aux mx r k) i j =
+    if (Z.eq_dec i r) then  mult k (get_aux mx i j) else get_aux mx i j.
 Proof.
-  intros. unfold scalar_mul_row. unfold get. destruct (Z.eq_dec i r).
+  intros. unfold scalar_mul_row_aux. unfold get_aux. destruct (Z.eq_dec i r).
   - subst. rewrite upd_Znth_same. rewrite Znth_map. reflexivity. unfold wf_matrix in H. destruct H.
     rewrite H3. assumption. apply Znth_In. list_solve. unfold wf_matrix in H. list_solve.
   - unfold wf_matrix in H. destruct H. rewrite upd_Znth_diff. reflexivity. list_solve. list_solve. assumption.
 Qed.
 
 (*2. swap rows r1 and r2*)
-Definition swap_rows (mx: matrix) (r1 r2 : Z) : matrix :=
+Definition swap_rows_aux (mx: matrix_type) (r1 r2 : Z) : matrix_type :=
   let old1 := Znth r1 mx in
   let old2 := Znth r2 mx in
   upd_Znth r2 (upd_Znth r1 mx old2) old1.
 
-Lemma swap_rows_wf: forall mx m n r1 r2,
+Lemma swap_rows_aux_wf: forall mx m n r1 r2,
   (0 <= n) ->
   (0 <= r1 < m) ->
   (0 <= r2 < m) ->
   wf_matrix mx m n ->
-  wf_matrix (swap_rows mx r1 r2) m n.
+  wf_matrix (swap_rows_aux mx r1 r2) m n.
 Proof.
-  intros. unfold wf_matrix in *. destruct H2. unfold swap_rows.
+  intros. unfold wf_matrix in *. destruct H2. unfold swap_rows_aux.
   split. list_solve. intros.
   rewrite In_Znth_iff in H4. destruct H4 as [i].
   destruct H4.
@@ -277,18 +330,18 @@ Proof.
     + subst. apply H3. apply Znth_In. list_solve.
 Qed.
 
-Lemma swap_rows_spec: forall (mx: matrix) m n r1 r2 i j,
+Lemma swap_rows_aux_spec: forall (mx: matrix_type) m n r1 r2 i j,
   wf_matrix mx m n ->
   (0 <= i < m) ->
   (0 <= j < n) ->
   (0 <= r1 < m) ->
   (0 <= r2 < m) ->
-  get (swap_rows mx r1 r2) i j =
-    if (Z.eq_dec i r1) then get mx r2 j
-    else if (Z.eq_dec i r2) then get mx r1 j
-    else get mx i j.
+  get_aux (swap_rows_aux mx r1 r2) i j =
+    if (Z.eq_dec i r1) then get_aux mx r2 j
+    else if (Z.eq_dec i r2) then get_aux mx r1 j
+    else get_aux mx i j.
 Proof.
-  intros. unfold wf_matrix in H. destruct H. unfold swap_rows. unfold get. destruct (Z.eq_dec i r2).
+  intros. unfold wf_matrix in H. destruct H. unfold swap_rows_aux. unfold get_aux. destruct (Z.eq_dec i r2).
   - subst. rewrite upd_Znth_same.  2: list_solve. if_tac. subst. reflexivity. reflexivity.
   - rewrite upd_Znth_diff. 2 : list_solve. 2 : list_solve. 2 : assumption.
     destruct (Z.eq_dec i r1).
@@ -297,17 +350,17 @@ Proof.
 Qed.
 
 (*3. row r2 = row r2 + k * row r1*)
-Definition add_multiple (mx: matrix) (r1 r2 : Z) (k : A) : matrix :=
+Definition add_multiple_aux (mx: matrix_type) (r1 r2 : Z) (k : A) : matrix_type :=
   upd_Znth r2 mx (combine (Znth r2 mx) (Znth r1 mx) (fun x y => plus x (mult k y))).
 
-Lemma add_multiple_wf: forall mx m n r1 r2 k,
+Lemma add_multiple_aux_wf: forall mx m n r1 r2 k,
   wf_matrix mx m n ->
   (0 <= n) ->
   (0 <= r1 < m) ->
   (0 <= r2 < m) ->
-  wf_matrix (add_multiple mx r1 r2 k) m n.
+  wf_matrix (add_multiple_aux mx r1 r2 k) m n.
 Proof.
-  intros. unfold wf_matrix in *. unfold add_multiple.
+  intros. unfold wf_matrix in *. unfold add_multiple_aux.
   split. list_solve. intros. rewrite In_Znth_iff in H3. destruct H3 as [i].
   destruct H3. destruct (Z.eq_dec i r2).
   - subst. rewrite upd_Znth_same. rewrite combine_Zlength. apply H. apply Znth_In.
@@ -317,17 +370,17 @@ Proof.
     4 : assumption. all: list_solve.
 Qed.
 
-Lemma add_multiple_spec: forall (mx: matrix) m n r1 r2 k i j,
+Lemma add_multiple_aux_spec: forall (mx: matrix_type) m n r1 r2 k i j,
   wf_matrix mx m n ->
   (0 <= i < m) ->
   (0 <= j < n) ->
   (0 <= r1 < m) ->
   (0 <= r2 < m) ->
-  get (add_multiple mx r1 r2 k) i j =
-    if (Z.eq_dec i r2) then plus (get mx r2 j) (mult k (get mx r1 j))
-    else get mx i j.
+  get_aux (add_multiple_aux mx r1 r2 k) i j =
+    if (Z.eq_dec i r2) then plus (get_aux mx r2 j) (mult k (get_aux mx r1 j))
+    else get_aux mx i j.
 Proof.
-  intros. unfold get. unfold add_multiple. unfold wf_matrix in H.
+  intros. unfold get_aux. unfold add_multiple_aux. unfold wf_matrix in H.
   destruct H. destruct (zeq i r2).
   - subst. rewrite upd_Znth_same. 2: assumption. rewrite combine_Znth.
     if_tac. reflexivity. contradiction. rewrite H4. rewrite H4. reflexivity.
@@ -336,6 +389,88 @@ Proof.
     list_solve. assumption.
 Qed.
 
+End MatrixList.
+
+Section DepMatrix.
+
+(* We wrap the matrix operations in a dependent type for all outside operations, so we don't have
+  to carry around the wf_matrix predicate everywhere*)
+Definition matrix m n := {mx : matrix_type | wf_matrix mx m n}.
+
+Definition get {m n} (mx: matrix m n) (i j : Z) :=
+  get_aux (proj1_sig mx) i j.
+
+Lemma matrix_equiv: forall {m n} (m1 m2 : matrix m n),
+  m1 = m2 <-> forall i j, (0 <= i<m) -> (0 <= j<n) -> get m1 i j = get m2 i j.
+Proof.
+  intros. destruct m1. destruct m2. unfold get. simpl. rewrite <- matrix_equiv_aux; try assumption. 
+  split; intros. inversion H. reflexivity.  exist_eq. assumption.
+Qed.
+
+Definition mk_matrix (m n : Z) (M: 0 <= m) (N : 0 <= n) (f: Z -> Z -> A) : matrix m n :=
+  exist _ (mk_matrix_aux m n f) (mk_matrix_aux_wf m n f M N).
+
+Lemma mk_matrix_spec: forall m n f i j (M: 0 <= m) (N : 0 <= n),
+  (0 <= i< m) ->
+  (0 <= j< n) ->
+  get (mk_matrix m n M N f) i j = f i j.
+Proof.
+  intros. unfold mk_matrix. unfold get. simpl. apply mk_matrix_aux_spec; assumption.
+Qed.
+
+(*Row operations*)
+
+(*1. scalar mult*)
+Definition scalar_mul_row {m n} (mx: matrix m n) (r: Z) (k: A) (M: 0 <= m) (N: 0 <= n) : matrix m n :=
+  exist _ (scalar_mul_row_aux (proj1_sig mx) r k) (scalar_mul_row_aux_wf (proj1_sig mx) m n r k M N (proj2_sig mx)).
+
+Lemma scalar_mul_row_spec: forall {m n} (mx: matrix m n) r k i j (M: 0 <= m) (N: 0 <= n),
+  (0 <= i < m) ->
+  (0 <= j < n) ->
+  (0 <= r < m) ->
+  get (scalar_mul_row mx r k M N) i j =
+    if (Z.eq_dec i r) then  mult k (get mx i j) else get mx i j.
+Proof.
+  intros. unfold get. unfold scalar_mul_row. simpl.
+  destruct mx. simpl. eapply scalar_mul_row_aux_spec. apply w. all: assumption.
+Qed.
+
+
+(*2. swap rows*)
+
+Definition swap_rows {m n} (mx: matrix m n) (r1 r2 : Z) (N: 0 <= n) (R1 : 0 <= r1 < m) (R2: 0 <= r2 < m) : matrix m n :=
+  exist _ (swap_rows_aux (proj1_sig mx) r1 r2) (swap_rows_aux_wf (proj1_sig mx) m n r1 r2 N R1 R2 (proj2_sig mx)).
+
+Lemma swap_rows_spec: forall {m n} (mx: matrix m n) r1 r2 i j (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
+  (0 <= i < m) ->
+  (0 <= j < n) ->
+  get (swap_rows mx r1 r2 N R1 R2) i j =
+    if (Z.eq_dec i r1) then get mx r2 j
+    else if (Z.eq_dec i r2) then get mx r1 j
+    else get mx i j.
+Proof.
+  intros. unfold get. unfold swap_rows. simpl. destruct mx; simpl.
+  apply (swap_rows_aux_spec _ m n); assumption.
+Qed.
+
+(*3. add multiple of row one to another*)
+
+Definition add_multiple {m n} (mx: matrix m n) (r1 r2 : Z) (k: A) (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m) : matrix m n :=
+  exist _ (add_multiple_aux (proj1_sig mx) r1 r2 k) (add_multiple_aux_wf (proj1_sig mx) m n r1 r2 k (proj2_sig mx)
+    N R1 R2).
+
+Lemma add_multiple_spec: forall {m n} (mx: matrix m n) r1 r2 k i j (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
+  (0 <= i < m) ->
+  (0 <= j < n) ->
+  get (add_multiple mx r1 r2 k N R1 R2) i j =
+    if (Z.eq_dec i r2) then plus (get mx r2 j) (mult k (get mx r1 j))
+    else get mx i j.
+Proof.
+  intros. unfold get. unfold add_multiple. simpl. destruct mx; simpl.
+  apply (add_multiple_aux_spec _ m n); assumption.
+Qed.
+
+End DepMatrix.
 
 (*Generalized summations over rings - TODO: maybe move*)
 Section Sum.
@@ -346,14 +481,12 @@ Definition summation_aux (f: Z -> A) (l: list Z) :=
 Definition summation (f : Z -> A) (lb len : Z) : A :=
   summation_aux f (Zseq lb len).
 
-
-
 Lemma summation_aux_scalar_mult: forall f l x,
   mult (summation_aux f l) x = summation_aux (fun y => mult (f y) x) l.
 Proof.
   intros. induction l.
-  - simpl. ring.
-  - simpl. ring_simplify. rewrite IHl. reflexivity.
+  - simpl. ring'.
+  - simpl. ring_simplify'. ring_unfold IHl. rewrite IHl. reflexivity.
 Qed.
 
 Lemma summation_scalar_mult: forall f lb len x,
@@ -369,8 +502,8 @@ Lemma summation_aux_distr_sum: forall f g l,
         (summation_aux (fun i => g i) l).
 Proof.
   intros. induction l. 
-  - simpl. ring.
-  - simpl. rewrite IHl. ring.
+  - simpl. ring'.
+  - simpl. rewrite IHl. ring'.
 Qed.
 
 (*sum_i sum_j a_{ij} = sum_j sum_i a_{ij} (for finite sums) *)
@@ -379,7 +512,7 @@ Lemma summation_aux_change_order: forall (f: Z -> Z -> A) l1 l2,
   summation_aux (fun j => summation_aux (fun i => f i j) l2) l1.
 Proof.
   intros. revert l2. revert f. induction l1; intros.
-  - simpl. induction l2. reflexivity. simpl. rewrite IHl2. ring.
+  - simpl. induction l2. reflexivity. simpl. rewrite IHl2. ring'.
   - simpl. rewrite summation_aux_distr_sum. rewrite IHl1. reflexivity.
 Qed.
 
@@ -388,101 +521,78 @@ Lemma summation_aux_app: forall f l1 l2,
   plus (summation_aux f l1) (summation_aux f l2).
 Proof.
   intros. induction l1.
-  - simpl. ring.
-  - simpl. rewrite IHl1. ring.
+  - simpl. ring'.
+  - simpl. rewrite IHl1. ring'.
 Qed.
 
 End Sum.
 
+
 (*Matrix Multiplication*)
 Section MatrixMult.
 
-Definition mx_mult (mx : matrix) (mx' : matrix) m n p :=
-  mk_matrix m p (fun i j => summation (fun k => mult (get mx i k) (get mx' k j)) 0 n).
+Definition mx_mult {m n p} (mx : matrix m n ) (mx' : matrix n p) (M: 0 <= m) (P : 0 <= p) :=
+  mk_matrix m p M P (fun i j => summation (fun k => mult (get mx i k) (get mx' k j)) 0 n).
 
-Lemma mx_mult_wf: forall mx mx' m n p,
-  (0<= m) ->
-  (0 <= p) ->
-  wf_matrix (mx_mult mx mx' m n p) m p.
-Proof.
-  intros. apply mk_matrix_wf; assumption.
-Qed.
-
-Lemma mx_mult_spec: forall mx mx' m n p i j,
+Lemma mx_mult_spec: forall {m n p} (mx: matrix m n) (mx' : matrix n p) (M: 0 <= m) (P: 0 <= p) i j,
   (0 <= i < m) ->
   (0 <= j < p) ->
-  get (mx_mult mx mx' m n p) i j = summation (fun k => mult (get mx i k) (get mx' k j)) 0 n.
+  get (mx_mult mx mx' M P) i j = summation (fun k => mult (get mx i k) (get mx' k j)) 0 n.
 Proof.
-  intros. unfold mx_mult. rewrite mk_matrix_spec. reflexivity. all: lia.
+  intros. unfold mx_mult. rewrite mk_matrix_spec; try assumption. reflexivity.
 Qed.
 
 (*key property - matrix multiplication is associative*)
-Lemma mx_mult_assoc: forall m1 m2 m3 m n p l,
-  wf_matrix m1 m n ->
-  wf_matrix m2 n l ->
-  wf_matrix m3 l p ->
-  (0 <= m) ->
-  (0 <= n) ->
-  (0 <= p) ->
-  (0 <= l) ->
-  mx_mult (mx_mult m1 m2 m n l) m3 m l p = mx_mult m1 (mx_mult m2 m3 n l p) m n p.
+Lemma mx_mult_assoc: forall {m n l p} (m1 : matrix m n) (m2: matrix n l) (m3 : matrix l p)
+  (M : 0 <= m) (N : 0 <= n) (P : 0 <= p) (L : 0 <= l),
+  mx_mult (mx_mult m1 m2 M L) m3 M P = mx_mult m1 (mx_mult m2 m3 N P) M P.
 Proof.
-  intros. rewrite matrix_equiv. 2 : apply mx_mult_wf. 4 : apply mx_mult_wf. all: try assumption. intros.
+  intros. rewrite matrix_equiv. intros.
   rewrite? mx_mult_spec; try lia. (*cannot expand inner automatically bc we need to know bounds*)
   unfold summation.
   assert(forall l1 : list Z,
     (forall x, In x l1 -> (0 <= x < l)) ->
-    summation_aux (fun k : Z => mult (get (mx_mult m1 m2 m n l) i k) (get m3 k j)) l1 =
+    summation_aux (fun k : Z => mult (get (mx_mult m1 m2 M L) i k) (get m3 k j)) l1 =
     summation_aux (fun k : Z => mult (summation (fun y => mult (get m1 i y) (get m2 y k)) 0 n) (get m3 k j)) l1). {
   intros. induction l1. simpl. reflexivity. simpl. 
-  rewrite mx_mult_spec. rewrite IHl1. reflexivity. intros. apply H8. right. assumption.  lia.
-  apply H8. left. reflexivity.  }
+  rewrite mx_mult_spec. rewrite IHl1. reflexivity. apply (all_list _ _ _ H1). assumption.
+  apply (fst_list _ _ _ H1).   }
   (*the same for the other side*)
   assert(forall l1: list Z,
     (forall x, In x l1 -> (0 <= x < n)) ->
-    summation_aux (fun k : Z => mult (get m1 i k) (get (mx_mult m2 m3 n l p) k j)) l1 =
+    summation_aux (fun k : Z => mult (get m1 i k) (get (mx_mult m2 m3 N P) k j)) l1 =
     summation_aux (fun k : Z => mult (get m1 i k) ((summation (fun y => mult (get m2 k y) (get m3 y j)) 0 l))) l1). {
   intros. induction l1. reflexivity. simpl. rewrite mx_mult_spec. rewrite IHl1. reflexivity.
-  intros. apply H9. right. assumption. apply H9. left. reflexivity. lia.  }
-  rewrite H8. rewrite H9. 
+  apply (all_list _ _ _ H2). apply (fst_list _ _ _ H2). assumption.  }
+  rewrite H1. rewrite H2. 
   (*now rewrite the inner sum*)
   assert ((fun k : Z => mult (summation (fun y : Z => mult (get m1 i y) (get m2 y k)) 0 n) (get m3 k j)) =
   (fun k : Z => summation (fun y : Z => mult (mult (get m1 i y) (get m2 y k)) (get m3 k j)) 0 n)). {
   apply functional_extensionality. intros. rewrite summation_scalar_mult. reflexivity. }
-  rewrite H10.
+  rewrite H3.
   assert ((fun k : Z => mult (get m1 i k) (summation (fun y : Z => mult (get m2 k y) (get m3 y j)) 0 l)) =
     (fun k : Z => (summation (fun y : Z => mult (mult (get m1 i k) (get m2 k y)) (get m3 y j)) 0 l))). {
-  apply functional_extensionality. intros.  assert (forall x y, mult x y = mult y x) by (intros; ring).
-  rewrite H11. 
-  rewrite summation_scalar_mult. 
-  f_equal. apply functional_extensionality. intros. ring. } rewrite H11.
+  apply functional_extensionality. intros.  assert (forall x y, mult x y = mult y x) by (intros; ring').
+  rewrite H4. rewrite summation_scalar_mult. 
+  f_equal. apply functional_extensionality. intros. ring'. } rewrite H4.
   unfold summation. rewrite (summation_aux_change_order 
   (fun k y => mult (mult (get m1 i y) (get m2 y k)) (get m3 k j))). reflexivity.
-  intros. rewrite Zseq_In in H10. lia. lia. lia. intros. rewrite Zseq_In in H10.
-  lia. lia. lia.
+  intros. rewrite Zseq_In in H3; lia. intros. rewrite Zseq_In in H3; lia.
 Qed.
 
 End MatrixMult.
-
 
 (*The identity matrix and proofs*)
 Section Identity.
 
 (*The identity matrix*)
-Definition identity (n: Z) : matrix :=
-  mk_matrix n n (fun i j => if Z.eq_dec i j then one else zero).
+Definition identity (n: Z) (N: 0 <= n) : matrix n n :=
+  mk_matrix n n N N (fun i j => if Z.eq_dec i j then one else zero).
 
-Lemma identity_wf: forall n,
-  (0<=n) ->
-  wf_matrix (identity n) n n.
-Proof.
-  intros. unfold identity. apply mk_matrix_wf; assumption. 
-Qed.
-
-Lemma identity_spec: forall n i j,
+Lemma identity_spec: forall n i j (N: 0 <= n),
   (0 <= i < n) ->
   (0 <= j < n) ->
-  get (identity n) i j = if Z.eq_dec i j then one else zero.
+  get (identity n N) i j = if Z.eq_dec i j then one else zero.
 Proof.
   intros. unfold identity. rewrite mk_matrix_spec; try lia.
   reflexivity.
@@ -495,7 +605,7 @@ Proof.
   intros. induction l.
   - reflexivity.
   - simpl. if_tac. exfalso. apply H. left. assumption.
-    rewrite IHl. ring. intuition.
+    rewrite IHl. ring'. intuition.
 Qed.
 
 Lemma summation_identity_notin_l: forall f l j,
@@ -505,7 +615,7 @@ Proof.
   intros. induction l.
   - reflexivity.
   - simpl. if_tac. exfalso. apply H. left. auto. 
-    rewrite IHl. ring. intuition.
+    rewrite IHl. ring'. intuition.
 Qed.
 
 Lemma summation_identity_in_once_r: forall f l j,
@@ -517,9 +627,9 @@ Proof.
   - destruct H as [l1]. destruct H as [l2]. destruct H. destruct H0.
     destruct l1. 
     + inversion H; subst. simpl. if_tac. 2: contradiction.
-      rewrite summation_identity_notin_r. ring. assumption.
+      rewrite summation_identity_notin_r. ring'. assumption.
     + inversion H; subst. simpl. if_tac. exfalso. apply H0. left. assumption.
-      rewrite IHl. ring. exists l1. exists l2. split. reflexivity. split. intuition. assumption.
+      rewrite IHl. ring'. exists l1. exists l2. split. reflexivity. split. intuition. assumption.
 Qed. 
 
 Lemma summation_identity_in_once_l: forall f l j,
@@ -531,11 +641,12 @@ Proof.
   - destruct H as [l1]. destruct H as [l2]. destruct H. destruct H0.
     destruct l1. 
     + inversion H; subst. simpl. if_tac. 2: contradiction.
-      rewrite summation_identity_notin_l. ring. assumption.
+      rewrite summation_identity_notin_l. ring'. assumption.
     + inversion H; subst. simpl. if_tac. exfalso. apply H0. left. auto. 
-      rewrite IHl. ring. exists l1. exists l2. split. reflexivity. split. intuition. assumption.
+      rewrite IHl. ring'. exists l1. exists l2. split. reflexivity. split. intuition. assumption.
 Qed. 
 
+(*TODO move*)
 Lemma Zseq_bounds_split: forall lb len j,
   (0 <= lb) ->
   (0 <= len) ->
@@ -547,40 +658,34 @@ Proof.
 Qed.
 
 (*The most important property of identity matrices*)
-Lemma mx_mult_I_r: forall mx m n,
-  wf_matrix mx m n ->
-  (0<= m) ->
-  (0 <= n) ->
-  mx_mult mx (identity n) m n n = mx.
+Lemma mx_mult_I_r: forall {n m} (mx: matrix m n) (M: 0 <= m) (N: 0 <= n),
+  mx_mult mx (identity n N) M N = mx.
 Proof.
-  intros. rewrite matrix_equiv. 3 : apply H. 2 : { apply mx_mult_wf; assumption. } intros.
+  intros. rewrite matrix_equiv. intros.
   rewrite mx_mult_spec; try lia. unfold summation.
   assert(forall l,
     (forall x, In x l -> (0 <= x < n)) ->
-    summation_aux (fun k : Z => mult (get mx i k) (get (identity n) k j)) l =
+    summation_aux (fun k : Z => mult (get mx i k) (get (identity n N) k j)) l =
     summation_aux (fun k : Z => mult (get mx i k) (if Z.eq_dec k j then one else zero)) l). {
   intros. induction l. reflexivity. simpl. unfold identity at 1. rewrite mk_matrix_spec. rewrite IHl.
-  reflexivity. intros. apply H4. right. assumption. 2 : lia.  apply H4. left. reflexivity. }
-  rewrite H4. rewrite summation_identity_in_once_r. reflexivity.
-  apply Zseq_bounds_split. all: try lia. intros. rewrite Zseq_In in H5; lia.
+  reflexivity. apply (all_list _ _ _ H1). apply (fst_list _ _ _ H1). assumption. }
+  rewrite H1. rewrite summation_identity_in_once_r. reflexivity.
+  apply Zseq_bounds_split. all: try lia. intros. rewrite Zseq_In in H2; lia.
 Qed.
 
-Lemma mx_mult_I_l: forall mx m n,
-  wf_matrix mx m n ->
-  (0 <= m) ->
-  (0 <= n) ->
-  mx_mult (identity m) mx m m n = mx.
+Lemma mx_mult_I_l: forall {m n} (mx: matrix m n) (M: 0 <= m) (N: 0 <= n),
+  mx_mult (identity m M) mx M N = mx.
 Proof.
-  intros. rewrite matrix_equiv. 3: apply H. 2 : apply mx_mult_wf; assumption. intros.
+  intros. rewrite matrix_equiv. intros.
   rewrite mx_mult_spec; try lia. unfold summation.
   assert(forall l,
     (forall x, In x l -> (0 <= x < m)) ->
-    summation_aux (fun k : Z => mult (get (identity m) i k) (get mx k j)) l =
+    summation_aux (fun k : Z => mult (get (identity m M) i k) (get mx k j)) l =
     summation_aux (fun k : Z => mult (if Z.eq_dec i k then one else zero)  (get mx k j)) l). {
   intros. induction l. reflexivity. simpl. unfold identity at 1. rewrite mk_matrix_spec. rewrite IHl.
-  reflexivity. intros. apply H4. right. assumption. assumption. apply H4. left. reflexivity.  }
-  rewrite H4. rewrite summation_identity_in_once_l. reflexivity.
-  apply Zseq_bounds_split; try lia. intros. rewrite Zseq_In in H5; lia.
+  reflexivity. apply (all_list _ _ _ H1). assumption. apply (fst_list _ _ _ H1).  }
+  rewrite H1. rewrite summation_identity_in_once_l. reflexivity.
+  apply Zseq_bounds_split; try lia. intros. rewrite Zseq_In in H2; lia.
 Qed.
 
 End Identity.
@@ -590,72 +695,63 @@ End Identity.
 Section Inverse.
 
 (* (square matrix ) m has left and right inverse m'*)
-Definition inverse (m m' : matrix) n :=
-  mx_mult m m' n n n = identity n /\ mx_mult m' m n n n = identity n.
+Definition inverse {n} (m m' : matrix n n) (N: 0 <= n) :=
+  mx_mult m m' N N = identity n N /\ mx_mult m' m N N = identity n N.
 
-Definition invertible (mx: matrix) n :=
-  exists mx', wf_matrix mx' n n /\ inverse mx mx' n.
+Definition invertible {n} (mx: matrix n n) (N: 0 <= n) :=
+  exists mx', inverse mx mx' N.
 
-Lemma inverse_unique: forall (a b c : matrix) n,
-  wf_matrix a n n ->
-  wf_matrix b n n ->
-  wf_matrix c n n ->  
-  (0<= n) ->
-  inverse a b n ->
-  inverse a c n ->
+Lemma inverse_unique: forall {n} (a b c : matrix n n) (N: 0 <= n),
+  inverse a b N ->
+  inverse a c N ->
   b = c.
 Proof.
-  intros. unfold inverse in *. destruct H3. destruct H4. 
-  pose proof (mx_mult_I_r b _ _ H0 H2 H2). rewrite <- H4 in H7.
-  rewrite <- mx_mult_assoc in H7; try assumption. rewrite H5 in H7. rewrite mx_mult_I_l in H7; try assumption.
+  intros. unfold inverse in *. destruct H. destruct H0. 
+  pose proof (mx_mult_I_r b N N). rewrite <- H0 in H3.
+  rewrite <- (mx_mult_assoc _ _ _ N N N N) in H3. rewrite H1 in H3. rewrite mx_mult_I_l in H3.
   subst. reflexivity.
 Qed.
 
-Lemma identity_inv: forall n,
-  (0<= n) ->
-  inverse (identity n) (identity n) n.
+Lemma identity_inv: forall n (N: 0 <= n),
+  inverse (identity n N) (identity n N) N.
 Proof.
-  intros. unfold inverse. split. all: apply mx_mult_I_r. all: try assumption.
-  all: apply identity_wf; assumption.
+  intros. unfold inverse. split. all: apply mx_mult_I_r. 
 Qed.
 
-Lemma identity_invertible: forall n,
-  (0<= n) ->
-  invertible (identity n) n.
+Lemma identity_invertible: forall n (N: 0 <= n),
+  invertible (identity n N) N.
 Proof.
-  intros. unfold invertible. exists (identity n). split. apply identity_wf. assumption. apply identity_inv. assumption.
+  intros. unfold invertible. exists (identity n N). split. all: apply identity_inv. 
 Qed.
 
 (*(AB)^-1 = B^-1A^-1*)
-Lemma inverse_of_product : forall (a a' b b' : matrix) n,
-  wf_matrix a n n ->
-  wf_matrix b n n ->
-  wf_matrix a' n n ->
-  wf_matrix b' n n ->
-  (0<= n) ->
-  inverse a a' n ->
-  inverse b b' n ->
-  inverse (mx_mult a b n n n) (mx_mult b' a' n n n) n.
+Lemma inverse_of_product : forall {n} (a a' b b' : matrix n n) (N: 0 <= n),
+  inverse a a' N ->
+  inverse b b' N ->
+  inverse (mx_mult a b N N) (mx_mult b' a' N N) N.
 Proof.
-  intros. unfold inverse in *. destruct H4. destruct H5. 
-  split. rewrite <- mx_mult_assoc; try assumption. rewrite (mx_mult_assoc a); try assumption. rewrite H5.
-  rewrite mx_mult_I_r. assumption. all: try assumption.
-  apply mx_mult_wf; assumption.
-  rewrite <- mx_mult_assoc; try assumption. rewrite (mx_mult_assoc b'); try assumption. rewrite H6. 
-  rewrite mx_mult_I_r. assumption. all: try assumption. apply mx_mult_wf; assumption.
+  intros. unfold inverse in *. destruct H. destruct H0. 
+  split. rewrite <- (mx_mult_assoc _ _ _ N N N N). rewrite (mx_mult_assoc a _ _ N N N N). rewrite H0.
+  rewrite mx_mult_I_r. assumption.
+  rewrite <- (mx_mult_assoc _ _ _ N N N N). rewrite (mx_mult_assoc b' _ _ N N N N). rewrite H1. 
+  rewrite mx_mult_I_r. assumption.
 Qed.
 
-Lemma product_invertible: forall a b n,
-  wf_matrix a n n ->
-  wf_matrix b n n ->
-  (0<= n) ->
-  invertible a n ->
-  invertible b n ->
-  invertible (mx_mult a b n n n) n.
+Lemma inverse_sym: forall {n} (a b : matrix n n) (N: 0 <= n),
+  inverse a b N ->
+  inverse b a N.
 Proof.
-  intros. unfold invertible in *. destruct H2 as [a'].
-  destruct H3 as [b']. exists (mx_mult b' a' n n n). split. apply mx_mult_wf; assumption.
-  destruct H2. destruct H3.
+  intros. unfold inverse in *. destruct H. split; assumption.
+Qed.
+
+Lemma product_invertible: forall {n} (a b : matrix n n) (N: 0 <= n),
+  invertible a N ->
+  invertible b N ->
+  invertible (mx_mult a b N N) N.
+Proof.
+  intros. unfold invertible in *. destruct H as [a'].
+  destruct H0 as [b']. exists (mx_mult b' a' N N). split.
+  apply inverse_of_product. all: try(apply inverse_sym; assumption).
   apply inverse_of_product; assumption.
 Qed.
 
@@ -663,61 +759,41 @@ End Inverse.
 
 (*Elementary Matrices*)
 
-(*We require the underlying type to be a field (needed to show existence of inverse for
-  scalar multiplication) *)
-Context {div : A -> A -> A} {inv: A -> A} (Fth: field_theory zero one plus mult sub opp div inv eq).
-
-Add Field fld : Fth.
-
 Lemma inv_nonzero: forall a : A,
   a <> zero ->
   inv a <> zero.
 Proof.
-  intros. intro. assert (mult a (inv a) = one) by (field; assumption). 
-  rewrite H0 in H1. assert (mult a zero = zero) by ring. rewrite H1 in H2.
+  intros. intro. assert (mult a (inv a) = one) by (field'; assumption). 
+  rewrite H0 in H1. assert (mult a zero = zero) by ring'. rewrite H1 in H2.
   pose proof (F_1_neq_0 (Fth)). contradiction. 
 Qed. 
 
 Section ElemMx.
 
 (*1. Row swap matrix - swap rows i and j*)
-Definition row_swap_mx n i j : matrix :=
-  swap_rows (identity n) i j.
-
-Lemma row_swap_mx_wf: forall n i j,
-  (0 <= i < n) ->
-  (0 <= j < n) ->
-  wf_matrix (row_swap_mx n i j) n n.
-Proof.
-  intros. unfold row_swap_mx. apply swap_rows_wf; try lia. apply identity_wf; lia.
-Qed.
+Definition row_swap_mx n i j (N: 0 <= n) (I1 : 0 <= i < n) (J1 : 0 <= j < n) : matrix n n :=
+  swap_rows (identity n N) i j N I1 J1.
 
 (*Prove the row operation [swap_rows] is equivalent to multiplying by elementary matrix*)
-Lemma swap_rows_elem_mx: forall mx m n i j,
-  wf_matrix mx m n ->
-  (0 <= n) ->
-  (0 <= i < m) ->
-  (0 <= j < m) ->
-  swap_rows mx i j = mx_mult (row_swap_mx m i j) mx m m n.
+Lemma swap_rows_elem_mx: forall {m n} (mx: matrix m n) i j (N: 0 <= n) (M: 0 <= m) (I1: 0 <= i < m) (J1 : 0 <= j < m),
+  swap_rows mx i j N I1 J1 = mx_mult (row_swap_mx m i j M I1 J1) mx M N.
 Proof.
-  intros. rewrite matrix_equiv. 2 : { apply swap_rows_wf. 4 : apply H. all: lia. }
-  2 : { apply mx_mult_wf; try assumption. lia. } intros.
-  erewrite swap_rows_spec; try lia. 2 : apply H. all: try lia.
-  rewrite mx_mult_spec; try lia.
+  intros. rewrite matrix_equiv.  intros.
+  rewrite swap_rows_spec; try lia. rewrite mx_mult_spec; try lia.
   unfold row_swap_mx. 
   unfold summation. assert (forall l,
     (forall x, In x l -> (0 <= x<m)) ->
-    summation_aux (fun k : Z => mult (get (swap_rows (identity m) i j) i0 k) (get mx k j0)) l =
+    summation_aux (fun k : Z => mult (get (swap_rows (identity m M) i j M I1 J1) i0 k) (get mx k j0)) l =
     summation_aux (fun k : Z => mult (if Z.eq_dec i0 i 
               then if Z.eq_dec j k then one else zero
             else if Z.eq_dec i0 j
               then if Z.eq_dec i k then one else zero
             else if Z.eq_dec i0 k then one else zero) (get mx k j0)) l). {
     intros. induction l. reflexivity.
-    simpl. erewrite swap_rows_spec. 2 : apply identity_wf. rewrite? identity_spec. rewrite IHl. reflexivity.
-    intros. apply H5. right. assumption.
-    all: try lia. all: apply H5; left; reflexivity. } rewrite H5. clear H5.
-    2 : { intros. rewrite Zseq_In in H6; lia. }
+    simpl. rewrite swap_rows_spec. rewrite? identity_spec. rewrite IHl. reflexivity.
+    apply (all_list _ _ _ H1). all: try assumption.
+    all: apply (fst_list _ _ _ H1). } rewrite H1. clear H1.
+    2 : { intros. rewrite Zseq_In in H2; lia. }
   if_tac.
   - subst. rewrite summation_identity_in_once_l. reflexivity.
     apply Zseq_bounds_split; lia.
@@ -726,108 +802,76 @@ Proof.
     + rewrite summation_identity_in_once_l. reflexivity. apply Zseq_bounds_split; lia.
 Qed.
 
-Lemma swap_sym: forall mx m n i j,
-  wf_matrix mx m n ->
-  (0<= n) ->
-  (0 <= i < m) ->
-  (0 <= j < m) ->
-  swap_rows mx i j = swap_rows mx j i.
+Lemma swap_sym: forall {m n} (mx: matrix m n) i j (N: 0 <= n) (I1: 0 <= i < m) (J1: 0 <= j < m),
+  swap_rows mx i j N I1 J1 = swap_rows mx j i N J1 I1.
 Proof.
-  intros. rewrite matrix_equiv. 2 : apply swap_rows_wf. 5 : apply H. all: try lia.
-  2 : apply swap_rows_wf; try assumption. intros.
-  erewrite swap_rows_spec. 2 : apply H. all: try assumption.
-  erewrite swap_rows_spec. 2 : apply H. all: try assumption.
+  intros. rewrite matrix_equiv. intros.
+  repeat(rewrite swap_rows_spec; try assumption). 
   if_tac. subst.  if_tac; subst; try reflexivity.
   reflexivity.
 Qed. 
 
-Lemma swap_twice: forall (mx: matrix) m n r1 r2,
-  wf_matrix mx m n ->
-  (0 <= n) ->
-  (0 <= r1 < m) ->
-  (0 <= r2 < m) ->
-  swap_rows (swap_rows mx r1 r2) r2 r1 = mx.
+Lemma swap_twice: forall {m n} (mx: matrix m n) r1 r2 (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
+  swap_rows (swap_rows mx r1 r2 N R1 R2) r2 r1 N R2 R1 = mx.
 Proof.
-  intros. rewrite matrix_equiv. 3 : apply H. 2 : apply swap_rows_wf; try assumption.
-  2 : apply swap_rows_wf; assumption. intros.
-  rewrite? (swap_rows_spec _ m n); try lia. all: try apply H. if_tac.
-  - subst. if_tac. reflexivity. contradiction. 
-  - if_tac. subst. if_tac. subst. contradiction. if_tac. reflexivity. contradiction. reflexivity.
-  - apply swap_rows_wf; assumption.
+  intros. rewrite matrix_equiv.  intros.
+  repeat(rewrite swap_rows_spec; try assumption).
+  repeat(if_tac; subst; try reflexivity; try contradiction).
 Qed. 
 
 (*The swap matrix is invertible, and, moreover, it is its own inverse*)
-Lemma row_swap_mx_inv: forall n i j,
-  (0 <= i < n) ->
-  (0 <= j < n) ->
-  inverse (row_swap_mx n i j) (row_swap_mx n i j) n.
+Lemma row_swap_mx_inv: forall n i j (N: 0 <= n) (I1 : 0 <= i < n) (J1: 0 <= j < n),
+  inverse (row_swap_mx n i j N I1 J1) (row_swap_mx n i j N I1 J1) N.
 Proof.
   intros. unfold inverse. rewrite <- swap_rows_elem_mx.
-  unfold row_swap_mx. rewrite (swap_sym _ n n). split; apply (swap_twice _ n n). all: try lia.
-  all: try (apply identity_wf; lia). apply swap_rows_wf; try assumption.
-  lia. apply identity_wf; lia. apply row_swap_mx_wf; lia.
-Qed.
+  unfold row_swap_mx. rewrite swap_sym. split; apply (swap_twice).
+Qed. 
 
 (*2. scalar multiplication*)
-Definition scalar_mult_mx n i k :=
-  scalar_mul_row (identity n) i k.
-
-Lemma scalar_mult_mx_wf: forall n i k,
-  (0 <=n) ->
-  wf_matrix (scalar_mult_mx n i k) n n.
-Proof.
-  intros. unfold scalar_mult_mx. apply scalar_mul_row_wf; try assumption.
-  apply identity_wf; assumption.
-Qed.
+Definition scalar_mult_mx n i k (N: 0 <= n) :=
+  scalar_mul_row (identity n N) i k N N.
 
 (*equivalence between row operation and multiplication by elementary matrix*)
-Lemma scalar_mult_elem: forall (mx: matrix) m n i k,
-  wf_matrix mx m n ->
-  (0 <= n) ->
+Lemma scalar_mult_elem: forall {m n} (mx: matrix m n) i k (N: 0 <= n) (M: 0 <= m),
   (0 <= i < m) ->
-  scalar_mul_row mx i k = mx_mult (scalar_mult_mx m i k) mx m m n.
+  scalar_mul_row mx i k M N = mx_mult (scalar_mult_mx m i k M) mx M N .
 Proof.
-  intros. rewrite (matrix_equiv _ _ m n). 2 : apply scalar_mul_row_wf; try lia; assumption.
-  2 : apply mx_mult_wf; lia. intros. rewrite (scalar_mul_row_spec _ m n); try lia.
+  intros. rewrite (matrix_equiv). intros. rewrite scalar_mul_row_spec; try assumption.
   rewrite (mx_mult_spec); try lia. unfold scalar_mult_mx. unfold summation.
   assert (forall l,
     (forall x, In x l -> (0 <= x < m)) ->
-    summation_aux (fun y : Z => mult (get (scalar_mul_row (identity m) i k) i0 y) (get mx y j)) l =
+    summation_aux (fun y : Z => mult (get (scalar_mul_row (identity m M) i k M M) i0 y) (get mx y j)) l =
     summation_aux (fun y : Z => mult (if Z.eq_dec i0 i then if Z.eq_dec y i then k else zero
                                             else if Z.eq_dec i0 y then one else zero) (get mx y j)) l). {
   intros. induction l. reflexivity.
-  simpl. rewrite (scalar_mul_row_spec _ m m). rewrite identity_spec. rewrite IHl. f_equal.
-  if_tac. subst. if_tac. subst. if_tac. ring. contradiction. if_tac. subst. contradiction.
-  ring. reflexivity. intros. apply H4. right. assumption. all: try lia. 2 : apply identity_wf; lia.
-  all: apply H4; left; reflexivity. } rewrite H4. clear H4.
+  simpl. rewrite scalar_mul_row_spec. rewrite identity_spec. rewrite IHl. f_equal.
+  repeat(if_tac; subst; try (ring'); try(contradiction); try(reflexivity)).
+  apply (all_list _ _ _ H2). all: try assumption. all: apply (fst_list _ _ _ H2). }
+  rewrite H2. clear H2.
   if_tac.
   - subst. assert ((fun y : Z => mult (if Z.eq_dec y i then k else zero) (get mx y j)) =
     (fun y : Z => mult (mult (if Z.eq_dec i y then one else zero) (get mx y j)) k)). {
-   apply functional_extensionality. intros. if_tac; try(if_tac); try(subst; contradiction); ring.  } 
-   rewrite H4. clear H4.
+   apply functional_extensionality. intros. if_tac; try(if_tac); try(subst; contradiction); ring'.  } 
+   rewrite H2. clear H2.
    rewrite <- summation_aux_scalar_mult. 
-   rewrite summation_identity_in_once_l. ring. apply Zseq_bounds_split; lia.
+   rewrite summation_identity_in_once_l. ring'. apply Zseq_bounds_split; lia.
   - rewrite summation_identity_in_once_l. reflexivity. apply Zseq_bounds_split; lia.
-  - intros. rewrite Zseq_In in H5; lia.
-  - assumption.
+  - intros. rewrite Zseq_In in H3; lia.
 Qed.
 
 (*inverse of scalar mult matrix is just scalar mult matrix for 1/c*)
-Lemma scalar_mult_inv: forall n i c,
+Lemma scalar_mult_inv: forall n i c (N: 0 <= n),
   (0 <= i < n) ->
   (c <> zero) ->
-  inverse (scalar_mult_mx n i c) (scalar_mult_mx n i (inv c)) n.
+  inverse (scalar_mult_mx n i c N) (scalar_mult_mx n i (inv c) N) N.
 Proof.
   intros. unfold inverse.
   assert (forall x, x <> zero ->
-  mx_mult (scalar_mult_mx n i x) (scalar_mult_mx n i (inv x)) n n n = identity n). { intros.
-  rewrite <- scalar_mult_elem. unfold scalar_mult_mx. rewrite (matrix_equiv _ _ n n).
-  intros. rewrite (scalar_mul_row_spec _ n n); try lia. rewrite (scalar_mul_row_spec _ n n); try lia.
-  if_tac. subst. field. assumption. reflexivity. 2 : apply scalar_mul_row_wf; try lia.
-  all: try (apply identity_wf; lia). apply scalar_mul_row_wf; try lia. apply scalar_mul_row_wf; try lia.
-  apply identity_wf; try lia. apply scalar_mult_mx_wf; lia. all: lia. }
-  split. rewrite H1. reflexivity. assumption.
-  assert (c = inv (inv c)). field. split. assumption. apply (F_1_neq_0 (Fth)).
+  mx_mult (scalar_mult_mx n i x N) (scalar_mult_mx n i (inv x) N) N N = identity n N). { intros.
+  rewrite <- scalar_mult_elem. unfold scalar_mult_mx. rewrite matrix_equiv.
+  intros. rewrite scalar_mul_row_spec; try assumption. 2: assumption. rewrite scalar_mul_row_spec; try assumption.
+  if_tac. subst. field'. assumption. reflexivity. }
+  split. apply H1. assumption. assert (c = inv (inv c)). field'. split. assumption. apply (F_1_neq_0 (Fth)).
   rewrite H2 at 2. apply H1. apply inv_nonzero. assumption.
 Qed.
 
@@ -836,36 +880,23 @@ Qed.
 (*this one is harder, since in the multiplication we have exactly 2 nonzero entries, so we need lemmas
   to reason about this*)
 
-Definition add_multiple_mx n r1 r2 c :=
-  add_multiple (identity n) r1 r2 c.
+Definition add_multiple_mx n r1 r2 c (N: 0 <= n) (R1: 0 <= r1 < n) (R2: 0 <= r2 < n) :=
+  add_multiple (identity n N) r1 r2 c N R1 R2.
 
-Lemma add_multiple_mx_wf: forall n r1 r2 c,
-  (0 <= r1 < n) ->
-  (0 <= r2 < n) ->
-  wf_matrix (add_multiple_mx n r1 r2 c) n n.
-Proof.
-  intros. unfold add_multiple_mx. apply add_multiple_wf; try lia.
-  apply identity_wf; lia.
-Qed.
-
-Lemma add_multiple_mx_spec: forall n r1 r2 c i j,
-  (0 <= r1 < n) ->
-  (0 <= r2 < n) ->
+Lemma add_multiple_mx_spec: forall n r1 r2 c i j (N: 0 <= n) (R1: 0 <= r1 < n) (R2: 0 <= r2 < n),
   (0 <= i < n) ->
   (0 <= j < n) ->
   r1 <> r2 ->
-  get (add_multiple_mx n r1 r2 c) i j =
+  get (add_multiple_mx n r1 r2 c N R1 R2) i j =
                             if Z.eq_dec i r2 then
                                if Z.eq_dec j r1 then c
                                else (if Z.eq_dec i j then one else zero)
                             else (if Z.eq_dec i j then one else zero).
 Proof.
-  intros. unfold add_multiple_mx. rewrite (add_multiple_spec _ n n); try lia.
+  intros. unfold add_multiple_mx. rewrite add_multiple_spec; try assumption.
   rewrite? identity_spec; try lia.
-  repeat(if_tac; subst; try contradiction; try ring).
-  apply identity_wf; lia.
+  repeat(if_tac; subst; try contradiction; try ring').
 Qed.
-
 
 Lemma summation_twice_notin_l: forall f l r1 r2 c1 c2,
   ~In r1 l ->
@@ -878,13 +909,12 @@ Proof.
   - reflexivity.
   - simpl. if_tac. subst. exfalso. apply H. left. reflexivity.
     if_tac. exfalso. apply H0. subst. left. reflexivity.
-    rewrite IHl. ring. all: intuition.
+    rewrite IHl. ring'. all: intuition.
 Qed.
 
 (*how matrix multiplication works when we have exactly 2 nonzero entries*)
 Lemma two_nonzero_entries_mult:
-forall (mx: matrix) m n r1 r2 (c1 c2: A) j l,
-  wf_matrix mx m n ->
+forall {m n} (mx: matrix m n) r1 r2 (c1 c2: A) j l,
   (0 <= m) ->
   In r1 l ->
   In r2 l ->
@@ -897,68 +927,58 @@ forall (mx: matrix) m n r1 r2 (c1 c2: A) j l,
    mult (if Z.eq_dec k r1 then c1 else if Z.eq_dec r2 k then c2 else zero) (get mx k j)) l =
   plus (mult c1 (get mx r1 j)) (mult c2 (get mx r2 j)). 
 Proof.
-  intros. pose proof (NoDup_split_twice _ _ _ H1 H2 H4 H3). destruct H7.
-  - destruct H7 as [l1]. destruct H7 as [l2]. destruct H7 as [l3].
-    destruct H7 as [? D]. repeat(destruct D as [? D]).
-    rewrite H7. rewrite summation_aux_app. rewrite summation_twice_notin_l; try assumption.
+  intros. pose proof (NoDup_split_twice _ _ _ H0 H1 H3 H2). destruct H6.
+  - destruct H6 as [l1]. destruct H6 as [l2]. destruct H6 as [l3].
+    destruct H6 as [? D]. repeat(destruct D as [? D]).
+    rewrite H6. rewrite summation_aux_app. rewrite summation_twice_notin_l; try assumption.
     simpl. rewrite summation_aux_app. rewrite summation_twice_notin_l; try assumption.
     simpl. rewrite summation_twice_notin_l; try assumption. if_tac. 2 : contradiction.
-    if_tac. subst. contradiction. if_tac. 2 : contradiction. ring.
-  - destruct H7 as [l1]. destruct H7 as [l2]. destruct H7 as [l3].
-    destruct H7 as [? D]. repeat(destruct D as [? D]).
-    rewrite H7. rewrite summation_aux_app. rewrite summation_twice_notin_l; try assumption.
+    if_tac. subst. contradiction. if_tac. 2 : contradiction. ring'.
+  - destruct H6 as [l1]. destruct H6 as [l2]. destruct H6 as [l3].
+    destruct H6 as [? D]. repeat(destruct D as [? D]).
+    rewrite H6. rewrite summation_aux_app. rewrite summation_twice_notin_l; try assumption.
     simpl. rewrite summation_aux_app. rewrite summation_twice_notin_l; try assumption.
     simpl. rewrite summation_twice_notin_l; try assumption. if_tac. subst. contradiction.
-    if_tac. 2 : contradiction. if_tac. 2 : contradiction. ring.
+    if_tac. 2 : contradiction. if_tac. 2 : contradiction. ring'.
 Qed.
 
 (*finally, we have the row operation - multiplication equivalence*)
-Lemma add_multiple_elem: forall mx m n r1 r2 c,
-  wf_matrix mx m n ->
+Lemma add_multiple_elem: forall {m n} (mx : matrix m n) r1 r2 c (N: 0 <= n) (M: 0 <= m) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
   (0 <= n) ->
-  (0 <= r1 < m) ->
-  (0 <= r2 < m) ->
   r1 <> r2 ->
-  add_multiple mx r1 r2 c = mx_mult (add_multiple_mx m r1 r2 c) mx m m n.
+  add_multiple mx r1 r2 c N R1 R2 = mx_mult (add_multiple_mx m r1 r2 c M R1 R2) mx M N.
 Proof.
-  intros. rewrite (matrix_equiv _ _ m n). intros. 2 : apply add_multiple_wf; try lia; try assumption.
-  2 : apply mx_mult_wf; lia.
-  (*rewrite add_multiple_mx_spec; try lia.
-  unfold add_multiple_mx. *)
-  rewrite (add_multiple_spec _ m n); try lia. 2 : assumption.
-  rewrite mx_mult_spec; try lia.
+  intros. rewrite matrix_equiv. intros.
+  rewrite add_multiple_spec; try assumption. rewrite mx_mult_spec; try lia.
   unfold summation.
   assert (forall l, (forall x, In x l -> (0 <= x < m)) ->
-    summation_aux (fun k : Z => mult (get (add_multiple_mx m r1 r2 c) i k) (get mx k j)) l =
+    summation_aux (fun k : Z => mult (get (add_multiple_mx m r1 r2 c M R1 R2) i k) (get mx k j)) l =
     summation_aux
   (fun k : Z =>
    mult   (if Z.eq_dec i r2
             then if Z.eq_dec k r1 then c else if Z.eq_dec i k then one else zero
             else if Z.eq_dec i k then one else zero) (get mx k j)) l). { intros.
-  induction l. reflexivity. simpl. rewrite IHl. rewrite add_multiple_mx_spec; try lia. reflexivity. 
-  apply H6; left; reflexivity. intros. apply H6; right; assumption. } rewrite H6. clear H6.
-  2 : { intros. rewrite Zseq_In in H7; lia. } if_tac.
-  - subst. rewrite (two_nonzero_entries_mult _ m n). ring. all: try assumption.
-    all: try lia. all: try(rewrite Zseq_In; lia). apply Zseq_NoDup; lia. intros.
-    rewrite Zseq_In in H6; lia.
+  induction l. reflexivity. simpl. rewrite IHl. rewrite add_multiple_mx_spec; try lia. reflexivity.
+  apply (fst_list _ _ _ H3). apply (all_list _ _ _ H3). } rewrite H3. clear H3.
+  2 : { intros. rewrite Zseq_In in H4; lia. } if_tac.
+  - subst. rewrite two_nonzero_entries_mult. ring'. all: try assumption.
+    all: try(rewrite Zseq_In; lia). apply Zseq_NoDup; lia. intros.
+    rewrite Zseq_In in H3; lia.
   - rewrite summation_identity_in_once_l. reflexivity. apply Zseq_bounds_split; lia.
 Qed.
 
 (*Inverse of add multiple mx is just add multiple mx with -c *)
-Lemma add_multiple_inv: forall n r1 r2 c,
-  (0 <= r1 < n) ->
-  (0 <= r2 < n) ->
+Lemma add_multiple_inv: forall n r1 r2 c (N: 0 <= n) (R1: 0 <= r1 < n) (R2: 0 <= r2 < n),
   (r1 <> r2) ->
-  inverse (add_multiple_mx n r1 r2 c) (add_multiple_mx n r1 r2 (opp c)) n.
+  inverse (add_multiple_mx n r1 r2 c N R1 R2) (add_multiple_mx n r1 r2 (opp c) N R1 R2) N.
 Proof.
   intros. unfold inverse. assert (forall x, 
-    mx_mult (add_multiple_mx n r1 r2 x) (add_multiple_mx n r1 r2 (opp x)) n n n = identity n). {
-  intros. rewrite <- add_multiple_elem; try lia. rewrite (matrix_equiv _ _ n n). intros.
-  rewrite (add_multiple_spec _ n n); try lia. repeat(rewrite add_multiple_mx_spec; try lia). 
+    mx_mult (add_multiple_mx n r1 r2 x N R1 R2) (add_multiple_mx n r1 r2 (opp x) N R1 R2) N N = identity n N). {
+  intros. rewrite <- add_multiple_elem; try lia. rewrite matrix_equiv. intros.
+  rewrite add_multiple_spec; try lia. repeat(rewrite add_multiple_mx_spec; try lia). 
   rewrite identity_spec; try lia.
-  repeat(if_tac; subst; try(contradiction); try(ring)). 
-  2: apply add_multiple_wf; try lia. 3 : apply identity_wf; lia. all: apply add_multiple_mx_wf; try lia. } 
-  split. apply H2. replace c with (opp (opp c)) at 2 by ring. apply H2.
+  repeat(if_tac; subst; try(contradiction); try(ring')). } 
+  split. apply H0. replace c with (opp (opp c)) at 2 by ring'. apply H0.
 Qed.
 
 End ElemMx.
@@ -967,106 +987,78 @@ End ElemMx.
 Section ERO.
 
 Variable m : Z. 
+Variable M : 0 <= m.
 
-Inductive elem_matrix: (matrix) -> Prop :=
-  | e_swap: forall i j,
-    (0 <= i<m) ->
-    (0 <= j<m) ->
-    elem_matrix (row_swap_mx m i j)
+Inductive elem_matrix: matrix m m -> Prop :=
+  | e_swap: forall i j (I1: 0 <= i < m) (J1: 0 <= j < m),
+    elem_matrix (row_swap_mx m i j M I1 J1)
   | e_scalar: forall i c,
-    (0 <= i<m) ->
+    0 <= i < m ->
     c <> zero ->
-    elem_matrix (scalar_mult_mx m i c)
-  | e_add_multiple: forall i j c,
-    (0 <= i<m) ->
-    (0 <= j<m) ->
+    elem_matrix (scalar_mult_mx m i c M)
+  | e_add_multiple: forall i j c (I1: 0 <= i < m) (J1: 0 <= j < m),
     i <> j -> (*this is invalid or just scalar mult anyway*)
-    elem_matrix (add_multiple_mx m i j c).
-
-Lemma elem_matrix_wf: forall mx,
-  elem_matrix mx -> wf_matrix mx m m.
-Proof.
-  intros. inversion H; subst.
-  - apply row_swap_mx_wf; lia.
-  - apply scalar_mult_mx_wf; lia.
-  - apply add_multiple_mx_wf; lia.
-Qed.
+    elem_matrix (add_multiple_mx m i j c M I1 J1).
 
 Lemma elem_matrix_invertible: forall mx,
-  elem_matrix mx -> invertible mx m.
+  elem_matrix mx -> invertible mx M.
 Proof.
   intros. unfold invertible. inversion H.
-  - exists (row_swap_mx m i j). split. apply row_swap_mx_wf; lia. apply row_swap_mx_inv; assumption.
-  - exists (scalar_mult_mx m i (inv c)). split. apply scalar_mult_mx_wf; lia.  apply scalar_mult_inv; assumption.
-  - exists (add_multiple_mx m i j (opp c)). split. apply add_multiple_mx_wf; lia. apply add_multiple_inv; try assumption.
+  - exists (row_swap_mx m i j M I1 J1). apply row_swap_mx_inv; assumption.
+  - exists (scalar_mult_mx m i (inv c) M). apply scalar_mult_inv; assumption.
+  - exists (add_multiple_mx m i j (opp c) M I1 J1). apply add_multiple_inv; try assumption.
 Qed.
 
 Lemma elem_matrix_inverse_elementary: forall mx mx',
   elem_matrix mx ->
-  wf_matrix mx' m m ->
-  inverse mx mx' m ->
+  inverse mx mx' M ->
   elem_matrix mx'.
 Proof.
   intros. inversion H; subst.
-  - pose proof (row_swap_mx_inv m i j H2 H3).
-    assert (mx' = row_swap_mx m i j). eapply inverse_unique. 5: apply H1. apply row_swap_mx_wf; lia.
-    assumption. apply row_swap_mx_wf; lia. lia. assumption.
-    subst. constructor; assumption.
-  - pose proof (scalar_mult_inv m i c H2 H3).
-    assert (mx' = (scalar_mult_mx m i (inv c))). eapply inverse_unique. 6 : apply H4.
-    apply scalar_mult_mx_wf; lia. assumption. apply scalar_mult_mx_wf; lia. lia. assumption.
-    subst. constructor. lia. apply inv_nonzero. assumption. 
-  - pose proof (add_multiple_inv m i j c H2 H3 H4). 
-    assert (mx' = (add_multiple_mx m i j (opp c))). eapply inverse_unique. 6 : apply H5.
-    all: try (apply add_multiple_mx_wf; lia). assumption. lia. assumption. subst. constructor; assumption.
+  - pose proof (row_swap_mx_inv m i j M I1 J1).
+    assert (mx' = row_swap_mx m i j M I1 J1). eapply inverse_unique. 2 : apply H1. assumption.
+    subst. assumption.
+  - pose proof (scalar_mult_inv m i c M H1 H2).
+    assert (mx' = (scalar_mult_mx m i (inv c) M)). eapply inverse_unique. 2 : apply H3. assumption.
+    subst. constructor. assumption. apply inv_nonzero; assumption.
+  - pose proof (add_multiple_inv m i j c M I1 J1 H1). 
+    assert (mx' = (add_multiple_mx m i j (opp c) M I1 J1)). eapply inverse_unique. 2 : apply H2.
+    assumption. subst. constructor. assumption.
 Qed. 
 
 (*A product of elementary matrices*)
-Inductive elem_product: matrix -> Prop :=
-  | p_id: elem_product (identity m)
+Inductive elem_product: (matrix m m) -> Prop :=
+  | p_id: elem_product (identity m M)
   | p_multiple: forall m1 mx,
       elem_product m1 ->
       elem_matrix mx ->
-      elem_product (mx_mult mx m1 m m m).
-
-Variable Mnonneg: 0 <= m.
-
-Lemma elem_product_wf: forall mx,
-  elem_product mx ->
-  wf_matrix mx m m.
-Proof.
-  intros. inversion H.
-  - apply identity_wf; lia.
-  - apply mx_mult_wf; lia.
-Qed.
+      elem_product (mx_mult mx m1 M M).
 
 Lemma elem_mx_product: forall mx,
   elem_matrix mx ->
   elem_product mx.
 Proof.
-  intros. rewrite <- (mx_mult_I_r _ m m). eapply p_multiple. constructor. assumption.
-  apply elem_matrix_wf. all: assumption. 
+  intros. rewrite <- (mx_mult_I_r mx M M). eapply p_multiple. constructor. assumption.
 Qed.
 
 Lemma elem_product_trans: forall m1 m2,
   elem_product m1 ->
   elem_product m2 ->
-  elem_product (mx_mult m1 m2 m m m).
+  elem_product (mx_mult m1 m2 M M).
 Proof.
   intros. induction H.
-  - rewrite mx_mult_I_l. assumption. apply elem_product_wf. all: assumption.
-  - rewrite mx_mult_assoc; try assumption. apply p_multiple. apply IHelem_product. assumption.
-    apply elem_matrix_wf; assumption. all: apply elem_product_wf; assumption.
+  - rewrite mx_mult_I_l. assumption.
+  - rewrite (mx_mult_assoc _ _ _ M M M M); try assumption. apply p_multiple. apply IHelem_product.
+    assumption.
 Qed.
 
 (*The other direction is true, but much harder*)
 Lemma elem_product_invertible: forall mx,
-  elem_product mx -> invertible mx m.
+  elem_product mx -> invertible mx M.
 Proof.
   intros. induction H.
-  - apply identity_invertible. assumption.
-  - apply product_invertible. apply elem_matrix_wf; assumption.
-    apply elem_product_wf; assumption. assumption. apply elem_matrix_invertible. all: assumption.
+  - apply identity_invertible.
+  - apply product_invertible. apply elem_matrix_invertible. all: assumption.
 Qed.
 
 (*TODO: see*)
@@ -1083,26 +1075,22 @@ Proof.
 
 (** Elemetary Row Operations *)
 Variable n : Z.
-Variable Nnonneg: (0<= n).
+Variable N: (0<= n).
 
-Inductive ERO : matrix -> matrix -> Prop :=
-  | ero_swap: forall mx r1 r2,
-    (0 <= r1 < m) ->
-    (0 <= r2 < m) ->
-    ERO mx (swap_rows mx r1 r2)
+Inductive ERO : (matrix m n) -> (matrix m n) -> Prop :=
+  | ero_swap: forall mx r1 r2 (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
+    ERO mx (swap_rows mx r1 r2 N R1 R2)
   | ero_scalar: forall mx i c,
     (0 <= i < m) ->
     c <> zero ->
-    ERO mx (scalar_mul_row mx i c)
-  | ero_add: forall mx r1 r2 c,
-    (0 <= r1 < m) ->
-    (0 <= r2 < m) ->
+    ERO mx (scalar_mul_row mx i c M N)
+  | ero_add: forall mx r1 r2 c (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
     r1 <> r2 ->
-    ERO mx (add_multiple mx r1 r2 c).
+    ERO mx (add_multiple mx r1 r2 c N R1 R2).
 
 
 (*two matrices are row equivalent if one can be transformed to another via a sequence of EROs*)
-Inductive row_equivalent: matrix -> matrix -> Prop :=
+Inductive row_equivalent: (matrix m n) -> (matrix m n) -> Prop :=
   | row_same: forall mx,
     row_equivalent mx mx
   | row_ero: forall mx mx' mx'',
@@ -1110,14 +1098,6 @@ Inductive row_equivalent: matrix -> matrix -> Prop :=
     row_equivalent mx' mx'' ->
     row_equivalent mx mx''.
 
-(*
-Lemma row_equivalent_refl: forall m1 m2,
-  m1 = m2 ->
-  row_equivalent m1 m2.
-Proof.
-  intros. subst. apply row_same.
-Qed.
-*)
 Lemma row_equivalent_trans: forall m1 m2 m3,
   row_equivalent m1 m2 ->
   row_equivalent m2 m3 ->
@@ -1135,117 +1115,80 @@ Proof.
   intros. eapply row_ero. apply H. apply row_same.
 Qed.
 
-Lemma ERO_wf: forall m1 m2,
-  wf_matrix m1 m n ->
-  ERO m1 m2 ->
-  wf_matrix m2 m n.
-Proof.
-  intros. inversion H0; subst.
-  - apply swap_rows_wf; try lia. assumption.
-  - apply scalar_mul_row_wf; try lia. assumption.
-  - apply add_multiple_wf; try lia. assumption.
-Qed.
-
-Lemma row_equivalent_wf: forall m1 m2,
-  wf_matrix m1 m n ->
-  row_equivalent m1 m2 ->
-  wf_matrix m2 m n.
-Proof.
-  intros. induction H0.
-  - assumption.
-  - apply IHrow_equivalent. apply (ERO_wf _ _ H H0).
-Qed.
-
 (*Equivalence between EROs and multiplication on left by elementary matrices*)
 Lemma ero_elem_mx_iff: forall m1 m2,
-  wf_matrix m1 m n ->
-  wf_matrix m2 m n ->
-  ERO m1 m2 <-> exists e, elem_matrix e /\ m2 = mx_mult e m1 m m n.
+  ERO m1 m2 <-> exists e, elem_matrix e /\ m2 = mx_mult e m1 M N.
 Proof.
   intros. split; intros.
-  - inversion H1; subst.
-    + exists (row_swap_mx m r1 r2). split. constructor; assumption.
+  - inversion H; subst.
+    + exists (row_swap_mx m r1 r2 M R1 R2). split. constructor; assumption.
       apply swap_rows_elem_mx; assumption.
-    + exists (scalar_mult_mx m i c). split. constructor; assumption.
+    + exists (scalar_mult_mx m i c M). split. constructor; assumption.
       apply scalar_mult_elem; assumption.
-    + exists (add_multiple_mx m r1 r2 c). split. constructor; assumption.
+    + exists (add_multiple_mx m r1 r2 c M R1 R2). split. constructor; assumption.
       apply (add_multiple_elem); assumption.
-  - destruct H1 as [e]. destruct H1. inversion H1; subst.
+  - destruct H as [e]. destruct H. inversion H; subst.
     + rewrite <- swap_rows_elem_mx. constructor. all: assumption.
     + rewrite <- scalar_mult_elem. constructor. all: assumption.
     + rewrite <- add_multiple_elem. constructor. all: assumption.
 Qed.
 
 Lemma row_equiv_elem_product_iff: forall m1 m2,
-  wf_matrix m1 m n ->
-  wf_matrix m2 m n ->
-  row_equivalent m1 m2 <-> exists e, elem_product e /\ m2 = mx_mult e m1 m m n.
+  row_equivalent m1 m2 <-> exists e, elem_product e /\ m2 = mx_mult e m1 M N.
 Proof.
   intros. split; intros.
-  - induction H1.
-    + exists (identity m). split. constructor.
-      rewrite mx_mult_I_l. reflexivity. all: assumption.
-    + assert (wf_matrix mx' m n). eapply ERO_wf. apply H. apply H1.
-      specialize (IHrow_equivalent H3 H0). clear H3.  destruct IHrow_equivalent. destruct H3.
-      rewrite ero_elem_mx_iff in H1. destruct H1 as [e]. destruct H1. subst.
-      exists (mx_mult x e m m m). split. apply elem_product_trans. apply H3.
-      apply elem_mx_product. assumption. rewrite mx_mult_assoc. reflexivity. all: try assumption.
-      apply elem_product_wf; assumption. apply elem_matrix_wf; assumption.
-      eapply ERO_wf. apply H. apply H1.
-  - destruct H1 as [e]. destruct H1. generalize dependent m2. generalize dependent m1. induction H1; intros.
-    + rewrite mx_mult_I_l in H2. subst. constructor. all: assumption. 
-    + rewrite mx_mult_assoc in H3. specialize (IHelem_product m0 H0 (mx_mult m1 m0 m m n)).
-      eapply row_equivalent_trans. apply IHelem_product. apply mx_mult_wf; lia. reflexivity.
-      rewrite H3. apply row_equivalent_ero. apply ero_elem_mx_iff. all: try(apply mx_mult_wf; lia).
-      exists mx. split. assumption. reflexivity. all: try assumption.
-      apply elem_matrix_wf; assumption. apply elem_product_wf; assumption.
+  - induction H.
+    + exists (identity m M). split. constructor.
+      rewrite mx_mult_I_l. reflexivity.
+    + destruct IHrow_equivalent. destruct H1.
+      rewrite ero_elem_mx_iff in H. destruct H as [e]. destruct H. subst.
+      exists (mx_mult x e M M). split. apply elem_product_trans. assumption.
+      apply elem_mx_product. assumption. erewrite mx_mult_assoc. reflexivity. 
+  - destruct H as [e]. destruct H. generalize dependent m2. generalize dependent m1. induction H; intros.
+    + rewrite mx_mult_I_l in H0. subst. constructor. 
+    + rewrite (mx_mult_assoc _ _ _ M M N) in H1. specialize (IHelem_product m0 (mx_mult m1 m0 M N)).
+      eapply row_equivalent_trans. apply IHelem_product. reflexivity.
+      rewrite H1. apply row_equivalent_ero. apply ero_elem_mx_iff.
+      exists mx. split. assumption. reflexivity.
 Qed.
 
 Lemma ERO_sym: forall m1 m2,
-  wf_matrix m1 m n ->
   ERO m1 m2 ->
   ERO m2 m1.
 Proof.
-  intros. assert (E:= H0). rewrite ero_elem_mx_iff in H0. rewrite ero_elem_mx_iff.
-  destruct H0 as [e]. destruct H0. 
-  pose proof (elem_matrix_invertible e H0). unfold invertible in H2.
-  destruct H2 as [e']. exists e'. split. eapply elem_matrix_inverse_elementary. apply H0.
-  apply H2. apply H2. subst. rewrite <- mx_mult_assoc. unfold inverse in H2. destruct H2.
-  destruct H2. rewrite H3. rewrite mx_mult_I_l. reflexivity. all: try assumption. destruct H2; assumption.
-  apply elem_matrix_wf; assumption. all: eapply ERO_wf; try (apply H); try (apply E).
-Qed.
+  intros. assert (E:= H). rewrite ero_elem_mx_iff in H. rewrite ero_elem_mx_iff.
+  destruct H as [e]. destruct H. 
+  pose proof (elem_matrix_invertible e H). unfold invertible in H1.
+  destruct H1 as [e']. exists e'. split. eapply elem_matrix_inverse_elementary. apply H. assumption.
+  subst. erewrite <- mx_mult_assoc. unfold inverse in H1. destruct H1.
+  rewrite e1. rewrite mx_mult_I_l. reflexivity.
+Qed. 
 
 Lemma row_equivalent_sym: forall m1 m2,
-  wf_matrix m1 m n ->
   row_equivalent m1 m2 ->
   row_equivalent m2 m1.
 Proof.
-  intros. induction H0.
+  intros. induction H.
   - constructor.
-  - eapply row_equivalent_trans. apply IHrow_equivalent. eapply ERO_wf. apply H. assumption.
-    apply row_equivalent_ero. apply ERO_sym. assumption. assumption.
+  - eapply row_equivalent_trans. apply IHrow_equivalent.
+    apply row_equivalent_ero. apply ERO_sym. assumption.
 Qed.
 
 End ERO.
 
 (*A key property of row operations: they preserve invertibility*)
-Lemma row_equiv_invertible_iff: forall m1 m2 m,
-  wf_matrix m1 m m ->
+Lemma row_equiv_invertible_iff: forall {m} (m1 m2 : matrix m m) (M: 0 <= m),
   (0 <= m) ->
-  row_equivalent m m1 m2 ->
-  invertible m1 m <-> invertible m2 m.
+  row_equivalent m M m M m1 m2 ->
+  invertible m1 M <-> invertible m2 M.
 Proof.
   intros. assert (forall a b,
-    wf_matrix a m m ->
-    row_equivalent m a b ->
-    invertible a m -> invertible b m). { intros.
-    rewrite row_equiv_elem_product_iff in H3. 4 : apply H2. destruct H3 as [e]. destruct H3. subst. 
-    apply product_invertible. apply elem_product_wf. lia. all: try assumption.
-    apply elem_product_invertible; assumption. eapply row_equivalent_wf; try lia.
-    apply H2. assumption.  }
-  split; intros. eapply H2. apply H. assumption. assumption. eapply H2. 
-  eapply row_equivalent_wf; try lia. apply H. apply H1. 
-    eapply row_equivalent_sym. 3 : apply H. all: try lia. all: assumption.
+    row_equivalent m M m M a b ->
+    invertible a M -> invertible b M). { intros.
+    rewrite row_equiv_elem_product_iff in H1. destruct H1 as [e]. destruct H1. subst. 
+    apply product_invertible. apply elem_product_invertible; assumption. assumption. }
+  split; intros. eapply H1. apply H0. assumption. eapply H1.
+  apply row_equivalent_sym. apply H0. assumption. 
 Qed.
 
 
