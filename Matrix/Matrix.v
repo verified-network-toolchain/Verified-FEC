@@ -7,6 +7,20 @@ Require Import Field.
 (*since the lemma is super long*)
 Ltac exist_eq := apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat.
 
+Ltac destruct_all :=
+  repeat(match goal with
+  | [H : exists x, _ |- _] => first [destruct H as [?x] | destruct H as [?x'] | destruct H]
+  | [H: ?P /\ ?Q |- _] => destruct H
+  end).
+
+Ltac solve_in :=
+  subst;
+  match goal with
+  | [ H : _ |- In ?x (?y :: ?z)] => simpl; first [ left; subst; auto; reflexivity | right; solve_in ] 
+  | [ H : _ |- In ?x (?l1 ++ ?l2)] => apply in_or_app; first [left; solve_in | right; solve_in]
+  | [ H : _ |- In ?x ?l] => assumption
+  end.
+
 (*pairwise operations over lists - TODO maybe move*)
 Fixpoint combine {X Y Z: Type} (l1 : list X) (l2: list Y) (f: X -> Y -> Z) : list Z :=
   match (l1, l2) with
@@ -304,28 +318,35 @@ Proof.
   - unfold wf_matrix in H. destruct H. rewrite upd_Znth_diff. reflexivity. list_solve. list_solve. assumption.
 Qed.
 
+(*Check for bounds so we don't need to carry around hypotheses everywhere*)
+Lemma zeq_in_dec : forall z1 z2 z3 : Z, {z1 <= z2 < z3} + {~(z1 <= z2 < z3)}.
+Proof.
+  intros. destruct (Z_le_gt_dec z1 z2).
+  destruct (Z_lt_le_dec z2 z3). left. lia. right. lia. right. lia.
+Qed.
+
 (*2. swap rows r1 and r2*)
 Definition swap_rows_aux (mx: matrix_type) (r1 r2 : Z) : matrix_type :=
+  if (zeq_in_dec 0 r1 (Zlength mx)) then if (zeq_in_dec 0 r2 (Zlength mx)) then
   let old1 := Znth r1 mx in
   let old2 := Znth r2 mx in
-  upd_Znth r2 (upd_Znth r1 mx old2) old1.
+  upd_Znth r2 (upd_Znth r1 mx old2) old1 else mx else mx.
 
 Lemma swap_rows_aux_wf: forall mx m n r1 r2,
   (0 <= n) ->
-  (0 <= r1 < m) ->
-  (0 <= r2 < m) ->
   wf_matrix mx m n ->
   wf_matrix (swap_rows_aux mx r1 r2) m n.
 Proof.
-  intros. unfold wf_matrix in *. destruct H2. unfold swap_rows_aux.
+  intros. unfold wf_matrix in *. unfold swap_rows_aux.
+  repeat(if_tac; try assumption). destruct H0.
   split. list_solve. intros.
   rewrite In_Znth_iff in H4. destruct H4 as [i].
   destruct H4.
-  erewrite upd_Znth_lookup' in H5. 4 : apply H1.
+  erewrite upd_Znth_lookup' in H5. 4 : apply H2.
   2 : list_solve. 2 : list_solve. destruct (zeq i r2).
   - subst. apply H3. apply Znth_In. assumption.
-  - erewrite upd_Znth_lookup' in H5. 2 : apply H2.
-    2 : list_solve. 2 : assumption. destruct (zeq i r1).
+  - erewrite upd_Znth_lookup' in H5. 2 : apply H0.
+    2 : list_solve. 2 : list_solve. destruct (zeq i r1).
     + subst. apply H3. apply Znth_In. assumption.
     + subst. apply H3. apply Znth_In. list_solve.
 Qed.
@@ -341,7 +362,8 @@ Lemma swap_rows_aux_spec: forall (mx: matrix_type) m n r1 r2 i j,
     else if (Z.eq_dec i r2) then get_aux mx r1 j
     else get_aux mx i j.
 Proof.
-  intros. unfold wf_matrix in H. destruct H. unfold swap_rows_aux. unfold get_aux. destruct (Z.eq_dec i r2).
+  intros. unfold wf_matrix in H. destruct H. unfold swap_rows_aux. if_tac. if_tac. 2 : list_solve.
+  2: list_solve. unfold get_aux. destruct (Z.eq_dec i r2).
   - subst. rewrite upd_Znth_same.  2: list_solve. if_tac. subst. reflexivity. reflexivity.
   - rewrite upd_Znth_diff. 2 : list_solve. 2 : list_solve. 2 : assumption.
     destruct (Z.eq_dec i r1).
@@ -349,18 +371,20 @@ Proof.
     + list_solve.
 Qed.
 
+
 (*3. row r2 = row r2 + k * row r1*)
 Definition add_multiple_aux (mx: matrix_type) (r1 r2 : Z) (k : A) : matrix_type :=
-  upd_Znth r2 mx (combine (Znth r2 mx) (Znth r1 mx) (fun x y => plus x (mult k y))).
+  if (zeq_in_dec 0 r1 (Zlength mx)) then if (zeq_in_dec 0 r2 (Zlength mx)) then
+  upd_Znth r2 mx (combine (Znth r2 mx) (Znth r1 mx) (fun x y => plus x (mult k y)))
+  else mx else mx.
 
 Lemma add_multiple_aux_wf: forall mx m n r1 r2 k,
   wf_matrix mx m n ->
   (0 <= n) ->
-  (0 <= r1 < m) ->
-  (0 <= r2 < m) ->
   wf_matrix (add_multiple_aux mx r1 r2 k) m n.
 Proof.
   intros. unfold wf_matrix in *. unfold add_multiple_aux.
+  if_tac. if_tac. all: try assumption.
   split. list_solve. intros. rewrite In_Znth_iff in H3. destruct H3 as [i].
   destruct H3. destruct (Z.eq_dec i r2).
   - subst. rewrite upd_Znth_same. rewrite combine_Zlength. apply H. apply Znth_In.
@@ -381,10 +405,11 @@ Lemma add_multiple_aux_spec: forall (mx: matrix_type) m n r1 r2 k i j,
     else get_aux mx i j.
 Proof.
   intros. unfold get_aux. unfold add_multiple_aux. unfold wf_matrix in H.
+  if_tac. if_tac. 2 : list_solve. 2 : list_solve.
   destruct H. destruct (zeq i r2).
   - subst. rewrite upd_Znth_same. 2: assumption. rewrite combine_Znth.
-    if_tac. reflexivity. contradiction. rewrite H4. rewrite H4. reflexivity.
-    3: rewrite H4. 3 : assumption. all: apply Znth_In; list_solve.
+    if_tac. reflexivity. contradiction. rewrite H6. rewrite H6. reflexivity.
+    3 : rewrite H6. 3 : assumption. all: apply Znth_In; list_solve.
   - rewrite upd_Znth_diff. if_tac. contradiction. reflexivity. list_solve.
     list_solve. assumption.
 Qed.
@@ -438,13 +463,13 @@ Qed.
 
 (*2. swap rows*)
 
-Definition swap_rows {m n} (mx: matrix m n) (r1 r2 : Z) (N: 0 <= n) (R1 : 0 <= r1 < m) (R2: 0 <= r2 < m) : matrix m n :=
-  exist _ (swap_rows_aux (proj1_sig mx) r1 r2) (swap_rows_aux_wf (proj1_sig mx) m n r1 r2 N R1 R2 (proj2_sig mx)).
+Definition swap_rows {m n} (mx: matrix m n) (r1 r2 : Z) (N: 0 <= n) : matrix m n :=
+  exist _ (swap_rows_aux (proj1_sig mx) r1 r2) (swap_rows_aux_wf (proj1_sig mx) m n r1 r2 N (proj2_sig mx)).
 
 Lemma swap_rows_spec: forall {m n} (mx: matrix m n) r1 r2 i j (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
   (0 <= i < m) ->
   (0 <= j < n) ->
-  get (swap_rows mx r1 r2 N R1 R2) i j =
+  get (swap_rows mx r1 r2 N) i j =
     if (Z.eq_dec i r1) then get mx r2 j
     else if (Z.eq_dec i r2) then get mx r1 j
     else get mx i j.
@@ -455,14 +480,13 @@ Qed.
 
 (*3. add multiple of row one to another*)
 
-Definition add_multiple {m n} (mx: matrix m n) (r1 r2 : Z) (k: A) (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m) : matrix m n :=
-  exist _ (add_multiple_aux (proj1_sig mx) r1 r2 k) (add_multiple_aux_wf (proj1_sig mx) m n r1 r2 k (proj2_sig mx)
-    N R1 R2).
+Definition add_multiple {m n} (mx: matrix m n) (r1 r2 : Z) (k: A) (N: 0 <= n) : matrix m n :=
+  exist _ (add_multiple_aux (proj1_sig mx) r1 r2 k) (add_multiple_aux_wf (proj1_sig mx) m n r1 r2 k (proj2_sig mx) N).
 
 Lemma add_multiple_spec: forall {m n} (mx: matrix m n) r1 r2 k i j (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
   (0 <= i < m) ->
   (0 <= j < n) ->
-  get (add_multiple mx r1 r2 k N R1 R2) i j =
+  get (add_multiple mx r1 r2 k N) i j =
     if (Z.eq_dec i r2) then plus (get mx r2 j) (mult k (get mx r1 j))
     else get mx i j.
 Proof.
@@ -771,19 +795,19 @@ Qed.
 Section ElemMx.
 
 (*1. Row swap matrix - swap rows i and j*)
-Definition row_swap_mx n i j (N: 0 <= n) (I1 : 0 <= i < n) (J1 : 0 <= j < n) : matrix n n :=
-  swap_rows (identity n N) i j N I1 J1.
+Definition row_swap_mx n i j (N: 0 <= n): matrix n n :=
+  swap_rows (identity n N) i j N.
 
 (*Prove the row operation [swap_rows] is equivalent to multiplying by elementary matrix*)
-Lemma swap_rows_elem_mx: forall {m n} (mx: matrix m n) i j (N: 0 <= n) (M: 0 <= m) (I1: 0 <= i < m) (J1 : 0 <= j < m),
-  swap_rows mx i j N I1 J1 = mx_mult (row_swap_mx m i j M I1 J1) mx M N.
+Lemma swap_rows_elem_mx: forall {m n} (mx: matrix m n) i j (N: 0 <= n) (M: 0 <= m)(I1: 0 <= i < m) (J1 : 0 <= j < m),
+  swap_rows mx i j N = mx_mult (row_swap_mx m i j M) mx M N.
 Proof.
   intros. rewrite matrix_equiv.  intros.
   rewrite swap_rows_spec; try lia. rewrite mx_mult_spec; try lia.
   unfold row_swap_mx. 
   unfold summation. assert (forall l,
     (forall x, In x l -> (0 <= x<m)) ->
-    summation_aux (fun k : Z => mult (get (swap_rows (identity m M) i j M I1 J1) i0 k) (get mx k j0)) l =
+    summation_aux (fun k : Z => mult (get (swap_rows (identity m M) i j M) i0 k) (get mx k j0)) l =
     summation_aux (fun k : Z => mult (if Z.eq_dec i0 i 
               then if Z.eq_dec j k then one else zero
             else if Z.eq_dec i0 j
@@ -803,7 +827,7 @@ Proof.
 Qed.
 
 Lemma swap_sym: forall {m n} (mx: matrix m n) i j (N: 0 <= n) (I1: 0 <= i < m) (J1: 0 <= j < m),
-  swap_rows mx i j N I1 J1 = swap_rows mx j i N J1 I1.
+  swap_rows mx i j N = swap_rows mx j i N.
 Proof.
   intros. rewrite matrix_equiv. intros.
   repeat(rewrite swap_rows_spec; try assumption). 
@@ -812,7 +836,7 @@ Proof.
 Qed. 
 
 Lemma swap_twice: forall {m n} (mx: matrix m n) r1 r2 (N: 0 <= n) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
-  swap_rows (swap_rows mx r1 r2 N R1 R2) r2 r1 N R2 R1 = mx.
+  swap_rows (swap_rows mx r1 r2 N) r2 r1 N = mx.
 Proof.
   intros. rewrite matrix_equiv.  intros.
   repeat(rewrite swap_rows_spec; try assumption).
@@ -821,10 +845,10 @@ Qed.
 
 (*The swap matrix is invertible, and, moreover, it is its own inverse*)
 Lemma row_swap_mx_inv: forall n i j (N: 0 <= n) (I1 : 0 <= i < n) (J1: 0 <= j < n),
-  inverse (row_swap_mx n i j N I1 J1) (row_swap_mx n i j N I1 J1) N.
+  inverse (row_swap_mx n i j N) (row_swap_mx n i j N) N.
 Proof.
   intros. unfold inverse. rewrite <- swap_rows_elem_mx.
-  unfold row_swap_mx. rewrite swap_sym. split; apply (swap_twice).
+  unfold row_swap_mx. rewrite swap_sym. split; apply (swap_twice). all: assumption.
 Qed. 
 
 (*2. scalar multiplication*)
@@ -880,14 +904,14 @@ Qed.
 (*this one is harder, since in the multiplication we have exactly 2 nonzero entries, so we need lemmas
   to reason about this*)
 
-Definition add_multiple_mx n r1 r2 c (N: 0 <= n) (R1: 0 <= r1 < n) (R2: 0 <= r2 < n) :=
-  add_multiple (identity n N) r1 r2 c N R1 R2.
+Definition add_multiple_mx n r1 r2 c (N: 0 <= n) :=
+  add_multiple (identity n N) r1 r2 c N.
 
 Lemma add_multiple_mx_spec: forall n r1 r2 c i j (N: 0 <= n) (R1: 0 <= r1 < n) (R2: 0 <= r2 < n),
   (0 <= i < n) ->
   (0 <= j < n) ->
   r1 <> r2 ->
-  get (add_multiple_mx n r1 r2 c N R1 R2) i j =
+  get (add_multiple_mx n r1 r2 c N) i j =
                             if Z.eq_dec i r2 then
                                if Z.eq_dec j r1 then c
                                else (if Z.eq_dec i j then one else zero)
@@ -946,13 +970,13 @@ Qed.
 Lemma add_multiple_elem: forall {m n} (mx : matrix m n) r1 r2 c (N: 0 <= n) (M: 0 <= m) (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
   (0 <= n) ->
   r1 <> r2 ->
-  add_multiple mx r1 r2 c N R1 R2 = mx_mult (add_multiple_mx m r1 r2 c M R1 R2) mx M N.
+  add_multiple mx r1 r2 c N = mx_mult (add_multiple_mx m r1 r2 c M) mx M N.
 Proof.
   intros. rewrite matrix_equiv. intros.
   rewrite add_multiple_spec; try assumption. rewrite mx_mult_spec; try lia.
   unfold summation.
   assert (forall l, (forall x, In x l -> (0 <= x < m)) ->
-    summation_aux (fun k : Z => mult (get (add_multiple_mx m r1 r2 c M R1 R2) i k) (get mx k j)) l =
+    summation_aux (fun k : Z => mult (get (add_multiple_mx m r1 r2 c M) i k) (get mx k j)) l =
     summation_aux
   (fun k : Z =>
    mult   (if Z.eq_dec i r2
@@ -970,10 +994,10 @@ Qed.
 (*Inverse of add multiple mx is just add multiple mx with -c *)
 Lemma add_multiple_inv: forall n r1 r2 c (N: 0 <= n) (R1: 0 <= r1 < n) (R2: 0 <= r2 < n),
   (r1 <> r2) ->
-  inverse (add_multiple_mx n r1 r2 c N R1 R2) (add_multiple_mx n r1 r2 (opp c) N R1 R2) N.
+  inverse (add_multiple_mx n r1 r2 c N) (add_multiple_mx n r1 r2 (opp c) N) N.
 Proof.
   intros. unfold inverse. assert (forall x, 
-    mx_mult (add_multiple_mx n r1 r2 x N R1 R2) (add_multiple_mx n r1 r2 (opp x) N R1 R2) N N = identity n N). {
+    mx_mult (add_multiple_mx n r1 r2 x N) (add_multiple_mx n r1 r2 (opp x) N) N N = identity n N). {
   intros. rewrite <- add_multiple_elem; try lia. rewrite matrix_equiv. intros.
   rewrite add_multiple_spec; try lia. repeat(rewrite add_multiple_mx_spec; try lia). 
   rewrite identity_spec; try lia.
@@ -991,22 +1015,22 @@ Variable M : 0 <= m.
 
 Inductive elem_matrix: matrix m m -> Prop :=
   | e_swap: forall i j (I1: 0 <= i < m) (J1: 0 <= j < m),
-    elem_matrix (row_swap_mx m i j M I1 J1)
+    elem_matrix (row_swap_mx m i j M)
   | e_scalar: forall i c,
     0 <= i < m ->
     c <> zero ->
     elem_matrix (scalar_mult_mx m i c M)
   | e_add_multiple: forall i j c (I1: 0 <= i < m) (J1: 0 <= j < m),
     i <> j -> (*this is invalid or just scalar mult anyway*)
-    elem_matrix (add_multiple_mx m i j c M I1 J1).
+    elem_matrix (add_multiple_mx m i j c M).
 
 Lemma elem_matrix_invertible: forall mx,
   elem_matrix mx -> invertible mx M.
 Proof.
   intros. unfold invertible. inversion H.
-  - exists (row_swap_mx m i j M I1 J1). apply row_swap_mx_inv; assumption.
+  - exists (row_swap_mx m i j M). apply row_swap_mx_inv; assumption.
   - exists (scalar_mult_mx m i (inv c) M). apply scalar_mult_inv; assumption.
-  - exists (add_multiple_mx m i j (opp c) M I1 J1). apply add_multiple_inv; try assumption.
+  - exists (add_multiple_mx m i j (opp c) M). apply add_multiple_inv; try assumption.
 Qed.
 
 Lemma elem_matrix_inverse_elementary: forall mx mx',
@@ -1016,14 +1040,14 @@ Lemma elem_matrix_inverse_elementary: forall mx mx',
 Proof.
   intros. inversion H; subst.
   - pose proof (row_swap_mx_inv m i j M I1 J1).
-    assert (mx' = row_swap_mx m i j M I1 J1). eapply inverse_unique. 2 : apply H1. assumption.
+    assert (mx' = row_swap_mx m i j M). eapply inverse_unique. 2 : apply H1. assumption.
     subst. assumption.
   - pose proof (scalar_mult_inv m i c M H1 H2).
     assert (mx' = (scalar_mult_mx m i (inv c) M)). eapply inverse_unique. 2 : apply H3. assumption.
     subst. constructor. assumption. apply inv_nonzero; assumption.
   - pose proof (add_multiple_inv m i j c M I1 J1 H1). 
-    assert (mx' = (add_multiple_mx m i j (opp c) M I1 J1)). eapply inverse_unique. 2 : apply H2.
-    assumption. subst. constructor. assumption.
+    assert (mx' = (add_multiple_mx m i j (opp c) M)). eapply inverse_unique. 2 : apply H2.
+    assumption. subst. constructor. all: assumption.
 Qed. 
 
 (*A product of elementary matrices*)
@@ -1079,14 +1103,14 @@ Variable N: (0<= n).
 
 Inductive ERO : (matrix m n) -> (matrix m n) -> Prop :=
   | ero_swap: forall mx r1 r2 (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
-    ERO mx (swap_rows mx r1 r2 N R1 R2)
+    ERO mx (swap_rows mx r1 r2 N)
   | ero_scalar: forall mx i c,
     (0 <= i < m) ->
     c <> zero ->
     ERO mx (scalar_mul_row mx i c M N)
   | ero_add: forall mx r1 r2 c (R1: 0 <= r1 < m) (R2: 0 <= r2 < m),
     r1 <> r2 ->
-    ERO mx (add_multiple mx r1 r2 c N R1 R2).
+    ERO mx (add_multiple mx r1 r2 c N).
 
 
 (*two matrices are row equivalent if one can be transformed to another via a sequence of EROs*)
@@ -1121,11 +1145,11 @@ Lemma ero_elem_mx_iff: forall m1 m2,
 Proof.
   intros. split; intros.
   - inversion H; subst.
-    + exists (row_swap_mx m r1 r2 M R1 R2). split. constructor; assumption.
+    + exists (row_swap_mx m r1 r2 M). split. constructor; assumption.
       apply swap_rows_elem_mx; assumption.
     + exists (scalar_mult_mx m i c M). split. constructor; assumption.
       apply scalar_mult_elem; assumption.
-    + exists (add_multiple_mx m r1 r2 c M R1 R2). split. constructor; assumption.
+    + exists (add_multiple_mx m r1 r2 c M). split. constructor; assumption.
       apply (add_multiple_elem); assumption.
   - destruct H as [e]. destruct H. inversion H; subst.
     + rewrite <- swap_rows_elem_mx. constructor. all: assumption.
@@ -1192,6 +1216,653 @@ Proof.
 Qed.
 
 
+(** Gaussian Elimination *)
+
+Section Gaussian.
+
+Variable Aeq_dec: forall x y : A, {x = y } + { x <> y}.
+Variable n : Z.
+Variable N : 0 <= n.
+Variable m : Z.
+Variable M : 0 <= m.
+
+(*Gaussian elimination helpers*)
+Section GaussHelp.
+
+(*return the first element and value in list l that is nonzero*)
+Definition get_fst (l: list Z) (f: Z -> A) : option (A * Z) :=
+  fold_right (fun x acc => if Aeq_dec (f x) zero then acc else Some (f x, x)) None l.
+
+Lemma get_fst_none_iff: forall l f,
+  get_fst l f = None <-> forall x, In x l -> f x = zero.
+Proof.
+  intros. induction l; intros; split; intros.
+  - inversion H0.
+  - reflexivity.
+  - simpl in H0. simpl in H. destruct (Aeq_dec (f a) zero).
+    destruct H0. subst. assumption. apply IHl; assumption. inversion H.
+  - simpl. if_tac. apply IHl. apply (all_list _ _ _ H). rewrite H in H0. contradiction.
+    left. reflexivity.
+Qed.
+
+
+Lemma get_fst_some_iff: forall l f a' z',
+  get_fst l f = Some (a', z') <-> exists l1 l2, l = l1 ++ z' :: l2 /\
+    f z' = a' /\ a' <> zero /\ forall x, In x l1 -> f x = zero.
+Proof.
+  intros. induction l; split; intros.
+  - inversion H.
+  - destruct_all. destruct l1; inversion H.
+  - simpl in H. destruct (Aeq_dec (f a) zero). 
+    apply IHl in H. destruct_all. exists (a :: l1). exists l2. split. subst. reflexivity.
+    repeat(split; try assumption).
+    intros. destruct H3. subst. assumption. apply H2. assumption.
+    inversion H; subst. exists nil. exists l. split. reflexivity. split. reflexivity.
+    split. assumption. intros. inversion H0.
+  - simpl. if_tac. apply IHl. destruct_all.
+    destruct l1. inversion H; subst. contradiction. inversion H; subst. 
+    exists l1. exists l2. split. reflexivity. split. reflexivity. split. assumption.
+    apply (all_list _ _ _ H3). destruct_all.
+    subst. destruct l1. inversion H; subst. reflexivity. inversion H; subst. 
+    rewrite H3 in H0. contradiction. left. reflexivity.
+Qed.
+
+(*The leading coefficient of a row, if one exists*)
+Definition leading_coefficient (mx: matrix m n) (row : Z) : option (A * Z) :=
+  get_fst (Zseq 0 n) (fun col => get mx row col).
+
+(*TODO: move*)
+Lemma seq_split: forall a b l1 c l2,
+  seq a b = l1 ++ c :: l2 -> (forall x, (a <= x < c)%nat <-> In x l1) /\ (forall x, (c < x < a + b)%nat <-> In x l2).
+Proof.
+  intros. generalize dependent H. revert a l1 c l2. induction b; intros.
+  - simpl in H. destruct l1; inversion H.
+  - simpl in H. destruct l1. inversion H; subst.
+    split; intros; split; intros. lia. inversion H0. rewrite in_seq. lia. rewrite in_seq in H0. lia.
+    inversion H; subst. apply IHb in H2. destruct H2.
+    split; intros; split; intros. assert (n0 = x \/ n0 < x)%nat by lia.
+    destruct H3. subst. left. reflexivity. right. apply H0. lia.
+    destruct H2. subst. inversion H; subst.
+    assert (E: In c (seq (S x) b)). rewrite H3. apply in_or_app. right. left. reflexivity.
+    rewrite in_seq in E. lia. apply H0 in H2. lia. apply H1. lia. apply H1 in H2. lia.
+Qed. 
+
+Lemma map_split: forall {A B} (f: A -> B) l l1 l2,
+  map f l = l1 ++ l2 ->
+  exists l1' l2', l = l1' ++ l2' /\ map f l1' = l1 /\ map f l2' = l2.
+Proof.
+  intros. generalize dependent l1. generalize dependent l2. induction l; intros.
+  - simpl in H. destruct l1. destruct l2. exists nil. exists nil. split3; reflexivity. inversion H. inversion H.
+  - simpl in H. destruct l1. 
+    + destruct l2; inversion H; subst. exists nil. exists (a :: l). split. reflexivity. split. reflexivity.
+      reflexivity.
+    + inversion H; subst. apply IHl in H2. destruct_all. subst. exists (a :: l1'). exists l2'.
+      split3; reflexivity.
+Qed.
+
+Lemma Zseq_split: forall a b l1 c l2,
+  (0 <= a) ->
+  (0 <= b) ->
+  Zseq a b = l1 ++ c :: l2 -> (forall x, (a <= x < c) <-> In x l1) /\ (forall x, (c < x < a + b) <-> In x l2).
+Proof.
+  intros. unfold Zseq in H1. apply map_split in H1. destruct_all. destruct l2'. inversion H3.
+  apply seq_split in H1. inversion H3; subst. destruct H1. split.
+  intros. split; intros. rewrite in_map_iff. exists (Z.to_nat x). split. lia.
+  apply H1. lia. rewrite in_map_iff in H4. destruct_all. subst. apply H1 in H5. lia.
+  intros; split; intros. rewrite in_map_iff. exists (Z.to_nat x). split. lia. apply H2. lia.
+  rewrite in_map_iff in H4. destruct_all. subst. apply H2 in H5. lia.
+Qed. 
+
+
+Lemma leading_coefficient_some_iff: forall mx row k col,
+  0 <= row < m ->
+  leading_coefficient mx row = Some (k, col) <-> (0 <= col < n) /\ k <> zero /\ get mx row col = k /\
+    forall x, (0 <= x < col) -> get mx row x = zero.
+Proof.
+  intros. unfold leading_coefficient. rewrite get_fst_some_iff. split; intros.
+  - destruct_all. assert (In col (Zseq 0 n)). rewrite H0. solve_in. split. rewrite Zseq_In in H5; lia.
+    split. assumption. split. assumption. 
+     apply Zseq_split in H0. intros. apply H3. apply H0. lia. lia. assumption.
+  - destruct_all. assert (In col (Zseq 0 n)). rewrite Zseq_In; lia.
+    apply In_split in H6. destruct_all. assert (ZS:= H6). apply Zseq_split in H6; try lia.
+    exists l1. exists l2. split. assumption. split. assumption. split. assumption. intros. apply H3.
+    apply H6 in H7. lia.
+Qed.
+
+Lemma leading_coefficient_none_iff: forall mx row,
+  0 <= row < m ->
+  leading_coefficient mx row = None <-> (forall x, (0 <= x < n) -> get mx row x = zero).
+Proof.
+  intros. unfold leading_coefficient. rewrite get_fst_none_iff. split; intros. apply H0.
+  rewrite Zseq_In; lia. apply H0. rewrite Zseq_In in H1; lia.
+Qed.
+
+(*look for first nonzero entry in column c, starting at row r*)
+Definition find_nonzero_row (mx: matrix m n) (c r: Z) : option Z :=
+  match (get_fst (Zseq r (m - r)) (fun row => get mx row c)) with
+    | None => None
+    | Some (c', n') => Some n'
+  end.
+
+Lemma find_nonzero_row_some: forall mx c r n',
+  (0 <= r < m) ->
+  find_nonzero_row mx c r = Some n' ->
+  (r <= n' < m) /\ get mx n' c <> zero.
+Proof.
+  intros. unfold find_nonzero_row in H0. destruct (get_fst (Zseq r (m - r)) (fun row : Z => get mx row c)) eqn : G.
+  - destruct p. inversion H0; subst. rewrite get_fst_some_iff in G. destruct_all.
+    split. assert (In n' (Zseq r (m - r))). rewrite H1. apply in_or_app. right. left. reflexivity.
+    rewrite Zseq_In in H6; try lia. subst. assumption.
+  - inversion H0.
+Qed.
+
+Lemma find_nonzero_row_none: forall mx c r,
+  (0 <= r < m) ->
+  find_nonzero_row mx c r = None ->
+  (forall n', r <= n' < m -> get mx n' c = zero).
+Proof.
+  intros. unfold find_nonzero_row in H0. destruct (get_fst (Zseq r (m - r)) (fun row : Z => get mx row c)) eqn : G.
+  destruct p. inversion H0. rewrite get_fst_none_iff in G. apply G.
+  rewrite Zseq_In; lia.
+Qed.
+
+(*Make all nonzeroes in column c = one*)
+Definition  all_columns_one_aux (mx: matrix m n) (c: Z) (l: list Z): matrix m n :=
+  fold_right (fun x acc => let f := (get mx x c) in 
+                             if (Aeq_dec f zero) then acc else (scalar_mul_row acc x (inv f) M N)) mx l.
+
+Definition all_columns_one (mx: matrix m n) (c: Z) : matrix m n :=
+  all_columns_one_aux mx c (Zseq 0 m).
+
+Lemma all_columns_one_aux_row_equiv: forall (mx: matrix m n) c l,
+  (forall x, In x l -> (0 <= x < m)) ->
+  row_equivalent m M n N mx (all_columns_one_aux mx c l).
+Proof.
+  intros. induction l. simpl. constructor. simpl.
+  if_tac.
+  - apply IHl. apply (all_list _ _ _ H).
+  - eapply row_equivalent_trans. apply IHl. apply (all_list _ _ _ H). apply row_equivalent_ero.
+    constructor. apply (fst_list _ _ _ H). apply inv_nonzero. assumption.
+Qed. 
+
+Lemma all_columns_one_row_equiv: forall (mx: matrix m n) c,
+  row_equivalent m M n N mx (all_columns_one mx c).
+Proof.
+  intros. unfold all_columns_one. apply all_columns_one_aux_row_equiv. intros.
+  rewrite Zseq_In in H; lia.
+Qed.
+
+(*Specification of matrix resulting from [all_columns_one]*)
+Lemma all_columns_one_aux_notin: forall mx c l x y,
+  (0 <= c < n) ->
+  (0 <= x < m) ->
+  (0 <= y < n) ->
+  (forall z, In z l -> 0 <= z < m) ->
+  ~In x l ->
+  get (all_columns_one_aux mx c l) x y = get mx x y.
+Proof.
+  intros. induction l.
+  - reflexivity.
+  - specialize (IHl (all_list _ _ _ H2)). assert (~In x l). intro. apply H3; solve_in.
+    specialize (IHl H4). clear H4. simpl. if_tac. assumption.
+    rewrite scalar_mul_row_spec; try lia. if_tac. subst. exfalso. apply H3. solve_in.
+    assumption. apply (fst_list _ _ _ H2).
+Qed. 
+
+Lemma all_columns_one_aux_spec: forall mx c l x y,
+  (0 <= c < n) ->
+  (0 <= x < m) ->
+  (0 <= y < n) ->
+  (forall z, In z l -> 0 <= z < m) ->
+  In x l ->
+  NoDup l ->
+  get (all_columns_one_aux mx c l) x y = if (Aeq_dec (get mx x c) zero) then get mx x y else mult (inv (get mx x c)) (get mx x y).
+Proof.
+  intros. induction l; simpl.
+  - inversion H3.
+  - specialize (IHl (all_list _ _ _ H2)). pose proof (all_list _ _ _ H2). simpl in H5.
+    pose proof (fst_list _ _ _ H2). simpl in H6. inversion H4; subst. destruct H3.
+    + subst. if_tac. apply all_columns_one_aux_notin; assumption.
+      rewrite scalar_mul_row_spec; try lia. if_tac; try contradiction.
+      rewrite all_columns_one_aux_notin; try assumption. reflexivity.
+    + specialize (IHl H3 H10). if_tac. assumption. rewrite scalar_mul_row_spec; try lia.
+      if_tac. subst. contradiction. assumption.
+Qed.
+
+Lemma all_columns_one_spec: forall mx c x y,
+  (0 <= c < n) ->
+  (0 <= x < m) ->
+  (0 <= y < n) ->
+  (0 <= x < m) ->
+  get (all_columns_one mx c) x y = if (Aeq_dec (get mx x c) zero) then get mx x y else mult (inv (get mx x c)) (get mx x y).
+Proof.
+  intros. unfold all_columns_one. apply all_columns_one_aux_spec; try assumption. intros. rewrite Zseq_In in H3; lia.
+  rewrite Zseq_In; lia. apply Zseq_NoDup; lia.
+Qed.
+
+Definition negone := opp one.
+
+(*subtract all rows with a nonzero entry in column c from row r, except for row r itself*)
+Definition subtract_all_rows_aux (mx: matrix m n) (r c: Z) (l: list Z) : matrix m n :=
+  fold_right (fun x acc => if (Z.eq_dec x r) then acc else let f := (get mx x c) in
+                            if (Aeq_dec f zero) then acc else (add_multiple acc r x negone N)) mx l.
+
+Definition subtract_all_rows (mx : matrix m n) (r c: Z) : matrix m n :=
+  subtract_all_rows_aux mx r c (Zseq 0 m). 
+
+Lemma subtract_all_rows_aux_row_equiv: forall (mx: matrix m n) r c l,
+  (0 <= r < m) ->
+  (forall x, In x l -> (0 <= x < m)) ->
+  row_equivalent m M n N mx (subtract_all_rows_aux mx r c l).
+Proof.
+  intros. induction l.
+  - simpl. constructor.
+  - simpl. if_tac.
+    + apply IHl. apply (all_list _ _ _ H0).
+    + if_tac.
+      * apply IHl. apply (all_list _ _ _ H0).
+      * eapply row_equivalent_trans. apply IHl. apply (all_list _ _ _ H0). apply row_equivalent_ero.
+        constructor. assumption. apply (fst_list _ _ _ H0). auto.
+Qed.
+
+Lemma subtract_all_rows_row_equiv: forall (mx: matrix m n) r c,
+  (0 <= r < m) ->
+  row_equivalent m M n N mx (subtract_all_rows mx r c).
+Proof.
+  intros. unfold subtract_all_rows. apply subtract_all_rows_aux_row_equiv.
+  assumption. intros. rewrite Zseq_In in H0; lia.
+Qed.  
+(*
+Lemma subtract_all_rows_aux_split: forall mx r c x y l l1 l2,
+  l = l1 
+*)
+
+(*Specification of matrix from [subtract_all_rows]*)
+Lemma subtract_all_rows_aux_same: forall mx r c y l,
+  (0 <= r < m) ->
+  (0 <= y < n) ->
+  (forall x, In x l -> 0 <= x < m) ->
+  get (subtract_all_rows_aux mx r c l) r y = get mx r y.
+Proof.
+  intros. induction l; simpl.
+  - reflexivity.
+  - specialize (IHl (all_list _ _ _ H1)). pose proof (fst_list _ _ _ H1). simpl in H2.
+    if_tac. subst. assumption. if_tac. assumption.
+    rewrite add_multiple_spec; try assumption. if_tac. subst. contradiction. assumption.
+Qed. 
+
+Lemma subtract_all_rows_aux_notin: forall mx r c x y l,
+  (0 <= r < m) ->
+  (0 <= c < n) ->
+  (0 <= x < m) ->
+  (0 <= y < n) ->
+  (forall x, In x l -> 0 <= x < m) ->
+  ~In x l ->
+  get (subtract_all_rows_aux mx r c l) x y = get mx x y.
+Proof.
+  intros. induction l.
+  - reflexivity.
+  - simpl. specialize (IHl (all_list _ _ _ H3)). pose proof (fst_list _ _ _ H3). simpl in H5.
+    if_tac. subst. apply IHl. intro. apply H4. solve_in.
+    if_tac. apply IHl. intro. apply H4; solve_in.
+    rewrite add_multiple_spec; try lia.
+    if_tac. subst. exfalso. apply H4. solve_in. apply IHl. intro. apply H4; solve_in.
+Qed. 
+(*
+Lemma mult_negone: forall x,
+  mult negone x = sub zero x.
+Proof.
+  intros. u  ring_simplify'. unfold negone. ring'. ring'.
+
+Lemma mult_negone: forall x y,
+  plus x (mult negone y) = sub x y.
+Proof.
+  intros. ring_simplify'. Search f_mult. field'. ring'.
+*)
+Lemma subtract_all_rows_aux_diff: forall (mx: matrix m n) r c x y l,
+  (forall x, In x l -> 0 <= x < m) ->
+  (0 <= r < m) ->
+  (0 <= c < n) ->
+  (0 <= y < n) ->
+  (0 <= x < m) ->
+  x <> r ->
+  In x l ->
+  NoDup l ->
+  get (subtract_all_rows_aux mx r c l) x y = if (Aeq_dec (get mx x c) zero) then get mx x y else (sub (get mx x y) (get mx r y)). 
+Proof.
+  intros. induction l. inversion H5.
+  specialize (IHl (all_list _ _ _ H)). pose proof (fst_list _ _ _ H). simpl in H7. simpl in H5.
+  inversion H6; subst. simpl. destruct H5. subst.
+  if_tac. contradiction. if_tac.
+  apply subtract_all_rows_aux_notin; try assumption. apply (all_list _ _ _ H).
+  rewrite add_multiple_spec; try lia. if_tac; try contradiction. rewrite subtract_all_rows_aux_notin; try assumption.
+  rewrite subtract_all_rows_aux_same; try assumption. unfold negone; ring'. 
+  all: try (apply (all_list _ _ _ H)).
+  if_tac. subst. apply IHl; assumption. if_tac. apply IHl; assumption.
+  rewrite add_multiple_spec; try assumption. if_tac. subst. contradiction.
+  apply IHl; assumption.
+Qed.
+
+Lemma subtract_all_rows_same: forall mx r c y,
+  (0 <= r < m) ->
+  (0 <= y < n) ->
+  get (subtract_all_rows mx r c ) r y = get mx r y.
+Proof.
+  intros. unfold subtract_all_rows. apply subtract_all_rows_aux_same; try assumption.
+  intros. rewrite Zseq_In in H1; lia.
+Qed.
+
+Lemma subtract_all_rows_diff: forall mx r c x y,
+  (0 <= r < m) ->
+  (0 <= c < n) ->
+  (0 <= y < n) ->
+  (0 <= x < m) ->
+  x <> r ->
+  get (subtract_all_rows mx r c) x y = if (Aeq_dec (get mx x c) zero) then get mx x y else (sub (get mx x y) (get mx r y)).
+Proof.
+  intros. unfold subtract_all_rows. apply subtract_all_rows_aux_diff; try assumption.
+  intros. rewrite Zseq_In in H4; lia. rewrite Zseq_In; lia. apply Zseq_NoDup; lia.
+Qed. 
+
+
+End GaussHelp.
+
+
+(** Gaussian Elimination *)
+(*steps in gaussian elimination - have current row r, column c
+  - all previous rows have leading coefficient at position < c (so not all zero)
+  - r has leading coefficient at position c
+  - all previous rows have zero entries in all positions <= c except at leading coeffs
+  - all previous rows have leading coeffs in strictly increasing positions
+  - all rows > r has zeroes in first c positions
+  - These invariants will be preserved in the next iteration of the loop*)
+
+(*steps: find row among r, r+1, ..., m with nonzero entry in column c
+  - if no such row exists, then set c = c + 1 and continue
+  - otherwise, let k be that row, swap rows k and r
+    then, for every row that has a nonzero entry in column c, multiply the column by the inverse of entry at c
+    then, subtract all rows with nonzero entry in column c from row r
+    then, set r = r + 1 and c = c + 1, continue*)
+Section GaussianElim.
+
+(*reduced row echelon form without the requirement that all coefficients are leading ones*)
+Inductive reduced_row_echelon_no1 : matrix m n -> Prop :=
+  | r_rref' (mx: matrix m n) :
+      (*all rows of zeroes are at the bottom*)
+     (exists r : Z, 0 <= r < m /\ forall x, (0 <= x < m) -> leading_coefficient mx x = None <-> (r <= x)) ->
+      (*all leading coefficients appear in order*)
+      (forall i j n1 n2 c1 c2, (0 <= i < j) -> (0 <= j < m) ->
+      leading_coefficient mx i = Some (c1, n1) ->
+      leading_coefficient mx j = Some (c2, n2) ->
+      n1 < n2) ->
+      (*each column with a leading coefficient has zeroes in all other columns*)
+      (forall i c' n', leading_coefficient mx i = Some (c', n') ->
+        (forall x, 0 <= x < m -> x <> i -> get mx x n' = zero)) ->
+      reduced_row_echelon_no1 mx.
+
+Inductive reduced_row_echelon : matrix m n -> Prop :=
+  | r_rref (mx: matrix m n) :
+      reduced_row_echelon_no1 mx ->
+      (*all leading coefficients are 1*)
+      (forall i n c, (0 <= i < m) -> leading_coefficient mx i = Some (c, n) -> c = one) ->
+      reduced_row_echelon mx.
+
+(*To prove that Gaussian elimination results in a matrix in reduced row echelon form, we use the following
+  invariant, representing a matrix that has been partially row reduced - up to row r and column c*)
+Inductive gaussian_invariant: matrix m n -> Z -> Z -> Prop :=
+  | r_inv (mx: matrix m n) ( r c : Z) :
+    (*(*all rows of all zeroes are below the first r rows*)
+    (forall x : nat, leading_coefficient (get_row mx x) n = None <-> (r<x)%nat) ->*)
+    (*leading coefficients are strictly to the right of those in rows above*)
+    (forall i j n1 n2 c1 c2, (0 <= i<j) -> (0 <= j < r) ->
+      leading_coefficient mx i = Some (c1, n1) ->
+      leading_coefficient mx j = Some (c2, n2) ->
+      (n1 < n2)) ->
+    (*for rows < r, leading coefficient exists and occurs before column c*)
+    (forall r', (0 <= r' < r) -> exists n1 c1,
+      leading_coefficient mx r' = Some (c1, n1) /\ (n1 < c)) ->
+    (*for the first c - 1 columns, each column with a leading coefficient has all other entries 0 *)
+    (forall i c' n', (0 <= i < m) -> leading_coefficient mx i = Some (c', n') ->
+      (0 <= n' < c) ->
+      forall x, (0 <= x < m) -> x <> i -> get mx x n' = zero) ->
+    (*all rows >= r have zeroes in the first c-1 entries*)
+    (forall r' c', (r <= r' < m) -> (0 <= c' < c) -> get mx r' c' = zero) ->
+    gaussian_invariant mx r c.
+
+(*A single step of Gaussian elimination - given a matrix satisfying the invariant for (r, c), returns a matrix
+  and (r', c') such that mx' satisfies invariant up to (r', c') and (r' + c' > r + c)*)
+Definition gauss_one_step (mx: matrix m n) (r c : Z) : (matrix m n * Z * Z) :=
+  match (find_nonzero_row mx c r) with
+        | Some k =>
+            let mx1 := swap_rows mx k r N in
+            let mx2 := all_columns_one mx1 c in
+            let mx3 := subtract_all_rows mx2 r c in
+            (mx3, (r+1), (c+1))
+        | None => (mx, r, (c+1))
+      end.
+
+Definition get_matrix {m n} (t: matrix m n * Z * Z) : matrix m n :=
+  match t with
+  | (x, _, _) => x
+  end.
+
+(*Gaussian Elimination Proof of Correctness*)
+
+(*First, we prove that after each step, the resulting matrix is still row equivalent*)
+Lemma gauss_one_step_row_equiv: forall mx r c,
+  (0 <= r < m) ->
+  row_equivalent m M n N mx (get_matrix (gauss_one_step mx r c)).
+Proof.
+  intros. unfold gauss_one_step. destruct (find_nonzero_row mx c r) eqn : F1.
+  - assert (B: 0 <= z < m). { apply find_nonzero_row_some in F1. lia. assumption. }
+    simpl. eapply row_equivalent_trans. 2 : apply subtract_all_rows_row_equiv.
+    eapply row_equivalent_trans. 2 : apply all_columns_one_row_equiv. apply row_equivalent_ero.
+    constructor. all: assumption.
+  - simpl. constructor.
+Qed.
+
+Definition some_snd {A B : Type} (o : option (A * B)) : option B :=
+  match o with
+  | None => None
+  | Some (a,b) => Some b
+  end.
+
+(*TODO: move*)
+Lemma field_integral_domain: forall r1 r2, mult r1 r2 = zero -> r1 = zero \/ r2 = zero.
+Proof.
+  intros. destruct (Aeq_dec r1 zero).
+  - subst. left. reflexivity.
+  - assert (inv r1 <> zero) by (apply inv_nonzero; assumption). 
+    assert (mult (inv r1) (mult r1 r2) = zero). rewrite H. ring'.
+    assert (mult (inv r1) (mult r1 r2) = r2). field'; assumption.
+    rewrite H2 in H1. subst. right. reflexivity.
+Qed.
+
+(*Now, we show that the invariant is preserved*)
+Lemma gauss_one_step_invar: forall mx r c,
+  (0 <= r < m) ->
+  (0 <= c < n) ->
+  gaussian_invariant mx r c ->
+  match (gauss_one_step mx r c) with
+  | (mx', r', c') => gaussian_invariant mx' r' c'
+  end.
+Proof.
+  intros. destruct (gauss_one_step mx r c) eqn : G. rename z into c'. destruct p as [mx' r'].
+  unfold gauss_one_step in G. inversion H1; subst. destruct (find_nonzero_row mx c r) eqn : FN.
+  inversion G; subst. clear G.
+  - apply find_nonzero_row_some in FN. destruct FN. 2: assumption.
+    (*structure of the resulting matrix - the beginning part does not change (except for the leading coefficient values*)
+    assert (S1: forall x y, 0 <= x < r -> 0 <= y < c ->
+      get mx x y = zero <-> get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x y = zero). {
+    intros. rewrite subtract_all_rows_diff; try lia. split; intros.
+    - assert (get (swap_rows mx z r N) x y = zero). rewrite swap_rows_spec; try lia. if_tac; try lia.
+      if_tac; try lia. assumption.
+      assert (get (all_columns_one (swap_rows mx z r N) c) x y = zero). rewrite all_columns_one_spec; try lia.
+      if_tac. assumption. rewrite H11. ring'. 
+      if_tac. assumption. (*since y < c, get (mx z y) = zero*)
+      rewrite H12.
+      assert (get (swap_rows mx z r N) r y = zero). rewrite swap_rows_spec; try lia. if_tac; try lia.
+      subst. apply H5; lia. if_tac; try contradiction. apply H5; lia. 
+      rewrite all_columns_one_spec; try lia. if_tac. rewrite H14. ring'.
+      rewrite H14. ring'.
+    - destruct (Aeq_dec (get (all_columns_one (swap_rows mx z r N) c) x c) zero).
+      rewrite all_columns_one_spec in H10; try lia. 
+      rewrite all_columns_one_spec in e; try lia.
+      destruct (Aeq_dec (get (swap_rows mx z r N) x c) zero).
+      rewrite swap_rows_spec in H10; try lia.
+      destruct (Z.eq_dec x z); try lia. destruct (Z.eq_dec x r); try lia. assumption.
+      apply field_integral_domain in e. destruct e. pose proof (inv_nonzero _ n0). contradiction.
+      contradiction.
+      assert (get (swap_rows mx z r N) r y = zero). rewrite swap_rows_spec; try lia.
+      repeat(if_tac; try lia; try (apply H5; lia)).
+      assert (get (all_columns_one (swap_rows mx z r N) c) r y = zero). 
+      rewrite all_columns_one_spec; try lia. if_tac. assumption. rewrite H11. ring'.
+      rewrite H12 in H10.
+      assert (forall x, sub x zero = x) by (intros; ring'). rewrite H13 in H10.
+      clear H13. 
+      rewrite all_columns_one_spec in H10; try lia.
+      destruct (Aeq_dec (get (swap_rows mx z r N) x c) zero).
+      rewrite swap_rows_spec in H10; try lia. destruct (Z.eq_dec x z); try lia.
+      destruct (Z.eq_dec x r); try lia. assumption.
+      assert ((get (swap_rows mx z r N) x c) <> zero). {
+      rewrite all_columns_one_spec in n0; try lia. destruct (Aeq_dec (get (swap_rows mx z r N) x c) zero).
+      contradiction. assumption. } 
+      apply field_integral_domain in H10. destruct H10. pose proof (inv_nonzero _ H13). contradiction.
+      rewrite swap_rows_spec in H10; try lia. destruct (Z.eq_dec x z); try lia. destruct (Z.eq_dec x r); try lia.
+      assumption. }
+      (*second structure result: all entries with col = c and row <> r are zero *)
+      assert (S2: forall x, 0 <= x < m -> r <> x -> get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x c = zero). {
+      intros. rewrite subtract_all_rows_diff; try lia. if_tac.
+      - assumption.
+      - rewrite? all_columns_one_spec; try lia. if_tac.
+        + rewrite H11. if_tac. rewrite H12. ring'. 
+          rewrite all_columns_one_spec in H10; try lia. rewrite H11 in H10.
+          destruct (Aeq_dec zero zero); try contradiction.
+        + if_tac. rewrite swap_rows_spec in H12; try lia.
+          destruct (Z.eq_dec r z); try lia. subst. contradiction. destruct (Z.eq_dec r r); try contradiction. field'.
+          split; assumption. }
+      (*third structure result: all entries with row >= r and col < c are still zero*)
+      assert (S3 : forall x y, r <= x < m -> 0 <= y < c ->
+        get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x y = zero). { intros.
+      assert (x = r \/ r < x < m) by lia. destruct H10.
+      - subst. rewrite subtract_all_rows_same; try lia. rewrite all_columns_one_spec; try lia.
+        if_tac. rewrite swap_rows_spec; try lia. if_tac; try lia. subst. apply H5; lia.
+        if_tac; apply H5; lia. assert ((get (swap_rows mx z r N) r y) = zero).
+        rewrite swap_rows_spec; try lia. if_tac; try lia. apply H5; lia. if_tac; try contradiction.
+        apply H5; lia. rewrite H11. ring'.
+      - rewrite subtract_all_rows_diff; try lia. if_tac.
+        + rewrite all_columns_one_spec; try lia. if_tac. rewrite swap_rows_spec; try lia.
+          repeat(if_tac; try lia; try(apply H5; lia)). 
+          assert ((get (swap_rows mx z r N) x y) = zero). rewrite swap_rows_spec; try lia.
+          repeat(if_tac; try lia; try(apply H5; lia)). rewrite H13. ring'.
+        + assert ((get (swap_rows mx z r N) x y) = zero). rewrite swap_rows_spec; try lia.
+          repeat(if_tac; try lia; try (apply H5; lia)). rewrite? all_columns_one_spec; try lia. rewrite H12.
+          assert (get (swap_rows mx z r N) r y = zero). rewrite swap_rows_spec; try lia.
+          repeat(if_tac; try lia; subst; try(apply H5; lia)). rewrite H13.
+          if_tac. if_tac. ring'. ring'. if_tac. ring'. ring'. }
+      (*4th structure theorem: the entry (r, c) is one*)
+      assert (S4: get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) r c = one). { 
+      rewrite subtract_all_rows_same; try lia. rewrite all_columns_one_spec; try lia. if_tac.
+      rewrite swap_rows_spec in H8; try lia. destruct (Z.eq_dec r z); try lia. subst. contradiction.
+      destruct (Z.eq_dec r r); try contradiction. field'. apply H8. }
+      (* 5 (follows from others): for rows < r, leading coefficient position is same*)
+      assert (S5: forall x, 0 <= x < r ->
+      some_snd (leading_coefficient mx x) = 
+        some_snd (leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x)). {
+      intros. specialize (H3 x H8). destruct H3 as [n']. destruct H3 as [a]. destruct H3. rewrite H3. simpl.
+      destruct (leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x) eqn : L.
+      destruct p. apply leading_coefficient_some_iff in L. destruct_all.
+      simpl. apply leading_coefficient_some_iff in H3. destruct_all. assert (n' = z0 \/ n' < z0 \/ n' > z0) by lia.
+      destruct H23. subst. reflexivity. destruct H23. 
+      assert (get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x n' = zero).
+      apply H13; lia. rewrite <- S1 in H24; try lia. subst. contradiction.
+      assert (get mx x z0 = zero). apply H21; lia. rewrite S1 in H24; try lia.
+      subst. contradiction. lia. lia. rewrite leading_coefficient_none_iff in L.
+      rewrite leading_coefficient_some_iff in H3; try lia. destruct_all. subst.
+      specialize (L n').  assert (get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x n' = zero).
+      apply L; lia. rewrite <- S1 in H12. subst. contradiction. lia. lia. lia. }
+      (* 6: again follows, the leading coefficient of row r is (one, c)*)
+      assert (S6: leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) r = Some (one, c)). {
+      rewrite leading_coefficient_some_iff. split. lia. split. apply ((F_1_neq_0 (Fth))).
+      split. apply S4. intros. apply S3. lia. assumption. lia. }
+      (*Now, we prove that each invariant is preserved*)
+      (*we prove the first invariant separately because we need it later*)
+      assert (I1: forall (i j n1 n2 : Z) (c1 c2 : A),
+        0 <= i < j ->
+        0 <= j < r + 1 ->
+        leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) i = Some (c1, n1) ->
+        leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) j = Some (c2, n2) ->
+        n1 < n2). {
+          intros. assert (0 <= j < r \/ j = r) by lia. destruct H12.
+        * assert (L1 := S5 i). assert (0 <= i < r) by lia. specialize (L1 H13); clear H13.
+          rewrite H10 in L1. simpl in L1. destruct (leading_coefficient mx i) eqn : L1'. destruct p.
+          inversion L1; subst. 2 : inversion L1. 
+          specialize (S5 j H12). rewrite H11 in S5. simpl in S5.
+          destruct (leading_coefficient mx j) eqn : L2'. destruct p.
+          inversion S5; subst. eapply H2. 3 : apply L1'. 3 : apply L2'. all: try assumption. inversion S5.
+        * subst. rewrite S6 in H11. symmetry in H11. inversion H11; subst. specialize (H3 i H8). specialize (S5 i H8). destruct_all.
+          rewrite H3 in S5. rewrite H10 in S5. inversion S5; subst. lia. }
+      (*We also want invariant 2 separately*)
+      (*assert (I2: forall r' : Z,
+        0 <= r' < r + 1 ->
+        exists (n1 : Z) (c1 : A),
+          leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) r' =
+          Some (c1, n1) /\ n1 < c + 1). { 
+           }*)
+      constructor.
+      + apply I1.
+      + intros. assert (0 <= r' < r \/ r' = r) by lia. destruct H9.
+        * specialize (H3 r' H9). specialize (S5 r' H9). destruct_all.
+          rewrite H3 in S5. destruct (leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) r') eqn : L.
+          destruct p; inversion S5; subst. exists z0. exists a. split. reflexivity. lia. inversion S5. 
+        * exists c. exists one. split. subst. apply S6. lia.
+      + intros. assert (i <= r). { assert (i <= r \/ i > r) by lia. destruct H13. assumption.
+        rewrite leading_coefficient_some_iff in H9; try lia. destruct_all.
+        assert (n' < c \/ n' = c) by lia. destruct H24. subst. 
+        exfalso. apply H16. apply S3; try lia. subst. exfalso. apply H16. apply S2; try assumption. lia.
+        lia. } assert (n' < c \/ n' = c) by lia. destruct H14.
+        * assert (x < r \/ x >= r) by lia. destruct H15.
+          -- assert (i < r \/ i = r) by lia. destruct H16.
+             ++ rewrite <- S1; try lia. specialize (S5 i). assert (0 <= i < r) by lia. specialize (S5 H17). clear H17.
+                rewrite H9 in S5. simpl in S5. destruct (leading_coefficient mx i) eqn : L. destruct p. inversion S5; subst.
+                2 : inversion S5. eapply H4; try assumption. 2 : apply L. lia. lia. assumption.
+             ++ subst. rewrite S6 in H9. symmetry in H9. inversion H9; subst. apply S2; try lia.
+          -- apply S3; try lia.
+        * subst. assert (i < r \/ i = r) by lia. destruct H14.
+          -- assert (c < c). eapply I1. 3 : apply H9. 3 : apply S6. lia. lia. lia.
+          -- subst. eapply S2; try lia.
+      + intros. assert (c' < c \/ c' = c) by lia. destruct H10.
+        * apply S3; try lia.
+        * subst. apply S2; lia.
+  - pose proof (find_nonzero_row_none _ _ _ H FN) as FN'. inversion G; subst. clear G.
+    inversion H1. constructor.
+    + apply H2.
+    + subst. intros. specialize (H3 r'0 H10). destruct_all. exists n1. exists c1. split. assumption. lia.
+    + intros. assert (0 <= n' < c \/ n' = c) by lia. destruct H18.
+      * eapply H8. 2: apply H14. all: try lia.
+      * subst. (*cant have leading coeff here because smaller ones occur before, larger ones and r have zeroes*)
+        assert (0 <= i < r' \/ i >= r') by lia. destruct H10.
+        -- specialize (H3 i H10). destruct_all. rewrite H3 in H14. inversion H14; lia.
+        -- rewrite leading_coefficient_some_iff in H14. destruct_all.
+           subst. exfalso. apply H16. apply FN'. lia. lia.
+    + intros. assert (0 <= c' < c \/ c' = c) by lia. destruct H15.
+      * apply H9; lia.
+      * subst. apply FN'; lia.
+Qed.
+
+(*TODO: 
+  - prove that invariants initially satisfied
+  - full gaussian elim (repeat steps)
+  - invariants at end imply row echelon form
+  - split/concat matrices
+  - mult over split/concat matrices
+  - from REF - if first part of matrix is invertible, get I_n | M after gaussian elim (ie, leading coeff of row i is i
+  - corollary - if we take m * 2m mx with identity in second part, second is inverse after gaussian elim
+*)
+
+End GaussianElim.
+
+End Gaussian.
 End MatrixDef.
 
  
