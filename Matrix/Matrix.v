@@ -1589,14 +1589,14 @@ Section GaussianElim.
 Inductive reduced_row_echelon_no1 : matrix m n -> Prop :=
   | r_rref' (mx: matrix m n) :
       (*all rows of zeroes are at the bottom*)
-     (exists r : Z, 0 <= r < m /\ forall x, (0 <= x < m) -> leading_coefficient mx x = None <-> (r <= x)) ->
+     (exists r : Z, 0 <= r <= m /\ forall x, (0 <= x < m) -> leading_coefficient mx x = None <-> (r <= x)) ->
       (*all leading coefficients appear in order*)
       (forall i j n1 n2 c1 c2, (0 <= i < j) -> (0 <= j < m) ->
       leading_coefficient mx i = Some (c1, n1) ->
       leading_coefficient mx j = Some (c2, n2) ->
       n1 < n2) ->
       (*each column with a leading coefficient has zeroes in all other columns*)
-      (forall i c' n', leading_coefficient mx i = Some (c', n') ->
+      (forall i c' n', (0 <= i < m) -> leading_coefficient mx i = Some (c', n') ->
         (forall x, 0 <= x < m -> x <> i -> get mx x n' = zero)) ->
       reduced_row_echelon_no1 mx.
 
@@ -1620,7 +1620,7 @@ Inductive gaussian_invariant: matrix m n -> Z -> Z -> Prop :=
       (n1 < n2)) ->
     (*for rows < r, leading coefficient exists and occurs before column c*)
     (forall r', (0 <= r' < r) -> exists n1 c1,
-      leading_coefficient mx r' = Some (c1, n1) /\ (n1 < c)) ->
+      leading_coefficient mx r' = Some (c1, n1) /\ (0 <= n1 < c)) ->
     (*for the first c - 1 columns, each column with a leading coefficient has all other entries 0 *)
     (forall i c' n', (0 <= i < m) -> leading_coefficient mx i = Some (c', n') ->
       (0 <= n' < c) ->
@@ -1773,14 +1773,14 @@ Proof.
       destruct (leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x) eqn : L.
       destruct p. apply leading_coefficient_some_iff in L. destruct_all.
       simpl. apply leading_coefficient_some_iff in H3. destruct_all. assert (n' = z0 \/ n' < z0 \/ n' > z0) by lia.
-      destruct H23. subst. reflexivity. destruct H23. 
+      destruct H24. subst. reflexivity. destruct H24. 
       assert (get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x n' = zero).
-      apply H13; lia. rewrite <- S1 in H24; try lia. subst. contradiction.
-      assert (get mx x z0 = zero). apply H21; lia. rewrite S1 in H24; try lia.
+      apply H13; lia. rewrite <- S1 in H25; try lia. subst. contradiction.
+      assert (get mx x z0 = zero). apply H22; lia. rewrite S1 in H25; try lia.
       subst. contradiction. lia. lia. rewrite leading_coefficient_none_iff in L.
       rewrite leading_coefficient_some_iff in H3; try lia. destruct_all. subst.
       specialize (L n').  assert (get (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) x n' = zero).
-      apply L; lia. rewrite <- S1 in H12. subst. contradiction. lia. lia. lia. }
+      apply L; lia. rewrite <- S1 in H13. subst. contradiction. lia. lia. lia. }
       (* 6: again follows, the leading coefficient of row r is (one, c)*)
       assert (S6: leading_coefficient (subtract_all_rows (all_columns_one (swap_rows mx z r N) c) r c) r = Some (one, c)). {
       rewrite leading_coefficient_some_iff. split. lia. split. apply ((F_1_neq_0 (Fth))).
@@ -1850,14 +1850,422 @@ Proof.
       * subst. apply FN'; lia.
 Qed.
 
+Lemma gaussian_invariant_init: forall mx, gaussian_invariant mx 0 0.
+Proof.
+  intros. constructor; intros; lia.
+Qed.
+
+Definition fst' {A B C} (x: A * B * C) : A :=
+  match x with
+  | (a, _, _) => a
+  end.
+
+Definition snd' {A B C} (x: A * B * C) : B :=
+  match x with
+  | (_, b, _) => b
+  end.
+
+Definition trd' {A B C} (x: A * B * C) : C :=
+  match x with
+  | (_, _, c) => c
+  end.
+
+Lemma gauss_one_step_bounds: forall mx r c,
+  (0 <= r < m) ->
+  (0 <= c < n) ->
+  match (gauss_one_step mx r c) with
+  | (mx', r', c') => (Z.to_nat ((m-r') + (n-c')) < Z.to_nat ((m-r) + (n-c)))%nat
+  end.
+Proof.
+  intros. destruct (gauss_one_step mx r c) eqn : G. destruct p. 
+  unfold gauss_one_step in G. destruct (find_nonzero_row mx c r); inversion G; subst; lia.
+Qed.
+
+(*This is more complicated than it should be because of termination and the need to mantain the invariant at each step*)
+Program Fixpoint gauss_all_steps_aux (r c : Z) (mx : {x : matrix m n | gaussian_invariant x r c}) {measure (Z.to_nat ((m - r) + (n-c)))} :
+  { x : matrix m n * Z * Z |  row_equivalent m M n N mx (fst' x) /\ (0 <= r < m -> 0 <= c < n ->
+    (((snd' x) = m /\ 0 <= (trd' x) <= n) \/ ( 0 <= (snd' x) <= m /\ (trd' x) = n))) /\ (~((0 <= r < m) /\ (0 <= c < n)) -> (snd' x) = r /\ (trd' x) = c) /\
+    gaussian_invariant (fst' x) (snd' x) (trd' x)}   :=
+  if (zeq_in_dec 0 r m) then
+    if (zeq_in_dec 0 c n) then
+      match (gauss_one_step mx r c) with
+        | (mx', r', c') => gauss_all_steps_aux r' c' (exist _ mx' _)
+      end
+    else ((proj1_sig mx), r, c)
+  else ((proj1_sig mx), r, c).
+Next Obligation.
+pose proof (gauss_one_step_invar mx r c).
+assert (0 <= r < m) by (split; assumption).
+assert (0 <= c < n) by (split; assumption).
+specialize (H4 H5 H6 H3). rewrite <- Heq_anonymous in H4. assumption.
+Defined.
+Next Obligation.
+assert (0 <= r < m). split; assumption.
+assert (0 <= c < n). split; assumption.
+pose proof (gauss_one_step_bounds mx r c H4 H5). rewrite <- Heq_anonymous in H6. apply H6. 
+(*using lia causes awful proof term that appears everywhere*)
+Defined.
+Next Obligation.
+remember ((gauss_all_steps_aux r' c'
+           (exist (fun x : matrix m n => gaussian_invariant x r' c') mx'
+              (eq_ind_r
+                 (fun p : matrix m n * Z * Z =>
+                  let (p0, c'0) := p in let (mx'0, r'0) := p0 in gaussian_invariant mx'0 r'0 c'0)
+                 (gauss_one_step_invar mx r c (conj l1 l2) (conj l l0) H) Heq_anonymous))
+           (eq_ind_r
+              (fun p : matrix m n * Z * Z =>
+               let (p0, c'0) := p in
+               let (_, r'0) := p0 in (Z.to_nat (m - r'0 + (n - c'0)) < Z.to_nat (m - r + (n - c)))%nat)
+              (gauss_one_step_bounds mx r c (conj l1 l2) (conj l l0)) Heq_anonymous))) as R. destruct R.
+ simpl in HeqR. simpl in *. clear HeqR. 
+destruct a.
+split. (*row equivalence*)
+- eapply row_equivalent_trans. apply gauss_one_step_row_equiv. 2 : { rewrite <- Heq_anonymous.
+  simpl. assumption. } split; assumption.
+- destruct H1. destruct H2. split.
+  + intros. assert (0 <= r' < m \/ r' = m). { unfold gauss_one_step in Heq_anonymous. 
+  destruct (find_nonzero_row mx c r); inversion Heq_anonymous; lia. }
+  assert (0 <= c' < n \/ c' = n). { unfold gauss_one_step in Heq_anonymous. 
+  destruct (find_nonzero_row mx c r); inversion Heq_anonymous; lia. }
+  destruct H6. destruct H7. apply H1; assumption.
+  assert (snd' x = r' /\ trd' x = c') by (apply H2; lia).
+  destruct H8. right. split; lia. destruct H7. left. split; lia. 
+  assert (snd' x = r' /\ trd' x = c') by (apply H2; lia).
+  destruct H8. left. split; lia. 
+  + split.
+    * intros. lia.
+    * assumption.
+Defined.
+Next Obligation.
+split. constructor. split. intros. lia. split. intros. split; reflexivity. assumption.
+Defined.
+Next Obligation.
+split. constructor. split. intros. lia. split. intros. split; reflexivity. assumption.
+Defined.
+
+(*still not sure if this definition will be usable - may need to redo with Equations*)
+
+(*ending invariant implies rref without ones*)
+Lemma invar_implies_rref: forall mx,
+  (exists r, 0 <= r <= m /\ gaussian_invariant mx r n) \/ (exists c, 0 <= c <= n /\ gaussian_invariant mx m c) ->
+  reduced_row_echelon_no1 mx.
+Proof.
+  intros. destruct H.
+  - destruct H as [r]. destruct H. inversion H0; subst.
+    (*need this in multiple places*)
+    assert (S1: (forall x : Z, 0 <= x < m -> leading_coefficient mx x = None <-> r <= x)). { intros.
+    split; intros. assert (x < r \/ r <= x) by lia. destruct H7. 2 : assumption.
+    specialize (H2 x). assert (0 <= x < r) by lia. specialize (H2 H8). destruct_all.
+    rewrite H2 in H6. inversion H6.
+    rewrite leading_coefficient_none_iff. intros. apply H4; lia. lia. }
+    constructor.
+    + exists r. split; try lia; assumption.
+    + intros. assert (0 <= j < r \/ r <= j) by lia. destruct H9.
+      * eapply H1. apply H5. assumption. apply H7. apply H8.
+      * rewrite <- S1 in H9. rewrite H9 in H8. inversion H8. lia.
+    + intros. eapply H3. apply H5. apply H6. rewrite leading_coefficient_some_iff in H6.
+      destruct H6. all: assumption.
+  - destruct H as [c]. destruct H. inversion H0; subst. constructor.
+    + exists m. split. lia. intros. split; intros. 
+      specialize (H2 _ H5). destruct_all. rewrite H2 in H6. inversion H6. lia.
+    + apply H1.
+    + intros. eapply H3. apply H5. apply H6. specialize (H2 _ H5). destruct_all. rewrite H2 in H6. inversion H6; subst. lia.
+      assumption. assumption.
+Qed.
+
+(*Last step: make all leading coefficients 1*)
+Definition all_leading_coeffs_one_aux mx l :=
+  fold_right (fun x acc => 
+    match (leading_coefficient mx x) with
+      | None => acc
+      | Some (a, _) => scalar_mul_row acc x (inv a) M N 
+    end) mx l.
+
+Lemma leading_coeff_scalar_mul_row_diff: forall mx i j c,
+  (0 <= i < m) ->
+  (0 <= j < m) ->
+  i <> j ->
+  leading_coefficient mx i = leading_coefficient (scalar_mul_row mx j c M N) i.
+Proof.
+  intros. destruct (leading_coefficient mx i) eqn : L.
+  - destruct p. rewrite leading_coefficient_some_iff in L; try assumption.
+    symmetry. rewrite leading_coefficient_some_iff; try assumption. split. apply L. split. apply L.
+    split. rewrite scalar_mul_row_spec; try lia. if_tac. contradiction. apply L.
+    intros. rewrite scalar_mul_row_spec; try lia. if_tac. contradiction. apply L. assumption.
+  - rewrite leading_coefficient_none_iff in L; try assumption. symmetry.
+    rewrite leading_coefficient_none_iff; try assumption. intros. rewrite scalar_mul_row_spec; try lia.
+    if_tac. contradiction. apply L. assumption.
+Qed.
+
+(*TODO: MOVE*)
+Lemma field_cancellation: forall a b c,
+  a <> zero ->
+  mult a b = mult a c ->
+  b = c.
+Proof.
+  intros. assert (mult (inv a) (mult a b) = mult (inv a) (mult a c)) by (rewrite H0; reflexivity).
+  assert (mult (inv a) (mult a b) = b). field'. apply H.  
+  assert (mult (inv a) (mult a c) = c). field'. apply H. rewrite H2 in H1. rewrite H3 in H1. assumption.
+Qed. 
+
+Lemma leading_coeff_scalar_mul_row_none: forall mx i j c,
+  (0 <= i < m) ->
+  (0 <= j < m) ->
+  c <> zero ->
+  leading_coefficient mx i = None <-> leading_coefficient (scalar_mul_row mx j c M N) i = None.
+Proof.
+  intros. split; intros. rewrite leading_coefficient_none_iff in H2; try lia.
+  rewrite leading_coefficient_none_iff; try lia. intros. rewrite scalar_mul_row_spec; try lia.
+  if_tac; try lia. subst. rewrite H2. ring'. lia.
+  apply H2. lia.
+  rewrite leading_coefficient_none_iff; try lia. rewrite leading_coefficient_none_iff in H2; try lia.
+  intros. specialize (H2 _ H3). rewrite scalar_mul_row_spec in H2; try lia.
+  destruct (Z.eq_dec i j). apply field_integral_domain in H2. destruct H2. contradiction. assumption.
+  assumption.
+Qed.
+
+Lemma leading_coeff_scalar_mul_row_same: forall mx i c n' c',
+  (0 <= i < m) ->
+  c <> zero ->
+  leading_coefficient mx i = Some (c', n') <-> 
+  leading_coefficient (scalar_mul_row mx i c M N) i = Some ( mult c c', n').
+Proof.
+  intros. split; intros.
+  - rewrite leading_coefficient_some_iff in H1; try assumption.
+    destruct_all. rewrite leading_coefficient_some_iff; try lia.
+    repeat(split; try lia). intro. apply field_integral_domain in H7. destruct H7; contradiction.
+    rewrite scalar_mul_row_spec; try lia. if_tac; try contradiction. subst. reflexivity.
+    intros. rewrite scalar_mul_row_spec; try lia. if_tac; try contradiction. subst. rewrite H4.
+    ring'. assumption.
+  - rewrite leading_coefficient_some_iff in H1; try lia. rewrite leading_coefficient_some_iff; try lia.
+    destruct_all. repeat(split; try lia; try assumption). intro. subst.
+    apply H2. ring'. rewrite scalar_mul_row_spec in H3; try lia. destruct (Z.eq_dec i i); try contradiction.
+    apply field_cancellation in H3. assumption. assumption.
+    intros. specialize (H4 _ H7). rewrite scalar_mul_row_spec in H4; try lia. destruct (Z.eq_dec i i); try lia.
+    apply field_integral_domain in H4. destruct H4. contradiction. assumption.
+Qed.
+
+Lemma all_leading_coeffs_one_aux_leading_notin: forall mx l i,
+  (0 <= i < m) ->
+  (forall x, In x l -> (0 <= x < m)) ->
+  ~In i l ->
+  leading_coefficient mx i = leading_coefficient (all_leading_coeffs_one_aux mx l) i.
+Proof.
+  intros. induction l; simpl.
+  - reflexivity.
+  - specialize (IHl (all_list _ _ _ H0)). pose proof (fst_list _ _ _ H0). simpl in H2.
+    pose proof (all_list _ _ _ H0). destruct (leading_coefficient mx a) eqn : L.
+    + destruct p. rewrite <- leading_coeff_scalar_mul_row_diff. apply IHl. all: try assumption.
+      intro. apply H1. solve_in. intro. subst. apply H1. solve_in.
+    + apply IHl. intro. apply H1. solve_in.
+Qed. 
+
+Lemma all_leading_coeffs_one_aux_leading_none: forall mx l i,
+  (forall x, In x l -> (0 <= x < m)) ->
+  (0 <= i < m) ->  
+  leading_coefficient mx i = None <-> leading_coefficient (all_leading_coeffs_one_aux mx l) i = None.
+Proof.
+  intros. generalize dependent i. induction l; split; intros.
+  - simpl. assumption.
+  - simpl in H1. assumption.
+  - specialize (IHl (all_list _ _ _ H)). pose proof (all_list _ _ _ H). simpl in H2.
+    pose proof (fst_list _ _ _ H). simpl in H3. simpl. destruct (leading_coefficient mx a) eqn : L.
+    + destruct p. rewrite IHl in H1. rewrite (leading_coeff_scalar_mul_row_none _ _ a (inv a0)) in H1. apply H1.
+      all: try lia. apply inv_nonzero. rewrite leading_coefficient_some_iff in L; try lia.
+      apply L.
+    + apply IHl. lia. assumption.
+  - simpl in H1. specialize (IHl (all_list _ _ _ H)). pose proof (all_list _ _ _ H). simpl in H2.
+    pose proof (fst_list _ _ _ H). simpl in H3. destruct (leading_coefficient mx a) eqn : L.
+    + destruct p. rewrite <- leading_coeff_scalar_mul_row_none in H1; try lia. 
+      apply IHl. lia. assumption. apply inv_nonzero. rewrite leading_coefficient_some_iff in L; try lia. apply L.
+    + apply IHl. lia. assumption.
+Qed. 
+
+(*what we really want to know: leading coefficients are the same and in the same position, they are just one*)
+Lemma all_leading_coeffs_one_aux_leading_coeffs: forall mx l i n,
+  (0 <= i < m) ->
+  (forall x, In x l -> (0 <= x < m)) ->
+  In i l ->
+  NoDup l ->
+  (exists a, leading_coefficient mx i = Some(a,n)) <-> leading_coefficient (all_leading_coeffs_one_aux mx l) i = Some (one, n).
+Proof.
+  intros. induction l; simpl; split; intros.
+  - inversion H1.
+  - inversion H1.
+  - specialize (IHl (all_list _ _ _ H0)). pose proof (all_list _ _ _ H0). simpl in H4.
+    pose proof (fst_list _ _ _ H0). simpl in H5. inversion H2; subst. destruct H1.
+    + subst. destruct_all. rewrite H1. assert (K := H1).
+      assert (leading_coefficient (all_leading_coeffs_one_aux mx l) i = Some (a, n0)).
+      rewrite <- all_leading_coeffs_one_aux_leading_notin; try assumption; try lia.
+      rewrite (leading_coeff_scalar_mul_row_same _ _ (inv a)) in H7.
+      assert (mult (inv a) a = one). rewrite leading_coefficient_some_iff in H1. destruct_all. field'. assumption.
+      all: try lia. rewrite H10 in H7. apply H7. 
+      apply inv_nonzero. rewrite leading_coefficient_some_iff in H1; destruct_all. assumption. lia.
+    + specialize (IHl H1 H9). rewrite IHl in H3. 
+      destruct (leading_coefficient mx a) eqn : L.
+      * destruct p. rewrite (leading_coeff_scalar_mul_row_diff _ _ a (inv a0)) in H3. apply H3.
+        lia. lia. intro. subst. contradiction.
+      * assumption.
+  - specialize (IHl (all_list _ _ _ H0)). pose proof (all_list _ _ _ H0). simpl in H4.
+    pose proof (fst_list _ _ _ H0). simpl in H5. inversion H2; subst. destruct H1.
+    + subst. destruct (leading_coefficient mx i) eqn : L.
+      * destruct p. rewrite (all_leading_coeffs_one_aux_leading_notin _ l) in L.
+        rewrite leading_coeff_scalar_mul_row_same in L. rewrite L in H3. inversion H3; subst.
+        exists a. reflexivity. all: try lia. apply inv_nonzero. rewrite leading_coefficient_some_iff in L; try lia.
+        apply L. assumption. assumption.
+      * rewrite all_leading_coeffs_one_aux_leading_none in L. rewrite L in H3. inversion H3. assumption. lia.
+    + specialize (IHl H1 H9). destruct (leading_coefficient mx a) eqn : L.
+      * destruct p. rewrite <- (leading_coeff_scalar_mul_row_diff _ _ a (inv a0)) in H3; try lia.
+        apply IHl. assumption. intro. subst. contradiction.
+      * apply IHl; assumption.
+Qed.
+
+Lemma all_leading_coeffs_one_aux_get_zero: forall mx i j l,
+  (0 <= i < m) ->
+  (0 <= j < n) ->
+  (forall x, In x l -> (0 <= x < m)) ->
+  get mx i j = zero <-> get (all_leading_coeffs_one_aux mx l) i j = zero.
+Proof.
+  intros. induction l; simpl. reflexivity. specialize (IHl (all_list _ _ _ H1)).
+  pose proof (fst_list _ _ _ H1). simpl in H2. split; intros.
+  - destruct (leading_coefficient mx a) eqn : L.
+    + destruct p. rewrite scalar_mul_row_spec; try lia. if_tac.
+      * subst. rewrite IHl in H3. rewrite H3. ring'.
+      * apply IHl. assumption.
+    + apply IHl; assumption.
+  - destruct (leading_coefficient mx a) eqn : L.
+    + destruct p. rewrite scalar_mul_row_spec in H3; try lia.
+      destruct (Z.eq_dec i a). subst. apply field_integral_domain in H3.
+      destruct H3. rewrite leading_coefficient_some_iff in L; try lia. destruct_all.
+      apply inv_nonzero in H5. contradiction. apply IHl. assumption. apply IHl; assumption.
+    + apply IHl; assumption.
+Qed. 
+
+Lemma all_leading_coeffs_aux_row_equiv: forall mx l,
+  (forall x, In x l -> (0 <= x < m)) ->
+  row_equivalent m M n N mx (all_leading_coeffs_one_aux mx l).
+Proof.
+  intros. induction l. simpl. constructor.
+  specialize (IHl (all_list _ _ _ H)). pose proof (fst_list _ _ _ H). simpl in H0.
+  simpl. destruct (leading_coefficient mx a) eqn : D.
+  destruct p. eapply row_equivalent_trans. apply IHl. apply row_equivalent_ero. constructor. lia.
+  apply inv_nonzero. apply leading_coefficient_some_iff in D; try lia. apply D.
+  apply IHl.
+Qed. 
+
+(*the full definition*)
+Definition all_leading_coeffs_one mx :=
+  all_leading_coeffs_one_aux mx (Zseq 0 m).
+
+Lemma all_leading_coeffs_one_leading_coeffs_some: forall mx i n,
+  (0 <= i < m) ->
+  (exists a, leading_coefficient mx i = Some(a,n)) <-> leading_coefficient (all_leading_coeffs_one mx) i = Some (one, n).
+Proof.
+  intros. unfold all_leading_coeffs_one. apply all_leading_coeffs_one_aux_leading_coeffs. lia.
+  intros. rewrite Zseq_In in H0; lia. rewrite Zseq_In; lia. apply Zseq_NoDup; lia.
+Qed.
+
+Lemma all_leading_coeffs_one_leading_coeffs_none: forall mx i,
+  (0 <= i < m) ->
+  leading_coefficient mx i = None <-> leading_coefficient (all_leading_coeffs_one mx) i = None.
+Proof.
+  intros. unfold all_leading_coeffs_one. apply all_leading_coeffs_one_aux_leading_none; try assumption.
+  intros. rewrite Zseq_In in H0; lia.
+Qed.
+
+Lemma all_leading_coeffs_one_get_zero: forall mx i j,
+  (0 <= i < m) ->
+  (0 <= j < n) ->
+  get mx i j = zero <-> get (all_leading_coeffs_one mx) i j = zero.
+Proof.
+  intros. unfold all_leading_coeffs_one. apply all_leading_coeffs_one_aux_get_zero; try assumption.
+  intros. rewrite Zseq_In in H1; lia.
+Qed.
+
+Lemma all_leading_coeffs_row_equiv: forall mx,
+  row_equivalent m M n N mx (all_leading_coeffs_one mx).
+Proof.
+  intros. unfold all_leading_coeffs_one. apply all_leading_coeffs_aux_row_equiv. intros.
+  rewrite Zseq_In in H; lia.
+Qed.
+
+(*our final step puts the matrix into row echelon form*)
+Lemma rref_all_leading_coeffs: forall mx,
+  reduced_row_echelon_no1 mx ->
+  reduced_row_echelon (all_leading_coeffs_one mx).
+Proof.
+  intros. inversion H; subst. constructor.
+  - constructor.
+    + destruct_all. exists r. split. lia. intros. rewrite <- H3.
+      rewrite <- all_leading_coeffs_one_leading_coeffs_none. reflexivity. all: assumption.
+    + intros. destruct (leading_coefficient mx i) eqn : L1.
+      destruct p. 2 : { rewrite all_leading_coeffs_one_leading_coeffs_none in L1. rewrite L1 in H5. inversion H5.
+      lia. } destruct (leading_coefficient mx j) eqn : L2. destruct p. 2 : { 
+      rewrite all_leading_coeffs_one_leading_coeffs_none in L2. rewrite L2 in H6. inversion H6. lia. }
+      assert (exists a, leading_coefficient mx i = Some (a, z)). exists a. assumption.
+      rewrite all_leading_coeffs_one_leading_coeffs_some in H7; try lia.
+      assert (exists a, leading_coefficient mx j = Some (a, z0)). exists a0. assumption.
+      rewrite all_leading_coeffs_one_leading_coeffs_some in H8; try lia.
+      rewrite H5 in H7. inversion H7; subst. rewrite H6 in H8. inversion H8; subst.
+      eapply H1. apply H3. assumption. apply L1. apply L2.
+    + intros. destruct (leading_coefficient mx i) eqn : L. 2 : { 
+      rewrite all_leading_coeffs_one_leading_coeffs_none in L. rewrite L in H4; inversion H4. lia. }
+      destruct p. assert (exists a, leading_coefficient mx i = Some (a, z)). exists a. assumption.
+      rewrite all_leading_coeffs_one_leading_coeffs_some in H7; try lia. rewrite H4 in H7; inversion H7; subst.
+       rewrite <- all_leading_coeffs_one_get_zero. eapply H2. apply H3. apply L. all: try assumption.
+      rewrite leading_coefficient_some_iff in H4. apply H4. lia.
+  - intros. destruct (leading_coefficient mx i) eqn : L.
+    + destruct p. assert (exists a, leading_coefficient mx i = Some (a, z)) by (exists a; assumption).
+      rewrite all_leading_coeffs_one_leading_coeffs_some in H5; try lia. rewrite H5 in H4. inversion H4; subst.
+      reflexivity.
+    + rewrite all_leading_coeffs_one_leading_coeffs_none in L. rewrite L in H4; inversion H4. lia.
+Qed.
+
+
+
+
+(*The final Gaussian elimination function*)
+Definition gaussian_elimination (mx: matrix m n) : matrix m n :=
+  all_leading_coeffs_one (fst' (proj1_sig (gauss_all_steps_aux 0 0 (exist _ mx (gaussian_invariant_init mx))))).
+
+Lemma gaussian_row_equiv: forall mx,
+  row_equivalent m M n N mx (gaussian_elimination mx).
+Proof.
+  intros. unfold gaussian_elimination. eapply row_equivalent_trans.
+  2: apply all_leading_coeffs_row_equiv. destruct (
+  (gauss_all_steps_aux 0 0
+           (exist (fun x : matrix m n => gaussian_invariant x 0 0) mx (gaussian_invariant_init mx)))). simpl.
+   simpl in a. destruct_all. assumption.
+Qed.
+
+(*later - maybe try to remove assumption*)
+(*Proof that the matrix resuling from gaussian elimination is row reduced*)
+Lemma gaussian_rref: forall mx,
+  (0 < n) ->
+  (0 < m) ->
+  reduced_row_echelon (gaussian_elimination mx).
+Proof.
+  intros. unfold gaussian_elimination. apply rref_all_leading_coeffs. 
+  destruct (
+        (gauss_all_steps_aux 0 0
+           (exist (fun x : matrix m n => gaussian_invariant x 0 0) mx (gaussian_invariant_init mx)))).
+  simpl in *. destruct_all. clear H3. 
+  apply invar_implies_rref. assert (snd' x = m /\ 0 <= trd' x <= n \/ 0 <= snd' x <= m /\ trd' x = n) by (apply H2; lia).
+  destruct H3.
+  - right. exists (trd' x). split. apply H3. destruct H3. rewrite H3 in H4. apply H4.
+  - left. exists (snd' x). split. apply H3. destruct H3. rewrite H5 in H4. apply H4.
+Qed.
+
+
 (*TODO: 
-  - prove that invariants initially satisfied
-  - full gaussian elim (repeat steps)
-  - invariants at end imply row echelon form
+  x prove that invariants initially satisfied
+  x full gaussian elim (repeat steps)
+  x invariants at end imply row echelon form
   - split/concat matrices
   - mult over split/concat matrices
   - from REF - if first part of matrix is invertible, get I_n | M after gaussian elim (ie, leading coeff of row i is i
   - corollary - if we take m * 2m mx with identity in second part, second is inverse after gaussian elim
+  - then begin proving our special conditions
 *)
 
 End GaussianElim.
