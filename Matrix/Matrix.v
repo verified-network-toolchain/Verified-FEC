@@ -1881,69 +1881,59 @@ Proof.
   unfold gauss_one_step in G. destruct (find_nonzero_row mx c r); inversion G; subst; lia.
 Qed.
 
-(*This is more complicated than it should be because of termination and the need to mantain the invariant at each step*)
-Program Fixpoint gauss_all_steps_aux (r c : Z) (mx : {x : matrix m n | gaussian_invariant x r c}) {measure (Z.to_nat ((m - r) + (n-c)))} :
-  { x : matrix m n * Z * Z |  row_equivalent m M n N mx (fst' x) /\ (0 <= r < m -> 0 <= c < n ->
-    (((snd' x) = m /\ 0 <= (trd' x) <= n) \/ ( 0 <= (snd' x) <= m /\ (trd' x) = n))) /\ (~((0 <= r < m) /\ (0 <= c < n)) -> (snd' x) = r /\ (trd' x) = c) /\
-    gaussian_invariant (fst' x) (snd' x) (trd' x)}   :=
+Function gauss_all_steps_aux (r c: Z) (mx: matrix m n) {measure (fun x => Z.to_nat (n - x)) c} : matrix m n :=
   if (zeq_in_dec 0 r m) then
     if (zeq_in_dec 0 c n) then
       match (gauss_one_step mx r c) with
-        | (mx', r', c') => gauss_all_steps_aux r' c' (exist _ mx' _)
+        | (mx', r', c') => gauss_all_steps_aux r' c' mx'
       end
-    else ((proj1_sig mx), r, c)
-  else ((proj1_sig mx), r, c).
-Next Obligation.
-pose proof (gauss_one_step_invar mx r c).
-assert (0 <= r < m) by (split; assumption).
-assert (0 <= c < n) by (split; assumption).
-specialize (H4 H5 H6 H3). rewrite <- Heq_anonymous in H4. assumption.
-Defined.
-Next Obligation.
-assert (0 <= r < m). split; assumption.
-assert (0 <= c < n). split; assumption.
-pose proof (gauss_one_step_bounds mx r c H4 H5). rewrite <- Heq_anonymous in H6. apply H6. 
-(*using lia causes awful proof term that appears everywhere*)
-Defined.
-Next Obligation.
-remember ((gauss_all_steps_aux r' c'
-           (exist (fun x : matrix m n => gaussian_invariant x r' c') mx'
-              (eq_ind_r
-                 (fun p : matrix m n * Z * Z =>
-                  let (p0, c'0) := p in let (mx'0, r'0) := p0 in gaussian_invariant mx'0 r'0 c'0)
-                 (gauss_one_step_invar mx r c (conj l1 l2) (conj l l0) H) Heq_anonymous))
-           (eq_ind_r
-              (fun p : matrix m n * Z * Z =>
-               let (p0, c'0) := p in
-               let (_, r'0) := p0 in (Z.to_nat (m - r'0 + (n - c'0)) < Z.to_nat (m - r + (n - c)))%nat)
-              (gauss_one_step_bounds mx r c (conj l1 l2) (conj l l0)) Heq_anonymous))) as R. destruct R.
- simpl in HeqR. simpl in *. clear HeqR. 
-destruct a.
-split. (*row equivalence*)
-- eapply row_equivalent_trans. apply gauss_one_step_row_equiv. 2 : { rewrite <- Heq_anonymous.
-  simpl. assumption. } split; assumption.
-- destruct H1. destruct H2. split.
-  + intros. assert (0 <= r' < m \/ r' = m). { unfold gauss_one_step in Heq_anonymous. 
-  destruct (find_nonzero_row mx c r); inversion Heq_anonymous; lia. }
-  assert (0 <= c' < n \/ c' = n). { unfold gauss_one_step in Heq_anonymous. 
-  destruct (find_nonzero_row mx c r); inversion Heq_anonymous; lia. }
-  destruct H6. destruct H7. apply H1; assumption.
-  assert (snd' x = r' /\ trd' x = c') by (apply H2; lia).
-  destruct H8. right. split; lia. destruct H7. left. split; lia. 
-  assert (snd' x = r' /\ trd' x = c') by (apply H2; lia).
-  destruct H8. left. split; lia. 
-  + split.
-    * intros. lia.
-    * assumption.
-Defined.
-Next Obligation.
-split. constructor. split. intros. lia. split. intros. split; reflexivity. assumption.
-Defined.
-Next Obligation.
-split. constructor. split. intros. lia. split. intros. split; reflexivity. assumption.
+    else mx
+  else mx.
+Proof.
+  intros. unfold gauss_one_step in teq1. destruct (find_nonzero_row mx c r); inversion teq1; lia.
 Defined.
 
-(*still not sure if this definition will be usable - may need to redo with Equations*)
+(*Now we prove the correctness of [gauss_all_steps_aux]*)
+Lemma gauss_all_steps_aux_row_equiv: forall r c mx,
+  row_equivalent m M n N mx (gauss_all_steps_aux r c mx).
+Proof.
+  apply (gauss_all_steps_aux_ind (fun r' c' m1 m2 => row_equivalent m M n N m1 m2)); intros.
+  - eapply row_equivalent_trans. 2 : { apply H. }
+    pose proof (gauss_one_step_row_equiv mx r c _x). rewrite e1 in H0. simpl in H0. assumption.
+  - constructor.
+  - constructor.
+Qed.
+
+Lemma gauss_all_steps_out_of_bounds: forall r c mx,
+  ~((0 <= r < m) /\ (0 <= c < n)) ->
+  gauss_all_steps_aux r c mx = mx.
+Proof.
+  intros. rewrite gauss_all_steps_aux_equation. if_tac. if_tac. lia. reflexivity. reflexivity.
+Qed.
+
+Lemma gauss_all_steps_invar: forall r c mx,
+  (0 <= r <= m) ->
+  (0 <= c <= n) ->
+  gaussian_invariant mx r c ->
+  (exists r', 0 <= r' <= m /\ gaussian_invariant (gauss_all_steps_aux r c mx) r' n) \/
+  (exists c', 0 <= c' <= n /\ gaussian_invariant (gauss_all_steps_aux r c mx) m c').
+Proof.
+  apply (gauss_all_steps_aux_ind (fun r' c' m1 m2 =>
+    (0 <= r' <= m) -> (0 <= c' <= n) -> gaussian_invariant m1 r' c' ->
+    (exists r', 0 <= r' <= m /\ gaussian_invariant m2 r' n) \/
+    (exists c', 0 <= c' <= n /\ gaussian_invariant m2 m c'))); intros.
+  - assert (GI: gaussian_invariant mx' r' c'). { pose proof (gauss_one_step_invar mx r c).
+    assert (0 <= r < m). lia. assert (0 <= c < n). lia. specialize (H3 H4 H5 H2).
+    rewrite e1 in H3. assumption. }
+    assert ((0 <= r < m) \/ (r = m)) by lia. assert (0 <= c < n \/ c = n) by lia.
+    assert (r' = r \/ r' = r + 1). { unfold gauss_one_step in e1. destruct (find_nonzero_row mx c r).
+    inversion e1; subst. lia. inversion e1; subst; lia. }
+    assert (c' = c + 1). { unfold gauss_one_step in e1. destruct (find_nonzero_row mx c r); inversion e1; subst; reflexivity. }
+    destruct H3. destruct H4. apply H. lia. lia. assumption.
+    subst. lia. subst. lia.
+  - assert (c = n) by lia. left. exists r. subst. split; assumption.
+  - assert (r = m) by lia. right. exists c. subst; split; assumption.
+Qed.
 
 (*ending invariant implies rref without ones*)
 Lemma invar_implies_rref: forall mx,
@@ -2222,38 +2212,24 @@ Proof.
 Qed.
 
 
-
-
 (*The final Gaussian elimination function*)
-Definition gaussian_elimination (mx: matrix m n) : matrix m n :=
-  all_leading_coeffs_one (fst' (proj1_sig (gauss_all_steps_aux 0 0 (exist _ mx (gaussian_invariant_init mx))))).
+Definition gaussian_elimination (mx: matrix m n ) : matrix m n :=
+  all_leading_coeffs_one (gauss_all_steps_aux 0 0 mx).
 
 Lemma gaussian_row_equiv: forall mx,
   row_equivalent m M n N mx (gaussian_elimination mx).
 Proof.
-  intros. unfold gaussian_elimination. eapply row_equivalent_trans.
-  2: apply all_leading_coeffs_row_equiv. destruct (
-  (gauss_all_steps_aux 0 0
-           (exist (fun x : matrix m n => gaussian_invariant x 0 0) mx (gaussian_invariant_init mx)))). simpl.
-   simpl in a. destruct_all. assumption.
+  intros. unfold gaussian_elimination. eapply row_equivalent_trans. 2: apply all_leading_coeffs_row_equiv.
+  apply gauss_all_steps_aux_row_equiv.
 Qed.
 
-(*later - maybe try to remove assumption*)
 (*Proof that the matrix resuling from gaussian elimination is row reduced*)
 Lemma gaussian_rref: forall mx,
-  (0 < n) ->
-  (0 < m) ->
   reduced_row_echelon (gaussian_elimination mx).
 Proof.
-  intros. unfold gaussian_elimination. apply rref_all_leading_coeffs. 
-  destruct (
-        (gauss_all_steps_aux 0 0
-           (exist (fun x : matrix m n => gaussian_invariant x 0 0) mx (gaussian_invariant_init mx)))).
-  simpl in *. destruct_all. clear H3. 
-  apply invar_implies_rref. assert (snd' x = m /\ 0 <= trd' x <= n \/ 0 <= snd' x <= m /\ trd' x = n) by (apply H2; lia).
-  destruct H3.
-  - right. exists (trd' x). split. apply H3. destruct H3. rewrite H3 in H4. apply H4.
-  - left. exists (snd' x). split. apply H3. destruct H3. rewrite H5 in H4. apply H4.
+  intros. unfold gaussian_elimination. apply rref_all_leading_coeffs.
+  apply invar_implies_rref. apply gauss_all_steps_invar. lia. lia.
+  apply gaussian_invariant_init.
 Qed.
 
 
