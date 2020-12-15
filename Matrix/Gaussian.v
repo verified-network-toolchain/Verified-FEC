@@ -4,8 +4,6 @@ Require Import mathcomp.algebra.ssralg.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
-
-
 Set Bullet Behavior "Strict Subproofs".
 
 Section Gauss.
@@ -142,12 +140,10 @@ Qed.
 (*sc_mul_mx is invertible*)
 Lemma sc_mul_mx_unitmx: forall {m : nat} (c: F) (r: 'I_m),
   c != 0 ->
-  unitmx (sc_mul_mx c r).
+  (sc_mul_mx c r) \in unitmx.
 Proof.
-  move => m c r Hc. apply (@intro_unitmx _ _ (sc_mul_mx c r) (sc_mul_mx c^-1 r)).
-  split. have: c = (c^-1)^-1. symmetry. apply GRing.Theory.invrK. move => Hinv. rewrite {2}Hinv. apply sc_mul_mx_inv.
-  apply: GRing.invr_neq0 Hc. by apply sc_mul_mx_inv. 
-Qed.
+  move => m c r Hc. apply: (proj1 (mulmx1_unit (@sc_mul_mx_inv m c r  Hc))).
+Qed. 
 
 (*Add multiple of one row to another - r2 := r2 + c * r1*)
 Definition add_mul {m n} (A : 'M[F]_(m, n)) (c: F) (r1 r2: 'I_m) : 'M[F]_(m, n) :=
@@ -209,11 +205,154 @@ Qed.
 (*add_mul_mx is invertible*)
 Lemma add_mul_mx_unitmx: forall {m : nat} (c: F) (r1 r2: 'I_m),
   r1 != r2 ->
-  unitmx (add_mul_mx c r1 r2).
+  (add_mul_mx c r1 r2) \in unitmx.
 Proof.
-  move => m c r1 r2 Hr12. apply (@intro_unitmx _ _ (add_mul_mx c r1 r2) (add_mul_mx (- c) r1 r2)).
-  split. have: c = - (- c). symmetry. apply GRing.Theory.opprK. move => Hinv. rewrite {2}Hinv. by apply add_mul_mx_inv.
-  by apply add_mul_mx_inv. 
+  move => m c r1 r2 Hr12. apply: (proj1 (mulmx1_unit (@add_mul_mx_inv m c r1 r2 Hr12))).
 Qed.
+
+(** Row equivalence *)
+
+Inductive ero : forall (m n : nat), 'M[F]_(m, n) -> 'M[F]_(m, n) -> Prop :=
+  | ero_swap: forall {m n} r1 r2 (A : 'M[F]_(m,n)),
+      ero A (xrow r1 r2 A)
+  | ero_sc_mul: forall {m n} r c (A : 'M[F]_(m,n)),
+      c != 0 ->
+      ero A (sc_mul A c r)
+  | ero_add_mul: forall {m n} r1 r2 c (A : 'M[F]_(m,n)),
+      r1 != r2 ->
+      ero A (add_mul A c r1 r2).
+
+Lemma ero_mul_unit: forall {m n} (A B : 'M[F]_(m, n)),
+  ero A B ->
+  exists E, (E \in unitmx) && (B == E *m A).
+Proof.
+  move => m n A B Hero. elim: Hero; move => m' n' r1.
+  - move => r2 A'. exists (tperm_mx r1 r2). by rewrite {1}/tperm_mx unitmx_perm xrowE eq_refl.
+  - move => c A' Hc. exists (sc_mul_mx c r1). by rewrite sc_mulE eq_refl sc_mul_mx_unitmx.
+  - move => r2 c A' Hr. exists (add_mul_mx c r1 r2). rewrite add_mulE. by rewrite eq_refl add_mul_mx_unitmx. by [].
+Qed.
+
+Inductive row_equivalent: forall m n, 'M[F]_(m, n) -> 'M[F]_(m, n) -> Prop :=
+  | row_equiv_refl: forall {m n} (A: 'M[F]_(m,n)),
+     row_equivalent A A
+  | row_equiv_ero: forall {m n} (A B C: 'M[F]_(m,n)),
+     ero A B ->
+     row_equivalent B C ->
+     row_equivalent A C.
+
+Lemma row_equivalent_trans: forall {m n} (A B C : 'M[F]_(m, n)),
+  row_equivalent A B ->
+  row_equivalent B C ->
+  row_equivalent A C.
+Proof.
+  move => m n A B C Hre. move : C. elim: Hre; clear m n A B.
+  - by [].
+  - move => m n A B C Hero Hre IH D Hd. apply (@row_equiv_ero _ _ A B D). by []. by apply: IH.
+Qed. 
+
+(*If A and B are row equivalent, then A = EB for some invertible matrix E*) 
+Lemma row_equivalent_mul_unit: forall {m n} (A B : 'M[F]_(m, n)),
+  row_equivalent A B ->
+  exists E, (E \in unitmx) && (B == E *m A).
+Proof.
+  move => m n A B Hre. elim: Hre; clear m n A B; move => m n A.
+  - exists (1%:M). by rewrite unitmx1 mul1mx eq_refl.
+  - move => B C Hero Hre IH. destruct IH as [E IH]. apply ero_mul_unit in Hero. destruct Hero as [E' Hero]. 
+    exists (E *m E'). move : Hero IH => /andP[He' /eqP Hb] /andP[He /eqP Hc]. rewrite unitmx_mul.
+    subst. by rewrite mulmxA eq_refl He He'. 
+Qed.
+
+(*If A and B are row equivalent, then A is invertible iff B is*)
+Lemma row_equivalent_unitmx_iff: forall {n} (A B : 'M[F]_(n, n)),
+  row_equivalent A B ->
+  (A \in unitmx) = (B \in unitmx).
+Proof.
+  move => n A B Hre. apply row_equivalent_mul_unit in Hre. destruct Hre as [E Hre].
+  move : Hre => /andP[Hunit /eqP Hb]. by rewrite Hb unitmx_mul Hunit. 
+Qed. 
+
+(** Gaussian Elimination*)
+
+(*First, we define the leading coefficient of a row (ie, the first nonzero element) - will be n if row is all zeroes*)
+Definition lead_coef {m n} (A: 'M[F]_(m, n)) (row: 'I_m) : nat :=
+  find (fun x => A row x != 0) (ord_enum n).
+
+Definition ord_iota {n: nat} (a b : nat) : seq 'I_n := pmap insub (iota a b).
+
+Lemma ord_iota_val: forall {n} (a b : nat), (a + b < n) -> map val (@ord_iota n a b) = iota a b.
+Proof.
+move => n a b Hle.
+rewrite pmap_filter; last exact: insubK.
+apply/all_filterP; apply/allP => i. rewrite mem_iota isSome_insub. move => /andP[H{H} Hin]. move: Hin Hle.
+apply: ltn_trans.
+Qed.
+
+(*Find the first nonzero entry in column col, starting from index r*)
+Definition fst_nonzero {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) : nat :=
+  find (fun x => A x col != 0) (ord_iota r (m - r)).
+
+(*Fold a function over the rows of a matrix that are contained in a list.
+  If this function only affects a single row and depends only on the entries in that row and possibly
+  rows that are not in the list, then we can describe the (i, j)th component just with the function itself.
+  This allows us to prove things about the multiple intermediate steps in gaussian elimination at once*)
+
+(*Two helper lemmas*)
+Lemma mx_row_transform_notin: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+  (forall (A: 'M[F]_(m,n)) i j r, i != r ->  A i j = (f r A) i j) ->
+  forall r j, r \notin l ->
+  (foldr f A l) r j = A r j.
+Proof.
+  move => m n A f l Hfcond. elim: l => [//| h t IH].
+  move => r j. rewrite in_cons negb_or => /andP[Hhr Hnotint] //=. rewrite -Hfcond. by apply: IH. by []. 
+Qed. 
+
+Lemma row_function_equiv: forall {m n} (A: 'M[F]_(m,n)) (l : seq 'I_m) (r : 'I_m) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)),
+  (forall (A : 'M_(m, n)) (i : ordinal_eqType m) (j : 'I_n) r,
+         i != r -> A i j = f r A i j) -> (*f only changes entries in r*)
+  (forall (A B : 'M[F]_(m,n)) r, (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
+    f r A = f r B) -> (*f depends only on values in row r and rows not in the list*) 
+  r \notin l ->
+  forall j, (f r (foldr f A l)) r j = (f r A) r j.
+Proof.
+  move => m n A l r f Hres Hinp Hinr' j. f_equal. apply: Hinp. move => j'. by apply mx_row_transform_notin.
+  clear Hinr' r j. elim: l => [//| h t IH].
+  move => r j. rewrite in_cons negb_or => /andP[Hhr Hnotint] //=. rewrite -Hres. apply IH. all: by [].
+Qed.
+
+(*How we can describe the entries of the resulting list (all other entries are handled by [mx_row_transform_notin]*)
+Lemma mx_row_transform: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+  (forall (A: 'M[F]_(m,n)) i j r, i != r ->  A i j = (f r A) i j) ->
+  (forall (A B : 'M[F]_(m,n)) r, (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
+    f r A = f r B) ->
+  uniq l ->
+  forall r j, r \in l ->
+  (foldr f A l) r j = (f r A) r j.
+Proof.
+  move => m n A f l Hfout. elim: l => [//| h t IH]. rewrite //= => Hfin /andP[Hnotin Huniq] r j.
+  rewrite //= in_cons. move /orP => [/eqP Hhr | Hinr]. subst. apply (row_function_equiv).
+  apply: Hfout. move => A' B r' H1 H2. apply: Hfin. apply: H1. move => r'' j'' Hnotin'. apply: H2.
+  move : Hnotin'. rewrite in_cons negb_or => /andP[Heq Hnin]. by []. by [].
+  rewrite -Hfout. apply: IH; rewrite //. move => A' B' r' H1 H2. apply: Hfin; rewrite //.
+  move => r'' j''. rewrite in_cons negb_or => /andP[Heq Hnin]. by apply: H2.
+  destruct (r == h) eqn : Heq. move : Heq => /eqP Heq. subst. move : Hinr Hnotin. move ->. by []. by [].
+Qed.
+
+(*This resulting matrix is row equivalent if f is*)
+Lemma mx_row_transform_equiv: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+  (forall (A: 'M[F]_(m, n)) (r : 'I_m), row_equivalent A (f r A)) ->
+  row_equivalent A (foldr f A l).
+Proof.
+  move => m n A f l Hre. elim: l => [//=| h t IH].
+  apply: row_equiv_refl. rewrite //=. apply (row_equivalent_trans IH). apply Hre.
+Qed. 
+
+(*Now we can define the gaussian elimination functions*)
+
+(*make all entries in column c 1 or zero*)
+
+
+
+
+
 
 End Gauss.
