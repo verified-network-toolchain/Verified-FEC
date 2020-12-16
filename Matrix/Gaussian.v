@@ -6,6 +6,8 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
+Ltac eq_subst H := move : H => /eqP H; subst.
+
 Section Gauss.
 
 Variable F : fieldType.
@@ -132,9 +134,8 @@ Lemma sc_mul_mx_inv: forall {m : nat} (c: F) (r: 'I_m),
   (sc_mul_mx c r) *m (sc_mul_mx c^-1 r) = 1%:M.
 Proof.
   move => m c r Hc. rewrite -sc_mulE. rewrite !/sc_mul_mx /sc_mul.
-  rewrite -matrixP /eqrel => x y. rewrite !mxE. destruct (x == r) eqn : Hxr. rewrite !Hxr.
-  rewrite GRing.mulrA. rewrite GRing.divff. by rewrite GRing.mul1r. by [].
-  by rewrite Hxr.
+  rewrite -matrixP /eqrel => x y. rewrite !mxE. case Heq: ( x == r). 
+  rewrite GRing.mulrA. rewrite GRing.divff. by rewrite GRing.mul1r. by []. by [].
 Qed.
 
 (*sc_mul_mx is invertible*)
@@ -170,36 +171,23 @@ case : (eq_op x r2).
       have: (nat_of_ord r1 != nat_of_ord r2) by [].
       rewrite /negb. by rewrite Heq.
     + rewrite (@eq_big_seq _ _ _ _ _ _ (fun z => ((if z == r2 then A z y else if z == r1 then c * A z y else 0)))).
-      rewrite sum_if_twice //. move => z Hz. destruct (z == r1) eqn : Hzr1. destruct (z == r2) eqn : Hzr2.
-      have: r1 == r2. move : Hzr1; rewrite eq_sym. move => Hzr1. by rewrite (eq_op_trans Hzr1 Hzr2).
-      move => Heq. move : Hr12. by rewrite Heq. by []. by [].
-    + move => z Hz. destruct (z == r1) eqn : Hzeq. have: z == r1 by [].
-      by move ->. have: z == r1 = false by []. move ->. destruct (z == r2) eqn : Hzr2.
-      have: z == r2 by []. move ->. by apply GRing.mul1r.
-      have: z == r2 = false by []. move ->. by apply GRing.mul0r.
+      rewrite sum_if_twice //. move => z Hz. case Hzr1 : (z == r1). eq_subst Hzr1. 
+      case Hzr2 : (r1 == r2). eq_subst Hzr2. by rewrite ltnn in Hgt. by []. by [].
+    + move => z Hz. case Hzeq : (z == r1). by []. case Hze: (z == r2).  by apply GRing.mul1r. by apply GRing.mul0r.
   - rewrite (@eq_big_seq _ _ _ _ _ _ (fun z => (if x == z then A z y else 0))). by rewrite sum_if.
-    move => z Hz. destruct (x == z) eqn : Heqz. have: x == z by []. move ->. by apply GRing.mul1r.
-    have: x == z = false by []. move ->. by apply GRing.mul0r.
+    move => z Hz. case Heqz : (x == z). by apply GRing.mul1r. by apply GRing.mul0r.
 Qed.
 
-(*surprisingly annoying to prove because the types of equality don't line up always (between ordinals and nats)*)
 Lemma add_mul_mx_inv: forall {m : nat} (c: F) (r1 r2: 'I_m),
   r1 != r2 ->
   (add_mul_mx c r1 r2) *m (add_mul_mx (- c) r1 r2) = 1%:M.
 Proof.
-  move => m c r1 r2 Hr12.  rewrite -add_mulE //. rewrite !/add_mul_mx /add_mul.
-  rewrite -matrixP /eqrel => x y. rewrite !mxE. rewrite eq_refl. have: r1 == r2 = false. move : Hr12. rewrite /negb.
-  by case (r1 == r2). move ->. destruct (x == r2) eqn : Hxr2.
-  have: x == r2 by []. move ->. rewrite eq_sym. destruct (r1 == y) eqn : Hyr1. 
-  have: r1 == y by []. move ->. rewrite GRing.mulr1 GRing.addNr. pose proof (eqP Hxr2).
-  pose proof (eqP Hyr1). rewrite H. rewrite -H0. rewrite eq_sym.
-  have: (r1 == r2 = false). move : Hr12. rewrite /negb. by case(r1 == r2). by move ->.
-  have: r1 == y = false by []. move ->.
-  destruct (y == r2) eqn : Hyr2. have: y == r2 by []. move ->. pose proof (eqP Hxr2). pose proof (eqP Hyr2).
-  by rewrite H H0 eq_refl GRing.mulr0 GRing.addr0. have: (y == r2 = false) by [].  move ->.
-  pose proof (eqP Hxr2). by rewrite H eq_sym Hyr2 GRing.mulr0 GRing.addr0.
-  have: (x == r2 = false) by []. move->. destruct (x == y) eqn : Hxy. pose proof (eqP Hxy). rewrite H.
-  by rewrite eq_refl. have: x == y = false by []. by move ->.
+  move => m c r1 r2 Hr12. rewrite -add_mulE //. rewrite !/add_mul_mx /add_mul.
+  rewrite -matrixP /eqrel => x y. rewrite !mxE eq_refl. have: r1 == r2 = false. move : Hr12. rewrite /negb.
+  by case (r1 == r2). move ->. case Hxr2 : (x == r2). eq_subst Hxr2. 
+  rewrite eq_sym. case Hyr1 : (r1 == y). eq_subst Hyr1. 
+  rewrite GRing.mulr1 GRing.addNr eq_sym. move : Hr12. rewrite /negb. by case H : (y == r2).
+  rewrite eq_sym GRing.mulr0 GRing.addr0. by case H : (r2 == y). by case H : (x == y).
 Qed.
 
 (*add_mul_mx is invertible*)
@@ -240,6 +228,13 @@ Inductive row_equivalent: forall m n, 'M[F]_(m, n) -> 'M[F]_(m, n) -> Prop :=
      row_equivalent B C ->
      row_equivalent A C.
 
+Lemma ero_row_equiv: forall {m n} (A B : 'M[F]_(m,n)),
+  ero A B ->
+  row_equivalent A B.
+Proof.
+  move => m n A B Hero. apply (@row_equiv_ero _ _ _ B) => [//|]. apply row_equiv_refl.
+Qed.
+
 Lemma row_equivalent_trans: forall {m n} (A B C : 'M[F]_(m, n)),
   row_equivalent A B ->
   row_equivalent B C ->
@@ -257,9 +252,10 @@ Lemma row_equivalent_mul_unit: forall {m n} (A B : 'M[F]_(m, n)),
 Proof.
   move => m n A B Hre. elim: Hre; clear m n A B; move => m n A.
   - exists (1%:M). by rewrite unitmx1 mul1mx eq_refl.
-  - move => B C Hero Hre IH. destruct IH as [E IH]. apply ero_mul_unit in Hero. destruct Hero as [E' Hero]. 
-    exists (E *m E'). move : Hero IH => /andP[He' /eqP Hb] /andP[He /eqP Hc]. rewrite unitmx_mul.
-    subst. by rewrite mulmxA eq_refl He He'. 
+  - move => B C Hero Hre IH. case : IH. move => E /andP[Heu /eqP Hc].
+    apply ero_mul_unit in Hero. case: Hero. move => E' /andP[Heu' /eqP Hb]. subst. 
+    exists (E *m E'). rewrite unitmx_mul.
+    by rewrite mulmxA eq_refl Heu Heu'. 
 Qed.
 
 (*If A and B are row equivalent, then A is invertible iff B is*)
@@ -267,8 +263,8 @@ Lemma row_equivalent_unitmx_iff: forall {n} (A B : 'M[F]_(n, n)),
   row_equivalent A B ->
   (A \in unitmx) = (B \in unitmx).
 Proof.
-  move => n A B Hre. apply row_equivalent_mul_unit in Hre. destruct Hre as [E Hre].
-  move : Hre => /andP[Hunit /eqP Hb]. by rewrite Hb unitmx_mul Hunit. 
+  move => n A B Hre. apply row_equivalent_mul_unit in Hre. case Hre => E /andP[Hunit /eqP Hb]. 
+  by rewrite Hb unitmx_mul Hunit. 
 Qed. 
 
 (** Gaussian Elimination*)
@@ -287,9 +283,42 @@ apply/all_filterP; apply/allP => i. rewrite mem_iota isSome_insub. move => /andP
 apply: ltn_trans.
 Qed.
 
+Lemma ord_iota_size: forall {n} (a b : nat), (a + b < n) -> size (@ord_iota n a b) = b.
+Proof.
+  move => n a b Hsz. have: size (@ord_iota n a b) = size (map val (@ord_iota n a b)) by rewrite size_map.
+  rewrite ord_iota_val. by rewrite size_iota. by [].
+Qed.
+
 (*Find the first nonzero entry in column col, starting from index r*)
-Definition fst_nonzero {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) : nat :=
-  find (fun x => A x col != 0) (ord_iota r (m - r)).
+(*to make it into an ordinal, we index into ord_enum. Since f < m, this is the same as just f (but we need to prove this)*)
+Definition fst_nonzero {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) : option 'I_m :=
+  let f :=
+  find (fun (x : 'I_m) => (r <= x) && (A x col != 0)) (ord_enum m) in
+  if f == m then None else Some (nth r (ord_enum m) f).
+
+Lemma size_ord_enum: forall n, size (ord_enum n) = n.
+Proof.
+  move => n. 
+  have : size (ord_enum n) = size ([seq val i | i <- ord_enum n]) by rewrite size_map.
+  by rewrite val_ord_enum size_iota.
+Qed.
+
+Lemma fst_nonzero_some {m n}: forall (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) f,
+  fst_nonzero A col r = Some f ->
+  nat_of_ord f == find (fun (x : 'I_m) => (r <= x) && (A x col != 0)) (ord_enum m).
+Proof.
+  move => A col r f. rewrite /fst_nonzero. 
+  remember (find (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m)) as f'.
+  case Hf' : (f' == m) => [//|/=].
+  have H := find_size (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m). move : H.
+  rewrite size_ord_enum leq_eqVlt -Heqf' Hf' /= => Hle.
+  have H := val_ord_enum m. 
+  have H' := @nth_map 'I_m r nat r val f' (ord_enum m). rewrite size_ord_enum in H'.
+  rewrite Hle in H'.
+  move : H'. rewrite //= H nth_iota; last by []. rewrite add0n eq_sym.
+  move => Hnthf'. have: f' = nth r (ord_enum m) f' by apply Hnthf'. 
+  clear Hnthf'. move => Hfnth Hsm. case : Hsm. rewrite {2}Hfnth. by move ->.
+Qed. 
 
 (*Fold a function over the rows of a matrix that are contained in a list.
   If this function only affects a single row and depends only on the entries in that row and possibly
@@ -309,32 +338,31 @@ Qed.
 Lemma row_function_equiv: forall {m n} (A: 'M[F]_(m,n)) (l : seq 'I_m) (r : 'I_m) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)),
   (forall (A : 'M_(m, n)) (i : ordinal_eqType m) (j : 'I_n) r,
          i != r -> A i j = f r A i j) -> (*f only changes entries in r*)
-  (forall (A B : 'M[F]_(m,n)) r, (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
-    f r A = f r B) -> (*f depends only on values in row r and rows not in the list*) 
+  (forall (A B : 'M[F]_(m,n)), (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
+    forall j, (f r A) r j = (f r B) r j) -> (*f depends only on values in row r and rows not in the list*) 
   r \notin l ->
   forall j, (f r (foldr f A l)) r j = (f r A) r j.
 Proof.
-  move => m n A l r f Hres Hinp Hinr' j. f_equal. apply: Hinp. move => j'. by apply mx_row_transform_notin.
-  clear Hinr' r j. elim: l => [//| h t IH].
-  move => r j. rewrite in_cons negb_or => /andP[Hhr Hnotint] //=. rewrite -Hres. apply IH. all: by [].
-Qed.
+  move => m n A l r f Hres Hinp Hinr' j. rewrite (Hinp _ A). by []. move => j'. apply: mx_row_transform_notin.
+  by []. by []. apply: mx_row_transform_notin. by [].
+Qed. 
 
 (*How we can describe the entries of the resulting list (all other entries are handled by [mx_row_transform_notin]*)
-Lemma mx_row_transform: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+Lemma mx_row_transform: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m) r,
   (forall (A: 'M[F]_(m,n)) i j r, i != r ->  A i j = (f r A) i j) ->
-  (forall (A B : 'M[F]_(m,n)) r, (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
-    f r A = f r B) ->
+  (forall (A B : 'M[F]_(m,n)), (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
+    forall j, (f r A) r j = (f r B) r j) ->
   uniq l ->
-  forall r j, r \in l ->
+  forall j, r \in l ->
   (foldr f A l) r j = (f r A) r j.
 Proof.
-  move => m n A f l Hfout. elim: l => [//| h t IH]. rewrite //= => Hfin /andP[Hnotin Huniq] r j.
+  move => m n A f l r Hfout. elim: l => [//| h t IH]. rewrite //= => Hfin /andP[Hnotin Huniq] j.
   rewrite //= in_cons. move /orP => [/eqP Hhr | Hinr]. subst. apply (row_function_equiv).
-  apply: Hfout. move => A' B r' H1 H2. apply: Hfin. apply: H1. move => r'' j'' Hnotin'. apply: H2.
-  move : Hnotin'. rewrite in_cons negb_or => /andP[Heq Hnin]. by []. by [].
-  rewrite -Hfout. apply: IH; rewrite //. move => A' B' r' H1 H2. apply: Hfin; rewrite //.
+  apply: Hfout. move => A' B H1 H2. apply: Hfin. apply: H1. move => r'' j'' Hnotin'. apply: H2.
+  move : Hnotin'. by rewrite in_cons negb_or => /andP[Heq Hnin]. by [].
+  rewrite -Hfout. apply: IH; rewrite //. move => A' B' H1 H2. apply: Hfin; rewrite //.
   move => r'' j''. rewrite in_cons negb_or => /andP[Heq Hnin]. by apply: H2.
-  destruct (r == h) eqn : Heq. move : Heq => /eqP Heq. subst. move : Hinr Hnotin. move ->. by []. by [].
+  case Heq : (r == h). move : Heq => /eqP Heq. subst. move : Hinr Hnotin. move ->. by []. by [].
 Qed.
 
 (*This resulting matrix is row equivalent if f is*)
@@ -349,8 +377,169 @@ Qed.
 (*Now we can define the gaussian elimination functions*)
 
 (*make all entries in column c 1 or zero*)
+Definition all_cols_one {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
+  foldr (fun x acc => let f := A x c in if f == 0 then acc else (sc_mul acc (f^-1) x)) A (ord_enum m).
+
+Lemma all_cols_one_val: forall {m n} (A: 'M[F]_(m,n)) c i j,
+  (all_cols_one A c) i j = let f := A i c in if f == 0 then A i j else A i j / f.
+Proof.
+  move => m n A c i j. rewrite mx_row_transform. 
+  - rewrite //=. case Heq: (A i c == 0) => [//|].
+    by rewrite /sc_mul mxE eq_refl GRing.mulrC.
+  - move => A' i' j' r'. rewrite /=. case (A r' c == 0) => [//|//=].
+    rewrite /sc_mul mxE /negb. by case: (i' == r').
+  - move => A' B' Hin Hout j'. rewrite /=. case: (A i c == 0).
+    apply Hin. by rewrite /sc_mul mxE mxE eq_refl Hin.
+  - apply ord_enum_uniq.
+  - apply mem_ord_enum.
+Qed.
+
+Lemma all_cols_one_row_equiv: forall {m n} (A: 'M[F]_(m,n)) c,
+  row_equivalent A (all_cols_one A c).
+Proof.
+  move => m n A c. apply mx_row_transform_equiv.
+  move => A' r. rewrite //=. case Hz: (A r c == 0).
+  - constructor.
+  - apply ero_row_equiv. constructor. apply GRing.Theory.invr_neq0. by rewrite Hz.
+Qed.
+
+(*A version of [rem] that instead removes all matching elements. In our case, it is the same, but we
+  can prove a more general lemma about foldr*)
+
+Definition remAll  {A: eqType} (x : A) (l : seq A) := filter (predC1 x) l.
+
+Lemma foldr_remAll: forall {A : eqType} {B} (l: seq A) (f: A -> B -> B) (base: B) (z: A),
+  foldr (fun x acc => if (x == z) then acc else f x acc) base l =
+  foldr f base (remAll z l).
+Proof.
+  move => A B l. elim: l => [//| h t IH f base z /=]. rewrite /negb. case : (h == z).
+  by rewrite IH. by rewrite /= IH.
+Qed.
+
+Lemma remAll_notin: forall {A: eqType} (x: A) (l: seq A),
+  x \notin (remAll x l).
+Proof.
+  move => A x l. elim: l => [// | h t IH //=].
+  rewrite {2}/negb. case Heq:  (h == x). exact IH. rewrite in_cons Bool.negb_orb.
+  by rewrite {1}/negb eq_sym Heq IH.
+Qed. 
+
+Lemma remAll_in: forall {A: eqType} (x y : A) (l: seq A),
+  x != y ->
+  x \in l ->
+  x \in (remAll y l).
+Proof.
+  move => A x y l. elim : l => [//| h t IH Hneq /=].
+  rewrite in_cons; move /orP => [Hxh | Ht]. eq_subst Hxh. rewrite Hneq.
+  by rewrite in_cons eq_refl.
+  have: x \in remAll y t. by apply IH. case : (h != y) => [|//].
+  rewrite in_cons. move ->. by rewrite orbT.
+Qed. 
+
+Lemma rem_remAll: forall {A: eqType} (x : A) (l: seq A),
+  uniq l ->
+  rem x l = remAll x l.
+Proof.
+  move => A x l Hu. by rewrite rem_filter.
+Qed. 
 
 
+(*Subtract row r from all rows except row r (if A r' c = 0)*) 
+Definition sub_all_rows {m n} (A: 'M[F]_(m, n)) (r : 'I_m) (c : 'I_n) : 'M[F]_(m, n) :=
+  foldr (fun x acc => if x == r then acc else let f := A x c in
+                        if f == 0 then acc else add_mul acc (- 1) r x) A (ord_enum m). 
+
+Lemma sub_all_rows_val: forall {m n} (A: 'M[F]_(m,n)) r c i j,
+  (sub_all_rows A r c) i j = if i == r then A i j else
+                            if A i c == 0 then A i j else A i j - A r j.
+Proof.
+  move => m n A r c i j. rewrite /sub_all_rows. rewrite foldr_remAll. case Hir : (i == r).
+  eq_subst Hir. rewrite mx_row_transform_notin. by []. move => A' i' j' r'.
+  case : (A r' c == 0). by []. rewrite /add_mul mxE //= /negb. by case : (i' == r').
+  apply remAll_notin. 
+  rewrite mx_row_transform.
+  - case (A i c == 0) => [// | ]. by rewrite /add_mul mxE eq_refl GRing.mulN1r.
+  - move => A' i' j' r'. case : (A r' c == 0) => [//|].
+    rewrite /add_mul mxE /negb. by case H : (i' == r').
+  - move => A' B' Hin Hout j'. case : (A i c == 0). apply Hin.
+    rewrite !/add_mul !mxE !eq_refl !Hin.
+    rewrite Hout => [//|]. apply remAll_notin.
+  - rewrite -rem_remAll. apply rem_uniq. all: apply ord_enum_uniq.
+  - apply remAll_in. by rewrite Hir. by rewrite mem_ord_enum.
+Qed.
+
+Lemma sub_all_rows_row_equiv: forall {m n} (A: 'M[F]_(m,n)) r c,
+  row_equivalent A (sub_all_rows A r c).
+Proof.
+  move => m n A r c. apply mx_row_transform_equiv.
+  move => A' r'. rewrite //=. case Heq : (r' == r).
+  constructor. case: (A r' c == 0). constructor.
+  apply ero_row_equiv. constructor. by rewrite eq_sym Heq.
+Qed.
+
+(** The Algorithm *)
+
+(*The state of the matrix when we have computed gaussian elimination up to row r and column c*)
+Definition gauss_invar {m n} (A: 'M[F]_(m, n)) (r : nat) (c: nat) :=
+  (forall (r' : 'I_m), r' < r -> lead_coef A r' < c) /\ (*all rows up to r have leading coefficient before column c*) 
+  (forall (r1 r2 : 'I_m), r1 < r2 -> r2 < r -> lead_coef A r2 < n ->
+    lead_coef A r1 < lead_coef A r2) /\ (*leading coefficients occur in strictly increasing columns*)
+  (forall (r' : 'I_m) (c' : 'I_n), c' < c -> lead_coef A r' = c' -> 
+     (forall (x: 'I_m), x != r' -> A x c' = 0)) /\ (*columns with leading coefficients have zeroes in all other entries*) 
+  (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0). (*first c entries of rows >= r are all zero*)
+
+(*One step of gaussian elimination*)
+Definition gauss_one_step {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) : 'M[F]_(m, n) * (option 'I_m) * (option 'I_n) :=
+  match (fst_nonzero A c r) with
+  | None => (A, Some r, insub (c + 1)%N)
+  | Some k =>
+    let A1 := xrow k r A in
+    let A2 := all_cols_one A1 c in
+    let A3 := sub_all_rows A2 r c in
+    (A3, insub (r+1)%N, insub (c+1)%N)
+  end.
+
+Definition fst {A B C} (t: A * B * C) : A :=
+  match t with
+  | (x, _, _) => x
+  end.
+
+Definition snd {A B C} (t: A * B * C) : B :=
+  match t with
+  | (_, x, _) => x
+  end.
+
+Definition trd {A B C} (t: A * B * C) : C :=
+  match t with
+  | (_, _, x) => x
+  end.
+
+Definition ord_bound_convert {n} (o: option 'I_n) : nat :=
+  match o with
+  | None => n
+  | Some x => x
+  end.
+
+(*Note: this is a little awkward because r and c are bounded (and need to be for the functions called in
+  [gauss_one_step]. However, in gaussian elimination, when we finish,
+  r or c will achieve the bound. Instead of having to carry options around everywhere, we phrase the invariant
+  in terms of nats, and will later show that if r=m or c = n, then the matrix is in reduced row echelon form*)
+(*We want to prove that the invariant is preserved*)
+Lemma gauss_one_step_invar: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) A' oc or,
+  gauss_invar A r c ->
+  gauss_one_step A r c = (A', or, oc) ->
+  gauss_invar A' (ord_bound_convert or) (ord_bound_convert oc).
+Proof.
+(*TODO: start with this*)
+Admitted.
+(*
+  move => m n A r c A' oc or. rewrite /gauss_invar. move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  rewrite /gauss_one_step. case Fn: (fst_nonzero A c r) => [k |]. move => H; case : H.
+  move => Ha' Hor Hoc. (*start from here*) subst.
+  rewrite //=.
+
+ Hg.
+  *)
 
 
 
