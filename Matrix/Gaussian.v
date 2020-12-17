@@ -8,13 +8,11 @@ Set Bullet Behavior "Strict Subproofs".
 
 Ltac eq_subst H := move : H => /eqP H; subst.
 
-Section Gauss.
-
-Variable F : fieldType.
-
-Local Open Scope ring_scope.
-
-(*Preliminaries*)
+(*Generic helper lemmas*)
+Lemma rwN: forall [P: Prop] [b: bool], reflect P b -> ~ P <-> ~~ b.
+Proof.
+  move => P b Hr. split. by apply introN. by apply elimN.
+Qed.
 
 Lemma ltn_total: forall (n1 n2: nat),
   (n1 < n2) || (n1 == n2) || (n2 < n1).
@@ -25,6 +23,53 @@ Proof.
   - move => le_n21; case (orP le_n21) => [Heq | Hlt]. rewrite eq_sym Heq /=.
     by rewrite orbT orTb. by rewrite Hlt !orbT.
 Qed. 
+
+Lemma ltn_leq_trans: forall [n m p : nat], m < n -> n <= p -> m < p.
+Proof.
+  move => m n p Hmn. rewrite leq_eqVlt => /orP[Hmp | Hmp]. eq_subst Hmp. by [].
+  move : Hmn Hmp. apply ltn_trans.
+Qed.
+
+(*Results about [find] that mostly put the library lemmas into a more convenient form*)
+
+Lemma find_iff: forall {T: eqType} (a: pred T) (s: seq T) (r : nat) (t: T),
+  r < size s ->
+  find a s = r <-> (forall x, a (nth x s r)) /\ forall x y, y < r -> (a (nth x s y) = false).
+Proof.
+  move => T a s r t Hsz. split.
+  - move => Hfind. subst. split. move => x. apply nth_find. by rewrite has_find.
+    move => x. apply before_find.
+  - move => [Ha Hbef]. have Hfind := (findP a s). case : Hfind.
+    + move => Hhas. have H := (rwN (@hasP T a s)). rewrite Hhas in H.
+      have:~ (exists2 x : T, x \in s & a x) by rewrite H. move : H => H{H} Hex.
+      have : nth t s r \in s by apply mem_nth. move => Hnthin. 
+      have: (exists2 x : T, x \in s & a x) by exists (nth t s r). by [].
+    + move => i Hisz Hanth Hprev.
+      have Hlt := ltn_total i r. move : Hlt => /orP[H1 | Hgt].
+      move : H1 => /orP[Hlt | Heq].
+      * have : a (nth t s i) by apply Hanth. by rewrite Hbef.
+      * by eq_subst Heq.
+      * have : a (nth t s r) by apply Ha. by rewrite Hprev.
+Qed.
+
+(*Similar (one direction) for the None case*)
+Lemma find_none: forall {T: eqType} (a: pred T) (s: seq T),
+  find a s = size s -> (forall x, x \in s -> ~~ (a x)).
+Proof.
+  move => T a s Hfind. have: ~~ has a s. case Hhas : (has a s). 
+  move : Hhas. rewrite has_find Hfind ltnn. by []. by [].
+  move => Hhas. by apply (elimT hasPn).
+Qed.
+
+
+
+Section Gauss.
+
+Variable F : fieldType.
+
+Local Open Scope ring_scope.
+
+(*Preliminaries*)
 
 (*get elements of identity matrix*)
 (*TODO:is there a better way to get the field F in there?*)
@@ -48,6 +93,23 @@ Proof.
   move => n x y. have nth_ord := (nth_ord_enum y x). unfold enum in nth_ord. move: nth_ord.
   rewrite (@nth_map _ y) //. by rewrite ordinal_enum_size.
 Qed. 
+
+Lemma size_ord_enum: forall n, size (ord_enum n) = n.
+Proof.
+  move => n. 
+  have : size (ord_enum n) = size ([seq val i | i <- ord_enum n]) by rewrite size_map.
+  by rewrite val_ord_enum size_iota.
+Qed.
+
+Lemma nth_ord_enum: forall n (i: 'I_n) x, nth x (ord_enum n) i = i.
+Proof.
+  move => n i x. have Hv := val_ord_enum n.  have Hmap :=  @nth_map 'I_n x nat x val i (ord_enum n).
+  move : Hmap. rewrite Hv size_ord_enum nth_iota =>[//=|//]. rewrite add0n. move => H.
+  (*some annoying stuff about equality of ordinals vs nats*)
+  have : nat_of_ord ( nth x (ord_enum n) i) == nat_of_ord i. rewrite {2}H. by []. by [].
+  move => Hnatord. have : nth x (ord_enum n) i == i by []. 
+  by move => /eqP Heq.
+Qed.
 
 (*Some closed form summations we will use*)
 Lemma sum_if: forall {n} (x : 'I_n) (f1 : 'I_n -> F),
@@ -101,9 +163,18 @@ move => n r1 r2 f1 f2 Hlt. rewrite (big_nth r1) /= /index_enum /= ordinal_enum_s
     apply ltn_trans. by rewrite ltn_eqF. rewrite ltn_eqF //. move : Hix Hlt. apply ltn_trans.
 Qed.
 
+
 (** Elementary Row Operations*)
 
-(*Swapping rows is already defined by mathcomp - it is xrow*)
+(*Swapping rows is already defined by mathcomp - it is xrow. We just need the following*)
+Lemma xrow_val: forall {m n} (A: 'M[F]_(m,n)) (r1 r2 : 'I_m) x y,
+  (xrow r1 r2 A) x y = if x == r1 then A r2 y else if x == r2 then A r1 y else A x y.
+Proof. 
+  rewrite /xrow /row_perm //= => m n A r1 r2 x y. rewrite mxE.
+  case Hxr1 : (x == r1). eq_subst Hxr1. by rewrite perm.tpermL.
+  case Hxr2 : (x == r2). eq_subst Hxr2. by rewrite perm.tpermR.
+  rewrite perm.tpermD. by []. by rewrite eq_sym Hxr1. by rewrite eq_sym Hxr2.
+Qed. 
 
 (*scalar multiply row r in matrix A by scalar c*)
 Definition sc_mul {m n} (A : 'M[F]_(m, n)) (c: F) (r: 'I_m) : 'M[F]_(m, n) :=
@@ -268,57 +339,109 @@ Proof.
 Qed. 
 
 (** Gaussian Elimination*)
+(*Find the first nonzero entry in column col, starting from index r*)
+(*Because we want to use the result to index into a matrix, we need an ordinal. So we have a function that
+  returns the nat, then we wrap the type in an option. This makes the proofs a bit more complicated*)
 
-(*First, we define the leading coefficient of a row (ie, the first nonzero element) - will be n if row is all zeroes*)
-Definition lead_coef {m n} (A: 'M[F]_(m, n)) (row: 'I_m) : nat :=
+Definition fst_nonzero_nat {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) : nat :=
+  (find (fun (x : 'I_m) => (r <= x) && (A x col != 0)) (ord_enum m)).
+
+Definition fst_nonzero {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) : option 'I_m :=
+  insub (fst_nonzero_nat A col r).
+
+Lemma fst_nonzero_nat_bound:  forall {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m),
+  (fst_nonzero_nat A col r == m) || (fst_nonzero_nat A col r < m).
+Proof.
+  move => m n A col r. rewrite /fst_nonzero_nat.
+  have Hleq := find_size(fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m). move : Hleq.
+  by rewrite size_ord_enum leq_eqVlt.
+Qed.  
+
+(*Specification of some case of [find_nonzero]*)
+Lemma fst_nonzero_some_iff: forall {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) f,
+  fst_nonzero A col r = Some f <-> (r <= f) /\ (A f col != 0) /\ (forall (x : 'I_m), r <= x < f -> A x col == 0).
+Proof.
+  move => m n A col r f.
+  have: r <= f /\ A f col != 0 /\ (forall x : 'I_m, r <= x < f -> A x col == 0) <-> fst_nonzero_nat A col r = f.
+  rewrite /fst_nonzero_nat. rewrite find_iff.
+  - split. move => [Hrf [Hnonz Hbef]]. split. move => x. by rewrite nth_ord_enum Hrf Hnonz.
+    move => x y Hyf. have Hym : y < m. have : f < m by []. move : Hyf. by apply ltn_trans.
+    have: nth x (ord_enum m) y = nth x (ord_enum m) (Ordinal Hym) by [].
+    move ->. rewrite nth_ord_enum. case Hr : (r <= Ordinal Hym).
+    rewrite Hbef //=. rewrite Hyf.  have: (r <= y) by []. by move ->. by [].  
+    move => [Ha Hprev]. move : Ha => /(_ f). rewrite nth_ord_enum => /andP[Hleq Ha].
+    rewrite Hleq Ha. repeat(split; try by []). move => x /andP[Hxr Hxf]. move : Hprev => /(_ r x).
+    rewrite Hxf nth_ord_enum. move => Hor. have : ~~ ((r <= x) && (A x col != 0)) by rewrite {1}/negb Hor.
+    move : Hor => H{H}. rewrite Bool.negb_andb => /orP[Hrx | Hac]. move : Hxr Hrx. by move ->.
+    move : Hac. rewrite /negb. by case: (A x col == 0).
+  - apply r.
+  - by rewrite size_ord_enum. 
+  - move ->. rewrite /fst_nonzero. have Hbound := (fst_nonzero_nat_bound A col r).
+    move : Hbound => /orP[Heq | Hlt].
+    + rewrite insubF. split. by []. eq_subst Heq. rewrite Heq. move => Hmf. 
+      have: (f < m) by []. move => Hfmlt. rewrite -Hmf in Hfmlt.
+      rewrite ltnn in Hfmlt. by []. eq_subst Heq. rewrite Heq. apply ltnn. 
+    + rewrite insubT. split. move => Hs. case : Hs. move => Hf. rewrite -Hf. by [].
+      move => Hfst. f_equal. have : (nat_of_ord (Sub (fst_nonzero_nat A col r) Hlt) == nat_of_ord f).
+      by rewrite -Hfst. move => Hnatord. have : (Sub (fst_nonzero_nat A col r) Hlt  == f).
+      by []. move => Hsub. by eq_subst Hsub.
+Qed. 
+
+Lemma fst_nonzero_none: forall {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m),
+  fst_nonzero A col r = None ->
+  forall (x : 'I_m), r <= x -> A x col = 0.
+Proof.
+  move => m n A col r. rewrite /fst_nonzero.
+  case : (orP (fst_nonzero_nat_bound A col r)) => [ Heq | Hlt].
+  move => H{H}. move : Heq. rewrite /fst_nonzero_nat. have Hsz := size_ord_enum m. move => Hfind.
+  have : (find (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m) == size (ord_enum m)).
+  by rewrite Hsz. move {Hfind} => /eqP Hfind. move => x Hrx. apply find_none with (x0:=x) in Hfind.
+  move : Hfind. rewrite negb_and => /orP[Hnrx | Hxcol]. by move: Hrx Hnrx ->. apply (elimT eqP).
+  move : Hxcol. by case : (A x col == 0). apply mem_ord_enum.
+  by rewrite insubT.
+Qed. 
+
+(*Now, we define the leading coefficient of a row (ie, the first nonzero element) - will be n if row is all zeroes*)
+(*We also want an ordinal, so we do something similar to above*)
+Definition lead_coef_nat {m n} (A: 'M[F]_(m, n)) (row: 'I_m) : nat :=
   find (fun x => A row x != 0) (ord_enum n).
 
-Definition ord_iota {n: nat} (a b : nat) : seq 'I_n := pmap insub (iota a b).
+Definition lead_coef {m n} (A: 'M[F]_(m, n)) (row: 'I_m) : option 'I_n := insub (lead_coef_nat A row).
 
-Lemma ord_iota_val: forall {n} (a b : nat), (a + b < n) -> map val (@ord_iota n a b) = iota a b.
+Lemma lead_coef_nat_bound : forall {m n} (A: 'M[F]_(m, n)) (row: 'I_m),
+  (lead_coef_nat A row == n) || (lead_coef_nat A row < n).
 Proof.
-move => n a b Hle.
-rewrite pmap_filter; last exact: insubK.
-apply/all_filterP; apply/allP => i. rewrite mem_iota isSome_insub. move => /andP[H{H} Hin]. move: Hin Hle.
-apply: ltn_trans.
+  move => m n A row. rewrite /lead_coef_nat.
+  have Hsz := find_size (fun (x : 'I_n) => A row x != 0) (ord_enum n). move : Hsz.
+  by rewrite size_ord_enum leq_eqVlt.
 Qed.
 
-Lemma ord_iota_size: forall {n} (a b : nat), (a + b < n) -> size (@ord_iota n a b) = b.
+(*Specification for the some case*)
+Lemma lead_coef_some_iff: forall {m n} (A: 'M[F]_(m, n)) (row: 'I_m) c,
+  lead_coef A row = Some c <-> (A row c != 0) /\ (forall (x : 'I_n), x < c -> A row x = 0).
 Proof.
-  move => n a b Hsz. have: size (@ord_iota n a b) = size (map val (@ord_iota n a b)) by rewrite size_map.
-  rewrite ord_iota_val. by rewrite size_iota. by [].
-Qed.
-
-(*Find the first nonzero entry in column col, starting from index r*)
-(*to make it into an ordinal, we index into ord_enum. Since f < m, this is the same as just f (but we need to prove this)*)
-Definition fst_nonzero {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) : option 'I_m :=
-  let f :=
-  find (fun (x : 'I_m) => (r <= x) && (A x col != 0)) (ord_enum m) in
-  if f == m then None else Some (nth r (ord_enum m) f).
-
-Lemma size_ord_enum: forall n, size (ord_enum n) = n.
-Proof.
-  move => n. 
-  have : size (ord_enum n) = size ([seq val i | i <- ord_enum n]) by rewrite size_map.
-  by rewrite val_ord_enum size_iota.
-Qed.
-
-Lemma fst_nonzero_some {m n}: forall (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m) f,
-  fst_nonzero A col r = Some f ->
-  nat_of_ord f == find (fun (x : 'I_m) => (r <= x) && (A x col != 0)) (ord_enum m).
-Proof.
-  move => A col r f. rewrite /fst_nonzero. 
-  remember (find (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m)) as f'.
-  case Hf' : (f' == m) => [//|/=].
-  have H := find_size (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m). move : H.
-  rewrite size_ord_enum leq_eqVlt -Heqf' Hf' /= => Hle.
-  have H := val_ord_enum m. 
-  have H' := @nth_map 'I_m r nat r val f' (ord_enum m). rewrite size_ord_enum in H'.
-  rewrite Hle in H'.
-  move : H'. rewrite //= H nth_iota; last by []. rewrite add0n eq_sym.
-  move => Hnthf'. have: f' = nth r (ord_enum m) f' by apply Hnthf'. 
-  clear Hnthf'. move => Hfnth Hsm. case : Hsm. rewrite {2}Hfnth. by move ->.
-Qed. 
+  move => m n A row c. have: A row c != 0 /\ (forall x : 'I_n, x < c -> A row x = 0) <-> lead_coef_nat A row = c.
+  rewrite /lead_coef_nat. rewrite find_iff. split.
+  - move => [Harc Hprev]. split; move => x. by rewrite nth_ord_enum. move => y Hyc.
+    rewrite Hprev. by rewrite eq_refl. have Hyn : y < n. have : c < n by [].
+    move : Hyc. apply ltn_trans. have : nth x (ord_enum n) y == nth x (ord_enum n) (Ordinal Hyn) by [].
+    move => /eqP Hnth. by rewrite Hnth nth_ord_enum.
+  - move => [Harc Hprev]. move : Harc => /(_ c). rewrite nth_ord_enum. move : Hprev => /(_ c) Hprev Harc.
+    split. by []. move => x Hxc. move : Hprev => /(_ x). rewrite Hxc nth_ord_enum.
+    case Heq : ( A row x == 0). eq_subst Heq. rewrite Heq. by [].
+    rewrite //=. move => Hcon. have: true = false by rewrite Hcon. by [].
+  - apply c.
+  - by rewrite size_ord_enum.
+  - move ->. rewrite /lead_coef. have Hbound := (lead_coef_nat_bound A row).
+    move : Hbound => /orP[Heq | Hlt].
+    + rewrite insubF. split. by []. eq_subst Heq. rewrite Heq. move => Hnc. 
+      have: (c < n) by []. move => Hcnlt. rewrite -Hnc in Hcnlt.
+      by rewrite ltnn in Hcnlt. eq_subst Heq. rewrite Heq. apply ltnn. 
+    + rewrite insubT. split. move => Hs. case : Hs. move => Hf. rewrite -Hf. by [].
+      move => Hfst. f_equal. have : (nat_of_ord (Sub (lead_coef_nat A row) Hlt) == nat_of_ord c)
+      by rewrite -Hfst. move => Hnatord. 
+      have : (Sub (lead_coef_nat A row) Hlt == c) by []. by move => /eqP Heq.
+Qed. (*TODO: maybe try to reduce duplication between this and previous*)
 
 (*Fold a function over the rows of a matrix that are contained in a list.
   If this function only affects a single row and depends only on the entries in that row and possibly
@@ -481,38 +604,139 @@ Qed.
 
 (*The state of the matrix when we have computed gaussian elimination up to row r and column c*)
 Definition gauss_invar {m n} (A: 'M[F]_(m, n)) (r : nat) (c: nat) :=
-  (forall (r' : 'I_m), r' < r -> lead_coef A r' < c) /\ (*all rows up to r have leading coefficient before column c*) 
-  (forall (r1 r2 : 'I_m), r1 < r2 -> r2 < r -> lead_coef A r2 < n ->
-    lead_coef A r1 < lead_coef A r2) /\ (*leading coefficients occur in strictly increasing columns*)
-  (forall (r' : 'I_m) (c' : 'I_n), c' < c -> lead_coef A r' = c' -> 
+  (forall (r' : 'I_m), r' < r -> exists c', lead_coef A r' = Some c' /\ c' < c) /\ (*all rows up to r have leading coefficient before column c*) 
+  (forall (r1 r2 : 'I_m) c1 c2, r1 < r2 -> r2 < r -> lead_coef A r1 = Some c1 -> lead_coef A r2 = Some c2 ->
+    c1 < c2) /\ (*leading coefficients occur in strictly increasing columns*)
+  (forall (r' : 'I_m) (c' : 'I_n), c' < c -> lead_coef A r' = Some c' -> 
      (forall (x: 'I_m), x != r' -> A x c' = 0)) /\ (*columns with leading coefficients have zeroes in all other entries*) 
   (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0). (*first c entries of rows >= r are all zero*)
 
 (*One step of gaussian elimination*)
 Definition gauss_one_step {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) : 'M[F]_(m, n) * (option 'I_m) * (option 'I_n) :=
   match (fst_nonzero A c r) with
-  | None => (A, Some r, insub (c + 1)%N)
+  | None => (A, Some r, insub (c.+1))
   | Some k =>
     let A1 := xrow k r A in
     let A2 := all_cols_one A1 c in
     let A3 := sub_all_rows A2 r c in
-    (A3, insub (r+1)%N, insub (c+1)%N)
+    (A3, insub (r.+1), insub (c.+1))
   end.
 
-Definition fst {A B C} (t: A * B * C) : A :=
-  match t with
-  | (x, _, _) => x
-  end.
+(*Results about the structure of the matrix after 1 step of gaussian elim. We use these lemmas to prove invariant
+  preservation*)
 
-Definition snd {A B C} (t: A * B * C) : B :=
-  match t with
-  | (_, x, _) => x
-  end.
+(*First, in the first r rows and c columns, we did not change whether any entries are zero or not*)
+Lemma gauss_one_step_beginning_submx: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) (k : 'I_m),
+  (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0) ->
+  r <= k ->
+  forall (x : 'I_m) (y: 'I_n), x < r -> y < c -> 
+    A x y == 0 = ((sub_all_rows (all_cols_one (xrow k r A) c) r c) x y == 0).
+Proof.
+  move => m n A r c k Hinv Hrk x y Hxr Hyc. rewrite sub_all_rows_val.
+  case Heq : (x == r). move : Heq. have H := ltn_eqF Hxr. have : x == r = false by []. move ->. by [].
+  have: (forall y, all_cols_one (xrow k r A) c x y = all_cols_one A c x y).
+    move => z. rewrite !all_cols_one_val //=.
+    have: (x == k) = false. apply ltn_eqF. move: Hxr Hrk. apply ltn_leq_trans.
+    move => Hxkneq. have: forall j, (xrow k r A x j) = A x j.
+    move => j. by rewrite xrow_val Hxkneq Heq. move => Hxrowj.
+    rewrite !Hxrowj. by []. move => Hallcols.
+ rewrite !Hallcols.
+ have : (A x y == 0) = (all_cols_one A c x y == 0). rewrite all_cols_one_val /=. case Hac : (A x c == 0). by [].
+   by rewrite GRing.mulf_eq0 GRing.invr_eq0 Hac orbF.
+ case Hall : (all_cols_one A c x c == 0). 
+  - by [].
+  - have: all_cols_one (xrow k r A) c r y == 0. rewrite all_cols_one_val //=.
+    have: forall z, xrow k r A r z = A k z. move => z. rewrite xrow_val.
+    case H: (r==k). by eq_subst H. by rewrite eq_refl. move => Hxrow. rewrite !Hxrow.
+    have: A k y == 0. by rewrite Hinv. move => H; eq_subst H. rewrite H.
+    case: (A k c == 0). by []. by rewrite GRing.mul0r.
+    move => /eqP Hallry. by rewrite Hallry GRing.subr0.
+Qed.
 
-Definition trd {A B C} (t: A * B * C) : C :=
-  match t with
-  | (_, _, x) => x
-  end.
+(* Second (this holds in general for any matrix) - all entries in the resulting matrix column c are zero, except r is one*)
+Lemma gauss_one_step_col_c: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) (k : 'I_m),
+  A k c != 0 ->
+  forall (x : 'I_m), (sub_all_rows (all_cols_one (xrow k r A) c) r c) x c = if x == r then 1 else 0.
+Proof.
+  move => m n A r c k Hkc x. rewrite sub_all_rows_val.
+   have: xrow k r A r c = A k c. rewrite xrow_val.
+    case H : (r==k). by eq_subst H. by rewrite eq_refl.
+  case Hxr : (x == r).
+  - rewrite all_cols_one_val /=. eq_subst Hxr.
+    move ->. move : Hkc. rewrite /negb. case Hkc : (A k c == 0) => [//|//=].
+    rewrite GRing.mulfV => [//|]. move : Hkc. rewrite /negb. by move ->.
+  - move => Hxrow. 
+    have: all_cols_one (xrow k r A) c r c == 1. rewrite all_cols_one_val //= !Hxrow.
+    move : Hkc. rewrite /negb. case Heq : (A k c == 0) => [//|].
+    rewrite GRing.mulfV => [//|]. move : Heq. rewrite /negb. by move ->. move => /eqP Hrc1.
+    rewrite Hrc1. case Hallcol : (all_cols_one (xrow k r A) c x c == 0). apply (elimT eqP). 
+    by rewrite Hallcol. move : Hallcol. rewrite all_cols_one_val /=.
+    case Hxc : (xrow k r A x c == 0 ). by rewrite Hxc. move => H{H}.
+    rewrite GRing.mulfV. apply (elimT eqP). by rewrite GRing.subr_eq0 eq_refl. move : Hxc. rewrite /negb. by move ->.
+Qed. 
+
+(*Third - all entries with row >=r and col < c are still zero*)
+Lemma gauss_one_step_bottom_rows: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) (k : 'I_m),
+  (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0) ->
+  fst_nonzero A c r = Some k ->
+  forall (x : 'I_m) (y: 'I_n), r <= x -> y < c -> 
+    (sub_all_rows (all_cols_one (xrow k r A) c) r c) x y = 0.
+Proof.
+  move => m n A r c k Hinv Hfst x y Hrx Hyc. move : Hfst. rewrite fst_nonzero_some_iff. move => [Hrk [Hakc Hprev]].
+  rewrite sub_all_rows_val. move : Hrx.
+  have: forall z, xrow k r A r z = A k z. move => z. rewrite xrow_val.
+    case H : (r == k). by eq_subst H. by rewrite eq_refl. move => Hxrow.
+ rewrite leq_eqVlt eq_sym =>
+  /orP[Hrx | Hrx]. 
+  - have Hxr' : (x == r) by []. rewrite Hxr'. eq_subst Hxr'.
+    rewrite all_cols_one_val /=. rewrite !Hxrow.
+    case (A k c == 0). by apply Hinv.  rewrite Hinv. by rewrite GRing.mul0r. all: by [].
+  - have : x == r = false by apply gtn_eqF. move => Hxrneq. rewrite Hxrneq.
+    have: all_cols_one (xrow k r A) c r y = 0. rewrite all_cols_one_val /=.
+    rewrite ! Hxrow. have: A k y = 0 by apply Hinv. move ->.
+    case (A k c == 0). by []. by rewrite GRing.mul0r. move ->. rewrite GRing.subr0.
+    have: all_cols_one (xrow k r A) c x y = 0. rewrite all_cols_one_val /=.
+    case Hxk : (x == k). eq_subst Hxk. 
+    have: forall z, xrow k r A k z = A r z. move => z. by rewrite xrow_val eq_refl.
+    move ->. rewrite Hprev. rewrite xrow_val eq_refl. apply Hinv. apply leqnn.
+    by []. by rewrite Hrx leqnn.
+    have: forall z, xrow k r A x z = A x z. move => z. rewrite xrow_val.
+    rewrite Hxk Hxrneq. by []. move => Hx. rewrite !Hx.
+    have : A x y = 0. apply Hinv. by rewrite leq_eqVlt Hrx orbT. by [].
+    move ->. case : (A x c == 0) => [//|]. by rewrite GRing.mul0r.
+    move ->. by case (all_cols_one (xrow k r A) c x c == 0).
+Qed.
+
+(*Fourth - for all rows < r, the leading coefficient has not changed (this follows from the others)*)
+Lemma gauss_one_step_prop_lead_coef: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) (k : 'I_m),
+  (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0) ->
+  (forall (r' : 'I_m), r' < r -> exists c', lead_coef A r' = Some c' /\ c' < c) ->
+  fst_nonzero A c r = Some k ->
+  forall (r' : 'I_m), r' < r -> 
+    lead_coef A r' = lead_coef (sub_all_rows (all_cols_one (xrow k r A) c) r c) r'.
+Proof.
+  move => m n A r c k Hzero Hlead Hfz r' Hrr'. move : Hlead => /(_ r'). rewrite Hrr' => Hlc.
+  have Hlcr' : (exists c' : 'I_n, lead_coef A r' = Some c' /\ c' < c) by apply Hlc.
+  move : {Hlc} Hlcr' => [c' [Hlc Hcc']]. rewrite Hlc. have Hrk : r <= k. move : Hfz.
+  rewrite fst_nonzero_some_iff. by move => [Hrk [Hakc Hprev]]. 
+  have Hbeg := (gauss_one_step_beginning_submx Hzero Hrk).
+  symmetry. move : Hlc. rewrite !lead_coef_some_iff. move => [Harc' Hprev].
+  split. by rewrite -Hbeg. move => x Hxc'. 
+  have: sub_all_rows (all_cols_one (xrow k r A) c) r c r' x == 0. rewrite -Hbeg. rewrite Hprev. all: try by [].
+  move : Hxc' Hcc'. by apply ltn_trans. by move => /eqP Hs.
+Qed.
+
+(*Finally, leading coefficient of row r is c*)
+Lemma gauss_one_step_r_lead: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) (k : 'I_m),
+  (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0) ->
+  fst_nonzero A c r = Some k ->
+  lead_coef (sub_all_rows (all_cols_one (xrow k r A) c) r c) r = Some c.
+Proof.
+  move => m n A r c l Hz. rewrite lead_coef_some_iff. move => Hfst. split; move : Hfst.
+  rewrite fst_nonzero_some_iff; move => [Hrl [Hlc H{H}]]. 
+  have Hc := gauss_one_step_col_c r  Hlc r. by rewrite Hc eq_refl GRing.oner_neq0.
+  move => Hfz x Hxc. by apply gauss_one_step_bottom_rows.
+Qed.
 
 Definition ord_bound_convert {n} (o: option 'I_n) : nat :=
   match o with
@@ -520,28 +744,90 @@ Definition ord_bound_convert {n} (o: option 'I_n) : nat :=
   | Some x => x
   end.
 
+Lemma ord_bound_convert_plus: forall {n} (x : 'I_n),
+  @ord_bound_convert n (insub (x.+1)) = (x.+1).
+Proof.
+  move => n x. have: x < n by []. rewrite leq_eqVlt => /orP[/eqP Heq | Hlt].
+  rewrite insubF. by rewrite Heq. by rewrite Heq ltnn.
+  by rewrite insubT.
+Qed.
+
 (*Note: this is a little awkward because r and c are bounded (and need to be for the functions called in
   [gauss_one_step]. However, in gaussian elimination, when we finish,
   r or c will achieve the bound. Instead of having to carry options around everywhere, we phrase the invariant
-  in terms of nats, and will later show that if r=m or c = n, then the matrix is in reduced row echelon form*)
-(*We want to prove that the invariant is preserved*)
-Lemma gauss_one_step_invar: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) A' oc or,
+  in terms of nats, which forces us to unwrap the option with [ord_bound_convert]*)
+Lemma gauss_one_step_invar: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n),
   gauss_invar A r c ->
-  gauss_one_step A r c = (A', or, oc) ->
-  gauss_invar A' (ord_bound_convert or) (ord_bound_convert oc).
+  match (gauss_one_step A r c) with
+  | (A', or, oc) => gauss_invar A' (ord_bound_convert or) (ord_bound_convert oc)
+  end.
 Proof.
-(*TODO: start with this*)
-Admitted.
-(*
-  move => m n A r c A' oc or. rewrite /gauss_invar. move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-  rewrite /gauss_one_step. case Fn: (fst_nonzero A c r) => [k |]. move => H; case : H.
-  move => Ha' Hor Hoc. (*start from here*) subst.
-  rewrite //=.
-
- Hg.
-  *)
-
-
+  move => m n A r c Hinv. case G : (gauss_one_step A r c) => [[A' or] oc]. move : G.
+  rewrite /gauss_one_step. case Fz : (fst_nonzero A c r) => [k |]; rewrite //=.
+  - move => G. case : G => Ha' Hor Hoc. subst.
+    move : Hinv. rewrite {1}/gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+    rewrite /gauss_invar. rewrite !ord_bound_convert_plus. split; try split; try split.
+    + move => r'. rewrite ltnS leq_eqVlt; move => /orP[Hrr' | Hrr'].
+      * have : r' == r by []. rewrite {Hrr'} => /eqP Hrr'. subst. exists c.
+        split. by apply gauss_one_step_r_lead. by [].
+      * have Hlead2 := Hleadbefore. move : Hleadbefore => /(_ r' Hrr') [c' [Hlc Hcc']]. exists c'. split.
+        by rewrite -gauss_one_step_prop_lead_coef. have : c < c.+1 by []. move : Hcc'; apply ltn_trans.
+    + move => r1 r2 c1 c2 Hr12. rewrite ltnS leq_eqVlt; move => /orP[Hr2r | Hr2r].
+      * have: (r2 == r) by []. move {Hr2r} => /eqP Hr2r. subst. rewrite gauss_one_step_r_lead =>[|//|//].
+        rewrite -gauss_one_step_prop_lead_coef => [| //|//|//|//].
+        move => Hl1 Hl2. case : Hl2 => Hl2. subst. move : Hleadbefore => /(_ r1 Hr12) [c'] . move => [Hlc Hcc'].
+        rewrite Hlc in Hl1. case: Hl1. by move => H; subst.
+      * have Hr1r : r1 < r. move : Hr12 Hr2r. by apply ltn_trans.
+        rewrite -!gauss_one_step_prop_lead_coef; try by []. by apply Hincr. 
+    + move => r' c'. rewrite ltnS leq_eqVlt; move => /orP[Hcc' | Hcc'].
+      * have : (c' == c) by []. rewrite {Hcc'} => /eqP H; subst.
+        (*need to show that if leading coefficient of r' is c, then r' = r*)
+        case Hrr' : (r' == r).
+        -- move => H{H} x Hxr. rewrite gauss_one_step_col_c.
+           have : x == r = false. have Hreq : (r' == r) by []. eq_subst Hreq.
+           move: Hxr. by case : (x == r). move ->. by []. move : Fz.
+           rewrite fst_nonzero_some_iff. by move => [Hrk [Hakc H]].
+        -- rewrite lead_coef_some_iff. move => [Hnonz Hbef]. move : Hnonz.
+           rewrite gauss_one_step_col_c. by rewrite Hrr' eq_refl. move: Fz.
+           rewrite fst_nonzero_some_iff. by move => [H1 [H2 H3]].
+      * (*this time, need to show that r' < r. Cannot be greater because entry is 0*)
+        case (orP (ltn_total r r')) => [/orP[Hltxr | Heqxr] | Hgtxr].
+        -- rewrite lead_coef_some_iff. move => [Hnonzero  H{H}].
+           move : Hnonzero. rewrite gauss_one_step_bottom_rows; try by [].
+           by rewrite eq_refl. by rewrite leq_eqVlt Hltxr orbT.
+        -- have H: (r == r') by []; eq_subst H.
+           rewrite gauss_one_step_r_lead => [|//|//]. move => H; case : H. move => H; move : H Hcc' ->.
+           by rewrite ltnn.
+        -- rewrite -gauss_one_step_prop_lead_coef; try by []. move => Hl x Hxr.
+           case (orP (ltn_total r x)) => [Hgeq | Hlt].
+           ++ have Hrx : (r <= x). by rewrite leq_eqVlt orbC. move {Hgeq}. 
+              by apply gauss_one_step_bottom_rows.
+           ++ apply (elimT eqP). rewrite -gauss_one_step_beginning_submx; try by [].
+              rewrite (Hzcol r'); try by []. move : Fz. rewrite fst_nonzero_some_iff. by move => [H H'].
+    + move => r' c' Hrr'. rewrite ltnS leq_eqVlt; move => /orP[Hcc' | Hcc'].
+      * have H: (c' == c) by []; eq_subst H. rewrite gauss_one_step_col_c.
+        have: r' == r = false by apply gtn_eqF. by move ->. move: Fz. rewrite fst_nonzero_some_iff.
+        by move => [H [H' H'']].
+      * apply gauss_one_step_bottom_rows; try by []. by rewrite leq_eqVlt Hrr' orbT.
+  - have: forall (x: 'I_m), r <= x -> A x c = 0 by apply fst_nonzero_none. move {Fz} => Fz.
+    move => G. case : G => Ha' Hor Hoc. subst.
+    move : Hinv. rewrite {1}/gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+    rewrite /gauss_invar. rewrite !ord_bound_convert_plus. rewrite /ord_bound_convert. split; try split; try split.
+    + move => r' Hrr'.  move : Hleadbefore => /(_ r' Hrr') [c' [Hlc Hcc']]. exists c'. split. by [].
+      have: (c < c.+1) by []. move : Hcc'. by apply ltn_trans.
+    + by [].
+    + move => r' c'. rewrite ltnS leq_eqVlt; move => /orP[Hcc' | Hcc'].
+      have :(c' == c) by []. move => /eqP H; subst.
+      case (orP (ltn_total r r')) => [Hgeq | Hlt]. 
+      * have Hrx : (r <= r'). by rewrite leq_eqVlt orbC. move {Hgeq}. 
+        rewrite lead_coef_some_iff Fz. rewrite eq_refl. by move => [H H']. by [].
+      * move => Hlc. move : Hleadbefore => /(_ r' Hlt) [c' [Hlc' Hltcc']].
+        rewrite Hlc in Hlc'. case: Hlc'. move => H; subst. move : Hltcc'. by rewrite ltnn.
+      * by apply Hzcol.
+    + move => r' c' Hrr'. rewrite ltnS leq_eqVlt; move => /orP[Hcc' | Hcc'].
+      * have : (c' == c) by []. move => /eqP H; subst. by apply Fz.
+      * by apply Hzero.
+Qed.
 
 
 End Gauss.
