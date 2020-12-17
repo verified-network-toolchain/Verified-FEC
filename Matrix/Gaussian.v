@@ -52,15 +52,16 @@ Proof.
       * have : a (nth t s r) by apply Ha. by rewrite Hprev.
 Qed.
 
-(*Similar (one direction) for the None case*)
-Lemma find_none: forall {T: eqType} (a: pred T) (s: seq T),
-  find a s = size s -> (forall x, x \in s -> ~~ (a x)).
+(*Similar for None case*)
+Lemma find_none_iff: forall {T: eqType} (a: pred T) (s: seq T),
+  find a s = size s <-> (forall x, x \in s -> ~~ (a x)).
 Proof.
-  move => T a s Hfind. have: ~~ has a s. case Hhas : (has a s). 
-  move : Hhas. rewrite has_find Hfind ltnn. by []. by [].
-  move => Hhas. by apply (elimT hasPn).
+  move => T a s. split.
+  - move => Hfind. have: ~~ has a s. case Hhas : (has a s). 
+    move : Hhas. rewrite has_find Hfind ltnn. by []. by [].
+    move => Hhas. by apply (elimT hasPn).
+  - move => Hnotin. apply hasNfind. apply (introT hasPn). move => x. apply Hnotin. 
 Qed.
-
 
 
 Section Gauss.
@@ -338,7 +339,7 @@ Proof.
   by rewrite Hb unitmx_mul Hunit. 
 Qed. 
 
-(** Gaussian Elimination*)
+(** Gaussian Elimination Intermediate Functions*)
 (*Find the first nonzero entry in column col, starting from index r*)
 (*Because we want to use the result to index into a matrix, we need an ordinal. So we have a function that
   returns the nat, then we wrap the type in an option. This makes the proofs a bit more complicated*)
@@ -395,7 +396,7 @@ Proof.
   case : (orP (fst_nonzero_nat_bound A col r)) => [ Heq | Hlt].
   move => H{H}. move : Heq. rewrite /fst_nonzero_nat. have Hsz := size_ord_enum m. move => Hfind.
   have : (find (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m) == size (ord_enum m)).
-  by rewrite Hsz. move {Hfind} => /eqP Hfind. move => x Hrx. apply find_none with (x0:=x) in Hfind.
+  by rewrite Hsz. move {Hfind} => /eqP Hfind. move => x Hrx. apply find_none_iff with (x0:=x) in Hfind.
   move : Hfind. rewrite negb_and => /orP[Hnrx | Hxcol]. by move: Hrx Hnrx ->. apply (elimT eqP).
   move : Hxcol. by case : (A x col == 0). apply mem_ord_enum.
   by rewrite insubT.
@@ -442,6 +443,20 @@ Proof.
       by rewrite -Hfst. move => Hnatord. 
       have : (Sub (lead_coef_nat A row) Hlt == c) by []. by move => /eqP Heq.
 Qed. (*TODO: maybe try to reduce duplication between this and previous*)
+
+Lemma lead_coef_none_iff: forall {m n} (A: 'M[F]_(m, n)) (row: 'I_m),
+  lead_coef A row = None <-> (forall (x : 'I_n),  A row x = 0).
+Proof.
+  move => m n A row. have: (forall x : 'I_n, A row x = 0) <-> lead_coef_nat A row = n.
+  have : lead_coef_nat A row = n <-> lead_coef_nat A row = size (ord_enum n) by rewrite size_ord_enum.
+  move ->. rewrite find_none_iff. split.
+  move => Hc x Hin. rewrite negbK. apply (introT eqP). apply Hc.
+  move => Hc x. apply (elimT eqP). move : Hc => /(_ x); rewrite negbK. move ->. by []. by apply mem_ord_enum.
+  move ->. rewrite /lead_coef. case (orP(lead_coef_nat_bound A row)) => [Heq | Hlt] .
+  - rewrite insubF. split; try by []. move => H{H}. by apply (elimT eqP).
+    eq_subst Heq. by rewrite Heq ltnn.
+  - rewrite insubT. split; try by []. move => Heq. have: n < n by rewrite -{1}Heq. by rewrite ltnn.
+Qed. 
 
 (*Fold a function over the rows of a matrix that are contained in a list.
   If this function only affects a single row and depends only on the entries in that row and possibly
@@ -600,7 +615,7 @@ Proof.
   apply ero_row_equiv. constructor. by rewrite eq_sym Heq.
 Qed.
 
-(** The Algorithm *)
+(** One Step *)
 
 (*The state of the matrix when we have computed gaussian elimination up to row r and column c*)
 Definition gauss_invar {m n} (A: 'M[F]_(m, n)) (r : nat) (c: nat) :=
@@ -829,5 +844,249 @@ Proof.
       * by apply Hzero.
 Qed.
 
+Definition fst' {A B C} (x: A * B * C) :=
+  match x with
+  | (a, _, _) => a
+  end.
+
+Lemma gauss_one_step_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n),
+  row_equivalent A (fst' (gauss_one_step A r c)).
+Proof.
+  move => m n A r c. case G : (gauss_one_step A r c) => [[A' or] oc]. move : G.
+  rewrite /gauss_one_step. case Fz : (fst_nonzero A c r) => [k |]; rewrite //=;
+  move => G; case : G => Ha' Hor Hoc; subst.
+  - apply row_equivalent_trans with (B:= (all_cols_one (xrow k r A) c)).
+    apply row_equivalent_trans with (B:= xrow k r A). apply ero_row_equiv. constructor.
+    apply all_cols_one_row_equiv. apply sub_all_rows_row_equiv.
+  - constructor.
+Qed.
+
+Require Import FunInd.
+Require Import Recdef.
+Require Import Lia.
+
+(** Gaussian Elimination Full Algorithm*)
+Function gauss_all_steps {m n} (A: 'M[F]_(m, n)) (r : option 'I_m) (c : option 'I_n) 
+  {measure (fun x => (n - ord_bound_convert x)%N) c} : 'M[F]_(m, n) :=
+  match r, c with
+  | Some r', Some c' => match (gauss_one_step A r' c') with
+                        | (A', or, oc) => gauss_all_steps A' or oc
+                        end
+  | _, _ => A
+  end.
+Proof.
+move => m n A r c r' Hrr' c' Hcc' p oc A' or Hp. subst.
+rewrite /gauss_one_step. case Fz : (fst_nonzero A c' r') => [k |]; rewrite //=;
+move => G; case : G => Ha' Hor Hoc; subst; rewrite ord_bound_convert_plus;
+rewrite subnS; apply Lt.lt_pred_n_n; apply (elimT ltP); by rewrite subn_gt0. 
+Defined.
+
+(*After we run this function, the gaussian invariant is satisfied for either m or n*)
+(*We will handle the None case separately - (ie, if m = 0 or n = 0*)
+Lemma gauss_all_steps_invar: forall {m n} (A: 'M[F]_(m, n)) (r : option 'I_m) (c : option 'I_n),
+  gauss_invar A (ord_bound_convert r) (ord_bound_convert c) ->
+  (exists r', r' <= m /\ gauss_invar (gauss_all_steps A r c) r' n) \/
+  (exists c', c' <= n /\ gauss_invar (gauss_all_steps A r c) m c').
+Proof.
+  move => m n. Check gauss_all_steps_ind. (* Check gauss_all_steps_ind. *) 
+  apply (@gauss_all_steps_ind m n (fun (B : 'M[F]_(m, n)) (r' : option 'I_m) (c' : option 'I_n) (C : 'M_(m, n)) =>
+    gauss_invar B (ord_bound_convert r') (ord_bound_convert c') ->
+    (exists r'' : nat, r'' <= m /\ gauss_invar C r'' n) \/
+    (exists c'' : nat, c'' <= n /\ gauss_invar C m c''))).
+  - move => A r c r' Hrr' c' Hcc' A' or oc Hgo Hind; subst.
+    rewrite /ord_bound_convert. move => Hinv.
+    apply Hind. have H := gauss_one_step_invar Hinv. by rewrite Hgo in H.
+  - move => A r c x Hrx x' Hcx'; subst. case : x => a. case : x' => b.
+    by []. rewrite /ord_bound_convert. move => H. left. exists a. split.
+    rewrite leq_eqVlt. have: a < m  by []. move ->. by rewrite orbT. by [].
+    rewrite {1}/ord_bound_convert. move => Hg. right. exists (ord_bound_convert x').
+    split; try by []. rewrite /ord_bound_convert. move : Hg. case : x'.
+    move => b Hg. rewrite leq_eqVlt. have: b < n by []. move ->. by rewrite orbT.
+    by rewrite leqnn.
+Qed.
+
+Lemma gauss_all_steps_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (r : option 'I_m) (c : option 'I_n),
+  row_equivalent A (gauss_all_steps A r c).
+Proof.
+  move => m n. apply (@gauss_all_steps_ind m n (fun B r' c' C => row_equivalent B C)).
+  - move => A r c r' Hrr' c' Hcc' A' or oc Hg Hre; subst.
+    apply (@row_equivalent_trans _ _ _ A'). have Hrow := (gauss_one_step_row_equiv A r' c').
+    rewrite Hg in Hrow. apply Hrow. by [].
+  - constructor.
+Qed.
+
+Ltac lt_zero := intros;
+  match goal with
+  | [H: is_true (?x < 0) |- _] => by rewrite ltn0 in H
+  end.
+
+(*At the beginning, the matrix satisfies the invariant*)
+Lemma gauss_invar_init : forall {m n} (A: 'M[F]_(m, n)),
+  gauss_invar A 0%N 0%N.
+Proof.
+  move => m n A. rewrite /gauss_invar. repeat(split; try lt_zero).
+Qed.
+
+(*Now, make all leading coefficients 1*)
+Definition all_lc_1 {m n} (A: 'M[F]_(m, n)) :=
+  foldr (fun x acc => match (lead_coef A x) with
+                      | None => acc
+                      | Some l => sc_mul acc (A x l)^-1 x
+                      end) A (ord_enum m).
+
+(*The following lemma is helpful*)
+Lemma all_lc_1_val: forall {m n} (A: 'M[F]_(m,n)) i j,
+  all_lc_1 A i j = match (lead_coef A i) with
+                    | None => A i j
+                    | Some l => (A i l)^-1 * (A i j)
+                  end.
+Proof.
+  move => m n A i j. rewrite /all_lc_1. rewrite mx_row_transform.
+  - case: (lead_coef A i) => [|//]. move => a. by rewrite /sc_mul mxE eq_refl.
+  - move => A' i' j' r Hir'. case : (lead_coef A r) => [|//].
+    move => a. rewrite /sc_mul mxE. have : i' == r = false by move : Hir';  case (i' == r).
+    by move ->.
+  - move => A' B' Hab H{H} j'. case : (lead_coef A i); last apply Hab. move => a.
+    by rewrite !/sc_mul !mxE !eq_refl Hab.
+  - apply ord_enum_uniq.
+  - apply mem_ord_enum.
+Qed.
+
+(*[all_lc_1] does not change the zero entries of the matrix*)
+Lemma all_lc_1_zeroes: forall {m n} (A: 'M[F]_(m, n)) x y,
+  (A x y == 0) = ((all_lc_1 A) x y == 0).
+Proof.
+  move => m n A x y. rewrite all_lc_1_val. case Hlc : (lead_coef A x) => [k |].
+  - move : Hlc. rewrite lead_coef_some_iff; move => [Haxk H{H}].
+    rewrite GRing.mulf_eq0. have: ((A x k)^-1 == 0 = false). rewrite GRing.invr_eq0.
+    move : Haxk. by case: (A x k == 0). by move ->.
+  - by [].
+Qed.
+
+(*[all_lc_1] does not change leading coefficients*)
+Lemma all_lc_1_lcs:  forall {m n} (A: 'M[F]_(m, n)) x,
+  lead_coef A x = lead_coef (all_lc_1 A) x.
+Proof.
+  move => m n A x. case Hlorg : (lead_coef A x) => [c|]; symmetry; move : Hlorg.
+  - rewrite !lead_coef_some_iff => [[Haxc Hbef]]. split. move: Haxc. by rewrite all_lc_1_zeroes.
+    move => x' Hxc. apply (elimT eqP). rewrite -all_lc_1_zeroes. apply (introT eqP).
+    by apply Hbef.
+  - rewrite !lead_coef_none_iff. move => Hall x'. apply (elimT eqP). rewrite -all_lc_1_zeroes. by rewrite Hall.
+Qed. 
+
+(*Together, this implies that [gauss_invar] is preserved*)
+Lemma all_lc_1_gauss_invar: forall {m n} (A: 'M[F]_(m, n)) r c,
+  gauss_invar A r c ->
+  gauss_invar (all_lc_1 A) r c.
+Proof.
+  move => m n A r c. rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  repeat(try split).
+  - move => r' Hrr'. rewrite -all_lc_1_lcs. by apply Hleadbefore.
+  - move => r1 r2 c1 c2 Hr12 Hr2r. rewrite -!all_lc_1_lcs. by apply Hincr.
+  - move => r' c' Hcc'. rewrite -all_lc_1_lcs. move => Hlc Hx Hxr. apply (elimT eqP). 
+    rewrite -all_lc_1_zeroes. apply (introT eqP). by apply Hzcol with(r' := r').
+  - move => r' c' Hrr' Hcc'. apply (elimT eqP). rewrite -all_lc_1_zeroes. apply (introT eqP).
+    by apply Hzero.
+Qed.
+
+(*Finally, this in fact does set all leading coefficients to one*)
+Lemma all_lc_1_sets_lc: forall {m n} (A: 'M[F]_(m, n)) x c,
+  lead_coef A x = Some c ->
+  (all_lc_1 A) x c = 1.
+Proof.
+  move => m n A x c Hlc. rewrite all_lc_1_val Hlc. move : Hlc; rewrite lead_coef_some_iff => [[Hnz H{H}]].
+  by rewrite GRing.mulVf.
+Qed.
+
+(*Additionally, the resulting matrix is row equivalent*)
+Lemma all_lc_1_row_equiv: forall {m n} (A: 'M[F]_(m, n)),
+  row_equivalent A (all_lc_1 A).
+Proof.
+  move => m n A. apply mx_row_transform_equiv. move => A' r.
+  case Hlc : (lead_coef A r) => [k |].
+  - apply ero_row_equiv. constructor. move : Hlc. rewrite lead_coef_some_iff => [[Hnz H{H}]].
+    by apply GRing.invr_neq0.
+  - constructor.
+Qed.
+
+(*Putting it all together. First, we defined reduced row echelon form*)
+Definition row_echelon {m n} (A: 'M[F]_(m, n)) :=
+  (*all rows of zeroes are at the bottom*)
+  (exists r, r <= m /\ forall (x: 'I_m), (lead_coef A x == None) = (r <= x)) /\
+  (*all leading coefficients appear in strictly increasing order*)
+  (forall (r1 r2 : 'I_m) c1 c2, r1 < r2 -> lead_coef A r1 = Some c1 -> lead_coef A r2 = Some c2 ->
+    c1 < c2) /\
+  (*each column with a leading coefficient has zeroes in all other columns*)
+  (forall (r' : 'I_m) (c' : 'I_n), lead_coef A r' = Some c' -> 
+     (forall (x: 'I_m), x != r' -> A x c' = 0)).
+
+(*Reduced row echelon add the requirements that all leading coefficients are 1*)
+Definition red_row_echelon {m n} (A: 'M[F]_(m, n)) :=
+  row_echelon A /\ (forall (r: 'I_m) c, lead_coef A r = Some c -> A r c = 1).
+
+(*We prove in a separate lemma that the result of [gauss_all_steps] is in row echelon form*)
+Lemma end_invar_ref: forall {m n} (A: 'M[F]_(m, n)),
+  (exists r', r' <= m /\ gauss_invar A r' n) \/
+  (exists c', c' <= n /\ gauss_invar A m c') ->
+  row_echelon A.
+Proof.
+  move => m n A. (*need to handle each case separately, maybe there is a way to make it nicer*)
+  move => [ [r' [Hrm Hinv]] |[c' [Hcn Hinv]]]; move : Hinv; rewrite /gauss_invar; 
+  move => [Hleadbefore [Hincr [Hzcol Hzero]]]; rewrite /row_echelon.
+  - (*we use the first condition in multiple places, so we prove it separately*)
+    have Hlc : (forall (x : 'I_m), (lead_coef A x == None) = (r' <= x)). 
+    move => x. case Hlt : (r' <= x).  
+    apply (introT eqP). rewrite lead_coef_none_iff. move => x'. by apply Hzero.
+    have Hxr' : (x < r'). rewrite ltnNge. by rewrite Hlt. move {Hlt}.
+    move : Hleadbefore => /(_ x Hxr') [c [Hlc Hcn]]. by rewrite Hlc.
+    repeat(split).
+    + exists r'. split. by []. apply Hlc.
+    + move => r1 r2 c1 c2 Hr12 Hl1 Hl2. have Hr2r: (r2 < r').
+      case Hr : (r2 < r'). by []. have : r' <= r2 by rewrite leqNgt Hr.
+      move {Hr} => Hr. rewrite -Hlc in Hr. rewrite Hl2 in Hr. by [].
+      by apply (Hincr r1 r2).
+    + move => r1 c1 Hlr1. by apply Hzcol.
+  - repeat(split).
+    + exists m. split. apply leqnn. move => x. have Hx: x < m by [].
+      move : Hleadbefore => /(_ x Hx) [c [Hlcx Hcc']]. rewrite Hlcx.
+      have: m <= x = false. have : x < m by []. rewrite ltnNge. by case : (m <= x). by move ->.
+    + move => r1 r2 c1 c2 Hr12. by apply Hincr.
+    + move => r c Hlr. apply Hzcol => [|//]. have Hr : r < m by [].
+      move : Hleadbefore => /(_ r Hr) [c1 [Hlr1 Hcc2]]. rewrite Hlr1 in Hlr. case: Hlr.
+      by move => Hc1; subst.
+Qed.
+
+(*The full function*)
+Definition gaussian_elim {m n} (A: 'M[F]_(m, n)) :=
+  all_lc_1 (gauss_all_steps A (insub 0%N) (insub 0%N)).
+
+Lemma insub_zero: forall n,
+  @ord_bound_convert n (insub 0%N) = 0%N.
+Proof.
+  move => n. case Hn : (0 < n).
+  by rewrite insubT. have: (n == 0%N) by rewrite eqn0Ngt Hn. move => /eqP H; subst.
+  by rewrite insubF.
+Qed.
+
+Lemma gaussian_elim_rref: forall {m n} (A: 'M[F]_(m, n)),
+  red_row_echelon (gaussian_elim A).
+Proof.
+  move => m n A. rewrite /red_row_echelon. rewrite /gaussian_elim. split.
+  2 : { move => r c. rewrite -all_lc_1_lcs. by apply all_lc_1_sets_lc. }
+  apply end_invar_ref. 
+  have : (exists r' : nat, r' <= m /\ gauss_invar (gauss_all_steps A (insub 0%N) (insub 0%N)) r' n) \/
+  (exists c' : nat, c' <= n /\ gauss_invar (gauss_all_steps A (insub 0%N) (insub 0%N)) m c').
+  apply gauss_all_steps_invar. rewrite !insub_zero. by apply gauss_invar_init.
+  move => [[r' [Hl1 Hl2]] |[c' [Hr1 Hr2]]]. left. exists r'. split. by [].
+  by apply all_lc_1_gauss_invar. right. exists c'. split. by [].  by apply all_lc_1_gauss_invar.
+Qed.
+
+Lemma gaussian_elim_row_equiv: forall {m n} (A: 'M[F]_(m, n)),
+  row_equivalent A (gaussian_elim A).
+Proof.
+  move => m n A. rewrite /gaussian_elim. 
+  apply (@row_equivalent_trans _ _ _ (gauss_all_steps A (insub 0%N) (insub 0%N))).
+  apply gauss_all_steps_row_equiv. apply all_lc_1_row_equiv.
+Qed.
 
 End Gauss.
