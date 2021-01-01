@@ -1089,4 +1089,399 @@ Proof.
   apply gauss_all_steps_row_equiv. apply all_lc_1_row_equiv.
 Qed.
 
+(** Simplified Gaussian Elimination*)
+
+(*The C code presents a version of Gaussian elimination that does not use swaps and that requires all entries in
+  the current column to be nonzero. We prove that this simplified version of Gaussian elimination is equivalent
+  to the full thing as long as the input matrix satisfies several (fairly strong) invertibility properties*)
+
+(*First, we define the intermediate functions and gaussian elimination steps*)
+Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
+  foldr (fun x acc => sc_mul acc (A x c)^-1 x) A (ord_enum m).
+
+(*Not sure if we need this*)
+(*
+Lemma all_cols_one_noif_val: forall {m n} (A: 'M[F]_(m,n)) c i j,
+  (all_cols_one_noif A c) i j = A i j / A i c.
+Proof.
+  move => m n A c i j. rewrite mx_row_transform.
+  - by rewrite /sc_mul mxE eq_refl GRing.mulrC.
+  - move => A' i' j' r Hir'. rewrite /sc_mul mxE. move : Hir'. by case : (i' == r).
+  - move => A' B Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
+  - apply ord_enum_uniq.
+  - apply mem_ord_enum.
+Qed.
+*)
+
+Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) (c : 'I_n) : 'M[F]_(m, n) :=
+  foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
+
+(*In this version, we do not swap rows, we scalar multiply/subtract all rows, and we have r=c every time. Accordingly,
+  we do not need to return all 3 elements, but instead know that the next value is r + 1*)
+Definition gauss_one_step_simpl {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <= n) :=
+  let c := widen_ord Hmn r in
+  let A1 := all_cols_one_noif A c in
+  sub_all_rows_noif A1 r c.
+
+(*This version of Gaussian elimination is only equivalent to the general case if some specific conditions
+  are met of the input matrix. Namely, we require the following:
+  1. For any r, consider the submatrix consisting of the first r-1 rows and the first r columns, with
+     one column before r removed. Then, this submatrix is invertible.
+  2. For any r, consider the submatrix consisting of the first r-1 rows and the first r columns, along 
+     with any one additional row. Then this submatrix is invertible.
+  These conditions ensure that the rth column always contains all nonzero elements. We need to prove both
+  that these conditions are preserved and that, if these conditions hold, then the two version are
+  equivalent. First, we define the conditions*)
+
+(*Working with the ordinals in the submatrices is a bit annoying. We define the following utilities to
+  construct ordinals*)
+(*
+(*If r < m, then converts an I_r-1 to an I_m with the same value*)
+Lemma ltn_pred: forall r m, r < m -> r-1 <= m.
+Proof.
+  move => r m Hrm. have Hpredr : r - 1 <= r by rewrite leq_subr. rewrite leq_eqVlt.
+  have : (r - 1 < m) by apply (leq_ltn_trans Hpredr). move ->. by rewrite orbT.
+Qed.
+
+Definition ord_widen_pred r m (Hrm : r < m) (x: 'I_(r-1)) : 'I_m :=
+  widen_ord (ltn_pred Hrm) x.
+*)
+
+(*If r <= n and x is a I_(r-1), then this gives the ordinal x+1 of type I_n*)
+Lemma ltn_succ: forall r n x, r < n -> x < r -> x.+1 < n.
+Proof.
+  move => r n x Hrn Hxr1. move : Hxr1 Hrn. apply leq_ltn_trans.
+Qed.
+
+Definition ord_widen_succ r n (Hrn : r < n) (x: 'I_r) : 'I_n :=
+  Ordinal (ltn_succ Hrn (ltn_ord x)).
+(*
+Definition ord_widen_succ_equiv r m (Hrm : r < m) (x : 'I_(r.+1)) : 'I_m :=
+  widen_ord (Hrm) x.
+*)
+(*The first submatrix - the definition is a bit awkward because of the ordinal proof obligations*)
+Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j : nat) : 'M[F]_(r, r) :=
+  let Hrm := ltn_ord r in
+  mxsub (fun (x: 'I_r) => widen_ord (ltnW Hrm) x)
+        (fun (y : 'I_r) => if y < j then widen_ord (ltnW (ltn_leq_trans Hrm Hmn)) y
+                           else ord_widen_succ (ltn_leq_trans Hrm Hmn) y) A.
+
+Definition submx_add_row {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j: 'I_m) : 'M[F]_(r.+1, r.+1) :=
+  let Hrm := ltn_ord r in
+  mxsub (fun (x : 'I_(r.+1)) => if x < r then widen_ord Hrm x else j) 
+        (fun (y : 'I_(r.+1)) => widen_ord (leq_trans Hrm Hmn) y) A.
+
+(*The condition we need to have at the beginning and preserve*)
+(*TODO: could make boolean predicate but probably not worth it*)
+(*Note that we only require the condition starting from a given r value. This is because the condition
+  will only be partially preserved through the gaussian steps*)
+Definition strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) :=
+  forall (r' : 'I_m), r <= r' ->
+    (forall j, j < r' -> (submx_remove_col A Hmn r' j) \in unitmx) /\
+    (forall (j : 'I_m), r' <= j -> (submx_add_row A Hmn r' j) \in unitmx).
+
+(*TODO: move*)
+Lemma rem_impl: forall b : Prop,
+  (true -> b) -> b.
+Proof.
+  move => b. move => H. by apply H.
+Qed.
+
+(*A crucial lemma: If a matrix has a row of zeroes, then it is not invertible*)
+Lemma row_zero_not_unitmx: forall {m} (A: 'M[F]_(m, m)) (r: 'I_m),
+  (forall (c: 'I_m), A r c = 0) ->
+  A \notin unitmx.
+Proof.
+  move => m A r Hzero. case Hin : (A \in unitmx) => [|//]. 
+  have: (A *m (invmx A) = 1%:M). apply mulmxV. apply Hin.
+  move => Hinv {Hin}.
+  have :  1%:M r r = GRing.one F by rewrite id_A eq_refl.
+  rewrite -Hinv. have: (A *m invmx A) r r = 0. rewrite mxE big1 =>[//|].
+  move => i H{H}. by rewrite Hzero GRing.mul0r. move ->.
+  move => H. have: 1 != GRing.zero F by apply GRing.oner_neq0. by rewrite H eq_refl.
+Qed.
+
+(*TODO: move these*)
+Lemma mx_row_ord_equiv: forall {m n} (A: 'M[F]_(m, n)) (r1 r2 : 'I_m) c,
+  nat_of_ord r1 == nat_of_ord r2 ->
+  A r1 c = A r2 c.
+Proof.
+  move => m n A r1 r2 c Hr12. have : (r1 == r2) by []. move => /eqP Hr12'. by subst.
+Qed.
+
+Lemma mx_col_ord_equiv: forall {m n} (A: 'M[F]_(m, n)) r (c1 c2 : 'I_n),
+  nat_of_ord c1 == nat_of_ord c2 ->
+  A r c1 = A r c2.
+Proof.
+  move => m n A r c1 c2 Hc12. have : (c1 == c2) by []. move => /eqP Hc12'. by subst.
+Qed.
+
+(*TODO: maybe move somewhere else*)
+Check gauss_invar.
+(*If we have [gauss_invar] up to row and column r, then the first r x r submatrix in the upper right hand corner
+  is the identity matrix*)
+
+(*exists in the library but easier to use version*)
+Lemma leq_both_eq: forall m n,
+  ((m <= n) && (n <= m)) = (m == n).
+Proof.
+  move => m n. case (orP (ltn_total m n)) => [/orP[Hlt | Heq] | Hgt].
+  - have : ( m == n = false). rewrite ltn_neqAle in Hlt. move : Hlt.
+    by case: (m == n). move ->. 
+    have: (n <= m = false). rewrite ltnNge in Hlt. move : Hlt.
+    by case : (n <= m). move ->. by rewrite andbF.
+  - by rewrite Heq leq_eqVlt Heq orTb leq_eqVlt eq_sym Heq orTb.
+  - have : ( m == n = false). rewrite ltn_neqAle in Hgt. move : Hgt.
+    rewrite eq_sym. by case: (m == n). move ->. 
+    have: (m <= n = false). rewrite ltnNge in Hgt. move : Hgt.
+    by case : (m <= n). move ->. by rewrite andFb.
+Qed.
+
+(*Allows us to do induction up to a fixed bound by going backwards*)
+Lemma nat_ind_rev: forall (m : nat) (P: nat -> Prop),
+  P m ->
+  (forall n, n < m -> (P (n.+1) -> P n)) ->
+  (forall n, n <= m -> P n).
+Proof.
+  move => m P Hpm Hind n. remember (m - n)%N as x. move : Heqx. move : n. elim: x.
+  - move => n Hnm. have : m <= n by rewrite /leq -Hnm. move {Hnm} => Hmn Hnm.
+    have : (m == n) by rewrite -leq_both_eq Hmn Hnm. by move => /eqP H; subst.
+  - move => n  Hind' n' Hsub. rewrite leq_eqVlt => /orP[Heq | Hlt].
+    + by eq_subst Heq.
+    + apply Hind. by []. apply Hind'. by rewrite subnS -Hsub -pred_Sn. by [].
+Qed.
+
+(*TODO: move*)
+Search (_ <= _) (_ .-1)%N.
+Search (_ < _) "trans".
+
+(*A similar lemma for ordinals (TODO: may not need nat version). This is a bit trickier because
+  of all the ordinal proof obligations*)
+Lemma ord_ind_rev: forall (m: nat) (r: 'I_m) (P: 'I_m -> Prop),
+  P r ->
+  (forall (n: 'I_m) (Hnr : n < r), (P (Ordinal (ltn_succ (ltn_ord r) Hnr)) -> P n)) ->
+  (forall (n: 'I_m), n <= r -> P n).
+Proof.
+  move => m r P Hpr Hind n. case : n. move => n.
+  remember (r - n)%N as x. move : n Heqx. elim : x.
+  - move => n Hrn Hmn Hr. have: r <= n by rewrite /leq -Hrn. move {Hrn} => Hrn.
+    have : n <= r by []. move => Hnr.
+    have : (nat_of_ord r == n)  by rewrite -leq_both_eq Hrn Hnr. move => Hnat.
+    have: (r == Ordinal Hmn) by []. move => /eqP Hord. by rewrite -Hord.
+  - move => n Hind' n' Hsub Hnm'. rewrite leq_eqVlt => /orP[Heq | Hlt].
+    + have: (Ordinal Hnm' == r) by []. by move => /eqP H; subst.
+    + apply (Hind _ Hlt). apply Hind'. by rewrite subnS -Hsub -pred_Sn.
+      have : (nat_of_ord (Ordinal (ltn_succ (ltn_ord r) Hlt)) == n'.+1) by []. move => /eqP Hord.
+      by rewrite Hord.
+Qed.
+
+(*
+Lemma ord_ind_rev: forall (m: nat) (P: 'I_m -> Prop),
+  
+*)
+
+(*
+(*First, we prove that if [gauss_invar] A r r holds, then [gauss_invar A r' r'] holds, for r' < r*)
+Lemma gauss_invar_square_reduce: forall {m n} (A: 'M[F]_(m, n)) (r: nat) (r': nat),
+  r' < r ->
+  gauss_invar A r r ->
+  gauss_invar A r' r'.
+Proof.
+  move => m n A r r' Hrr'.  rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  repeat(split).
+  - move => x Hxr. apply Hleadbefore.
+
+
+ rewrite 
+  (forall (r': 'I_m), r' < r -> lead_coef A r' = Some (widen_ord Hmn r')).
+*)
+
+(*TODO: move also*)
+(*create an ordinal of the predecessor*)
+
+Definition ord_pred (m: nat) (x : 'I_m) :=
+  Ordinal (leq_ltn_trans (leq_pred x) (ltn_ord x)).
+
+(*First, we prove something similar, that the leading coefficient of row r' < r is r'*)
+Lemma gauss_invar_square_lc: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat),
+  gauss_invar A r r ->
+  (forall (r': 'I_m), r' < r -> lead_coef A r' = Some (widen_ord Hmn r')).
+Proof.
+  move => m n A Hmn r. rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  (*ugh damn it r can be m - TODO: start with this*)
+  have: forall r', r' <= ord_pred m r -> lead_coef A r' = Some (widen_ord Hmn r').
+  apply ord_ind_rev. r'.
+  have: forall (r' : nat), r' <= r.-1 -> lead_coef A  
+  case : r'. move => m' Hmm'.
+  have: forall i : m' <= m.-1, Ordinal i < r -> lead_coef A (Ordinal i) = Some (widen_ord Hmn (Ordinal i)).
+
+
+ apply (@nat_ind_rev (m.+1)). (fun n => 
+  Ordinal n < r -> lead_coef A (Ordinal n) = Some (widen_ord Hmn (Ordinal n)))).
+
+
+elim: m'.
+  - move => Hpos Hr. 
+
+
+
+
+
+ have : (nat_of_ord (Ordinal Hpos) == 0%N) by []. move => /eq move ->. 
+  elim r'.
+
+Lemma gauss_invar_square_id: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat),
+  gauss_invar A r r ->
+  (forall (x: 'I_m) (y: 'I_n), x < r -> y < r -> (A x y == 0) = (nat_of_ord x != nat_of_ord y)).
+Proof.
+
+(*First, we show the crucial property: if a matrix satisfies [strong_inv] and the gaussian invariant,
+  then all the entries in column r are nonzero*)
+Lemma strong_inv_nonzero_cols: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m),
+  gauss_invar A r r ->
+  strong_inv A Hmn r ->
+  (forall (x : 'I_m), A x (widen_ord Hmn r) != 0).
+Proof.
+  move => m n A Hmn r.  rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  rewrite /strong_inv. move /(_ r). rewrite leqnn. move => Hstrong. apply rem_impl in Hstrong.
+  move : Hstrong => [Hcol Hrow] x.
+  (*We have 2 very different cases: if x < r or if x >= r*)
+  case (orP (ltn_total r x)) => [ Hge | Hlt].
+  - have : r <= x. by rewrite leq_eqVlt orbC. move {Hge} => Hge.
+    (*If x >= r and A x r = 0, then the submatrix with the added row x has a row of all zeroes, so
+      it is not invertible*)
+    have Hrsuc : r < r.+1 by [].
+    case Hcontra : (A x (widen_ord Hmn r) == 0) => [|//].
+    have Hallzero : (forall (c: 'I_(r.+1)), (submx_add_row A Hmn r x) (Ordinal Hrsuc) c = 0).
+    move => c. rewrite /submx_add_row mxE. rewrite ltnn.
+    have : c <= r. have : c < r.+1 by []. by []. rewrite leq_eqVlt. move => /orP[Hcr | Hcr].
+    have Heqord : (widen_ord (leq_trans (ltn_ord r) Hmn) c) == (widen_ord Hmn r) by [].
+    rewrite (mx_col_ord_equiv A x  Heqord). eq_subst Hcontra. by [].
+    apply Hzero. by []. by [].
+    have : submx_add_row A Hmn r x \notin unitmx. apply (row_zero_not_unitmx Hallzero).
+    move : Hrow. by move => /(_ x Hge) ->.
+  - 
+
+
+
+ (Ordinal Hrsuc)).
+
+
+    rewrite (mx_col_ord_equiv A x  Hcr).
+    eq_subst Hcr. eq_subst Hcontra. 
+
+
+
+ rewrite Hcr.
+    + move => Hcr.
+    have: c < r || c == r.
+
+
+ have: Ordinal Hrsuc < r = false by rewrite ltnn.
+    
+
+
+  move ->.
+  rewrite /strong_inv; move => Hstrong.
+
+
+
+(*Now we want to show that [strong_inv] is preserved through [gauss_one_step_simpl]. We will make heavy use
+  of [row_equivalent_unitmx_iff], so we need to know when submatrices are row equivalent. We do this in
+  the following few lemmas*)
+
+(*If we do a scalar multiplication, any submatrix is row equivalent to the corresponding resulting submatrix*)
+Lemma mxsub_sc_mul_row_equiv: forall {m n m' n'} (A : 'M[F]_(m, n)) (f : 'I_m' -> 'I_m) (g : 'I_n' -> 'I_n) (r: 'I_m) c,
+  injective f ->
+  c != 0 ->
+  row_equivalent (mxsub f g A) (mxsub f g (sc_mul A c r)).
+Proof.
+  move => m n m' n' A f g r c Hinj Hc.
+  have Href: reflect (exists x, f x == r) ([exists x, f x == r]). apply existsPP. 
+  move => x. apply idP. case Hex : ([exists x, f x == r]).
+  - have: exists x, f x == r. by apply (elimT Href). move {Hex} => [x Hfx].
+    have: (mxsub f g (sc_mul A c r)) = sc_mul (mxsub f g A) c x.
+    rewrite /mxsub /sc_mul -matrixP /eqrel. move => i j. rewrite !mxE.
+    case Heq : (i == x). eq_subst Heq. by rewrite Hfx.
+    have: f i == r = false. case Hf : (f  i == r). move : Hinj. rewrite /injective => /(_ x i).
+    eq_subst Hfx. eq_subst Hf. move : Hf. move ->. move => H. rewrite H in Heq. move : Heq; by rewrite eq_refl.
+    by []. by []. by move ->.
+    move ->. apply ero_row_equiv. by constructor.
+  - have : (~ exists x, f x == r) by rewrite (rwN Href) Hex. move {Hex} => Hex. 
+    have: (mxsub f g (sc_mul A c r)) = mxsub f g A. rewrite /mxsub /sc_mul -matrixP /eqrel.
+    move => i j; rewrite !mxE. case Fir : (f i == r). 
+    have : (exists x, f x == r) by (exists i; rewrite Fir). by []. by []. move ->.
+    constructor.
+Qed.
+
+(*We have a similar result for adding scalar multiples, but the row we are adding must be in the submatrix*)
+Lemma mxsub_add_mul_row_equiv: forall {m n m' n'} (A : 'M[F]_(m, n)) (f : 'I_m' -> 'I_m) (g : 'I_n' -> 'I_n) 
+  (r1 r2: 'I_m) c,
+  injective f ->
+  r1 != r2 ->
+  (exists (i : 'I_m'), f i == r1) ->
+  row_equivalent (mxsub f g A) (mxsub f g (add_mul A c r1 r2)).
+Proof.
+  move => m n m' n' A f g r1 r2 c Hinj Hr12 [i Hfi].
+  have Href: reflect (exists x, f x == r2) ([exists x, f x == r2]). apply existsPP. 
+  move => x. apply idP. case Hex : ([exists x, f x == r2]).
+  - have: exists x, f x == r2. by apply (elimT Href). move {Hex} => [x Hfx].
+    have: (mxsub f g (add_mul A c r1 r2)) = add_mul (mxsub f g A) c i x.
+    rewrite /mxsub /add_mul -matrixP. move => i' j'. rewrite !mxE.
+    case Hix : (i' == x). eq_subst Hix. rewrite Hfx. eq_subst Hfx. by eq_subst Hfi.
+    case Hfir2 : (f i' == r2). have : (i' = x). apply Hinj. eq_subst Hfx. by eq_subst Hfir2.
+    move => H; subst. move : Hix; by rewrite eq_refl. by []. move ->.
+    apply ero_row_equiv. constructor. case Hix : (i == x). eq_subst Hix.
+    eq_subst Hfi. eq_subst Hfx. by move : Hr12; rewrite eq_refl. by [].
+  - have : (~ exists x, f x == r2) by rewrite (rwN Href) Hex. move {Hex} => Hex.
+    have:  (mxsub f g (add_mul A c r1 r2)) = mxsub f g A.
+    rewrite /mxsub /add_mul -matrixP. move => i' j'. rewrite !mxE.
+    case Hfir : (f i' == r2). have : (exists x, f x == r2) by (exists i'; by rewrite Hfir). by [].
+    by []. move ->. by constructor.
+Qed.
+
+(*Now, we have an additional general result for submatrices similar to [mx_row_transform] and related*)
+(*TODO: dont think we need th r\in l assumption - but kept it for now*)
+(*
+Lemma mxsub_row_transform_equiv: forall {m n m' n'} (A: 'M[F]_(m,n)) (f : 'I_m' -> 'I_m) (g : 'I_n' -> 'I_n)
+   (h: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+  (forall (A: 'M[F]_(m, n)) (r : 'I_m), r \in l -> row_equivalent (mxsub f g A) (mxsub f g (h r A))) ->
+  row_equivalent (mxsub f g A) (mxsub f g (foldr h A l)).
+Proof.
+  move => m n m' n' A f g h l. elim : l => [ Hin //=| x l IH Hin].
+  by constructor. rewrite //=.
+  have : row_equivalent (mxsub f g A) (mxsub f g (foldr h A l)).
+  apply IH. move => A' r' Hrin. apply Hin. by rewrite in_cons Hrin orbT. move => Hre.
+  apply (row_equivalent_trans Hre). apply Hin. by rewrite in_cons eq_refl.
+Qed.
+*)
+
+Lemma mxsub_row_transform_equiv: forall {m n m' n'} (A: 'M[F]_(m,n)) (f : 'I_m' -> 'I_m) (g : 'I_n' -> 'I_n)
+   (h: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+  (forall (A: 'M[F]_(m, n)) (r : 'I_m), row_equivalent (mxsub f g A) (mxsub f g (h r A))) ->
+  row_equivalent (mxsub f g A) (mxsub f g (foldr h A l)).
+Proof.
+  move => m n m' n' A f g h l Hin. elim : l => [//=| x l IH //=].
+  by constructor.
+  apply (row_equivalent_trans IH). apply Hin.
+Qed.
+
+Check mxsub.
+Check @widen_ord.
+Check lshift.
+Check lsubmx.
+
+(*The two submatrices we are interested in: the submatrix consisting of the first r-1 rows and the first r columns
+  except for column j, and the submatrix consisting of the first r-1 rows and first r columns, along with row j*)
+
+(*The first submatrix. To avoid issues with ordinals, we require the row and column index separately, even
+  though they will be the same (by the way we do gaussian elimination)*)
+Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (r: nat) (Hrm : r-1 <= m) (Hrn: r <= n) (j: 'I_n) :=
+  mxsub (fun (y: 'I_(r-1)) => widen_ord Hrm y) (fun (y : 'I_r) => if y < j then widen_ord Hrn y else widen_ord Hrn (y+1))
+  mxsub id (fun y => if y < j then y else  (y-1)%N) A.
+
+
+
+
+
 End Gauss.
