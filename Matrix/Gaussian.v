@@ -30,6 +30,50 @@ Proof.
   move : Hmn Hmp. apply ltn_trans.
 Qed.
 
+(*exists in the library but this version is move convenient*)
+Lemma leq_both_eq: forall m n,
+  ((m <= n) && (n <= m)) = (m == n).
+Proof.
+  move => m n. case (orP (ltn_total m n)) => [/orP[Hlt | Heq] | Hgt].
+  - have : ( m == n = false). rewrite ltn_neqAle in Hlt. move : Hlt.
+    by case: (m == n). move ->. 
+    have: (n <= m = false). rewrite ltnNge in Hlt. move : Hlt.
+    by case : (n <= m). move ->. by rewrite andbF.
+  - by rewrite Heq leq_eqVlt Heq orTb leq_eqVlt eq_sym Heq orTb.
+  - have : ( m == n = false). rewrite ltn_neqAle in Hgt. move : Hgt.
+    rewrite eq_sym. by case: (m == n). move ->. 
+    have: (m <= n = false). rewrite ltnNge in Hgt. move : Hgt.
+    by case : (m <= n). move ->. by rewrite andFb.
+Qed.
+
+Lemma ltn_pred: forall m n,
+  0 < n ->
+  (m < n) = (m <= n.-1).
+Proof.
+  move => m n Hpos. have: n.-1 == (n - 1)%N by rewrite eq_sym subn1. move => /eqP Hn1. by rewrite Hn1 leq_subRL.
+Qed.
+
+(*If an 'I_m exists, then 0 < m*)
+Lemma ord_nonzero {m} (r: 'I_m) : 0 < m.
+Proof.
+  case : r. move => m'. case (orP (ltn_total m 0)) => [/orP[Hlt | Heq] | Hgt].
+  - by [].
+  - by eq_subst Heq.
+  - by [].
+Qed.
+
+Lemma remove_widen: forall {m n} (x: 'I_m) (H: m <= n),
+  nat_of_ord (widen_ord H x) = nat_of_ord x.
+Proof.
+  by [].
+Qed.
+
+Lemma rem_impl: forall b : Prop,
+  (true -> b) -> b.
+Proof.
+  move => b. move => H. by apply H.
+Qed.
+
 (*Results about [find] that mostly put the library lemmas into a more convenient form*)
 
 Lemma find_iff: forall {T: eqType} (a: pred T) (s: seq T) (r : nat) (t: T),
@@ -888,7 +932,7 @@ Lemma gauss_all_steps_invar: forall {m n} (A: 'M[F]_(m, n)) (r : option 'I_m) (c
   (exists r', r' <= m /\ gauss_invar (gauss_all_steps A r c) r' n) \/
   (exists c', c' <= n /\ gauss_invar (gauss_all_steps A r c) m c').
 Proof.
-  move => m n. Check gauss_all_steps_ind. (* Check gauss_all_steps_ind. *) 
+  move => m n.
   apply (@gauss_all_steps_ind m n (fun (B : 'M[F]_(m, n)) (r' : option 'I_m) (c' : option 'I_n) (C : 'M_(m, n)) =>
     gauss_invar B (ord_bound_convert r') (ord_bound_convert c') ->
     (exists r'' : nat, r'' <= m /\ gauss_invar C r'' n) \/
@@ -1089,7 +1133,7 @@ Proof.
   apply gauss_all_steps_row_equiv. apply all_lc_1_row_equiv.
 Qed.
 
-(** Simplified Gaussian Elimination*)
+(** Restricted Gaussian Elimination*)
 
 (*The C code presents a version of Gaussian elimination that does not use swaps and that requires all entries in
   the current column to be nonzero. We prove that this simplified version of Gaussian elimination is equivalent
@@ -1098,20 +1142,6 @@ Qed.
 (*First, we define the intermediate functions and gaussian elimination steps*)
 Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
   foldr (fun x acc => sc_mul acc (A x c)^-1 x) A (ord_enum m).
-
-(*Not sure if we need this*)
-(*
-Lemma all_cols_one_noif_val: forall {m n} (A: 'M[F]_(m,n)) c i j,
-  (all_cols_one_noif A c) i j = A i j / A i c.
-Proof.
-  move => m n A c i j. rewrite mx_row_transform.
-  - by rewrite /sc_mul mxE eq_refl GRing.mulrC.
-  - move => A' i' j' r Hir'. rewrite /sc_mul mxE. move : Hir'. by case : (i' == r).
-  - move => A' B Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
-  - apply ord_enum_uniq.
-  - apply mem_ord_enum.
-Qed.
-*)
 
 Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) (c : 'I_n) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
@@ -1132,22 +1162,10 @@ Definition gauss_one_step_simpl {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <= n)
   These conditions ensure that the rth column always contains all nonzero elements. We need to prove both
   that these conditions are preserved and that, if these conditions hold, then the two version are
   equivalent. First, we define the conditions*)
-
 (*Working with the ordinals in the submatrices is a bit annoying. We define the following utilities to
   construct ordinals*)
-(*
-(*If r < m, then converts an I_r-1 to an I_m with the same value*)
-Lemma ltn_pred: forall r m, r < m -> r-1 <= m.
-Proof.
-  move => r m Hrm. have Hpredr : r - 1 <= r by rewrite leq_subr. rewrite leq_eqVlt.
-  have : (r - 1 < m) by apply (leq_ltn_trans Hpredr). move ->. by rewrite orbT.
-Qed.
 
-Definition ord_widen_pred r m (Hrm : r < m) (x: 'I_(r-1)) : 'I_m :=
-  widen_ord (ltn_pred Hrm) x.
-*)
-
-(*If r <= n and x is a I_(r-1), then this gives the ordinal x+1 of type I_n*)
+(*Enables us to construct an ordinal of type 'I_n with x.+1*)
 Lemma ltn_succ: forall r n x, r < n -> x < r -> x.+1 < n.
 Proof.
   move => r n x Hrn Hxr1. move : Hxr1 Hrn. apply leq_ltn_trans.
@@ -1155,10 +1173,7 @@ Qed.
 
 Definition ord_widen_succ r n (Hrn : r < n) (x: 'I_r) : 'I_n :=
   Ordinal (ltn_succ Hrn (ltn_ord x)).
-(*
-Definition ord_widen_succ_equiv r m (Hrm : r < m) (x : 'I_(r.+1)) : 'I_m :=
-  widen_ord (Hrm) x.
-*)
+
 (*The first submatrix - the definition is a bit awkward because of the ordinal proof obligations*)
 Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j : nat) : 'M[F]_(r, r) :=
   let Hrm := ltn_ord r in
@@ -1166,13 +1181,13 @@ Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j 
         (fun (y : 'I_r) => if y < j then widen_ord (ltnW (ltn_leq_trans Hrm Hmn)) y
                            else ord_widen_succ (ltn_leq_trans Hrm Hmn) y) A.
 
+(*The row submatrix*)
 Definition submx_add_row {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j: 'I_m) : 'M[F]_(r.+1, r.+1) :=
   let Hrm := ltn_ord r in
   mxsub (fun (x : 'I_(r.+1)) => if x < r then widen_ord Hrm x else j) 
         (fun (y : 'I_(r.+1)) => widen_ord (leq_trans Hrm Hmn) y) A.
 
 (*The condition we need to have at the beginning and preserve*)
-(*TODO: could make boolean predicate but probably not worth it*)
 (*Note that we only require the condition starting from a given r value. This is because the condition
   will only be partially preserved through the gaussian steps*)
 Definition strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) :=
@@ -1180,14 +1195,7 @@ Definition strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) :=
     (forall j, j < r' -> (submx_remove_col A Hmn r' j) \in unitmx) /\
     (forall (j : 'I_m), r' <= j -> (submx_add_row A Hmn r' j) \in unitmx).
 
-(*TODO: move*)
-Lemma rem_impl: forall b : Prop,
-  (true -> b) -> b.
-Proof.
-  move => b. move => H. by apply H.
-Qed.
-
-(*A crucial lemma: If a matrix has a row of zeroes, then it is not invertible*)
+(*If a matrix has a row of zeroes, then it is not invertible*)
 Lemma row_zero_not_unitmx: forall {m} (A: 'M[F]_(m, m)) (r: 'I_m),
   (forall (c: 'I_m), A r c = 0) ->
   A \notin unitmx.
@@ -1201,60 +1209,11 @@ Proof.
   move => H. have: 1 != GRing.zero F by apply GRing.oner_neq0. by rewrite H eq_refl.
 Qed.
 
-(*TODO: move these*)
-Lemma mx_row_ord_equiv: forall {m n} (A: 'M[F]_(m, n)) (r1 r2 : 'I_m) c,
-  nat_of_ord r1 == nat_of_ord r2 ->
-  A r1 c = A r2 c.
-Proof.
-  move => m n A r1 r2 c Hr12. have : (r1 == r2) by []. move => /eqP Hr12'. by subst.
-Qed.
+(*In order to prove the next two lemmas, we want to use induction on ordinals up to a fixed bound. This is
+  complicated, since there are lots of proofs obligations to ensure that all ordinals are valid. Additionally,
+  we want to reason both forward and backward, so we provide two versions of induction over ordinals*)
 
-Lemma mx_col_ord_equiv: forall {m n} (A: 'M[F]_(m, n)) r (c1 c2 : 'I_n),
-  nat_of_ord c1 == nat_of_ord c2 ->
-  A r c1 = A r c2.
-Proof.
-  move => m n A r c1 c2 Hc12. have : (c1 == c2) by []. move => /eqP Hc12'. by subst.
-Qed.
-
-(*TODO: maybe move somewhere else*)
-Check gauss_invar.
-(*If we have [gauss_invar] up to row and column r, then the first r x r submatrix in the upper right hand corner
-  is the identity matrix*)
-
-(*exists in the library but easier to use version*)
-Lemma leq_both_eq: forall m n,
-  ((m <= n) && (n <= m)) = (m == n).
-Proof.
-  move => m n. case (orP (ltn_total m n)) => [/orP[Hlt | Heq] | Hgt].
-  - have : ( m == n = false). rewrite ltn_neqAle in Hlt. move : Hlt.
-    by case: (m == n). move ->. 
-    have: (n <= m = false). rewrite ltnNge in Hlt. move : Hlt.
-    by case : (n <= m). move ->. by rewrite andbF.
-  - by rewrite Heq leq_eqVlt Heq orTb leq_eqVlt eq_sym Heq orTb.
-  - have : ( m == n = false). rewrite ltn_neqAle in Hgt. move : Hgt.
-    rewrite eq_sym. by case: (m == n). move ->. 
-    have: (m <= n = false). rewrite ltnNge in Hgt. move : Hgt.
-    by case : (m <= n). move ->. by rewrite andFb.
-Qed.
-
-(*Allows us to do induction up to a fixed bound by going backwards*)
-Lemma nat_ind_rev: forall (m : nat) (P: nat -> Prop),
-  P m ->
-  (forall n, n < m -> (P (n.+1) -> P n)) ->
-  (forall n, n <= m -> P n).
-Proof.
-  move => m P Hpm Hind n. remember (m - n)%N as x. move : Heqx. move : n. elim: x.
-  - move => n Hnm. have : m <= n by rewrite /leq -Hnm. move {Hnm} => Hmn Hnm.
-    have : (m == n) by rewrite -leq_both_eq Hmn Hnm. by move => /eqP H; subst.
-  - move => n  Hind' n' Hsub. rewrite leq_eqVlt => /orP[Heq | Hlt].
-    + by eq_subst Heq.
-    + apply Hind. by []. apply Hind'. by rewrite subnS -Hsub -pred_Sn. by [].
-Qed.
-
-(*TODO: move*)
-
-(*A similar lemma for ordinals (TODO: may not need nat version). This is a bit trickier because
-  of all the ordinal proof obligations*)
+(*If P holds on r and whenever P holds on (n.+1), P holds on n, then P holds on all values of n <= r*)
 Lemma ord_ind_bound_rev: forall (m: nat) (r: 'I_m) (P: 'I_m -> Prop),
   P r ->
   (forall (n: 'I_m) (Hnr : n < r), (P (Ordinal (ltn_succ (ltn_ord r) Hnr)) -> P n)) ->
@@ -1273,15 +1232,7 @@ Proof.
       by rewrite Hord.
 Qed.
 
-(*If an 'I_m exists, then 0 < m*)
-Lemma ord_nonzero {m} (r: 'I_m) : 0 < m.
-Proof.
-  case : r. move => m'. case (orP (ltn_total m 0)) => [/orP[Hlt | Heq] | Hgt].
-  - by [].
-  - by eq_subst Heq.
-  - by [].
-Qed.
- 
+(*Likewise, if P holds on 0 and whenever P holds on n < r, P holds on n.+1, then P holds on all values of n <= r*)
 Lemma ord_ind_bound: forall (m: nat) (r: 'I_m) (P: 'I_m -> Prop),
   P (Ordinal (ord_nonzero r)) ->
   (forall (n: 'I_m) (Hnr: n < r), P n -> P (Ordinal (ltn_succ (ltn_ord r) Hnr))) ->
@@ -1300,12 +1251,11 @@ Proof.
     have: (Ordinal (ltn_succ (ltn_ord r) Hnr')) == (Ordinal Hn1) by []. move => /eqP Hord. by rewrite -Hord.
 Qed.
 
-Lemma ltn_pred: forall m n,
-  0 < n ->
-  (m < n) = (m <= n.-1).
-Proof.
-  move => m n Hpos. have: n.-1 == (n - 1)%N by rewrite eq_sym subn1. move => /eqP Hn1. by rewrite Hn1 leq_subRL.
-Qed.
+(*Now we want to prove that, if [gauss_invar r r] holds, the upper left r x r submatrix is a diagonal matrix
+  with nonzero entries along the diagonal. In order to do this, we first want to prove that, for each row r' < r,
+  lead_coef A r' = r'. This relies on a piegonhole-type argument which is difficult to prove in Coq. So we work
+  in two parts: first we use forward induction to prove that lead_coef A r' >= r', then we use backwards induction
+  to prove that lead_coef A r' = r' (using the previous result)*)
 
 (*If [gauss_invar r c] holds, then for all r' < r, r' <= lead_coef r'*)
 Lemma gauss_invar_lead_coef_geq: forall {m n} (A: 'M[F]_(m, n)) r c,
@@ -1332,8 +1282,7 @@ Proof.
     + move => Halt r' Hrr'. apply Halt. by rewrite -ltn_pred.
 Qed.
 
-(*Now we can use this and induction in the reverse direction to prove that if [gauss_invar r r] holds, then
-  for all r' < r, r' == lead_coef r'*)
+(*If [gauss_invar r r] holds, then for all r' < r, r' == lead_coef r'*)
 Lemma gauss_invar_square_lc: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat),
   r <= m ->
   gauss_invar A r r ->
@@ -1395,13 +1344,8 @@ Proof.
     move : Hxy' Hxy. by move ->. move ->. by rewrite eq_refl.
 Qed. 
 
-Lemma remove_widen: forall {m n} (x: 'I_m) (H: m <= n),
-  nat_of_ord (widen_ord H x) = nat_of_ord x.
-Proof.
-  by [].
-Qed.
-
-(*Now, we show the crucial property: if a matrix satisfies [strong_inv] and the gaussian invariant,
+(*Now, we show the crucial property that ensures that this condition is sufficient for the restricted
+  Gaussian elimination: if a matrix satisfies [strong_inv] and the gaussian invariant,
   then all the entries in column r are nonzero.*)
 Lemma strong_inv_nonzero_cols: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m),
   gauss_invar A r r ->
@@ -1423,7 +1367,7 @@ Proof.
     move => c. rewrite /submx_add_row mxE. rewrite ltnn.
     have : c <= r. have : c < r.+1 by []. by []. rewrite leq_eqVlt. move => /orP[Hcr | Hcr].
     have Heqord : (widen_ord (leq_trans (ltn_ord r) Hmn) c) == (widen_ord Hmn r) by [].
-    rewrite (mx_col_ord_equiv A x  Heqord). eq_subst Hcontra. by [].
+    eq_subst Heqord. rewrite Heqord. eq_subst Hcontra. by [].
     apply Hzero. by []. by [].
     have : submx_add_row A Hmn r x \notin unitmx. apply (row_zero_not_unitmx Hallzero).
     move : Hrow. by move => /(_ x Hge) ->.
@@ -1533,23 +1477,6 @@ Proof.
   by constructor.
   apply (row_equivalent_trans IH). apply Hin.
 Qed.
-
-Check mxsub.
-Check @widen_ord.
-Check lshift.
-Check lsubmx.
-
-(*The two submatrices we are interested in: the submatrix consisting of the first r-1 rows and the first r columns
-  except for column j, and the submatrix consisting of the first r-1 rows and first r columns, along with row j*)
-
-(*The first submatrix. To avoid issues with ordinals, we require the row and column index separately, even
-  though they will be the same (by the way we do gaussian elimination)*)
-Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (r: nat) (Hrm : r-1 <= m) (Hrn: r <= n) (j: 'I_n) :=
-  mxsub (fun (y: 'I_(r-1)) => widen_ord Hrm y) (fun (y : 'I_r) => if y < j then widen_ord Hrn y else widen_ord Hrn (y+1))
-  mxsub id (fun y => if y < j then y else  (y-1)%N) A.
-
-
-
 
 
 End Gauss.
