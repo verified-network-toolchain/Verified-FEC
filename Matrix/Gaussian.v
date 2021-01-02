@@ -1252,12 +1252,10 @@ Proof.
 Qed.
 
 (*TODO: move*)
-Search (_ <= _) (_ .-1)%N.
-Search (_ < _) "trans".
 
 (*A similar lemma for ordinals (TODO: may not need nat version). This is a bit trickier because
   of all the ordinal proof obligations*)
-Lemma ord_ind_rev: forall (m: nat) (r: 'I_m) (P: 'I_m -> Prop),
+Lemma ord_ind_bound_rev: forall (m: nat) (r: 'I_m) (P: 'I_m -> Prop),
   P r ->
   (forall (n: 'I_m) (Hnr : n < r), (P (Ordinal (ltn_succ (ltn_ord r) Hnr)) -> P n)) ->
   (forall (n: 'I_m), n <= r -> P n).
@@ -1275,79 +1273,148 @@ Proof.
       by rewrite Hord.
 Qed.
 
-(*
-Lemma ord_ind_rev: forall (m: nat) (P: 'I_m -> Prop),
-  
-*)
-
-(*
-(*First, we prove that if [gauss_invar] A r r holds, then [gauss_invar A r' r'] holds, for r' < r*)
-Lemma gauss_invar_square_reduce: forall {m n} (A: 'M[F]_(m, n)) (r: nat) (r': nat),
-  r' < r ->
-  gauss_invar A r r ->
-  gauss_invar A r' r'.
+(*If an 'I_m exists, then 0 < m*)
+Lemma ord_nonzero {m} (r: 'I_m) : 0 < m.
 Proof.
-  move => m n A r r' Hrr'.  rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-  repeat(split).
-  - move => x Hxr. apply Hleadbefore.
+  case : r. move => m'. case (orP (ltn_total m 0)) => [/orP[Hlt | Heq] | Hgt].
+  - by [].
+  - by eq_subst Heq.
+  - by [].
+Qed.
+ 
+Lemma ord_ind_bound: forall (m: nat) (r: 'I_m) (P: 'I_m -> Prop),
+  P (Ordinal (ord_nonzero r)) ->
+  (forall (n: 'I_m) (Hnr: n < r), P n -> P (Ordinal (ltn_succ (ltn_ord r) Hnr))) ->
+  (forall (n: 'I_m), n <= r -> P n).
+Proof.
+  move => m r P Hzero Hind n. case : n. move => n. elim : n.
+  - move => Hm0 Hr. have : ((Ordinal Hm0) == (Ordinal (ord_nonzero r))) by []. move => /eqP Hord. 
+    by rewrite Hord.
+  - move => n Hind' Hn1 Hr.
+    have Hnm : n < m by apply (ltn_trans (ltnSn n) Hn1).
+    have Hnr : Ordinal Hnm <= r. have Hn1r: n.+1 <= r by []. have : n <= r by apply (ltnW Hn1r). by [].
+    have Hpn: P (Ordinal Hnm) by apply (Hind' Hnm Hnr). have Hnr' : n < r by []. 
+    have Hpsuc : P (Ordinal (ltn_succ (ltn_ord r) Hnr')) by apply (Hind (Ordinal Hnm) Hnr' Hpn).
+    have Ho1: nat_of_ord (Ordinal (ltn_succ (ltn_ord r) Hnr')) == n.+1 by [].
+    have Ho2: nat_of_ord (Ordinal Hn1) == n.+1 by []. 
+    have: (Ordinal (ltn_succ (ltn_ord r) Hnr')) == (Ordinal Hn1) by []. move => /eqP Hord. by rewrite -Hord.
+Qed.
 
+Lemma ltn_pred: forall m n,
+  0 < n ->
+  (m < n) = (m <= n.-1).
+Proof.
+  move => m n Hpos. have: n.-1 == (n - 1)%N by rewrite eq_sym subn1. move => /eqP Hn1. by rewrite Hn1 leq_subRL.
+Qed.
 
- rewrite 
-  (forall (r': 'I_m), r' < r -> lead_coef A r' = Some (widen_ord Hmn r')).
-*)
+(*If [gauss_invar r c] holds, then for all r' < r, r' <= lead_coef r'*)
+Lemma gauss_invar_lead_coef_geq: forall {m n} (A: 'M[F]_(m, n)) r c,
+  r <= m ->
+  gauss_invar A r c ->
+  (forall (r' : 'I_m), r' < r -> exists c', lead_coef A r' = Some c' /\ r' <= c').
+Proof.
+  move => m n A r c Hrm. rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  case Hr0 : (r == 0)%N.
+  - eq_subst Hr0. move => r'. by rewrite ltn0.
+  - have: 0 < r. case (orP (ltn_total r 0)) => [/orP[Hlt | Heq] | Hgt]. by []. rewrite Heq in Hr0. by [].
+    by []. move => {} Hr0. have Hr1m: r.-1 < m by rewrite prednK.
+    have: (forall (r' : 'I_m), r' <= Ordinal Hr1m -> exists c' : 'I_n, lead_coef A r' = Some c' /\ r' <= c').
+    apply ord_ind_bound.
+    + move : Hleadbefore. move => /(_ (Ordinal (ord_nonzero (Ordinal Hr1m))) Hr0) [c' [Hlc Hbound]].
+      exists c'. by [].
+    + move => n' Hnr' [c' [Hlc Hcbound]].
+      have Hb : (Ordinal (ltn_succ (ltn_ord (Ordinal Hr1m)) Hnr')) < r. 
+      have Hnrsuc: n'.+1 < r. have Hnrpred: n' < r.-1 by []. by rewrite -ltn_predRL. by [].
+      move : Hleadbefore. move => /(_ _ Hb) [c'' [Hlc' Hbound']].
+      exists c''. split. by []. 
+      have Hcc': c' < c''. eapply Hincr. 3: apply Hlc. 3: apply Hlc'. by []. by [].
+      have Hnc': n' < c'' by apply (leq_ltn_trans Hcbound Hcc'). by [].
+    + move => Halt r' Hrr'. apply Halt. by rewrite -ltn_pred.
+Qed.
 
-(*TODO: move also*)
-(*create an ordinal of the predecessor*)
-
-Definition ord_pred (m: nat) (x : 'I_m) :=
-  Ordinal (leq_ltn_trans (leq_pred x) (ltn_ord x)).
-
-(*First, we prove something similar, that the leading coefficient of row r' < r is r'*)
+(*Now we can use this and induction in the reverse direction to prove that if [gauss_invar r r] holds, then
+  for all r' < r, r' == lead_coef r'*)
 Lemma gauss_invar_square_lc: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat),
+  r <= m ->
   gauss_invar A r r ->
   (forall (r': 'I_m), r' < r -> lead_coef A r' = Some (widen_ord Hmn r')).
 Proof.
-  move => m n A Hmn r. rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-  (*ugh damn it r can be m - TODO: start with this*)
-  have: forall r', r' <= ord_pred m r -> lead_coef A r' = Some (widen_ord Hmn r').
-  apply ord_ind_rev. r'.
-  have: forall (r' : nat), r' <= r.-1 -> lead_coef A  
-  case : r'. move => m' Hmm'.
-  have: forall i : m' <= m.-1, Ordinal i < r -> lead_coef A (Ordinal i) = Some (widen_ord Hmn (Ordinal i)).
+  move => m n A Hmn r Hrm Hinv.
+  case Hr0 : (r == 0)%N.
+  - eq_subst Hr0. move => r'. by rewrite ltn0.
+  - have: 0 < r. case (orP (ltn_total r 0)) => [/orP[Hlt | Heq] | Hgt]. by []. rewrite Heq in Hr0. by [].
+    by []. move => {} Hr0. have Hr1m: r.-1 < m by rewrite prednK.
+    have Halt: (forall (r' : 'I_m), r' <= Ordinal Hr1m -> lead_coef A r' = Some (widen_ord Hmn r')).
+    + have Hrpred: (Ordinal Hr1m) < r by rewrite ltn_predL.  apply ord_ind_bound_rev.
+      * have: (exists c', lead_coef A (Ordinal Hr1m) = Some c' /\ (Ordinal Hr1m) <= c'). 
+        by apply (gauss_invar_lead_coef_geq Hrm Hinv).
+        move => [c' [Hlc Hlb]]. rewrite Hlc. f_equal.  
+        move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+        move : Hleadbefore. move => /(_ _ Hrpred) [c'' [Hlc' Hcr]].
+        have: (c' = c''). rewrite Hlc in Hlc'. by case: Hlc'. move => Hcc'; subst. move {Hlc'}.
+        rewrite ltn_pred in Hcr => [| //]. apply (elimT eqP).
+        have: (nat_of_ord c'') == r.-1. rewrite eqn_leq. have: r.-1 <= c'' by []. have: c'' <= r.-1 by [].
+        move ->. by move ->. by [].
+      * move => n' Hnr1 Hlc. remember (Ordinal (ltn_succ (ltn_ord (Ordinal Hr1m)) Hnr1)) as on1 eqn : Hon1.
+        have Hnr' : n' < r by apply (ltn_trans Hnr1 Hrpred). 
+        have: (exists c', lead_coef A n' = Some c' /\ n' <= c').
+        by apply (gauss_invar_lead_coef_geq Hrm Hinv). move => [c' [Hlc' Hb]].
+        move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+        have: c' < widen_ord Hmn on1. apply (Hincr n' on1). by rewrite Hon1 ltnSn.
+        rewrite Hon1. have: n'.+1 < r. have H: n' < r.-1 by []. by rewrite -ltn_predRL. by [].
+        by []. by []. move => Hcub. have: c' < n'.+1 by rewrite Hon1 in Hcub. move => Hcn'.
+        have: c' <= n' by []. move => {Hcn'} Hcub.
+        have: nat_of_ord c' == n' by rewrite eqn_leq Hcub Hb. rewrite Hlc'. 
+        move => Hcn. f_equal. have: c' == widen_ord Hmn n' by []. by move => /eqP H.
+    + move => r' Hrr'. apply Halt. by rewrite -ltn_pred.
+Qed.
 
-
- apply (@nat_ind_rev (m.+1)). (fun n => 
-  Ordinal n < r -> lead_coef A (Ordinal n) = Some (widen_ord Hmn (Ordinal n)))).
-
-
-elim: m'.
-  - move => Hpos Hr. 
-
-
-
-
-
- have : (nat_of_ord (Ordinal Hpos) == 0%N) by []. move => /eq move ->. 
-  elim r'.
-
+(*What we really want to show: when we are at step r in Gaussian elimination, the first r x r matrix
+  in the upper left corner is a diagonal matrix with nonzero entries along the diagonal*)
 Lemma gauss_invar_square_id: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat),
+  r <= m ->
   gauss_invar A r r ->
   (forall (x: 'I_m) (y: 'I_n), x < r -> y < r -> (A x y == 0) = (nat_of_ord x != nat_of_ord y)).
 Proof.
+  move => m n A Hmn r Hrm Hinv x y Hxr Hyr. 
+  have: lead_coef A x = Some (widen_ord Hmn x) by apply (gauss_invar_square_lc _ Hrm Hinv).
+  move => Hlc. 
+  case Hxy : (nat_of_ord x == nat_of_ord y).
+  - move : Hlc. rewrite lead_coef_some_iff; move => [Ha H{H}].
+    have: widen_ord Hmn x == y by []. move => /eqP Hw; subst.
+    move : Ha. by case: (A x (widen_ord Hmn x) == 0).
+  - have: lead_coef A (Ordinal (ltn_leq_trans Hyr Hrm)) = Some y.
+    rewrite (gauss_invar_square_lc _ Hrm Hinv). f_equal. apply (elimT eqP).
+    have: nat_of_ord (widen_ord Hmn (Ordinal (ltn_leq_trans Hyr Hrm))) == nat_of_ord y by []. by [].
+    by []. move => {} Hlc.
+    move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+    have: A x y = 0. apply (Hzcol (Ordinal (ltn_leq_trans Hyr Hrm))); try by []. 
+    case Hxyeq: (x == Ordinal (ltn_leq_trans Hyr Hrm)) => [|//].
+    have: (nat_of_ord (Ordinal (ltn_leq_trans Hyr Hrm)) == nat_of_ord y) by [].
+    move => /eqP Hyy. have: (nat_of_ord x == nat_of_ord y). rewrite -Hyy. by []. move => Hxy'.
+    move : Hxy' Hxy. by move ->. move ->. by rewrite eq_refl.
+Qed. 
 
-(*First, we show the crucial property: if a matrix satisfies [strong_inv] and the gaussian invariant,
-  then all the entries in column r are nonzero*)
+Lemma remove_widen: forall {m n} (x: 'I_m) (H: m <= n),
+  nat_of_ord (widen_ord H x) = nat_of_ord x.
+Proof.
+  by [].
+Qed.
+
+(*Now, we show the crucial property: if a matrix satisfies [strong_inv] and the gaussian invariant,
+  then all the entries in column r are nonzero.*)
 Lemma strong_inv_nonzero_cols: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m),
   gauss_invar A r r ->
   strong_inv A Hmn r ->
   (forall (x : 'I_m), A x (widen_ord Hmn r) != 0).
 Proof.
-  move => m n A Hmn r.  rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+  move => m n A Hmn r Hinv. 
   rewrite /strong_inv. move /(_ r). rewrite leqnn. move => Hstrong. apply rem_impl in Hstrong.
   move : Hstrong => [Hcol Hrow] x.
   (*We have 2 very different cases: if x < r or if x >= r*)
   case (orP (ltn_total r x)) => [ Hge | Hlt].
-  - have : r <= x. by rewrite leq_eqVlt orbC. move {Hge} => Hge.
+  - move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+    have : r <= x. by rewrite leq_eqVlt orbC. move {Hge} => Hge.
     (*If x >= r and A x r = 0, then the submatrix with the added row x has a row of all zeroes, so
       it is not invertible*)
     have Hrsuc : r < r.+1 by [].
@@ -1360,30 +1427,31 @@ Proof.
     apply Hzero. by []. by [].
     have : submx_add_row A Hmn r x \notin unitmx. apply (row_zero_not_unitmx Hallzero).
     move : Hrow. by move => /(_ x Hge) ->.
-  - 
+  - (*If x < r and A x r = 0, then the submatrix with column x removed has a row of all zeroes, so it
+      is not invertible*)
+    case Hcontra : (A x (widen_ord Hmn r) == 0) => [|//].
+    have Hallzero: (forall (c: 'I_r), (submx_remove_col A Hmn r x) (Ordinal Hlt) c = 0).
+    move => c. rewrite /submx_remove_col mxE. case Hcx : (c < x).
+    + apply (elimT eqP). rewrite (gauss_invar_square_id Hmn _ Hinv). rewrite !remove_widen.
+      have: nat_of_ord x != nat_of_ord c. move : Hcx. rewrite ltn_neqAle => /andP[Hcx  H{H}].
+      by rewrite eq_sym. by []. by apply ltnW. by []. by rewrite remove_widen.
+    + case Hcr1 : (c.+1 == r).
+      * have: (widen_ord (ltnW (ltn_ord r)) (Ordinal Hlt) = x). apply (elimT eqP).
+        have: (nat_of_ord (widen_ord (ltnW (ltn_ord r)) (Ordinal Hlt)) == nat_of_ord x) by []. by [].
+        move ->. 
+        have: ((ord_widen_succ (ltn_leq_trans (ltn_ord r) Hmn) c) = widen_ord Hmn r) by apply (elimT eqP).
+        move ->. by apply (elimT eqP).
+      * apply (elimT eqP). rewrite (gauss_invar_square_id Hmn _ Hinv). rewrite !remove_widen.
+        have: nat_of_ord x != c.+1. case Hx : (nat_of_ord x == c.+1) => [|//].
+        eq_subst Hx. rewrite Hx in Hcx. rewrite ltnSn in Hcx. by []. by [].
+        by (apply ltnW). by []. have: c.+1 < r.
+        case (orP (ltn_total (c.+1) r)) => [/orP[Hlt' | Heq] | Hgt]. by []. by move: Heq Hcr1 ->.
+        have Hcr: c < r by []. rewrite leqNgt in Hcr. by move : Hgt Hcr ->. by [].
+    + have: submx_remove_col A Hmn r x \notin unitmx. apply (row_zero_not_unitmx Hallzero).
+      move : Hcol. move => /(_ x Hlt). by move ->.
+Qed. 
 
-
-
- (Ordinal Hrsuc)).
-
-
-    rewrite (mx_col_ord_equiv A x  Hcr).
-    eq_subst Hcr. eq_subst Hcontra. 
-
-
-
- rewrite Hcr.
-    + move => Hcr.
-    have: c < r || c == r.
-
-
- have: Ordinal Hrsuc < r = false by rewrite ltnn.
-    
-
-
-  move ->.
-  rewrite /strong_inv; move => Hstrong.
-
+(*TODO: show preservation and then equivalence - below is stuff from before that will eventually be used*)
 
 
 (*Now we want to show that [strong_inv] is preserved through [gauss_one_step_simpl]. We will make heavy use
