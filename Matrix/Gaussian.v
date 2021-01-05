@@ -1143,12 +1143,31 @@ Qed.
 Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
   foldr (fun x acc => sc_mul acc (A x c)^-1 x) A (ord_enum m).
 
+Lemma all_cols_one_equiv: forall {m n} (A: 'M[F]_(m, n)) c,
+  (forall (x: 'I_m), A x c != 0) ->
+  all_cols_one_noif A c = all_cols_one A c.
+Proof.
+  move => m n A c Hall. rewrite /all_cols_one /all_cols_one_noif.
+  elim : (ord_enum m) => [//| h t IH].
+  rewrite //=. have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case: (A h c == 0). move ->.
+  by rewrite IH.
+Qed.
+
 Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) (c : 'I_n) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
 
+Lemma sub_all_rows_equiv: forall {m n} (A: 'M[F]_(m, n)) r c,
+  (forall (x: 'I_m), A x c != 0) ->
+  sub_all_rows_noif A r c = sub_all_rows A r c.
+Proof.
+  move => m n A r c Hall. rewrite /sub_all_rows /sub_all_rows_noif. elim : (ord_enum m) => [// | h t IH].
+  rewrite /=. case : (h == r). apply IH.
+  have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case : (A h c == 0). move ->. by rewrite IH. 
+Qed.
+
 (*In this version, we do not swap rows, we scalar multiply/subtract all rows, and we have r=c every time. Accordingly,
   we do not need to return all 3 elements, but instead know that the next value is r + 1*)
-Definition gauss_one_step_simpl {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <= n) :=
+Definition gauss_one_step_restrict {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <= n) :=
   let c := widen_ord Hmn r in
   let A1 := all_cols_one_noif A c in
   sub_all_rows_noif A1 r c.
@@ -1394,6 +1413,25 @@ Proof.
     + have: submx_remove_col A Hmn r x \notin unitmx. apply (row_zero_not_unitmx Hallzero).
       move : Hcol. move => /(_ x Hlt). by move ->.
 Qed. 
+
+(*Equivalence of the two gaussian step functions*)
+Lemma gauss_one_step_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m),
+  gauss_invar A r r ->
+  strong_inv A Hmn r ->
+  (gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r).
+Proof.
+  move => m n A Hmn r Hinv Hstrong. rewrite /gauss_one_step /gauss_one_step_restrict.
+  have Hnz: (forall (x : 'I_m), A x (widen_ord Hmn r) != 0) by apply strong_inv_nonzero_cols. 
+  have: fst_nonzero A (widen_ord Hmn r) r = Some r. rewrite fst_nonzero_some_iff.
+  split. by rewrite leqnn. split. apply Hnz. move => x. by rewrite ltnNge andbN. move ->.
+  rewrite all_cols_one_equiv. rewrite sub_all_rows_equiv. 
+  have: xrow r r A = A. rewrite -matrixP /eqrel. move => x y. rewrite xrow_val. 
+  case Hxr: (x == r). by eq_subst Hxr. by []. by move ->. 2 : by [].
+  move => x. rewrite all_cols_one_val /=.
+  have:  A x (widen_ord Hmn r) == 0 = false. have:  A x (widen_ord Hmn r) != 0 by apply Hnz.
+  by case : ( A x (widen_ord Hmn r) == 0). move ->. rewrite GRing.mulfV. by rewrite GRing.oner_neq0.
+  apply Hnz.
+Qed.
 
 (*TODO: show preservation and then equivalence - below is stuff from before that will eventually be used*)
 
