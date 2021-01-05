@@ -1433,8 +1433,7 @@ Proof.
   apply Hnz.
 Qed.
 
-(*TODO: show preservation and then equivalence - below is stuff from before that will eventually be used*)
-
+(*Preservation of [strong_inv] invariant *)
 
 (*Now we want to show that [strong_inv] is preserved through [gauss_one_step_simpl]. We will make heavy use
   of [row_equivalent_unitmx_iff], so we need to know when submatrices are row equivalent. We do this in
@@ -1514,6 +1513,65 @@ Proof.
   move => m n m' n' A f g h l Hin. elim : l => [//=| x l IH //=].
   by constructor.
   apply (row_equivalent_trans IH). apply Hin.
+Qed.
+
+(*TODO: move*)
+Lemma widen_ord_inj: forall {m n: nat} (H: m <= n) x y, widen_ord H x = widen_ord H y -> x = y.
+Proof.
+  move => m n H x y Hw. apply (elimT eqP).
+  have: nat_of_ord (widen_ord H x) == x by []. have: nat_of_ord (widen_ord H y) == y by [].
+  move => /eqP Hy /eqP Hx. rewrite Hw in Hx. have: nat_of_ord x == nat_of_ord y by rewrite -Hx -Hy. by [].
+Qed.
+
+Lemma row_mx_fn_inj: forall {m} (r': 'I_m) (j: 'I_m) (Hj : r' <= j),
+  injective (fun x : 'I_r'.+1 => if x < r' then widen_ord (ltn_ord r') x else j).
+Proof.
+  move => m r' j Hrj x y. case Hxr: (x < r'); case Hyr: (y < r').
+  - apply widen_ord_inj.
+  - have: (nat_of_ord (widen_ord (ltn_ord r') x) == x) by [].
+    move => /eqP Hw Hxj. have: nat_of_ord x == j by rewrite -Hw -Hxj.
+    have: x < j by apply (ltn_leq_trans Hxr). rewrite ltn_neqAle => /andP[Hneq H{H}]. move : Hneq.
+    by case : (nat_of_ord x == j).
+  - have: (nat_of_ord (widen_ord (ltn_ord r') y) == y) by [].
+    move => /eqP Hw Hyj. have: nat_of_ord y == j by rewrite -Hw Hyj. have: y < j by apply (ltn_leq_trans Hyr).
+    rewrite ltn_neqAle => /andP[Hneq H{H}]. move : Hneq. by case: (nat_of_ord y == j).
+  - have: x < r'.+1 by []. have: y < r'.+1 by []. rewrite !ltnS leq_eqVlt. 
+    move => /orP [/eqP Hyr'| Hcont]; rewrite leq_eqVlt. move => /orP[/eqP Hxr' | Hcont]. move => H{H}.
+    apply (elimT eqP). by have: nat_of_ord x == nat_of_ord y by rewrite Hyr' Hxr'.
+    by rewrite Hcont in Hxr. by rewrite Hcont in Hyr.
+Qed. 
+
+Lemma strong_inv_preserved: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r : 'I_m) (Hr: r.+1 < m),
+  strong_inv A Hmn r ->
+  gauss_invar A r r ->
+  strong_inv (gauss_one_step_restrict A r Hmn) Hmn (Ordinal Hr).
+Proof.
+  move => m n A Hmn r Hr Hstr Hinv. rewrite /strong_inv. move => r' Hrr'. rewrite /gauss_one_step_restrict.
+  have Hlerr': r <= r' by apply (leq_trans (leqnSn r)).
+  split.
+  - move => j Hjr'. rewrite -(@row_equivalent_unitmx_iff _ (submx_remove_col A Hmn r' j)).
+    move : Hstr; rewrite /strong_inv; move /(_ r' Hlerr') => Hstr. by apply Hstr.
+    rewrite /submx_remove_col /=.
+    eapply row_equivalent_trans. 2:  apply mxsub_row_transform_equiv.
+    apply mxsub_row_transform_equiv. 
+    + move => A' r''. apply mxsub_sc_mul_row_equiv. move => x y. apply widen_ord_inj. 
+      apply GRing.invr_neq0. by apply strong_inv_nonzero_cols.
+    + move => A' r''. case Hrr'' : (r'' == r).  constructor.
+      apply mxsub_add_mul_row_equiv. move => x y. apply widen_ord_inj. by rewrite eq_sym Hrr''.
+      have Hlt: r < r' by []. exists (Ordinal Hlt).
+      have: nat_of_ord (widen_ord (ltnW (ltn_ord r')) (Ordinal Hlt)) == r.
+      by rewrite remove_widen. by [].
+  - move => j Hjr'. rewrite -(@row_equivalent_unitmx_iff _ (submx_add_row A Hmn r' j)).
+    move : Hstr; rewrite /strong_inv; move /(_ r' Hlerr') => Hstr. by apply Hstr.
+    rewrite /submx_add_row /=. eapply row_equivalent_trans. 2 : apply mxsub_row_transform_equiv.
+    apply mxsub_row_transform_equiv.
+    + move => A' r''. apply mxsub_sc_mul_row_equiv. by apply row_mx_fn_inj.
+      apply GRing.invr_neq0. by apply strong_inv_nonzero_cols.
+    + move => A' r''. case Hrr'': (r'' == r). constructor.
+      apply mxsub_add_mul_row_equiv. by apply row_mx_fn_inj. by rewrite eq_sym Hrr''.
+      have Hltrr' : r.+1 <= r' by []. have Hsuc: r < r'.+1 by apply (ltn_trans Hltrr').
+      exists (Ordinal Hsuc). have: Ordinal Hsuc < r' by []. move ->.
+      have: nat_of_ord (widen_ord (ltn_ord r') (Ordinal Hsuc)) == r by []. by [].
 Qed.
 
 
