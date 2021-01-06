@@ -1603,6 +1603,41 @@ Proof.
       apply strong_inv_preserved. by []. apply Hinv.
 Qed.
 
+(*More specifically, we have [gauss_invar m m], which will allow us to prove that the result looks like [I_m, E] for
+  some matrix E*)
+(*TODO: can we reduce duplication with previous, even though these are both needed for separate reasons*)
+Lemma gauss_all_steps_inv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) (Hr: r < m),
+  gauss_invar A r r ->
+  strong_inv A Hmn (Ordinal Hr) ->
+  gauss_invar (gauss_all_steps_restrict_end A Hmn r) m m.
+Proof.
+  move => m n A Hmn r. remember (m - r)%N as x. move : A r Heqx. elim: x.
+  - move => A r Hmr Hr Hinv Hstrong. have: (m - r)%N == 0%N. rewrite eq_sym. by apply (introT eqP).
+    rewrite subn_eq0 leqNgt. move => Hrm. by rewrite Hr in Hrm.
+  - move => n' IH A r Hmrn1 Hr Hinv Hstrong.
+    rewrite /gauss_all_steps_restrict_end.
+    have: iota r (m - r) = r :: iota r.+1 n' by rewrite /iota -Hmrn1. move ->. rewrite /= insubT.
+    have Hstep: gauss_one_step A (Ordinal Hr) (widen_ord Hmn (Ordinal Hr)) = ((gauss_one_step_restrict A (Ordinal Hr) Hmn), 
+    (insub (Ordinal Hr).+1), (insub (Ordinal Hr).+1)). 
+    rewrite -gauss_one_step_equiv => [//|//|//]. 
+    have Hmrnalt: n' = (m - r.+1)%N by rewrite subnS -Hmrn1 -pred_Sn. 
+    move : IH => /(_ (gauss_one_step_restrict A (Sub r Hr) Hmn) (r.+1)). rewrite /gauss_all_steps_restrict_end Hmrnalt.
+    rewrite /=. move => IH. have Htriv:  (m - r.+1)%N = (m - r.+1)%N by []. move : IH => /(_ Htriv) IH {Htriv}.
+    have Hinvstep: gauss_invar (gauss_one_step_restrict A (Ordinal Hr) Hmn) r.+1 r.+1.
+    have Hinvord: gauss_invar A (Ordinal Hr) (widen_ord Hmn (Ordinal Hr)) by [].
+    pose proof (@gauss_one_step_invar m n _ _ _ Hinvord) as Hinv'. rewrite Hstep in Hinv'.
+    move : Hinv'. rewrite /=. have: (@ord_bound_convert m (insub r.+1)) = r.+1. 
+    have: r.+1 <= m by []. rewrite leq_eqVlt => /orP[/eqP Heq | Hlt]. subst. rewrite insubF. by [].
+    by rewrite ltnn. by rewrite insubT. move ->.
+    have: (@ord_bound_convert n (insub r.+1)) = r.+1. have: r.+1 <= n by rewrite (leq_trans Hr Hmn). 
+    rewrite leq_eqVlt => /orP[/eqP Heq | Hlt]. subst. rewrite insubF. by []. by rewrite ltnn.
+    rewrite insubT. by []. by move ->.
+    have: r.+1 <= m by [].
+    rewrite leq_eqVlt. move => /orP[/eqP Hrmeq | Hrmlt].
+    + subst. rewrite subnn. by []. 
+    + move : IH => /(_ Hrmlt) IH. apply IH. by []. by apply strong_inv_preserved.
+Qed. 
+
 (*Finally, for the C proofs, we will want a version which goes from row 0 to some row x < m (instead of the previous,
   which goes from r to m. We will define this (virtually identically, only the bounds for iota change) and prove that
   this is equivalent*)
@@ -1626,5 +1661,53 @@ Lemma gauss_all_steps_restrict_both_dirs: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m
 Proof.
   move => m n A Hmn r Hrm. by rewrite /gauss_all_steps_restrict_end /gauss_all_steps_restrict_beg subn0.
 Qed.
+
+(*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
+  which oeprates on the result of gaussian elimination*)
+
+Definition gaussian_elim_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) :=
+  all_lc_1 (gauss_all_steps_restrict_end A Hmn 0).
+
+(*We can disreguard the trivial case of m = 0*)
+Lemma matrix_zero_rows: forall {n} (A B: 'M[F]_(0, n)), A = B.
+Proof.
+  move => n A B. rewrite -matrixP /eqrel. move => x y. have: x < 0 by []. by rewrite ltn0.
+Qed.
+
+Lemma gaussian_elim_restrict_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
+  strong_inv A Hmn (Ordinal Hm) ->
+  row_equivalent A (gaussian_elim_restrict A Hmn).
+Proof.
+  move => m n A Hmn Hm Hstrong. rewrite /gaussian_elim_restrict gauss_all_steps_equiv.
+  pose proof (@gaussian_elim_row_equiv m n A) as Hre. move : Hre. rewrite /gaussian_elim /=.
+  rewrite !insubT. apply (ltn_leq_trans Hm Hmn). move => H0n. rewrite /=.
+  have: (Ordinal H0n) = (widen_ord Hmn (Ordinal Hm)). apply (elimT eqP). by []. by move ->.
+  apply gauss_invar_init. by [].
+Qed.
+
+(*For any matrix satisfiying [gauss_invar m m], the left hand side is the identity matrix*)
+Lemma gauss_invar_square_inverse: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n),
+  gauss_invar A m m ->
+  (forall (x: 'I_m) (y: 'I_n), y < m -> (all_lc_1 A) x y == (if nat_of_ord x == nat_of_ord y then 1 else 0)).
+Proof.
+  move => m n A Hmn Hinv x y Hym. case Hxy : (nat_of_ord x == nat_of_ord y).
+  - have Hxm: x < m by eq_subst Hxy; rewrite Hxy. have: lead_coef (all_lc_1 A) x = Some (widen_ord Hmn x)
+    by apply (gauss_invar_square_lc Hmn (leqnn m) (all_lc_1_gauss_invar Hinv)).
+    move => Hlc. rewrite -all_lc_1_lcs in Hlc. apply all_lc_1_sets_lc in Hlc.
+    have Hyw: widen_ord Hmn x = y by apply (elimT eqP). rewrite -Hyw. by apply (introT eqP).
+  - rewrite -all_lc_1_zeroes. rewrite (gauss_invar_square_id Hmn (leqnn m) Hinv).
+    by rewrite Hxy. by []. by [].
+Qed.
+
+(*And therefore, the same holds for [gaussian_elim_restrict] if the input matrix satisfies [strong_inv]*)
+Lemma gauss_elim_restrict_inverse: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
+  strong_inv A Hmn (Ordinal Hm) ->
+  (forall (x: 'I_m) (y: 'I_n), y < m -> 
+    (gaussian_elim_restrict A Hmn)x y == (if nat_of_ord x == nat_of_ord y then 1 else 0)).
+Proof.
+  move => m n A Hmn Hm Hstr x y Hym. rewrite /gaussian_elim_restrict. apply gauss_invar_square_inverse.
+  by []. apply (@gauss_all_steps_inv m n A Hmn 0 Hm). apply gauss_invar_init. by []. by [].
+Qed.
+
 
 End Gauss.
