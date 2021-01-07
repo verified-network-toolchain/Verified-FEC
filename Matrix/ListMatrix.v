@@ -24,6 +24,17 @@ Proof.
   - rewrite sublist_same_gen; try lia. rewrite sublist_nil_gen; try lia. list_solve.
 Qed.
 
+Lemma sublist_same_Zlength: forall {A} mid (l1 l2: list A),
+  0 <= mid ->
+  Zlength l1 = Zlength l2 ->
+  Zlength (sublist 0 mid l1) = Zlength (sublist 0 mid l2).
+Proof.
+  move => A mid l1 l2 Hmid Hlen. 
+  have [Hin | Hout] : mid <= Zlength l1 \/ mid > Zlength l1 by lia.
+  - rewrite !Zlength_sublist; lia.
+  - rewrite !sublist_same_gen; lia.
+Qed.
+
 (*Convert bounded Z to ordinal*)
 Lemma Z_nat_bound: forall m x (Hx: 0 <= x < m),
   (Z.to_nat x < Z.to_nat m)%N.
@@ -245,6 +256,104 @@ Proof.
 Qed.
 
 End AllColsOne.
+
+(*Note: not doing lead coefficient stuff yet, since we are relying on the fact that all lc's should be
+  at position r. TODO: see if we need or can just do it directly*)
+
+(*Combine two lists with a pairwise binary operation - TODO: move probably*)
+Fixpoint combine {X Y Z: Type} (l1 : list X) (l2: list Y) (f: X -> Y -> Z) : list Z :=
+  match (l1, l2) with
+  | (h1 :: t1, h2 :: t2) => f h1 h2 :: combine t1 t2 f
+  | (_, _) => nil
+  end.
+
+Lemma combine_Zlength: forall {X Y Z} l1 l2 (f : X -> Y -> Z),
+  Zlength l1 = Zlength l2 ->
+  Zlength (combine l1 l2 f) = Zlength l1.
+Proof.
+  move => X Y Z l1. elim : l1 => [//| h t IH l2 f /=]. case : l2.
+  - by move ->.
+  - move => a l. rewrite !Zlength_cons =>[Hlen]. apply Z.succ_inj in Hlen. f_equal. by apply IH.
+Qed. 
+
+Lemma combine_Znth: forall {X Y Z} `{Inhabitant X} `{Inhabitant Y} `{Inhabitant Z} l1 l2 (f: X -> Y -> Z) z,
+  Zlength l1 = Zlength l2 ->
+  0 <= z < Zlength l1 ->
+  Znth z (combine l1 l2 f) = f (Znth z l1) (Znth z l2).
+Proof.
+  move => X Y Z I1 I2 H3 l1. elim: l1 => [l2 f z|h t IH l2 f z]. list_solve.
+  case : l2. list_solve. move => h' t' Hlen Hz. rewrite //=.
+  have [Hz0 | Hzpos]: (z = 0)%Z \/ 0 < z by lia. subst. list_solve.
+  rewrite !Znth_pos_cons; try by []. apply IH; list_solve.
+Qed.
+
+Section AddRow.
+
+(*Once again, we only add the first [bound] indices, which will help in the VST proofs*)
+Definition add_multiple_partial_aux (mx: matrix_type) (r1 r2 : Z) (k : F) (bound: Z) : matrix_type :=
+  if (range_le_lt_dec 0 r1 (Zlength mx)) then if (range_le_lt_dec 0 r2 (Zlength mx)) then
+  let new_r2 := combine (sublist 0 bound (Znth r2 mx)) (sublist 0 bound (Znth r1 mx)) (fun x y => x + (k * y)) ++
+    sublist bound (Zlength (Znth r2 mx)) (Znth r2 mx) in
+  upd_Znth r2 mx new_r2
+  else mx else mx.
+
+Definition add_multiple_aux (mx: matrix_type) (r1 r2 : Z) (k: F) : matrix_type :=
+  add_multiple_partial_aux mx r1 r2 k (Zlength (Znth r1 mx)).
+
+Lemma add_multiple_partial_aux_wf: forall mx m n r1 r2 k bound,
+  0 <= bound ->
+  wf_matrix mx m n ->
+  wf_matrix (add_multiple_partial_aux mx r1 r2 k bound) m n.
+Proof.
+  move => mx m n r1 r2 k bound Hb. rewrite /wf_matrix /add_multiple_partial_aux /= => [[Hm [Hn Hin]]]. subst.
+  case : (range_le_lt_dec 0 r1 (Zlength mx)) => [Hr1 /=|//].
+  case : (range_le_lt_dec 0 r2 (Zlength mx)) => [Hr2 /=|//].
+  split. list_solve. split =>[//| l]. rewrite In_Znth_iff =>[[i [Hlen Hznth]]].
+  have {} Hlen: 0 <= i < Zlength mx by list_solve.
+  have [Heq | Hneq]: i = r2 \/ i <> r2 by lia. subst.
+  rewrite upd_Znth_same => [|//]. rewrite Zlength_app combine_Zlength. rewrite sublist_split_Zlength =>[|//].
+  apply Hin. by apply Znth_In; lia. apply sublist_same_Zlength. lia. rewrite !Hin. by [].
+  all: try(apply Znth_In; lia). rewrite -Hznth upd_Znth_diff; try lia. apply Hin. by (apply Znth_In; lia).
+Qed.
+
+Lemma add_multiple_aux_spec: forall (mx: matrix_type) m n r1 r2 k i j,
+  wf_matrix mx m n ->
+  (0 <= r1 < m) ->
+  (0 <= r2 < m) ->
+  (0 <= i < m) ->
+  (0 <= j < n) ->
+  get_aux (add_multiple_aux mx r1 r2 k) i j =
+    if (Z.eq_dec i r2) then (get_aux mx r2 j) + k * (get_aux mx r1 j)
+    else get_aux mx i j.
+Proof.
+  move => mx m n r1 r2 k i j [Hm [Hn Hin]] Hr1 Hr2. rewrite /add_multiple_aux /get_aux /add_multiple_partial_aux.
+  have Hlen: Zlength (Znth r1 mx) = Zlength (Znth r2 mx). { rewrite !Hin =>[//||]. all: apply Znth_In; lia. }
+  rewrite Hlen sublist_nil cats0 !sublist_same; try lia.
+  have ->: proj_sumbool (range_le_lt_dec 0 r1 (Zlength mx)) by subst; apply proj_sumbool_is_true.
+  have ->: proj_sumbool (range_le_lt_dec 0 r2 (Zlength mx)) by subst; apply proj_sumbool_is_true.
+  case : (Z.eq_dec i r2) => [Hir2 Hi Hj /=| Hir Hi Hj /=].
+  - subst. rewrite upd_Znth_same =>[|//]. rewrite combine_Znth =>[//|//|]. rewrite Hin =>[//|].
+    by apply Znth_In; lia.
+  - by subst; rewrite upd_Znth_diff =>[|//|//|//].
+Qed.
+
+Definition add_multiple_row {m n} (mx: matrix m n) (r1 r2: Z) (k : F) : matrix m n :=
+  exist _ (add_multiple_aux (proj1_sig mx) r1 r2 k) 
+    (add_multiple_partial_aux_wf r1 r2 k (Zlength_nonneg (Znth r1 (proj1_sig mx))) (proj2_sig mx)).
+
+(*Equivalence with [add_mul]*)
+Lemma add_multiple_row_equiv: forall {m n} (mx: matrix m n) (r1 r2: Z) (k: F) (Hr1 : 0 <= r1 < m) (Hr2: 0 <= r2 < m),
+  matrix_to_mx (add_multiple_row mx r1 r2 k) = add_mul (matrix_to_mx mx) k (Z_to_ord Hr1) (Z_to_ord Hr2).
+Proof.
+  move => m n mx r1 r2 k Hr1 Hr2. rewrite /matrix_to_mx /add_mul /add_multiple_row /get -matrixP /= /eqrel =>[x y].
+  rewrite !mxE (add_multiple_aux_spec k (proj2_sig mx)); try lia.
+  case : (Z.eq_dec (Z.of_nat x) r2) => [Hxr2 /= | Hxr2 /=].
+  have ->: x == Z_to_ord Hr2 by rewrite -Z_ord_eq. by rewrite !Z2Nat.id; try lia.
+  case Hxord : (x == Z_to_ord Hr2). have Hcont: Z.of_nat x = r2 by rewrite (Z_ord_eq x Hr2). by [].
+  by []. apply Z_ord_bound; lia. apply Z_ord_bound. apply (matrix_n_pos mx).
+Qed. 
+
+End AddRow.
 
 
 End ListMx.
