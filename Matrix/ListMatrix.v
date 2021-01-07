@@ -100,24 +100,27 @@ Definition matrix_to_mx {m n} (mx: matrix m n) : 'M[F]_(Z.to_nat m, Z.to_nat n) 
 
 Section ScMul.
 
+(*Note: we include the conditional so that the result is always a valid matrix, even if r is invalid*)
 Definition scalar_mul_row_partial_aux (mx: matrix_type) (r: Z) (k: F) (bound: Z) : matrix_type :=
-  let old_row := Znth r mx in
-  let new_row := map (fun x => k * x) (sublist 0 bound old_row) ++ sublist bound (Zlength old_row) old_row in
-  upd_Znth r mx new_row.
+  if (range_le_lt_dec 0 r (Zlength mx)) then
+    let old_row := Znth r mx in
+    let new_row := map (fun x => k * x) (sublist 0 bound old_row) ++ sublist bound (Zlength old_row) old_row in
+    upd_Znth r mx new_row 
+  else mx.
 
 Definition scalar_mul_row_aux (mx: matrix_type) (r: Z) (k: F) : matrix_type :=
   scalar_mul_row_partial_aux mx r k (Zlength (Znth r mx)).
 
 Lemma scalar_mul_row_aux_wf: forall mx m n r k bound,
   0 <= bound ->
-  0 <= r < m ->
   wf_matrix mx m n ->
   wf_matrix (scalar_mul_row_partial_aux mx r k bound) m n.
 Proof.
-  move => mx m n r k bound Hb Hr. rewrite /wf_matrix /scalar_mul_row_partial_aux. move => Hwf.
-  split. by list_solve. split. lia. move => x. rewrite In_Znth_iff => [[i [Hbound Hznth]]].
+  move => mx m n r k bound Hb. rewrite /wf_matrix /scalar_mul_row_partial_aux => [[Hm [Hn Hin]]].
+  case: (range_le_lt_dec 0 r (Zlength mx)) => [Hr /= |//].
+  split.  by list_solve. split. lia. move => x. rewrite In_Znth_iff => [[i [Hbound Hznth]]].
   have: 0 <= i < m. rewrite Zlength_solver.Zlength_upd_Znth in Hbound.
-  by list_solve. move : Hwf => [Hm [Hn Hin]] {} Hbound.
+  by list_solve. move => {} Hbound.
   have [Hir | Hir]: i = r \/ i <> r by lia. subst. rewrite upd_Znth_same => [|//].
   rewrite Zlength_app Zlength_map (sublist_split_Zlength _ Hb). apply Hin. by apply Znth_In.
   subst; rewrite upd_Znth_diff; try lia. apply Hin. by apply Znth_In.
@@ -125,27 +128,28 @@ Qed.
 
 Lemma scalar_mul_row_aux_spec: forall mx m n r k i j,
   wf_matrix mx m n ->
+  (0 <= r < m) ->
   (0 <= i < m) ->
   (0 <= j < n) ->
-  (0 <= r < m) ->
   get_aux (scalar_mul_row_aux mx r k) i j =
     if (Z.eq_dec i r) then k * (get_aux mx i j) else get_aux mx i j.
 Proof.
-  move => mx m n r h i j Hwf. rewrite /scalar_mul_row_aux /get_aux /scalar_mul_row_partial_aux sublist_nil 
+  move => mx m n r h i j Hwf Hr. rewrite /scalar_mul_row_aux /get_aux /scalar_mul_row_partial_aux sublist_nil 
   cats0 sublist_same => [|//|//]. move : Hwf => [Hm [Hn Hin]].
-  case :  (Z.eq_dec i r) => [Hir Hi Hj Hr /= | Hir Hi Hj Hr /=].
+  have: proj_sumbool (range_le_lt_dec 0 r (Zlength mx)). subst. by apply proj_sumbool_is_true. move ->.
+  case :  (Z.eq_dec i r) => [Hir Hi Hj /= | Hir Hi Hj /=].
   subst.  rewrite upd_Znth_same; try lia. rewrite Znth_map. by [].
   rewrite Hin => [//|]. by apply Znth_In; lia. rewrite upd_Znth_diff => [//|||//]. all: lia.
 Qed. 
 
 (*Fold definition into dependent type*)
-Definition scalar_mul_row {m n} (mx: matrix m n) (r: Z) (k: F) (Hr: 0 <= r < m) : matrix m n :=
+Definition scalar_mul_row {m n} (mx: matrix m n) (r: Z) (k: F) : matrix m n :=
   exist _ (scalar_mul_row_aux (proj1_sig mx) r k) 
-    (scalar_mul_row_aux_wf k (Zlength_nonneg (Znth r (proj1_sig mx))) Hr (proj2_sig mx)).
+    (scalar_mul_row_aux_wf r k (Zlength_nonneg (Znth r (proj1_sig mx))) (proj2_sig mx)).
 
 (*Prove equivalent to [sc_mul]*)
 Lemma scalar_mul_row_equiv: forall {m n} (mx: matrix m n) r k (Hr: 0 <= r < m),
-  matrix_to_mx (scalar_mul_row mx k Hr) = sc_mul (matrix_to_mx mx) k (Z_to_ord Hr).
+  matrix_to_mx (scalar_mul_row mx r k) = sc_mul (matrix_to_mx mx) k (Z_to_ord Hr).
 Proof.
   move => m n mx r k Hr. rewrite /matrix_to_mx /scalar_mul_row /sc_mul /get /Z_to_ord /= -matrixP /eqrel => [x y].
   rewrite !mxE. rewrite (scalar_mul_row_aux_spec k (proj2_sig mx)). 
@@ -153,11 +157,94 @@ Proof.
     have: x == Ordinal (Z_nat_bound Hr) by rewrite -Z_ord_eq. by move ->.
     case Hxord : (x == Ordinal (Z_nat_bound Hr)). have: Z.of_nat x = r. rewrite (Z_ord_eq x Hr). by apply Hxord.
     move => Hxr'. contradiction. by [].
+  - by [].
   - apply Z_ord_bound. by lia.
   - apply Z_ord_bound. apply (matrix_n_pos mx).
-  - by [].
 Qed.
 
 End ScMul.
+
+(*Version of [iota] for nonnegative integers - TODO move*)
+Definition Ziota (x len : Z) :=
+  map (fun y => Z.of_nat y) (iota (Z.to_nat x) (Z.to_nat len)).
+
+Lemma size_length: forall {A : Type} (l: list A),
+  size l = Datatypes.length l.
+Proof.
+  move => A l. elim: l => [//|h t IH /=].
+  by rewrite IH.
+Qed.
+
+Lemma in_mem_In: forall (l: list nat) x,
+  x \in l <-> In x l.
+Proof.
+  move => l x. elim: l => [//| h t IH /=].
+  rewrite in_cons -IH eq_sym. split => [/orP[/eqP Hx | Ht]| [Hx | Hlt]]. by left. by right.
+  subst. by rewrite eq_refl. by rewrite Hlt orbT.
+Qed.
+
+Lemma Zlength_iota: forall a b,
+  Zlength (iota a b) = Z.of_nat b.
+Proof.
+  move => a b. by rewrite Zlength_correct -size_length size_iota.
+Qed.
+
+Lemma Zlength_Ziota: forall x len,
+  (0<=x) ->
+  (0<= len) ->
+  Zlength (Ziota x len) = len.
+Proof.
+  move => x len Hx Hlen. rewrite /Ziota Zlength_map Zlength_iota. by lia.
+Qed.
+
+Lemma Zseq_In: forall x len z,
+  (0 <= x) ->
+  (0 <= len) ->
+  In z (Ziota x len) <-> (x <= z < x + len).
+Proof.
+  move => x len z Hx Hlen. rewrite /Ziota in_map_iff. split => [[i [Hiz Hin]] | Hb].
+  move : Hin; rewrite -in_mem_In mem_iota. move => /andP[Hxi Hixlen].
+  have {} Hxi: (Z.to_nat x <= i)%coq_nat by apply (elimT leP).
+  have {} Hixlen: (i < Z.to_nat x + Z.to_nat len)%coq_nat by apply (elimT ltP). subst.
+  split. lia. rewrite Z2Nat.inj_lt; try lia. by rewrite Nat2Z.id Z2Nat.inj_add; try lia.
+  exists (Z.to_nat z). split. rewrite Z2Nat.id; lia. rewrite -in_mem_In mem_iota.
+  apply (introT andP). split. by apply (introT leP); lia. apply (introT ltP).
+  move : Hb => [Hxz Hzxlen]. move: Hzxlen. rewrite Z2Nat.inj_lt; try lia. by rewrite Z2Nat.inj_add; try lia.
+Qed. 
+
+(*Function to make all columns one (repeated scalar multiplication)*)
+Section AllColsOne.
+
+Definition all_cols_one_partial {m n} (mx: matrix m n) (c: Z) (bound: Z) :=
+  fold_right (fun x acc => scalar_mul_row acc x (get mx x c)^-1 ) mx (Ziota 0 bound).
+
+Lemma all_cols_one_equiv: forall {m n} (mx: matrix m n) (c: Z) (Hc: 0 <= c < n),
+  matrix_to_mx (all_cols_one_partial mx c m) = all_cols_one_noif (matrix_to_mx mx) (Z_to_ord Hc).
+Proof.
+  move => m n mx c Hc. rewrite /all_cols_one_partial /all_cols_one_noif /Ziota /ord_enum.
+  have: (Z.to_nat 0) = 0%N by lia. move ->. (*Can't do induction on [iota 0 (Z.to_nat m)] because of dependent typse*)
+  have: forall (l: seq nat),
+    (forall n, n \in l -> (n < Z.to_nat m)%N) ->
+    matrix_to_mx
+  (fold_right (fun (x : Z) (acc : matrix m n) => scalar_mul_row acc x (get mx x c)^-1) mx
+     [seq Z.of_nat y | y <- l]) =
+  foldr
+  (fun (x : 'I_(Z.to_nat m)) (acc : 'M_(Z.to_nat m, Z.to_nat n)) =>
+   sc_mul acc (matrix_to_mx mx x (Z_to_ord Hc))^-1 x) (matrix_to_mx mx)
+  (pmap insub l).
+  - move => l. elim : l => [//| h t IH Hin].
+    rewrite //=. have Hbound: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl. rewrite insubT /=.
+    rewrite -IH. have Hhm : 0 <= Z.of_nat h < m. split. lia. have {} Hbound : (h < Z.to_nat m)%coq_nat by apply (elimT ltP).
+    lia. rewrite scalar_mul_row_equiv. f_equal. rewrite /matrix_to_mx mxE.
+    have /eqP Hhb: h == Ordinal Hbound by []. rewrite -Hhb.
+    have /eqP Hhc : Z.to_nat c == (Z_to_ord Hc) by []. rewrite -Hhc. rewrite Z2Nat.id. by []. lia.
+    apply (elimT eqP). have: nat_of_ord (Z_to_ord Hhm) == h.
+    have: nat_of_ord (Z_to_ord Hhm) == Z.to_nat (Z.of_nat h) by []. by rewrite (Nat2Z.id h).
+    by []. move => n' Hinn'. apply Hin. by rewrite in_cons Hinn' orbT.
+  - move ->. by []. move => x. by rewrite mem_iota.
+Qed.
+
+End AllColsOne.
+
 
 End ListMx.
