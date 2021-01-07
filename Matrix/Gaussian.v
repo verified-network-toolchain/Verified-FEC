@@ -1153,12 +1153,12 @@ Proof.
   by rewrite IH.
 Qed.
 
-Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) (c : 'I_n) : 'M[F]_(m, n) :=
+Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
 
 Lemma sub_all_rows_equiv: forall {m n} (A: 'M[F]_(m, n)) r c,
   (forall (x: 'I_m), A x c != 0) ->
-  sub_all_rows_noif A r c = sub_all_rows A r c.
+  sub_all_rows_noif A r = sub_all_rows A r c.
 Proof.
   move => m n A r c Hall. rewrite /sub_all_rows /sub_all_rows_noif. elim : (ord_enum m) => [// | h t IH].
   rewrite /=. case : (h == r). apply IH.
@@ -1170,7 +1170,7 @@ Qed.
 Definition gauss_one_step_restrict {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <= n) :=
   let c := widen_ord Hmn r in
   let A1 := all_cols_one_noif A c in
-  sub_all_rows_noif A1 r c.
+  sub_all_rows_noif A1 r.
 
 (*This version of Gaussian elimination is only equivalent to the general case if some specific conditions
   are met of the input matrix. Namely, we require the following:
@@ -1424,7 +1424,7 @@ Proof.
   have Hnz: (forall (x : 'I_m), A x (widen_ord Hmn r) != 0) by apply strong_inv_nonzero_cols. 
   have: fst_nonzero A (widen_ord Hmn r) r = Some r. rewrite fst_nonzero_some_iff.
   split. by rewrite leqnn. split. apply Hnz. move => x. by rewrite ltnNge andbN. move ->.
-  rewrite all_cols_one_equiv. rewrite sub_all_rows_equiv. 
+  rewrite all_cols_one_equiv. rewrite (@sub_all_rows_equiv _ _ _ _ (widen_ord Hmn r)). 
   have: xrow r r A = A. rewrite -matrixP /eqrel. move => x y. rewrite xrow_val. 
   case Hxr: (x == r). by eq_subst Hxr. by []. by move ->. 2 : by [].
   move => x. rewrite all_cols_one_val /=.
