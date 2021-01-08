@@ -532,7 +532,7 @@ Qed.
 (*How we can describe the entries of the resulting list (all other entries are handled by [mx_row_transform_notin]*)
 Lemma mx_row_transform: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m) r,
   (forall (A: 'M[F]_(m,n)) i j r, i != r ->  A i j = (f r A) i j) ->
-  (forall (A B : 'M[F]_(m,n)), (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
+  (forall (A B : 'M[F]_(m,n)) r, (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
     forall j, (f r A) r j = (f r B) r j) ->
   uniq l ->
   forall j, r \in l ->
@@ -542,9 +542,25 @@ Proof.
   rewrite //= in_cons. move /orP => [/eqP Hhr | Hinr]. subst. apply (row_function_equiv).
   apply: Hfout. move => A' B H1 H2. apply: Hfin. apply: H1. move => r'' j'' Hnotin'. apply: H2.
   move : Hnotin'. by rewrite in_cons negb_or => /andP[Heq Hnin]. by [].
-  rewrite -Hfout. apply: IH; rewrite //. move => A' B' H1 H2. apply: Hfin; rewrite //.
-  move => r'' j''. rewrite in_cons negb_or => /andP[Heq Hnin]. by apply: H2.
+  rewrite -Hfout. apply: IH; rewrite //. move => A' B' H1 H2.
+  move => Hcond j'. apply Hfin. by []. move => r' j'' Hnotin'. apply Hcond. move: Hnotin'.
+  by rewrite in_cons negb_or => /andP[Heq Hnin].
   case Heq : (r == h). move : Heq => /eqP Heq. subst. move : Hinr Hnotin. move ->. by []. by [].
+Qed.
+
+(*We can use [foldl] instead, since these functions can be evaluated in any order*)
+Lemma mx_row_transform_rev: forall {m n} (A: 'M[F]_(m,n)) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
+  (forall (A: 'M[F]_(m,n)) i j r, i != r ->  A i j = (f r A) i j) ->
+  (forall (A B : 'M[F]_(m,n)) r, (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
+    forall j, (f r A) r j = (f r B) r j) ->
+  uniq l ->
+  (foldr f A l) = foldr f A (rev l).
+Proof.
+  move => m n A f l Hfout Hfin Hun.
+  rewrite -matrixP /eqrel => i j. case Hin: (i \in l).
+  - rewrite !mx_row_transform; try by []. move => A' B' Heq1 Heq2 Hcond. apply Hfin. by [].
+    move => r' j'. rewrite -mem_rev. apply Hcond. by rewrite rev_uniq. by rewrite mem_rev.
+  - rewrite !mx_row_transform_notin; try by []. by rewrite mem_rev Hin. by rewrite Hin.
 Qed.
 
 (*This resulting matrix is row equivalent if f is*)
@@ -570,7 +586,7 @@ Proof.
     by rewrite /sc_mul mxE eq_refl GRing.mulrC.
   - move => A' i' j' r'. rewrite /=. case (A r' c == 0) => [//|//=].
     rewrite /sc_mul mxE /negb. by case: (i' == r').
-  - move => A' B' Hin Hout j'. rewrite /=. case: (A i c == 0).
+  - move => A' B' r Hin Hout j'. rewrite /=. case: (A r c == 0).
     apply Hin. by rewrite /sc_mul mxE mxE eq_refl Hin.
   - apply ord_enum_uniq.
   - apply mem_ord_enum.
@@ -593,6 +609,14 @@ Definition remAll  {A: eqType} (x : A) (l : seq A) := filter (predC1 x) l.
 Lemma foldr_remAll: forall {A : eqType} {B} (l: seq A) (f: A -> B -> B) (base: B) (z: A),
   foldr (fun x acc => if (x == z) then acc else f x acc) base l =
   foldr f base (remAll z l).
+Proof.
+  move => A B l. elim: l => [//| h t IH f base z /=]. rewrite /negb. case : (h == z).
+  by rewrite IH. by rewrite /= IH.
+Qed.
+
+Lemma foldl_remAll: forall {A : eqType} {B} (l: seq A) (f: B -> A -> B) (base: B) (z: A),
+  foldl (fun acc x => if (x == z) then acc else f acc x) base l =
+  foldl f base (remAll z l).
 Proof.
   move => A B l. elim: l => [//| h t IH f base z /=]. rewrite /negb. case : (h == z).
   by rewrite IH. by rewrite /= IH.
@@ -643,7 +667,7 @@ Proof.
   - case (A i c == 0) => [// | ]. by rewrite /add_mul mxE eq_refl GRing.mulN1r.
   - move => A' i' j' r'. case : (A r' c == 0) => [//|].
     rewrite /add_mul mxE /negb. by case H : (i' == r').
-  - move => A' B' Hin Hout j'. case : (A i c == 0). apply Hin.
+  - move => A' B' r' Hin Hout j'. case : (A r' c == 0). apply Hin.
     rewrite !/add_mul !mxE !eq_refl !Hin.
     rewrite Hout => [//|]. apply remAll_notin.
   - rewrite -rem_remAll. apply rem_uniq. all: apply ord_enum_uniq.
@@ -990,7 +1014,7 @@ Proof.
   - move => A' i' j' r Hir'. case : (lead_coef A r) => [|//].
     move => a. rewrite /sc_mul mxE. have : i' == r = false by move : Hir';  case (i' == r).
     by move ->.
-  - move => A' B' Hab H{H} j'. case : (lead_coef A i); last apply Hab. move => a.
+  - move => A' B' r' Hab H{H} j'. case : (lead_coef A ); last apply Hab. move => a.
     by rewrite !/sc_mul !mxE !eq_refl Hab.
   - apply ord_enum_uniq.
   - apply mem_ord_enum.
@@ -1153,6 +1177,21 @@ Proof.
   by rewrite IH.
 Qed.
 
+Definition all_cols_one_noif_l {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
+  foldl (fun acc x => sc_mul acc (A x c)^-1 x) A (ord_enum m).
+
+Lemma all_cols_one_noif_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) ,
+  all_cols_one_noif A c = all_cols_one_noif_l A c.
+Proof.
+  move => m n A c. rewrite /all_cols_one_noif /all_cols_one_noif_l. 
+  have {2}->: (ord_enum m) = rev (rev (ord_enum m)) by rewrite revK. rewrite foldl_rev.
+  apply mx_row_transform_rev.
+  - move => A' i' j' r'.
+    rewrite /sc_mul mxE /negb. by case: (i' == r').
+  - move => A' B' r Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
+  - apply ord_enum_uniq.
+Qed.
+
 Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
 
@@ -1163,6 +1202,22 @@ Proof.
   move => m n A r c Hall. rewrite /sub_all_rows /sub_all_rows_noif. elim : (ord_enum m) => [// | h t IH].
   rewrite /=. case : (h == r). apply IH.
   have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case : (A h c == 0). move ->. by rewrite IH. 
+Qed.
+
+Definition sub_all_rows_noif_l {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
+  foldl (fun acc x => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
+
+Lemma sub_all_rows_noif_foldl: forall {m n} (A: 'M[F]_(m,n)) r c,
+  sub_all_rows_noif A r c = sub_all_rows_noif_l A r c.
+Proof.
+  move => m n A r c. rewrite /sub_all_rows_noif /sub_all_rows_noif_l foldr_remAll foldl_remAll /=. 
+  have {2}->: (remAll r (ord_enum m)) = rev (rev (remAll r (ord_enum m))) by rewrite revK. rewrite foldl_rev.
+  rewrite mx_row_transform_rev. by [].
+  - move => A' i' j' r'. rewrite /add_mul mxE /negb. by case : (i' == r').
+  - move => A' B' r' Hin Hout j'. 
+    rewrite !/add_mul !mxE !eq_refl Hin. 
+    rewrite Hout => [//|]. apply remAll_notin.
+  - rewrite -rem_remAll. apply rem_uniq. all: apply ord_enum_uniq.
 Qed.
 
 (*In this version, we do not swap rows, we scalar multiply/subtract all rows, and we have r=c every time. Accordingly,
