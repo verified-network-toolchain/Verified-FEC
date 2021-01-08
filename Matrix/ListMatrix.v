@@ -227,32 +227,27 @@ Qed.
 Section AllColsOne.
 
 Definition all_cols_one_partial {m n} (mx: matrix m n) (c: Z) (bound: Z) :=
-  fold_right (fun x acc => scalar_mul_row acc x (get mx x c)^-1 ) mx (Ziota 0 bound).
+  fold_left (fun acc x => scalar_mul_row acc x (get mx x c)^-1 ) (Ziota 0 bound) mx.
 
 Lemma all_cols_one_equiv: forall {m n} (mx: matrix m n) (c: Z) (Hc: 0 <= c < n),
   matrix_to_mx (all_cols_one_partial mx c m) = all_cols_one_noif (matrix_to_mx mx) (Z_to_ord Hc).
 Proof.
-  move => m n mx c Hc. rewrite /all_cols_one_partial /all_cols_one_noif /Ziota /ord_enum.
-  have: (Z.to_nat 0) = 0%N by lia. move ->. (*Can't do induction on [iota 0 (Z.to_nat m)] because of dependent typse*)
-  have: forall (l: seq nat),
-    (forall n, n \in l -> (n < Z.to_nat m)%N) ->
-    matrix_to_mx
-  (fold_right (fun (x : Z) (acc : matrix m n) => scalar_mul_row acc x (get mx x c)^-1) mx
-     [seq Z.of_nat y | y <- l]) =
-  foldr
-  (fun (x : 'I_(Z.to_nat m)) (acc : 'M_(Z.to_nat m, Z.to_nat n)) =>
-   sc_mul acc (matrix_to_mx mx x (Z_to_ord Hc))^-1 x) (matrix_to_mx mx)
-  (pmap insub l).
-  - move => l. elim : l => [//| h t IH Hin].
-    rewrite //=. have Hbound: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl. rewrite insubT /=.
-    rewrite -IH. have Hhm : 0 <= Z.of_nat h < m. split. lia. have {} Hbound : (h < Z.to_nat m)%coq_nat by apply (elimT ltP).
+  move => m n mx c Hc. rewrite all_cols_one_noif_foldl. rewrite /all_cols_one_partial /all_cols_one_noif_l /Ziota /ord_enum.
+  have ->: (Z.to_nat 0) = 0%N by lia.
+  have: forall n, n \in (iota 0 (Z.to_nat m)) -> (n < Z.to_nat m)%N. move => n'. by rewrite mem_iota.
+  remember mx as mx' eqn : Hmx. rewrite {2}Hmx. rewrite {3}Hmx. move: mx {Hmx}. 
+  elim: (iota 0 (Z.to_nat m)) => [//| h t IH mx Hin].
+  rewrite /=. have Hbound: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl. rewrite insubT /=.
+  rewrite IH.
+  - have Hhm : 0 <= Z.of_nat h < m. split. lia. have {} Hbound : (h < Z.to_nat m)%coq_nat by apply (elimT ltP).
     lia. rewrite scalar_mul_row_equiv. f_equal. rewrite /matrix_to_mx mxE.
     have /eqP Hhb: h == Ordinal Hbound by []. rewrite -Hhb.
-    have /eqP Hhc : Z.to_nat c == (Z_to_ord Hc) by []. rewrite -Hhc. rewrite Z2Nat.id. by []. lia.
-    apply (elimT eqP). have: nat_of_ord (Z_to_ord Hhm) == h.
-    have: nat_of_ord (Z_to_ord Hhm) == Z.to_nat (Z.of_nat h) by []. by rewrite (Nat2Z.id h).
-    by []. move => n' Hinn'. apply Hin. by rewrite in_cons Hinn' orbT.
-  - move ->. by []. move => x. by rewrite mem_iota.
+    have /eqP Hhc : Z.to_nat c == (Z_to_ord Hc) by []. rewrite -Hhc. rewrite Z2Nat.id.
+    + f_equal. apply (elimT eqP). have: nat_of_ord (Z_to_ord Hhm) = (Z.to_nat (Z.of_nat h)) by [].
+      rewrite Nat2Z.id. move => Hzh. have: nat_of_ord (Z_to_ord Hhm) == nat_of_ord (Ordinal Hbound).
+      by rewrite Hzh. by [].
+    + lia.
+  - move => n' Hinn'. apply Hin. by rewrite in_cons Hinn' orbT.
 Qed.
 
 End AllColsOne.
@@ -354,6 +349,37 @@ Proof.
 Qed. 
 
 End AddRow.
+
+(*The last intermediate function is the analogue of [sub_all_rows]*)
+Section SubRows.
+
+Definition sub_all_rows_partial {m n} (mx: matrix m n) (r: Z) (bound: Z) :=
+  fold_left (fun acc x => if Z.eq_dec x r then acc else add_multiple_row acc r x (- 1)) (Ziota 0 bound) mx.
+
+Lemma sub_all_rows_equiv: forall {m n} (mx: matrix m n) (r: Z) (Hr: 0 <= r < m),
+  matrix_to_mx (sub_all_rows_partial mx r m) = sub_all_rows_noif (matrix_to_mx mx) (Z_to_ord Hr).
+Proof.
+  move => m n mx r Hr. rewrite sub_all_rows_noif_foldl /sub_all_rows_partial /sub_all_rows_noif_l /Ziota /ord_enum.
+  have ->: (Z.to_nat 0) = 0%N by lia.
+  have: forall n, n \in (iota 0 (Z.to_nat m)) -> (n < Z.to_nat m)%N. move => n'. by rewrite mem_iota. move : mx.
+  elim: (iota 0 (Z.to_nat m)) => [//| h t IH mx Hin].
+  rewrite /=. have Hbound: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl. rewrite insubT /=.
+  rewrite IH.
+  - case : (Z.eq_dec (Z.of_nat h) r) => [Heq /= | Hneq /=].
+    + have ->: Ordinal Hbound == Z_to_ord Hr by rewrite -Z_ord_eq. by [].
+    + case Hord: (Ordinal Hbound == Z_to_ord Hr). have Heqr: Z.of_nat h = r
+      by rewrite (Z_ord_eq (Ordinal Hbound) Hr). by [].
+      have Hhm : 0 <= Z.of_nat h < m. split. lia. have Hbound' : (h < Z.to_nat m)%coq_nat by apply (elimT ltP).
+      lia. rewrite add_multiple_row_equiv. f_equal. f_equal. apply (elimT eqP).
+      have: nat_of_ord (Z_to_ord Hhm) = (Z.to_nat (Z.of_nat h)) by [].
+      rewrite Nat2Z.id. move => Hzh. have: nat_of_ord (Z_to_ord Hhm) == nat_of_ord (Ordinal Hbound).
+      by rewrite Hzh. by [].
+  - move => n' Hinn'. apply Hin. by rewrite in_cons Hinn' orbT.
+Qed.
+
+End SubRows.
+
+(*TODO: [gauss_all_steps] analogue, then can start VST*)
 
 
 End ListMx.

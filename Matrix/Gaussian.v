@@ -1207,10 +1207,10 @@ Qed.
 Definition sub_all_rows_noif_l {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldl (fun acc x => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
 
-Lemma sub_all_rows_noif_foldl: forall {m n} (A: 'M[F]_(m,n)) r c,
-  sub_all_rows_noif A r c = sub_all_rows_noif_l A r c.
+Lemma sub_all_rows_noif_foldl: forall {m n} (A: 'M[F]_(m,n)) r,
+  sub_all_rows_noif A r = sub_all_rows_noif_l A r .
 Proof.
-  move => m n A r c. rewrite /sub_all_rows_noif /sub_all_rows_noif_l foldr_remAll foldl_remAll /=. 
+  move => m n A r. rewrite /sub_all_rows_noif /sub_all_rows_noif_l foldr_remAll foldl_remAll /=. 
   have {2}->: (remAll r (ord_enum m)) = rev (rev (remAll r (ord_enum m))) by rewrite revK. rewrite foldl_rev.
   rewrite mx_row_transform_rev. by [].
   - move => A' i' j' r'. rewrite /add_mul mxE /negb. by case : (i' == r').
