@@ -1720,8 +1720,34 @@ Qed.
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
   which oeprates on the result of gaussian elimination*)
 
+(*In this case, we know all the leading coefficients are at position r (ror row r)*)
+Definition mk_identity {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) :=
+  foldr (fun x acc => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (ord_enum m).
+
+Lemma mk_identity_equiv: forall {m n} (A:'M[F]_(m, n)) (Hmn: m <= n),
+  (forall (r': 'I_m), lead_coef A r' = Some (widen_ord Hmn r')) ->
+  mk_identity A Hmn = all_lc_1 A.
+Proof.
+  move => m n A Hmn Hlc. rewrite /mk_identity /all_lc_1. elim : (ord_enum m) => [//|h t IH /=].
+  by rewrite Hlc IH.
+Qed.
+
+Definition mk_identity_l {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) :=
+  foldl (fun acc x => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (ord_enum m).
+
+Lemma mk_identity_foldl: forall {m n} (A: 'M[F]_(m, n)) Hmn,
+  mk_identity A Hmn = mk_identity_l A Hmn.
+Proof.
+  move => m n A Hmn. rewrite /mk_identity /mk_identity_l.
+  have {2}->: (ord_enum m) = rev (rev ((ord_enum m))) by rewrite revK. rewrite foldl_rev.
+  apply mx_row_transform_rev.
+  - move => A' i j r Hir. rewrite /sc_mul mxE. have ->: i == r = false. move : Hir; by case : (i == r). by [].
+  - move => A' B' r Hab H{H} j. by rewrite /sc_mul !mxE eq_refl Hab.
+  - apply ord_enum_uniq.
+Qed.
+
 Definition gaussian_elim_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) :=
-  all_lc_1 (gauss_all_steps_restrict_end A Hmn 0).
+  mk_identity (gauss_all_steps_restrict_end A Hmn 0) Hmn.
 
 (*We can disreguard the trivial case of m = 0*)
 Lemma matrix_zero_rows: forall {n} (A B: 'M[F]_(0, n)), A = B.
@@ -1729,15 +1755,25 @@ Proof.
   move => n A B. rewrite -matrixP /eqrel. move => x y. have: x < 0 by []. by rewrite ltn0.
 Qed.
 
+Lemma gaussian_elim_equiv:  forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
+  strong_inv A Hmn (Ordinal Hm) ->
+  gaussian_elim_restrict A Hmn = gaussian_elim A.
+Proof.
+  move => m n A Hmn Hm Hstrong. rewrite /gaussian_elim_restrict /gaussian_elim.
+  have: gauss_invar (gauss_all_steps_restrict_end A Hmn 0) m m
+  by apply (gauss_all_steps_inv (gauss_invar_init A) Hstrong). rewrite gauss_all_steps_equiv =>[ | |//].
+  have H0n: 0 < n by apply (ltn_leq_trans Hm Hmn). rewrite !insubT /=.
+  have ->: (widen_ord Hmn (Ordinal Hm)) = (Ordinal H0n) by apply (elimT eqP). move => Hinvar.
+  apply mk_identity_equiv. move => r'. apply (gauss_invar_square_lc Hmn (leqnn m)). by []. by [].
+  apply (gauss_invar_init A).
+Qed. 
+
+(*Not sure if we actually need this now*)
 Lemma gaussian_elim_restrict_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
   strong_inv A Hmn (Ordinal Hm) ->
   row_equivalent A (gaussian_elim_restrict A Hmn).
 Proof.
-  move => m n A Hmn Hm Hstrong. rewrite /gaussian_elim_restrict gauss_all_steps_equiv.
-  pose proof (@gaussian_elim_row_equiv m n A) as Hre. move : Hre. rewrite /gaussian_elim /=.
-  rewrite !insubT. apply (ltn_leq_trans Hm Hmn). move => H0n. rewrite /=.
-  have: (Ordinal H0n) = (widen_ord Hmn (Ordinal Hm)). apply (elimT eqP). by []. by move ->.
-  apply gauss_invar_init. by [].
+  move => m n A Hmn Hm Hstrong. rewrite gaussian_elim_equiv => [|//]. apply gaussian_elim_row_equiv.
 Qed.
 
 (*For any matrix satisfiying [gauss_invar m m], the left hand side is the identity matrix*)
@@ -1758,10 +1794,13 @@ Qed.
 Lemma gauss_elim_restrict_inverse: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
   strong_inv A Hmn (Ordinal Hm) ->
   (forall (x: 'I_m) (y: 'I_n), y < m -> 
-    (gaussian_elim_restrict A Hmn)x y == (if nat_of_ord x == nat_of_ord y then 1 else 0)).
+    (gaussian_elim_restrict A Hmn) x y == (if nat_of_ord x == nat_of_ord y then 1 else 0)).
 Proof.
-  move => m n A Hmn Hm Hstr x y Hym. rewrite /gaussian_elim_restrict. apply gauss_invar_square_inverse.
+  move => m n A Hmn Hm Hstr x y Hym. rewrite /gaussian_elim_restrict mk_identity_equiv.
+  apply gauss_invar_square_inverse.
   by []. apply (@gauss_all_steps_inv m n A Hmn 0 Hm). apply gauss_invar_init. by []. by [].
+  move => r. apply (gauss_invar_square_lc Hmn (leqnn m)). 
+  by apply (gauss_all_steps_inv (gauss_invar_init A) Hstr). by []. 
 Qed.
 
 
