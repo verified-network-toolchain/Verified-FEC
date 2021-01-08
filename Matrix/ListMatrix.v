@@ -65,6 +65,13 @@ Qed.
 
 Definition Z_to_ord {m} x (Hx: 0 <= x < m) : 'I_(Z.to_nat m) :=
   Ordinal (Z_nat_bound Hx).
+
+Lemma le_Z_N: forall (m n: Z),
+  m <= n ->
+  (Z.to_nat m <= Z.to_nat n)%N.
+Proof.
+  move => m n Hmn. apply (introT leP). lia.
+Qed.
   
 Section ListMx.
 
@@ -379,7 +386,53 @@ Qed.
 
 End SubRows.
 
-(*TODO: [gauss_all_steps] analogue, then can start VST*)
+Section AllSteps.
+
+Definition gauss_all_steps_rows_partial {m n} (mx: matrix m n) (bound : Z) :=
+  fold_left (fun acc r => let A1 := (all_cols_one_partial acc r m) in sub_all_rows_partial A1 r m) (Ziota 0 bound) mx.
+
+Lemma gauss_all_steps_rows_equiv: forall {m n} (mx: matrix m n) (Hmn : m <= n),
+  matrix_to_mx (gauss_all_steps_rows_partial mx m) = gauss_all_steps_restrict_beg (matrix_to_mx mx) (le_Z_N Hmn) (Z.to_nat m).
+Proof.
+  move => m n mx Hmn. rewrite /gauss_all_steps_rows_partial /gauss_all_steps_restrict_beg /Ziota.
+  have ->: (Z.to_nat 0) = 0%N by lia.
+  have: forall n, n \in (iota 0 (Z.to_nat m)) -> (n < Z.to_nat m)%N. move => n'. by rewrite mem_iota. move : mx.
+  elim: (iota 0 (Z.to_nat m)) => [//| h t IH mx Hin].
+  rewrite /=. have Hhm: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl. rewrite insubT IH 
+  /gauss_one_step_restrict. f_equal. have Hhm': 0 <= Z.of_nat h < m. split. lia. 
+  have Hbound' : (h < Z.to_nat m)%coq_nat by apply (elimT ltP). lia.
+  rewrite sub_all_rows_equiv all_cols_one_equiv. lia. move => Hhn. rewrite /=.
+  have ->: (Z_to_ord Hhn) = (widen_ord (le_Z_N Hmn) (Ordinal Hhm)). apply (elimT eqP).
+  have : nat_of_ord (Z_to_ord Hhn) == Z.to_nat (Z.of_nat h) by []. by rewrite Nat2Z.id.
+  have ->: (Z_to_ord Hhm') = (Ordinal Hhm). apply (elimT eqP). 
+  have: nat_of_ord (Z_to_ord Hhm') == Z.to_nat (Z.of_nat h) by []. by rewrite Nat2Z.id. by [].
+  move => n' Hnin. apply Hin. by rewrite in_cons Hnin orbT.
+Qed.
+
+End AllSteps.
+
+(*Finally, the last function makes all leading coefficients 1*)
+
+Section LCOne.
+
+Definition all_lc_one_rows_partial {m n} (mx: matrix m n) (bound : Z) :=
+  fold_left (fun acc x => scalar_mul_row acc x (get mx x x)^-1) (Ziota 0 bound) mx.
+
+Lemma all_lc_one_rows_equiv: forall {m n} (mx: matrix m n) (Hmn: m <= n),
+  matrix_to_mx (all_lc_one_rows_partial mx m) = mk_identity (matrix_to_mx mx) (le_Z_N Hmn).
+Proof.
+  move => m n mx Hmn. rewrite mk_identity_foldl /all_lc_one_rows_partial /mk_identity_l /Ziota /ord_enum.
+  have ->: (Z.to_nat 0) = 0%N by lia. remember mx as mx' eqn : Hmx. rewrite {2}Hmx {3}Hmx.
+  have: forall n, n \in (iota 0 (Z.to_nat m)) -> (n < Z.to_nat m)%N. move => n'. by rewrite mem_iota. 
+  move : {Hmx} mx. elim : (iota 0 (Z.to_nat m)) => [//|h t IH mx Hin].
+  rewrite /=. have Hhm: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl. rewrite insubT IH /=.
+  have Hhm': 0 <= Z.of_nat h < m. split. lia. have Hbound' : (h < Z.to_nat m)%coq_nat by apply (elimT ltP). lia.
+  rewrite scalar_mul_row_equiv {5}/matrix_to_mx mxE. f_equal. f_equal. apply (elimT eqP).
+  have: nat_of_ord (Z_to_ord Hhm') == Z.to_nat (Z.of_nat h) by []. by rewrite Nat2Z.id. move => n' Hnin. apply Hin.
+  by rewrite in_cons Hnin orbT.
+Qed.
+
+End LCOne.
 
 
 End ListMx.
