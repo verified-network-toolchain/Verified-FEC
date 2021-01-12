@@ -10,8 +10,6 @@ Set Bullet Behavior "Strict Subproofs".
 
 Require Import PolyMod.
 Require Import PrimitiveFacts.
-Print Equality.Mixin.
-Print Equality.axiom.
 
 Section PolyField.
 
@@ -190,3 +188,108 @@ Qed.
 Definition qpoly_zmodmixin := ZmodMixin qpoly_addA qpoly_addC qpoly_add0q qpoly_addNq.
 Canonical qpoly_zmodtype := ZmodType _ qpoly_zmodmixin.
 
+(*RingType*)
+Definition qmul := @r_mul _ Hnontriv.
+
+Lemma qpoly_mulA : associative qmul.
+Proof.
+  move => [x Hx] [y Hy] [z Hz]. rewrite /qmul /r_mul /=. apply exist_ext.
+  rewrite /poly_mult_mod (poly_mult_comm ((x *~ y) %~ f)) pmod_mult_reduce  =>[|//].
+  rewrite pmod_mult_reduce =>[|//]. by rewrite -poly_mult_assoc poly_mult_comm.
+Qed.
+
+Lemma qpoly_mulC: commutative qmul.
+Proof.
+  move => [x Hx] [y Hy]. rewrite /qmul /r_mul /=. apply exist_ext. 
+  by rewrite /poly_mult_mod poly_mult_comm.
+Qed.
+
+Lemma qpoly_mul1q: left_id q1 qmul.
+Proof.
+  move => [x Hx]. rewrite /qmul /q1 /r_mul /r1 /=. apply exist_ext. 
+  by rewrite /poly_mult_mod poly_mult_1_l pmod_refl.
+Qed.
+
+Lemma qpoly_mulD : left_distributive qmul qadd.
+Proof.
+  move => [x Hx] [y Hy] [z Hz]. rewrite /qadd /qmul /r_add /r_mul /=. apply exist_ext.
+  rewrite /poly_mult_mod /poly_add_mod. rewrite -pmod_add_distr =>[|//].
+  rewrite poly_mult_comm pmod_mult_reduce =>[|//]. by rewrite poly_mult_comm poly_mult_distr_r.
+Qed.
+
+Lemma qpoly_1not0: q1 != q0.
+Proof.
+  case Heq : (q1 == q0).
+  - by move : Heq => /eqP Heq.
+  - by [].
+Qed. 
+
+Definition qpoly_comringmixin := ComRingMixin qpoly_mulA qpoly_mulC qpoly_mul1q qpoly_mulD qpoly_1not0.
+Canonical qpoly_ring := RingType (qpoly f) qpoly_comringmixin.
+Canonical qpoly_comring := ComRingType (qpoly f) qpoly_mulC.
+
+(*Unit Ring (ring with computable inverse)*)
+
+
+Definition qpoly_unit : pred (qpoly f) :=
+  fun x => x != q0.
+
+Definition qpoly_inv := @find_inv _ Hnontriv.
+
+Lemma qpoly_mulrV : {in qpoly_unit, right_inverse q1 qpoly_inv qmul}.
+Proof.
+  move => x Hin. rewrite /qmul /qpoly_inv /q1. apply find_inv_correct. by [].
+  move : Hin. rewrite unfold_in /q0 => Hin Heq. by move: Hin; rewrite Heq eq_refl.
+Qed.
+
+Lemma qpoly_mulVr : {in qpoly_unit, left_inverse q1 qpoly_inv qmul}.
+Proof.
+  move => x Hin. by rewrite qpoly_mulC qpoly_mulrV.
+Qed. 
+
+Lemma qpoly_unitP : forall x y : (qpoly f), (y * x)%R = 1%R /\ (x * y)%R = 1%R -> qpoly_unit x.
+Proof.
+  move => x y [Hxy Hyx]. rewrite /qpoly_unit. case Heq : (x == q0) =>[|//]. move : Heq => /eqP Heq.
+  subst. by rewrite GRing.Theory.mul0r in Hyx.
+Qed. 
+
+Lemma qpoly_inv0id : {in [predC qpoly_unit], qpoly_inv =1 id}.
+Proof.
+  move => x Hin. have Hnz: ~~ (x != q0) by []. have /eqP {} Hnz: x == q0 by move : Hnz; case: (x == q0).
+  subst. by rewrite /qpoly_inv /q0 -find_inv_zero.
+Qed.
+
+Definition qpoly_unitringmixin := UnitRingMixin qpoly_mulVr qpoly_mulrV qpoly_unitP qpoly_inv0id.
+Canonical qpoly_unitringtype := UnitRingType (qpoly f) qpoly_unitringmixin.
+
+(*Integral Domain*)
+
+Lemma qpoly_mulf_eq0 : forall x y : (qpoly f), (x * y)%R = 0%R -> (x == 0%R) || (y == 0%R).
+Proof.
+  move => x y Hxy. case Hx : (x == 0%R) =>[//|].
+  have {}Hx: x != 0%R by rewrite Hx. have: (x^-1 * (x * y))%R = (x^-1 * 0%R)%R by rewrite Hxy.
+  rewrite GRing.Theory.mulrA GRing.Theory.mulr0 GRing.mulVr =>[|//]. rewrite GRing.mul1r. move ->.
+  by rewrite eq_refl orbT.
+Qed.
+
+(*Need the comUnitRing first*)
+Canonical qpoly_comunitring := [comUnitRingType of (qpoly f)].
+Canonical qpoly_idomaintype := IdomainType (qpoly f) qpoly_mulf_eq0.
+
+(*Field*)
+
+Lemma qpoly_mulVf : GRing.Field.axiom qpoly_inv.
+Proof.
+  move => x Hnz. by apply qpoly_mulVr.
+Qed.
+
+Lemma qpoly_inv0: qpoly_inv 0%R = 0%R.
+Proof.
+  apply qpoly_inv0id. rewrite unfold_in /=. case Hin : (0%R \in qpoly_unit).
+  move : Hin. by rewrite unfold_in eq_refl. by [].
+Qed. 
+
+Definition qpoly_fieldmixin := FieldMixin qpoly_mulVf qpoly_inv0.
+Canonical qpoly_fieldType := FieldType (qpoly f) qpoly_fieldmixin.
+
+End PolyField.
