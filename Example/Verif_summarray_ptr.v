@@ -44,7 +44,7 @@ Qed.
 Lemma body_sumarray: semax_body Vprog Gprog f_sumarray sumarray_spec.
 Proof.
   start_function. forward. forward. forward.
-  
+  (*Is this the right way to refer to curr?*)
   forward_while
   (EX i: Z,
    PROP (0 <= i <= size)
