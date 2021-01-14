@@ -1711,10 +1711,10 @@ Proof.
   by rewrite rev_rcons /= insubT -foldl_rev revK.
 Qed.
 
-Lemma gauss_all_steps_restrict_both_dirs: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) (Hr: r < m),
+Lemma gauss_all_steps_restrict_both_dirs: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n),
   gauss_all_steps_restrict_end A Hmn 0 = gauss_all_steps_restrict_beg A Hmn m.
 Proof.
-  move => m n A Hmn r Hrm. by rewrite /gauss_all_steps_restrict_end /gauss_all_steps_restrict_beg subn0.
+  move => m n A Hmn. by rewrite /gauss_all_steps_restrict_end /gauss_all_steps_restrict_beg subn0.
 Qed.
 
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
