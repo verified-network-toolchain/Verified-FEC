@@ -19,3 +19,4 @@ Matrix/Gaussian.v
 Matrix/ListMatrix.v
 Matrix/PolyField.v
 FEC/fec.v
+Example/sumarray_ptr.v
