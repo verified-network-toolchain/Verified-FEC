@@ -459,6 +459,15 @@ Proof.
   pose proof fec_n_bound. rep_lia.
 Qed. 
 
+Lemma Z_expand_bounds: forall a b c d n,
+  a <= b ->
+  c <= d ->
+  b <= n <= c ->
+  a <= n <= d.
+Proof.
+  intros. lia.
+Qed.
+
 (*Verification of [fec_matrix_transform]*)
 Lemma body_fec_matrix_transform : semax_body Vprog Gprog f_fec_matrix_transform fec_matrix_transform_spec.
 Proof.
@@ -524,7 +533,10 @@ Proof.
                   (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr n)))) =
             offset_val (cols_one_row * n - 1) s). { entailer!.
         rewrite sem_sub_pi_offset; auto. f_equal. simpl. lia. rep_lia. } 
-        rewrite H3; clear H3. forward. 
+        rewrite H3; clear H3. forward.
+        assert (Hwf' : wf_matrix (F:=F) (all_cols_one_partial (F:=F) 
+          (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) m n). {
+        apply all_cols_one_partial_wf. lia. apply gauss_all_steps_rows_partial_wf. lia. assumption. } 
         (*Now we are at the while loop - because of the [strong_inv] condition of the matrix,
           the loop guard is false (the loop finds the element to swap if one exists, but returns
           with an error whether or not one exists*)
@@ -570,10 +582,17 @@ Proof.
           ** entailer!. rewrite (@flatten_mx_Znth m n); try lia. 
              pose proof (qpoly_int_bound (get (F:=F) (all_cols_one_partial (F:=F) 
                 (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
-                cols_one_row gauss_step_row)). rewrite Int.unsigned_repr; rep_lia.
-             apply all_cols_one_partial_wf. lia. apply gauss_all_steps_rows_partial_wf. lia. assumption.
+                cols_one_row gauss_step_row)). rewrite Int.unsigned_repr; rep_lia. assumption.
           ** entailer!. rewrite sem_sub_pi_offset; auto. rep_lia.
-          ** forward_if. (*TODO: get contradiction here bc it has to be nonzero*) admit.
+          ** forward_if. (*contradiction due to [strong_inv]*)
+             assert (Znth (cols_one_row * n + n - 1 - gauss_step_row)
+                (flatten_mx (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
+                gauss_step_row cols_one_row)) <> 0%Z). {
+              rewrite (@flatten_mx_Znth m n); try lia. 2: assumption. intro Hzero.
+              rewrite poly_to_int_zero_iff in Hzero. admit. } 
+             apply mapsto_memory_block.repr_inj_unsigned in H7. contradiction. 2: rep_lia.
+             rewrite (@flatten_mx_Znth m n); try lia. eapply Z_expand_bounds.
+             3 : { apply qpoly_int_bound. } lia. rep_lia. assumption. 
              forward. entailer!.
       ++ (*after the while loop*)
          assert_PROP (force_val (sem_sub_pi tuchar Signed 
@@ -592,8 +611,7 @@ Proof.
                 (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
                 cols_one_row gauss_step_row))).
           forward.
-          all: try rewrite (@flatten_mx_Znth m n); try lia. all: try(
-          apply all_cols_one_partial_wf; try apply gauss_all_steps_rows_partial_wf; try lia; try assumption ).
+          all: try rewrite (@flatten_mx_Znth m n); try lia; try assumption. 
           ** entailer!. lia.
           ** entailer!.  rewrite sem_sub_pi_offset; auto. rep_lia.
           ** forward.
