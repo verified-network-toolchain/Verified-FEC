@@ -88,118 +88,10 @@ Definition matrix := list (list F).
 Definition wf_matrix (mx: matrix) (m n : Z) :=
   Zlength mx = m /\ 0 <= n /\ forall x, In x mx -> Zlength x = n.
 
-(*TODO: NOTE: trying without dependent types for VST
-Definition matrix m n := {mx : matrix_type | wf_matrix mx m n}.
-*)
-
-(*0 matrix - for default in [matrix_of_list] because options will not work well in VST spec*)
-(*
-Require Import PropList.
-
-Definition zero_mx (m n : Z) : matrix_type :=
-  prop_list (fun _ => prop_list (fun _ => 0) (Z.abs n)) (Z.abs m).
-
-Lemma zero_mx_wf: forall m n, wf_matrix (zero_mx m n) (Z.abs m) (Z.abs n).
-Proof.
-  move => m n. rewrite /wf_matrix /zero_mx. split. apply prop_list_length. lia. split. lia.
-  move => x. rewrite In_Znth_iff => [[i [Hilen  Hznth]]]. rewrite -Hznth. rewrite prop_list_Znth.
-  apply prop_list_length. lia. move : Hilen. by rewrite prop_list_length; lia.
-Qed. 
-*)
-(*0 matrix*)
-(* not good bc of negative inputs
-Require Import PropList.
-
-Definition zero_mx (m n : Z) : matrix_type :=
-  
-  
-*)
-
-
-(*We need a boolean version of this for testing*)
-Definition wf_matrix_bool (mx: matrix) (m n : Z) : bool :=
-  if Z.eq_dec (Zlength mx) m then 
-  if Z_le_lt_dec 0 n then
-  if (forallb (fun x => if Z.eq_dec (Zlength x) n then true else false) mx) then true
-  else false else false else false.
-
-Lemma wf_bool_wf: forall mx m n,
-  wf_matrix_bool mx m n = true <->
-  wf_matrix mx m n.
-Proof.
-  move => mx m n. rewrite /wf_matrix_bool /wf_matrix.
-  case : (Z.eq_dec (Zlength mx) m) =>[Hmxlen /= | Hmxlen /=].
-  case : (Z_le_lt_dec 0 n) =>[Hn0 /= | Hn0 /=].
-  case Hfor : (forallb (fun x : seq F => if proj_sumbool (Z.eq_dec (Zlength x) n) then true else false) mx).
-  split. 2: by [].
-  move : Hfor; rewrite forallb_forall => Hin H{H}. repeat(split; try by []).
-  move => x Hinx. apply Hin in Hinx. move : Hinx. case : (Z.eq_dec (Zlength x) n) =>[Hxn //|//].
-  split. by []. move => [Hmx {Hmx} [ Hn {Hn}  Hin]].
-  have: (forall x : seq F, In x mx -> (if proj_sumbool (Z.eq_dec (Zlength x) n) then true else false) = true).
-  move => x Hinx. case : (Z.eq_dec (Zlength x) n) =>[//|Hneq /=]. by rewrite Hin in Hneq.
-  by rewrite -forallb_forall Hfor.
-  split. by []. move => [H{H} [Hn0' H{H}]]. lia. split. by []. lia.
-Qed.
-(*
-Lemma wf_bool_to_wf: forall mx m n,
-  wf_matrix_bool mx m n = true ->
-  wf_matrix mx m n.
-Proof.
-  move => mx m n. apply wf_bool_wf.
-Qed.*)
-(*
-Definition matrix_of_list (l: matrix_type) (m n : Z) : (matrix (Z.abs m) (Z.abs n)) :=
-  match (bool_dec (wf_matrix_bool l (Z.abs m) (Z.abs n)) true) with
-  | left H => exist (fun mx => wf_matrix mx (Z.abs m) (Z.abs n)) _ (wf_bool_to_wf H)
-  | right H => exist (fun mx => wf_matrix mx (Z.abs m) (Z.abs n)) _ (zero_mx_wf m n)
-  end.
-*)
-(*
-Definition matrix_of_list (l: matrix_type) (m n : nat) : (matrix (Z.of_nat m) (Z.of_nat n)).
-Admitted.
-Lemma wf_matrix_abs: forall mx m n,
-  wf_matrix mx m n ->
-  wf_matrix mx (Z.abs m) (Z.abs n).
-Proof.
-  move => mx m n. rewrite /wf_matrix => [[Hlen [Hn0 Hin]]].
-  split. list_solve. split. lia. move => x Hinx. rewrite Hin. lia. by [].
-Qed. 
-
-Lemma wf_matrix_abs_pos: forall mx m n,
-  0 <= m ->
-  0 <= n ->
-  wf_matrix mx (Z.abs m) (Z.abs n) ->
-  wf_matrix mx m n.
-Proof.
-  move => mx m n Hm Hn. rewrite /wf_matrix => [[Hlen [Hn0 Hin]]].
-  split. lia. split. lia. move => x Hinx. rewrite Hin. lia. by [].
-Qed.
-(*TODO: see what else we need or not about abs
-Lemma matrix_abs_prop: forall mx m n (P: forall m n, matrix m n -> Prop),
-  0 <= m ->
-  0 <= n ->
-  
-
-Definition remove_abs: forall mx m n (Hm: 0 <= m) (Hn 
-*)
-(*
-Lemma matrix_of_list_spec: forall mx m n,
-  wf_matrix mx m n ->
-  proj1_sig (matrix_of_list mx m n) = mx.
-Proof.
-  move => mx m n. rewrite -wf_bool_wf /matrix_of_list => Hwf.
-  case : (bool_dec (wf_matrix_bool mx (Z.abs m) (Z.abs n)) true) => [// | Hcon /=].
-  move : Hwf. rewrite wf_bool_wf => Hwf.
-  apply wf_matrix_abs in Hwf. by move : Hwf; rewrite -wf_bool_wf => Hwf.
-Qed. *)
-*)
-
 (*get the (i,j)th entry of a matrix*)
 Definition get (mx: matrix) (i j : Z) :=
   let row := Znth i mx in
   Znth j row.
-
-
 
 Lemma matrix_m_pos: forall {m n} (mx: matrix) (Hwf: wf_matrix mx m n),
   0 <= m.
@@ -212,26 +104,15 @@ Lemma matrix_n_pos: forall {m n} (mx: matrix) (Hwf: wf_matrix mx m n),
 Proof.
   move => m n mx. by rewrite /wf_matrix => [[Hm [Hn Hin]]].
 Qed.
-(*
 
-Definition get {m n} (mx: matrix m n) (i j : Z) :=
-  get_aux (proj1_sig mx) i j.
-*)
 Definition matrix_to_mx m n (mx: matrix) : 'M[F]_(Z.to_nat m, Z.to_nat n) :=
   \matrix_(i < Z.to_nat m, j < Z.to_nat n) (get mx (Z.of_nat i) (Z.of_nat j)).
 
-(*TODO: maybe need this
-Print strong_inv.
-Lemma matrix_to_mx_change_dep: forall (m n m' n' : Z) (mx : matrix m n) (mx' : matrix m' n'),
-  proj1_sig mx = proj1_sig mx' ->
-  matrix_to_mx mx = matrix_to_mx mx'.
-*)
+Section ScMul.
+
 (*For the row operations, it will help to define "partial" versions that operate on a sublist, since
   we need need a loop invariant for the operation*)
 
-Section ScMul.
-
-(*Note: we include the conditional so that the result is always a valid matrix, even if r is invalid*)
 Definition scalar_mul_row_partial (mx: matrix) (r: Z) (k: F) (bound: Z) : matrix :=
     let old_row := Znth r mx in
     let new_row := map (fun x => k * x) (sublist 0 bound old_row) ++ sublist bound (Zlength old_row) old_row in
@@ -269,12 +150,7 @@ Proof.
   subst.  rewrite upd_Znth_same; try lia. rewrite Znth_map. by [].
   rewrite Hin => [//|]. by apply Znth_In; lia. rewrite upd_Znth_diff => [//|||//]. all: lia.
 Qed. 
-(*
-(*Fold definition into dependent type*)
-Definition scalar_mul_row {m n} (mx: matrix m n) (r: Z) (k: F) : matrix m n :=
-  exist _ (scalar_mul_row_aux (proj1_sig mx) r k) 
-    (scalar_mul_row_aux_wf r k (Zlength_nonneg (Znth r (proj1_sig mx))) (proj2_sig mx)).
-*)
+
 (*Prove equivalent to [sc_mul]*)
 Lemma scalar_mul_row_equiv: forall {m n} (mx: matrix) r k (Hr: 0 <= r < m),
   wf_matrix mx m n ->
@@ -464,12 +340,6 @@ Proof.
     by apply Znth_In; lia.
   - by subst; rewrite /get upd_Znth_diff =>[|//|//|//].
 Qed.
-
-(*
-Definition add_multiple_row {m n} (mx: matrix m n) (r1 r2: Z) (k : F) : matrix m n :=
-  exist _ (add_multiple_aux (proj1_sig mx) r1 r2 k) 
-    (add_multiple_partial_aux_wf r1 r2 k (Zlength_nonneg (Znth r1 (proj1_sig mx))) (proj2_sig mx)).
-*)
 
 (*Equivalence with [add_mul]*)
 Lemma add_multiple_row_equiv: forall {m n} (mx: matrix) (r1 r2: Z) (k: F) (Hr1 : 0 <= r1 < m) (Hr2: 0 <= r2 < m),
