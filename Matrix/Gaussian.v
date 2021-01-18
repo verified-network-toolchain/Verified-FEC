@@ -1164,8 +1164,38 @@ Qed.
   to the full thing as long as the input matrix satisfies several (fairly strong) invertibility properties*)
 
 (*First, we define the intermediate functions and gaussian elimination steps*)
+(*For this one in particular, we need a generalized version, since in the C proof, we need to reason about
+  intermediate steps (namely, we need to know all entries in the rth column are nonzero*)
+Definition all_cols_one_noif_gen {m n} (A: 'M[F]_(m, n)) (c: 'I_n) (l: list 'I_m) :=
+  foldr (fun x acc => sc_mul acc (A x c)^-1 x) A l.
+
+Lemma all_cols_one_noif_notin: forall {m n} (A : 'M[F]_(m, n)) (c: 'I_n) x y l,
+  x \notin l ->
+  (all_cols_one_noif_gen A c l) x y = A x y.
+Proof.
+  move => m n A c x y l. rewrite /all_cols_one_noif_gen. elim : l => [Hin //=| h t IH Hin /=].
+  rewrite /sc_mul mxE. have ->: x == h = false. case Hxh : (x == h) => [| //].
+  move : Hin. by rewrite in_cons Hxh. rewrite IH. by []. move : Hin. rewrite in_cons negb_or.
+  case : (x \notin t). by []. by rewrite andbF.
+Qed.
+
+Lemma all_cols_one_noif_gen_zero: forall {m n} (A : 'M[F]_(m, n)) (c: 'I_n) x y l,
+  uniq l ->
+  (forall (x: 'I_m), A x c != 0) ->
+  ((all_cols_one_noif_gen A c l) x y == 0) = (A x y == 0).
+Proof.
+  move => m n A c x y l Hun Hz.
+  case Hin : (x \in l).
+  - rewrite mx_row_transform => [|||//|//].
+    + have: A x c == 0 = false. move : (Hz x). by case : (A x c == 0).
+      by rewrite /sc_mul mxE eq_refl GRing.mulf_eq0 GRing.invr_eq0; move ->.
+    + move => A' i j r Hir. rewrite /sc_mul mxE. by have ->: i == r = false by move : Hir; case : (i == r).
+    + move => A' B r Hin' Hout j. by rewrite /sc_mul !mxE eq_refl Hin'.
+  -  rewrite all_cols_one_noif_notin. by []. by rewrite Hin.
+Qed. 
+
 Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
-  foldr (fun x acc => sc_mul acc (A x c)^-1 x) A (ord_enum m).
+  all_cols_one_noif_gen A c (ord_enum m).
 
 Lemma all_cols_one_equiv: forall {m n} (A: 'M[F]_(m, n)) c,
   (forall (x: 'I_m), A x c != 0) ->
@@ -1177,20 +1207,31 @@ Proof.
   by rewrite IH.
 Qed.
 
-Definition all_cols_one_noif_l {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
-  foldl (fun acc x => sc_mul acc (A x c)^-1 x) A (ord_enum m).
+Definition all_cols_one_noif_l_gen {m n} (A: 'M[F]_(m, n)) (c: 'I_n) (l: list 'I_m) :=
+  foldl (fun acc x => sc_mul acc (A x c)^-1 x) A l.
 
-Lemma all_cols_one_noif_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) ,
-  all_cols_one_noif A c = all_cols_one_noif_l A c.
+Lemma all_cols_one_noif_gen_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) l,
+  uniq l ->
+  all_cols_one_noif_gen A c l = all_cols_one_noif_l_gen A c l.
 Proof.
-  move => m n A c. rewrite /all_cols_one_noif /all_cols_one_noif_l. 
-  have {2}->: (ord_enum m) = rev (rev (ord_enum m)) by rewrite revK. rewrite foldl_rev.
+  move => m n A c l Hu. rewrite /all_cols_one_noif_gen /all_cols_one_noif_l_gen. 
+  have {2}->: l = rev (rev l) by rewrite revK. rewrite foldl_rev.
   apply mx_row_transform_rev.
   - move => A' i' j' r'.
     rewrite /sc_mul mxE /negb. by case: (i' == r').
   - move => A' B' r Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
-  - apply ord_enum_uniq.
+  - by [].
 Qed.
+
+Definition all_cols_one_noif_l {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
+  all_cols_one_noif_l_gen A c (ord_enum m).
+
+Lemma all_cols_one_noif_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) ,
+  all_cols_one_noif A c = all_cols_one_noif_l A c.
+Proof.
+  move => m n A c. apply all_cols_one_noif_gen_foldl. apply ord_enum_uniq.
+Qed.
+
 
 Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
@@ -1795,6 +1836,18 @@ Proof.
   pose proof (gauss_all_steps_restrict_aux_inv H0rbound (gauss_invar_init _) Hstr).
   by rewrite H0r in H.
 Qed.
+
+Lemma gauss_all_steps_restrict_beg_strong: forall {m n } (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat) (Hm: 0 < m) 
+  (Hr: r < m),
+  strong_inv A Hmn (Ordinal Hm) ->
+  strong_inv (gauss_all_steps_restrict_beg A Hmn r) Hmn (Ordinal Hr).
+Proof.
+  move => m n A Hmn r Hm Hr Hstr.
+  rewrite /gauss_all_steps_restrict_beg.
+  have H0rm : 0 + r < m by [].
+  pose proof (@gauss_all_steps_restrict_aux_strong _ _ _ _ _ _ _ H0rm  (gauss_invar_init _) Hstr).
+  rewrite strong_inv_dep. apply H. by have: (r == 0 + r)%N by [].
+Qed. 
 
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
   which oeprates on the result of gaussian elimination*)
