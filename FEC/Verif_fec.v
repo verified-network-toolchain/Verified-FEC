@@ -589,7 +589,15 @@ Proof.
                 (flatten_mx (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
                 gauss_step_row cols_one_row)) <> 0%Z). {
               rewrite (@flatten_mx_Znth m n); try lia. 2: assumption. intro Hzero.
-              rewrite poly_to_int_zero_iff in Hzero. admit. } 
+              rewrite poly_to_int_zero_iff in Hzero. 
+              assert (Hrm : 0 <= gauss_step_row < m) by lia.
+              assert (Hcm : 0 <= cols_one_row < m) by lia.
+              apply (gauss_all_steps_columns_partial_zeroes_list Hrm H1 (proj2 Hmn) Hwf Hstr Hcm). 
+              replace (ssralg.GRing.zero (ssralg.GRing.Field.zmodType F)) with (q0 modulus_poly_deg_pos) by reflexivity.
+              destruct ((get (F:=F)
+             (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
+                gauss_step_row cols_one_row) cols_one_row gauss_step_row)) eqn : G. unfold q0. unfold r0. exist_eq.
+              simpl in Hzero. assumption. } 
              apply mapsto_memory_block.repr_inj_unsigned in H7. contradiction. 2: rep_lia.
              rewrite (@flatten_mx_Znth m n); try lia. eapply Z_expand_bounds.
              3 : { apply qpoly_int_bound. } lia. rep_lia. assumption. 
