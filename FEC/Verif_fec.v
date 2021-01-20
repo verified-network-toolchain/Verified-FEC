@@ -419,15 +419,22 @@ start_function.
 forward_if (PROP () LOCAL (temp _modulus (Vint (Int.repr 285))) SEP ()).
 *)
 
-(*TODO:see*)
-Hint Rewrite fec_n_eq : rep_lia.
-
 (** Verification of [fec_generate_math_tables]*)
+
+(*TODO: Qed takes a long time, and I don't know why. It might be unfolding constants or something*)
 Lemma body_fec_generate_math_tables : semax_body Vprog Gprog f_fec_generate_math_tables fec_generate_math_tables_spec.
 Proof.
 start_function.
 forward_call.
 pose proof fec_n_bound as Fbound.
+pose proof modulus_poly_deg_pos as Hpos.
+pose proof modulus_poly_not_x as Hnotx.
+pose proof modulus_poly_primitive as Hprim.
+pose proof modulus_poly_irred as Hirred.
+pose proof modulus_poly_not_zero as Hnonzero.
+pose proof modulus_poly_deg_bounds as Hbounds.
+pose proof modulus_poly_deg as Hdeglog.
+pose proof modulus_pos as Hmodulus.
 (*loop invariants
   1. fec_2_index: filled out up to ith position, this is relatively straightforward to specity
   2. fec_2_power: is a list l such that for all z, 0 < z < fec_n ->
@@ -453,14 +460,6 @@ pose proof fec_n_bound as Fbound.
   - forward. Exists 0%Z. Exists ((list_repeat (Z.to_nat fec_n) 0%Z)). entailer!.
     rewrite Znth_list_repeat_inrange; lia. simpl. cancel.
   - Intros i. Intros l.
-    pose proof modulus_poly_deg_pos as Hpos.
-    pose proof modulus_poly_not_x as Hnotx.
-    pose proof modulus_poly_primitive as Hprim.
-    pose proof modulus_poly_irred as Hirred.
-    pose proof modulus_poly_not_zero as Hnonzero.
-    pose proof modulus_poly_deg_bounds as Hbounds.
-    pose proof modulus_poly_deg as Hdeglog.
-    pose proof modulus_pos as Hmodulus.
     forward_if.
     + (*Loop body*)  forward_if (PROP (0 <= i <= fec_n /\ 
       (forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i -> 
@@ -485,7 +484,7 @@ pose proof fec_n_bound as Fbound.
            rewrite unsigned_repr. all: rep_lia.
         -- (*body continue with shift, rewrite shift into polynomial mult*)
            forward. 
-           (*TODO: WTF is going on here. forward_if takes forever, rewriting doesnt work, the resulting
+           (*TODO: What is going on here. forward_if takes forever, rewriting doesnt work, the resulting
               if condition is terrible, even simpl hangs. Is it just because of a constant?*)
            assert (Hshl : (Int.shl (Int.repr (poly_to_int (monomial (Z.to_nat (i - 1)) %~ mod_poly))) (Int.repr 1)) =
                      (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))))). {
@@ -529,7 +528,7 @@ pose proof fec_n_bound as Fbound.
                  (Int.signed (Int.repr 256))) as [Hif | Hif]. inversion H4. clear H4.
              rewrite !Int.signed_repr in Hif; try rep_lia.
              forward.
-             ** entailer!.
+             ** entailer!. rewrite fec_n_eq; lia.
              ** entailer!. unfold Int.xor. rewrite !unsigned_repr; try rep_lia.
                  (*Core of proof: this actually finds x^i % f in this case (complicated because x * (x^(i-1) %f) overflows)*)
                  assert (Hpi : Vint (Int.zero_ext 8 (Int.repr (Z.lxor 
@@ -583,7 +582,7 @@ pose proof fec_n_bound as Fbound.
              (Int.signed (Int.repr 256))) as [Hlt | ]. inversion H4. clear H4.
              rewrite !Int.signed_repr in Hlt; try rep_lia.
              ** forward.
-                --- entailer!.
+                --- entailer!. rewrite fec_n_eq; lia.
                 --- entailer!. assert (Hmon : (Vint (Int.zero_ext 8 (Int.repr (poly_to_int
                      (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)))))) = 
                       Vint (Int.repr (poly_to_int (monomial (Z.to_nat i) %~ mod_poly)))). {
@@ -617,12 +616,12 @@ pose proof fec_n_bound as Fbound.
         assert (Hbound: 0 <= poly_to_int (monomial (Z.to_nat i) %~ mod_poly) < fec_n). { apply modulus_poly_bound.
         apply pmod_lt_deg; auto. } rewrite fec_n_eq in Hbound.
         forward.
-        -- entailer!.
+        -- entailer!. rewrite fec_n_eq; lia.
         -- entailer!. rewrite Znth_app1. 2: solve_prop_length. rewrite power_to_index_contents_Znth; try lia. simpl.
            rewrite unsigned_repr; rep_lia.
         -- rewrite Znth_app1. 2: solve_prop_length. rewrite power_to_index_contents_Znth; try lia.
            forward.
-           ++ entailer!.
+           ++ entailer!. rewrite fec_n_eq; lia.
            ++ forward. entailer!.
               (*now continue and show loop invariant preserved - this is a bit tricky because
               we are not filling up the array in an orderly way - need to show that we dont fill in the same
@@ -674,7 +673,173 @@ pose proof fec_n_bound as Fbound.
           assert (Hnz: poly_of_int i <> zero). intro Hz. rewrite poly_of_int_zero in Hz. lia.
           specialize (Hfp Hnz (polys_deg_bounded _ Hi)). destruct Hfp as [ ? Hfpbound].
           rewrite field_size_fec_n in Hfpbound. lia. } rewrite Hl. unfold index_to_power_contents. cancel.
-  - (*Second loop: calculate inverses*)
+  - (*Second loop: calculate inverses*) 
+    pose proof field_size_fec_n as Hfieldsize.
+    forward_for_simple_bound 256%Z (EX (i : Z) (l: list Z),
+    PROP (0 <= i <= fec_n  /\ Znth 0 l = 0%Z /\ (forall z, 0 < z < fec_n -> 0 <= poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z)) < i ->
+          Znth z l = poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z))
+      ))
+    LOCAL (temp _mod (Vint (Int.repr modulus));  gvars gv)
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+        data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+        data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr l)) (gv _fec_invefec ))).
+    + Exists (list_repeat (Z.to_nat fec_n ) 0%Z). entailer!. rewrite Znth_list_repeat_inrange.
+      reflexivity. lia.
+    + assert (Hfpbound: 0 <= find_power mod_poly (poly_of_int i) <= fec_n - 1). {
+       destruct (Z.eq_dec i 0).
+       - subst. assert (Hz: (poly_of_int 0 = zero)) by (rewrite poly_of_int_zero; lia). rewrite Hz.
+         rewrite find_power_zero. lia. all: assumption.
+       - pose proof (find_power_spec _ Hpos Hprim Hnotx (poly_of_int i)) as Hfp.
+         assert (poly_of_int i <> zero). intro Hz. rewrite poly_of_int_zero in Hz. lia.
+         assert (deg (poly_of_int i) < deg mod_poly). apply polys_deg_bounded. rewrite fec_n_eq; lia. 
+         specialize (Hfp H0 H1). rewrite fec_n_eq; destruct Hfp; rep_lia. }
+      forward.
+      * entailer!. rewrite fec_n_eq; lia.
+      * entailer!. rewrite index_to_power_contents_Znth. 2: rewrite fec_n_eq; lia. simpl.
+        rewrite unsigned_repr; rep_lia.
+      * rewrite index_to_power_contents_Znth. 2: rewrite fec_n_eq; lia.
+        assert (Hinvbound: 0 <=
+            poly_to_int (monomial (Z.to_nat (255 - find_power mod_poly (poly_of_int i))) %~ mod_poly) <
+            256). { rewrite <- fec_n_eq. apply modulus_poly_bound. apply pmod_lt_deg. auto. }
+        forward.
+        -- entailer!. rewrite fec_n_eq; lia.
+        -- entailer!. rewrite power_to_index_contents_Znth. simpl.
+           rewrite unsigned_repr; rep_lia. rewrite fec_n_eq; lia.
+        -- rewrite power_to_index_contents_Znth. 2: { simpl. rewrite fec_n_eq; lia. }
+           forward.
+          ++ entailer!. rewrite fec_n_eq; lia.
+          ++ (*loop invariant preservation*)
+              Exists (upd_Znth (poly_to_int (monomial (Z.to_nat 
+                (fec_n - 1 - find_power mod_poly (poly_of_int i))) %~ mod_poly)) l i).
+            entailer!.
+            ** assert (Hlen: Zlength l = fec_n) by list_solve. split. rewrite fec_n_eq; lia. split.
+              --- (*handle 0 case separately*)
+                  destruct (Z.eq_dec 0%Z (poly_to_int (monomial (Z.to_nat 
+                    (fec_n - 1 - find_power mod_poly (poly_of_int i))) %~ mod_poly))).
+                +++ rewrite <- poly_of_int_to_int in e. assert (Hz: poly_of_int 0 = zero) by (rewrite poly_of_int_zero; lia).
+                    rewrite Hz in e. exfalso. 
+                    apply (irred_doesnt_divide_monomial mod_poly (Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i)))).
+                    all: try assumption. rewrite divides_pmod_iff. unfold divides_pmod. apply e. left. 
+                    assumption. lia.
+                +++ rewrite upd_Znth_diff. assumption. list_solve. rewrite Hlen; rewrite fec_n_eq; auto. 
+                    assumption.
+              --- intros z Hzf Hpi1. 
+                  assert (0 <=  poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z)) < i \/
+                    poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z)) = i) by lia. 
+                  destruct H14 as [Hilt | Hi].
+                +++ rewrite upd_Znth_diff. apply H2; try assumption; try lia. list_solve.
+                    rewrite Hlen; rewrite fec_n_eq; auto. (*contradiction: i and z are inverses*)
+                    intro Hz. assert (poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z)) = i). {
+                    symmetry. rewrite <- poly_of_int_to_int. 2 : lia. 
+                    destruct (Z.eq_dec z 0%Z).
+                    - subst. symmetry in e. rewrite <- poly_of_int_to_int in e; try lia.
+                      assert (Hzero: poly_of_int 0 = zero) by (rewrite poly_of_int_zero; lia). rewrite Hzero in e.
+                      exfalso. apply (irred_doesnt_divide_monomial mod_poly 
+                        (Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i)))); try assumption.
+                      rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. assumption.
+                    - symmetry. rewrite <- poly_inv_iff. rewrite Hz. rewrite poly_of_int_inv.
+                      pose proof (find_power_spec _ Hpos Hprim Hnotx (poly_of_int i)) as Hfp.
+                      assert (Hinz: poly_of_int i <> zero). { intro Hzero. rewrite poly_of_int_zero in Hzero. lia. }
+                      assert (Hdegi: deg (poly_of_int i) < deg mod_poly). apply polys_deg_bounded; rewrite fec_n_eq; lia.
+                      specialize (Hfp Hinz Hdegi). destruct Hfp as [Hi Hfp_bound]. rewrite Hi at 2. split. 2: assumption.
+                      rewrite pmod_mult_reduce. rewrite poly_mult_comm. rewrite pmod_mult_reduce. rewrite monomial_exp_law.
+                      replace ((Z.to_nat (find_power mod_poly (poly_of_int i)) +
+                      Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i)))%nat) with (Z.to_nat (fec_n - 1)) by lia.
+                      replace (Z.to_nat (fec_n - 1)) with (0%nat + Z.to_nat (fec_n -1))%nat by lia.
+                      rewrite <- Hfieldsize. replace (Z.to_nat (Z.of_nat (field_size mod_poly))) with
+                      (field_size mod_poly) by lia.
+                      rewrite <- monomial_add_field_size. rewrite monomial_0. apply pmod_refl.
+                      all: try assumption. assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
+                      intro Hzero. rewrite pmod_refl in Hzero. rewrite poly_of_int_zero in Hzero. lia.
+                      assumption. apply polys_deg_bounded. lia. } lia.
+                +++ (*proving the actual update, since i and z are correctly inverses this time*)
+                    symmetry in Hi. rewrite <- poly_of_int_to_int in Hi. 2: lia.
+                    assert (Hzi : poly_of_int z = poly_inv mod_poly modulus_poly_deg_pos (poly_of_int i)). {
+                      rewrite poly_inv_sym. rewrite Hi. reflexivity. all: try assumption. apply polys_deg_bounded.
+                      rewrite fec_n_eq; lia. apply polys_deg_bounded. lia. }
+                    assert (Hz: z = (poly_to_int (monomial (Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i))) %~ mod_poly))). {
+                      rewrite <- poly_of_int_to_int. rewrite Hzi. 2: lia.
+                      destruct (destruct_poly (poly_of_int i)).
+                      - rewrite e in Hi. rewrite <- poly_inv_zero in Hi. rewrite pmod_refl in Hi. 
+                        rewrite poly_of_int_zero in Hi. lia. all: try assumption. apply polys_deg_bounded.
+                        lia.
+                      - rewrite <- poly_inv_iff. split. pose proof (find_power_spec _ Hpos Hprim Hnotx (poly_of_int i) n) as Hfp.
+                        assert (Hideg: deg (poly_of_int i) < deg mod_poly). { apply polys_deg_bounded; rewrite fec_n_eq; lia. }
+                        specialize (Hfp Hideg). destruct Hfp as [Hpi Hfp_bound]. rewrite Hpi at 1. rewrite pmod_mult_reduce.
+                        rewrite poly_mult_comm. rewrite pmod_mult_reduce. rewrite monomial_exp_law.
+                        replace ((Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i)) +
+                          Z.to_nat (find_power mod_poly (poly_of_int i))))%nat with (0 + Z.to_nat (fec_n - 1))%nat by lia.
+                        rewrite <- Hfieldsize. replace ( Z.to_nat (Z.of_nat (field_size mod_poly))) with (field_size mod_poly)
+                        by lia. rewrite <- monomial_add_field_size. rewrite monomial_0. apply pmod_refl.
+                        all: try assumption. assert (0%Z = deg one) by (rewrite deg_one; reflexivity). lia.
+                        apply pmod_lt_deg; assumption. rewrite pmod_refl; try assumption. 
+                        apply polys_deg_bounded; rewrite fec_n_eq; lia. }
+                    rewrite <- Hz. rewrite upd_Znth_same. rewrite <- poly_of_int_to_int. assumption.
+                    lia. list_solve.
+            ** assert (Hl: (upd_Znth
+                (poly_to_int (monomial (Z.to_nat (255 - find_power mod_poly (poly_of_int i))) %~ mod_poly))
+                (map Vint (map Int.repr l)) (Vint (Int.zero_ext 8 (Int.repr i)))) = 
+                (map Vint (map Int.repr (upd_Znth (poly_to_int
+                  (monomial (Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i))) %~ mod_poly)) l
+                  i)))). { rewrite upd_Znth_map. f_equal. rewrite <- upd_Znth_map. f_equal. unfold Int.zero_ext.
+                rewrite fec_n_eq; simpl. reflexivity. unfold Int.zero_ext. f_equal. rewrite Zbits.Zzero_ext_mod.
+                replace (two_p 8) with (256) by reflexivity.
+                 rewrite Zmod_small. all: try(rewrite unsigned_repr; rep_lia). lia. } 
+               rewrite Hl. cancel.
+    + (*postcondition of 2nd loop*)
+      Intros l. entailer!.
+      assert (Hl: (map Vint (map Int.repr l)) = (inverse_contents fec_n)). {
+        unfold inverse_contents. f_equal. f_equal. apply Znth_eq_ext. rewrite prop_list_length. list_solve. lia.
+        intros i Hi.
+        rewrite prop_list_Znth. 2: list_solve. assert (i = 0%Z \/ 0 < i) by lia. destruct H11 as [Hiz | Hipos].
+        - subst. rewrite H0. assert (Hz: poly_of_int 0 = zero) by (rewrite poly_of_int_zero; lia). rewrite Hz.
+          rewrite poly_inv_of_zero. symmetry. rewrite poly_to_int_zero_iff. reflexivity. all: try assumption.
+        - rewrite H1. reflexivity. list_solve. 
+          rewrite <- fec_n_eq. apply modulus_poly_bound.
+          pose proof (poly_inv_spec _ modulus_poly_deg_pos Hirred (poly_of_int i)) as Hinv. apply Hinv.
+          rewrite pmod_refl; auto. intro Hzero. rewrite poly_of_int_zero in Hzero. lia.
+          apply polys_deg_bounded; try rep_lia. list_solve. } rewrite Hl. cancel.
+Qed.
+
+
+ specialize (H17 H18).
+        destruct H17. specialize (H16 H19). lia. } rewrite H14. cancel.
+      
+
+
+
+            **
+
+
+ rewrite H17; cancel.
+                +++
+                     lia.
+
+ apply n. 
+           simpl.
+
+ split; try lia. assert (forall x y z, x < z -> y >= 0 -> x - y < z).
+            intros. lia. apply H13.
+
+
+  pose proof (modulus_poly_bound
+              ((monomial (Z.to_nat (255 - find_power mod_poly (poly_of_int i))) %~ mod_poly))).
+              assert (deg (monomial (Z.to_nat (fec_n - 1 - find_power mod_poly (poly_of_int i))) %~ mod_poly) <
+              deg mod_poly). apply pmod_lt_deg. assumption. specialize (H3 H4). lia. }
+          forward.
+
+
+ entailer!.
+    forward_loop (EX (i : Z) (l: list Z),
+    PROP (0 <= i <= fec_n  /\ Znth 0 l = 0%Z /\ (forall z, 0 < z < fec_n -> 0 <= poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z)) < i ->
+          Znth z l = poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int z))
+      ))
+    LOCAL (temp _mod (Vint (Int.repr modulus)); temp _i (Vint (Int.repr i)); gvars gv)
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+        data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+        data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr l)) (gv _fec_invefec ))).
+    (*need the Znth 0 l because of annoying corner case - technically, when i=0 and i=1, we fill in the
+      same spot in the inverse array, overwriting the previous one correctly*)
 
 
 Lemma sem_sub_pi_offset: forall ty s off n,
