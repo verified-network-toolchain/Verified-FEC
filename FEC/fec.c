@@ -75,7 +75,7 @@ void fec_generate_weights(void);
 
 int fec_matrix_transform(fec_sym *p, fec_sym i_max, fec_sym j_max);
 
-void fec_gf_mult(fec_sym multiplier, fec_sym multiplicand, fec_sym *product);
+//void fec_gf_mult(fec_sym multiplier, fec_sym multiplicand, fec_sym *product); JOSH - not used in original code
 void fec_generate_math_tables(void);
 int fec_find_mod(void);
 #ifdef MAC_LOOKUP
@@ -137,7 +137,22 @@ fec_sym gf_mult_table[FEC_N][FEC_N];	/* Multiplication table */
 
 /* GF multiply only (no accumulate) */
 
-#define FEC_GF_MULT(a,b) ((a && b) ? (((fec_2_power[a]+fec_2_power[b]) > FEC_N-1) ? (fec_2_index[((fec_2_power[a]+fec_2_power[b])-(FEC_N-1))]) : (fec_2_index[(fec_2_power[a]+fec_2_power[b])])) : 0)
+//#define FEC_GF_MULT(a,b) ((a && b) ? (((fec_2_power[a]+fec_2_power[b]) > FEC_N-1) ? (fec_2_index[((fec_2_power[a]+fec_2_power[b])-(FEC_N-1))]) : (fec_2_index[(fec_2_power[a]+fec_2_power[b])])) : 0)
+
+//JOSH - Made into function for ease of verification (does not make runtime worse at gcc O2 and O3 - inlined at O3)
+fec_sym fec_gf_mult(fec_sym a, fec_sym b) {
+  if (a && b) {
+    if ((fec_2_power[a]+fec_2_power[b]) > FEC_N-1) {
+      return (fec_2_index[((fec_2_power[a]+fec_2_power[b])-(FEC_N-1))]);
+    }
+    else {
+      return ((fec_2_index[(fec_2_power[a]+fec_2_power[b])]));
+    }
+  }
+  else {
+    return 0;
+  }
+}
 
 
 /***************************************************************************/
@@ -543,7 +558,7 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
 	   * Multiply rows so (max - k)'th column has all 1's
 	   */
 	  q = (p + (i * j_max) + j_max - 1);	/* last row i entry */
-	  m = q - j_max;
+	  m = q - j_max + 1; //JOSH - added +1 invaid otherwise (if i = 0, m = p - 1)
 	  w = i;
 
 	  while (*(q - k) == 0)
@@ -568,8 +583,8 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
 	    }
 
 	  inv = fec_invefec[*(q - k)];
-	  for (n = q; n > m; n--)	/* Loop 3 */
-	    *n = FEC_GF_MULT (*n, inv);
+	  for (n = q; n >= m; n--)	/* Loop 3 */ //JOSH - need n >= m because of previous change
+	    *n = fec_gf_mult (*n, inv);
 
 #ifdef FEC_DBG_PRINT_TRANS
 
@@ -618,7 +633,7 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
       m = q - j_max;
       inv = fec_invefec[*(q - i)];
       for (n = q; n > m; n--)	/* Loop 3 */
-	*n = FEC_GF_MULT (*n, inv);
+	*n = fec_gf_mult (*n, inv);
     }
 
   return (0);
@@ -719,7 +734,7 @@ gen_gf_mult_table (fec_sym gf_table[FEC_N][FEC_N])
   for (i = 0; i < FEC_N; i++)
     {
       for (j = 0; j < FEC_N; j++)
-	gf_table[i][j] = FEC_GF_MULT (i, j);
+	gf_table[i][j] = fec_gf_mult (i, j);
 
     }
 }

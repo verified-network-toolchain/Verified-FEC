@@ -104,10 +104,9 @@ Proof.
   apply test_primitive. assert (deg p128 = 7) by reflexivity.
   split. lia. split. apply p128_irred. split. prim1. compute. reflexivity.
 Qed.
-(*
+
 Lemma p256_primitive: primitive p256.
 Proof.
   apply test_primitive. assert (deg p256 = 8) by reflexivity.
   split. lia. split. apply p256_irred. split. prim1. compute. reflexivity.
 Qed.
-*)

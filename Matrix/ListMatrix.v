@@ -121,6 +121,18 @@ Definition scalar_mul_row_partial (mx: matrix) (r: Z) (k: F) (bound: Z) : matrix
 Definition scalar_mul_row (mx: matrix) (r: Z) (k: F) : matrix :=
   scalar_mul_row_partial mx r k (Zlength (Znth r mx)).
 
+Lemma scalar_mul_row_partial_0: forall mx r k,
+  scalar_mul_row_partial mx r k 0 = mx.
+Proof.
+  move => mx r k. rewrite /scalar_mul_row_partial sublist_nil /= sublist_same => [//|//|//].
+  have [Hout | Hin]: ((0 > r \/ r >= Zlength mx) \/ 0 <= r < Zlength mx) by lia.
+  - by apply upd_Znth_out_of_range.
+  - apply Znth_eq_ext. list_solve. move => i len.
+    have [Heq | Hneq]: (i = r \/ i <> r) by lia.
+    + subst. by rewrite upd_Znth_same; try lia.
+    + rewrite upd_Znth_diff => [//|//|//|//]. list_solve.
+Qed.
+
 Lemma scalar_mul_row_partial_wf: forall mx m n r k bound,
   0 <= bound ->
   0 <= r < m ->
