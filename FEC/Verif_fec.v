@@ -136,8 +136,8 @@ Qed.
 
 Lemma modulus_poly_primitive: primitive mod_poly.
 Proof.
-  rewrite modulus_poly. (*TODO: go back and compile: apply p256_primitive.*)
-Admitted.
+  rewrite modulus_poly. apply p256_primitive. 
+Qed.
 
 Lemma modulus_poly_irred: irreducible mod_poly.
 Proof.
@@ -179,9 +179,7 @@ Definition inverse_contents bound :=
     (map Vint (map Int.repr (prop_list (fun z => 
       poly_to_int (poly_inv mod_poly modulus_poly_deg_pos  (poly_of_int z))) bound))).
 
-
 Ltac solve_prop_length := try (unfold power_to_index_contents); try(unfold inverse_contents); rewrite? Zlength_map; rewrite prop_list_length; lia.
-
 
 Lemma power_to_index_contents_plus_1: forall bound,
   0 <= bound ->
@@ -223,8 +221,6 @@ Proof.
   rewrite prop_list_Znth. reflexivity. lia.
 Qed.
 
-
-
 Lemma inverse_contents_length: forall bound,
   0 <= bound ->
   Zlength (inverse_contents bound) = bound.
@@ -241,11 +237,6 @@ Proof.
 Qed.
 
 Definition F := qpoly_fieldType modulus_poly_deg_pos modulus_poly_irred.
-(*Not sure if we need this but good that it's provable*)
-Lemma field_sort : (ssralg.GRing.Field.sort F) = qpoly (mod_poly).
-Proof.
-  reflexivity.
-Qed.
 
 Instance F_inhab : Inhabitant (ssralg.GRing.Field.sort F) := inhabitant_F F.
 
@@ -346,9 +337,6 @@ Qed.
 
 (*TODO: go back and update field proofs with real code (or see if we need qpoly)*)
 (*TODO: make sure this makes sense/is workable*)
-(*Note: we use nats rather than Z because we need m and n to be nonnegative - if not, we cannot
-  construct a default matrix (for matrix_of_list), and need to use Z.abs, which causes all sorts
-  of complications due to the dependent types (eg: lia doesnt work)*)
 
 (*Note: removed dependent types from matrix definition since it causes issues in VST and lia*)
 Definition fec_matrix_transform_spec :=
@@ -371,11 +359,223 @@ Definition fec_matrix_transform_spec :=
          data_at Ews (tarray tuchar (m * n)) 
           (map Vint (map Int.repr (flatten_mx (gauss_restrict_rows mx m)))) s).
 
-Definition Gprog := [fec_matrix_transform_spec].
+Definition fec_gf_mult_spec :=
+  DECLARE _fec_gf_mult
+  WITH gv: globals, f : Z, g : Z
+  PRE [ tuchar, tuchar ]
+    PROP (0 <= f < fec_n /\ 0 <= g < fec_n)
+    PARAMS (Vint (Int.repr f); Vint (Int.repr g))
+    GLOBALS (gv)
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power))
+  POST [ tuchar ]
+    PROP ()
+    RETURN (Vint (Int.repr (poly_to_int (((poly_of_int f) *~ (poly_of_int g)) %~ mod_poly ))))
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power)).
 
-(*Can we generalize at all?*)
+(*TODO: make sure it is OK to assume initialized to 0, should be good for global variables*)
+Definition fec_generate_math_tables_spec :=
+  DECLARE _fec_generate_math_tables
+  WITH gv : globals
+  PRE [ ]
+    PROP ()
+    PARAMS ()
+    GLOBALS (gv)
+    SEP (data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z))) 
+          (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z))) 
+          (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n)  
+            (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z))) (gv _fec_invefec))
+  POST [ tvoid ]
+    PROP ()
+    RETURN ()
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec)).
 
-Print sem_binary_operation'.
+(*TODO: how to do without the WITH?*)
+Definition fec_find_mod_spec :=
+  DECLARE _fec_find_mod 
+  WITH x : unit
+  PRE [ ]
+    PROP ()
+    PARAMS ()
+    SEP ()
+  POST [ tint ]
+    PROP ()
+    RETURN (Vint (Int.repr modulus))
+    SEP ().
+
+Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec].
+
+(** Verification of [fec_find_mod]*)
+(*
+Lemma body_fec_find_mod : semax_body Vprog Gprog f_fec_find_mod fec_find_mod_spec.
+Proof.
+start_function.
+(*TODO: why doesn't this work, and how to prove a switch statement in which only 1 branch can be taken?*)
+forward_if (PROP () LOCAL (temp _modulus (Vint (Int.repr 285))) SEP ()).
+*)
+
+(*TODO:see*)
+Hint Rewrite fec_n_eq : rep_lia.
+
+(** Verification of [fec_generate_math_tables]*)
+Lemma body_fec_generate_math_tables : semax_body Vprog Gprog f_fec_generate_math_tables fec_generate_math_tables_spec.
+Proof.
+start_function.
+forward_call.
+pose proof fec_n_bound as Fbound.
+(*loop invariants
+  1. fec_2_index: filled out up to ith position, this is relatively straightforward to specity
+  2. fec_2_power: is a list l such that for all z, 0 < z < fec_n ->
+      find_power (poly_of_int z) <= i ->
+      Znth l z = index_of_poly (poly_of_int z)
+  this way, when we finish, all elements are present
+  0 is an annoying special case. - 0th index is not used, so find_power[0] = 0*) 
+  forward_loop (EX (i : Z) (l: list Z),
+    PROP (0 <= i <= fec_n /\ (forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i ->
+          Znth z l = find_power mod_poly (poly_of_int z)) /\
+      Znth 0 l = 0%Z)
+    LOCAL (temp _i (Vint (Int.repr i)); temp _mod (Vint (Int.repr modulus)); gvars gv)
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents i ++ map Vint (map Int.repr (list_repeat
+      (Z.to_nat (fec_n - i)) 0%Z))) (gv _fec_2_index);
+        data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr l)) (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z)))
+     (gv _fec_invefec)))
+    break: (PROP () LOCAL (temp _mod (Vint (Int.repr modulus)); gvars gv)
+            SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+          data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z)))
+     (gv _fec_invefec))).
+  - forward. Exists 0%Z. Exists ((list_repeat (Z.to_nat fec_n) 0%Z)). entailer!.
+    rewrite Znth_list_repeat_inrange; lia. simpl. cancel.
+  - Intros i. Intros l.
+    pose proof modulus_poly_deg_pos as Hpos.
+    pose proof modulus_poly_not_x as Hnotx.
+    pose proof modulus_poly_primitive as Hprim.
+    pose proof modulus_poly_irred as Hirred.
+    pose proof modulus_poly_not_zero as Hnonzero.
+    pose proof modulus_poly_deg_bounds as Hbounds.
+    pose proof modulus_poly_deg as Hdeglog.
+    pose proof modulus_pos as Hmodulus.
+    forward_if.
+    + (*Loop body*)  forward_if (PROP (0 <= i <= fec_n /\ 
+      (forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i -> 
+          Znth z l = find_power mod_poly (poly_of_int z)) /\
+      Znth 0 l = 0%Z)
+      LOCAL (temp _mod (Vint (Int.repr modulus)); temp _i (Vint (Int.repr i)); gvars gv)
+      SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents (i + 1) ++ map Vint (map Int.repr (list_repeat
+      ((Z.to_nat fec_n) - Z.to_nat (i + 1))%nat 0%Z))) (gv _fec_2_index);
+        data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr l)) (gv _fec_2_power);
+        data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z)))
+        (gv _fec_invefec))).
+      * (*i=0 case (base case)*) forward. entailer!.
+        simpl. replace (Z.to_nat fec_n) with (1%nat + (Z.to_nat fec_n - 1))%nat at 1 by lia.
+        rewrite <- list_repeat_app. simpl. rewrite upd_Znth0.
+        rewrite monomial_0. rewrite pmod_refl; auto. rewrite poly_to_int_one. entailer!.
+        replace (deg one) with (0%Z) by (rewrite deg_one; reflexivity). lia.
+      * (*i <> 0*) assert (Hi1bound: 0 <= poly_to_int (monomial (Z.to_nat (i - 1)) %~ mod_poly) < fec_n). {
+          apply modulus_poly_bound. apply pmod_lt_deg; auto. } 
+        forward. 
+        -- (*array access valid*)
+           entailer!. rewrite Znth_app1. 2: list_solve. rewrite power_to_index_contents_Znth. simpl.
+           rewrite unsigned_repr. all: rep_lia.
+        -- (*body continue with shift, rewrite shift into polynomial mult*)
+           forward. 
+           (*TODO: WTF is going on here. forward_if takes forever, rewriting doesnt work, the resulting
+              if condition is terrible, even simpl hangs. Is it just because of a constant?*)
+           assert (Hshl : (Int.shl (Int.repr (poly_to_int (monomial (Z.to_nat (i - 1)) %~ mod_poly))) (Int.repr 1)) =
+                     (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))))). {
+           unfold Int.shl. rewrite !unsigned_repr; try rep_lia. rewrite Z.shiftl_mul_pow2; try lia.
+           replace (2 ^ 1) with 2 by lia.
+           assert ((poly_to_int (monomial (Z.to_nat (i - 1)) %~ mod_poly) * 2) = 
+            poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))). {
+            rewrite <- poly_of_int_to_int; try lia. rewrite Z.mul_comm. rewrite poly_shiftl.
+            rewrite poly_of_int_inv. reflexivity. apply modulus_poly_monomial. } f_equal; f_equal; auto. }
+            
+           assert (Hxpoly : (force_val (sem_binary_operation' Oshl tuchar tint (Znth (i - 1)
+                    (power_to_index_contents i ++ map Vint (map Int.repr (list_repeat (Z.to_nat (fec_n - i)) 0%Z))))
+                  (Vint (Int.repr 1)))) = 
+                  (Vint (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)))))). { 
+           rewrite Znth_app1. 2: rewrite power_to_index_contents_length; lia.
+           rewrite power_to_index_contents_Znth; try lia. simpl. f_equal. apply Hshl. }
+           assert (Hxbound: Int.min_signed <= 
+              poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)) <= Int.max_signed). {
+            (*very annoying proof to prove bounds*)
+             pose proof (poly_to_int_bounded (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))).
+             split; try rep_lia. rewrite poly_mult_deg in H4. 2: solve_neq.
+             rewrite deg_x in H4. 
+             assert (2 ^ (1 + deg (monomial (Z.to_nat (i - 1)) %~ mod_poly) + 1) - 1 <=
+              2 ^ (1 + 8 + 1) - 1). { rewrite <- Z.sub_le_mono_r.
+              apply Z.pow_le_mono_r. lia. apply Zplus_le_compat_r. apply Zplus_le_compat_l.
+              pose proof (pmod_lt_deg mod_poly Hpos (monomial (Z.to_nat (i - 1)))). lia. } rep_lia.
+             intro Hmon. pose proof (modulus_poly_monomial (Z.to_nat (i - 1))).
+             rewrite <- poly_to_int_zero_iff in Hmon. lia. }
+           forward_if;
+           replace (force_val (sem_binary_operation' Oshl tuchar tint (Znth (i - 1)
+                     (power_to_index_contents i ++  map Vint (map Int.repr (list_repeat (Z.to_nat (fec_n - i)) 0%Z))))
+                  (Vint (Int.repr 1)))) with 
+           (Vint (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))))) by apply Hxpoly.
+          ++  (*ugh this is awful, but cant rewrite the Znth beforehand for some reason*)
+             rewrite Znth_app1 in H4. 2: rewrite power_to_index_contents_length; lia.
+             rewrite power_to_index_contents_Znth in H4; try lia. unfold sem_cast_pointer in H4. unfold force_val in H4. 
+             unfold both_int in H4. simpl sem_shift_ii in H4. unfold sem_cast_pointer in H4. rewrite Hshl in H4.
+             unfold Int.lt in H4.
+             destruct (zlt
+                 (Int.signed (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)))))
+                 (Int.signed (Int.repr 256))) as [Hif | Hif]. inversion H4. clear H4.
+             rewrite !Int.signed_repr in Hif; try rep_lia.
+             forward.
+             ** entailer!.
+             ** entailer!. unfold Int.xor. rewrite !unsigned_repr; try rep_lia.
+                 (*Core of proof: this actually finds x^i % f in this case (complicated because x * (x^(i-1) %f) overflows)*)
+                 assert (Hpi : Vint (Int.zero_ext 8 (Int.repr (Z.lxor 
+                  (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))) modulus))) = 
+                  Vint (Int.repr (poly_to_int (monomial (Z.to_nat i) %~ mod_poly)))). { f_equal.
+                 assert (Hxor : Z.lxor (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))) modulus =
+                    poly_to_int (monomial (Z.to_nat i) %~ mod_poly)). {
+                  rewrite <- poly_of_int_to_int. rewrite xor_addition; try rep_lia.
+                  assert (Hdeg: deg (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)) = deg mod_poly). {
+                  assert (Hupper: deg mod_poly <= deg (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))). {
+                  rewrite Hdeglog. rewrite <- (poly_of_int_inv (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly) )).
+                  rewrite poly_of_int_deg. apply Z.log2_le_mono. rewrite fec_n_eq; lia. apply poly_to_int_pos.
+                  intro Hzero. rewrite poly_mult_zero_iff in Hzero. destruct Hzero. inversion H14.
+                  rewrite <- poly_to_int_zero_iff in H14. 
+                  pose proof (modulus_poly_monomial (Z.to_nat (i-1))). lia. }
+                  assert (Hlower: deg (monomial (Z.to_nat (i - 1)) %~ mod_poly) < deg mod_poly). {
+                  apply pmod_lt_deg. auto. }
+                  assert (Hnonz: monomial (Z.to_nat (i - 1)) %~ mod_poly <> zero). intro Hz.
+                  pose proof (modulus_poly_monomial (Z.to_nat (i-1))). rewrite <- poly_to_int_zero_iff in Hz. lia.
+                  rewrite poly_mult_deg; auto. rewrite poly_mult_deg in Hupper; auto. 
+                  rewrite deg_x. rewrite deg_x in Hupper. lia. all: solve_neq. }
+                  rewrite poly_of_int_inv.
+                  assert (Hdeglt: deg (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly) +~ poly_of_int modulus) < deg mod_poly). {
+                   rewrite poly_add_comm. rewrite <- mod_poly_eq. apply poly_add_deg_same; auto. }
+                  rewrite <- (pmod_refl _ Hpos _ Hdeglt). rewrite <- mod_poly_eq. rewrite pmod_add_distr; auto.
+                  rewrite pmod_same; auto. rewrite poly_add_0_r. rewrite <- (pmod_refl _ Hpos x).
+                  rewrite <- pmod_mult_distr; auto. rewrite <- monomial_expand. rewrite pmod_twice; auto.
+                  f_equal. f_equal. lia. rewrite deg_x. lia. 
+                  rewrite Z.lxor_nonneg. pose proof modulus_pos. rep_lia. }
+                 unfold Int.zero_ext. f_equal. rewrite Zbits.Zzero_ext_mod; try lia.
+                 assert (Hpbound: 0 <= Z.lxor (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))) modulus < fec_n). {
+                  rewrite Hxor. apply modulus_poly_bound. apply pmod_lt_deg. auto. }
+                 rewrite Zmod_small. 2: { replace (two_p 8) with 256 by reflexivity.
+                 rewrite unsigned_repr; try rep_lia. }
+                 rewrite unsigned_repr; rewrite Hxor. reflexivity. rep_lia. } rewrite Hpi.
+                 rewrite upd_Znth_app2. 2: list_solve.
+                 replace ((i - Zlength (power_to_index_contents i))) with 0%Z by list_solve.
+                 assert (Hlr: (list_repeat (Z.to_nat (fec_n - i)) 0%Z) = 0%Z :: 
+                    (list_repeat (Z.to_nat fec_n - Z.to_nat (i + 1)) 0%Z)). { 
+                  assert (i < fec_n) by (rewrite fec_n_eq; lia).
+                  replace (Z.to_nat (fec_n - i)) with 
+                    (1%nat + (Z.to_nat fec_n - Z.to_nat (i + 1)))%nat by lia. rewrite <- list_repeat_app.
+                  auto. } rewrite Hlr. simpl. rewrite upd_Znth0. rewrite power_to_index_contents_plus_1; try lia.
+                  rewrite <- app_assoc; simpl. cancel.
+          ++ (*Now on other case of if statement, again need a lot of work to simplify if condition*)
+              (*continue from here*)
 
 Lemma sem_sub_pi_offset: forall ty s off n,
   isptr s ->
@@ -459,6 +659,14 @@ Proof.
   pose proof fec_n_bound. rep_lia.
 Qed. 
 
+(*TODO: move*)
+Lemma poly_to_qpoly_unfold: forall (f: poly) (Hnonneg: deg f > 0) (a: qpoly f),
+  poly_to_qpoly f Hnonneg (proj1_sig a) = a.
+Proof.
+  intros. unfold poly_to_qpoly.
+  destruct a. simpl. exist_eq. apply pmod_refl; auto.
+Qed.
+
 Lemma Z_expand_bounds: forall a b c d n,
   a <= b ->
   c <= d ->
@@ -466,6 +674,58 @@ Lemma Z_expand_bounds: forall a b c d n,
   a <= n <= d.
 Proof.
   intros. lia.
+Qed.
+
+(*copied from previous - TODO: see what we need*)
+Lemma isptr_denote_tc_test_order: forall p1 p2,
+  isptr p1 ->
+  isptr p2 ->
+  denote_tc_test_order p1 p2 = test_order_ptrs p1 p2.
+Proof.
+  intros p1 p2 Hptr1 Hptr2. destruct p1; destruct Hptr1. destruct p2; destruct Hptr2. reflexivity.
+Qed.
+
+Lemma isptr_offset_val_sameblock : forall p i,
+  isptr p ->
+  sameblock p (offset_val i p) = true.
+Proof.
+  intros. destruct p; destruct H.
+  simpl. unfold proj_sumbool. apply peq_true.
+Qed.
+
+Lemma sameblock_refl : forall p,
+  isptr p ->
+  sameblock p p = true.
+Proof.
+  intros.
+  destruct p; destruct H. apply peq_true.
+Qed.
+
+Lemma sameblock_symm : forall p1 p2,
+  sameblock p1 p2 = true ->
+  sameblock p2 p1 = true.
+Proof.
+  intros.
+  destruct p1; destruct p2; try discriminate.
+  simpl in *. destruct (peq b b0); try discriminate.
+  subst.
+  apply peq_true.
+Qed.
+
+Lemma sameblock_trans : forall p1 p2 p3,
+  sameblock p1 p2 = true ->
+  sameblock p2 p3 = true->
+  sameblock p1 p3 = true.
+Proof.
+  intros.
+  destruct p1; try discriminate.
+  destruct p2; try discriminate.
+  destruct p3; try discriminate.
+  simpl in *.
+  destruct (peq b b0); try discriminate.
+  destruct (peq b0 b1); try discriminate.
+  subst.
+  apply peq_true.
 Qed.
 
 (*Verification of [fec_matrix_transform]*)
@@ -490,10 +750,10 @@ Proof.
    data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
    data_at Ews (tarray tuchar (m * n))
      (map Vint (map Int.repr (flatten_mx 
-        (gauss_all_steps_rows_partial mx m m )))) s)).
-- forward. Exists 0%Z. entailer!.
-- Intros gauss_step_row. forward_if.
-  + (*body of outer loop *) 
+        (gauss_all_steps_rows_partial mx m m )))) s)). 
+{ forward. Exists 0%Z. entailer!. }
+{ Intros gauss_step_row. forward_if.
+  { (*body of outer loop *) 
     (*now there are 2 inner loops; the first is [all_cols_one_partial]*)
     forward_loop 
     (EX (row : Z),
@@ -515,35 +775,42 @@ Proof.
         data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr 
           (flatten_mx (all_cols_one_partial 
             (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row m )))) s)).
-    * forward. Exists 0%Z. entailer!.
-    * Intros cols_one_row. forward_if.
-      -- forward. (*Want to simplify pointer in q*)
-         assert_PROP ((force_val
-               (sem_binary_operation' Osub (tptr tuchar) tint
-                  (eval_binop Oadd (tptr tuchar) tuchar
-                     (eval_binop Oadd (tptr tuchar) tint s
-                        (eval_binop Omul tuchar tuchar (Vint (Int.repr cols_one_row))
-                           (Vint (Int.repr n)))) (Vint (Int.repr n))) (Vint (Int.repr 1)))) =
-              (offset_val (((cols_one_row * n) + n) - 1) s)). { entailer!.
+    { forward. Exists 0%Z. entailer!. }
+    { Intros cols_one_row. forward_if.
+      { forward. (*Want to simplify pointer in q*)
+        assert_PROP ((force_val (sem_binary_operation' Osub (tptr tuchar) tint
+          (eval_binop Oadd (tptr tuchar) tuchar (eval_binop Oadd (tptr tuchar) tint s
+           (eval_binop Omul tuchar tuchar (Vint (Int.repr cols_one_row))
+           (Vint (Int.repr n)))) (Vint (Int.repr n))) (Vint (Int.repr 1)))) =
+           (offset_val (((cols_one_row * n) + n) - 1) s)). { entailer!.
         rewrite sem_sub_pi_offset; auto. rep_lia. }
         rewrite H3. clear H3.
-        forward. (*Now, we will simplify pointer in m*) (*TODO: maybe field_address here?*)
-        assert_PROP ((force_val
-               (sem_binary_operation' Osub (tptr tuchar) tuchar
-                  (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr n)))) =
-            offset_val (cols_one_row * n - 1) s). { entailer!.
-        rewrite sem_sub_pi_offset; auto. f_equal. simpl. lia. rep_lia. } 
-        rewrite H3; clear H3. forward.
-        assert (Hwf' : wf_matrix (F:=F) (all_cols_one_partial (F:=F) 
-          (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) m n). {
-        apply all_cols_one_partial_wf. lia. apply gauss_all_steps_rows_partial_wf. lia. assumption. } 
+        forward.
+        { entailer!. rewrite sem_sub_pi_offset; auto; try rep_lia. }
+        { (*Now, we will simplify pointer in m*)
+          assert_PROP ((force_val
+               (sem_binary_operation' Oadd (tptr tuchar) tint
+                  (eval_binop Osub (tptr tuchar) tuchar (offset_val (cols_one_row * n + n - 1) s)
+                     (Vint (Int.repr n))) (Vint (Int.repr 1)))) =
+            offset_val (cols_one_row * n) s). { entailer!.
+          rewrite sem_sub_pi_offset; auto; try rep_lia. f_equal. simpl. rewrite sem_add_pi_ptr_special; auto;
+          try rep_lia. simpl. rewrite offset_offset_val. f_equal. lia. }
+          rewrite H3; clear H3.
+          assert_PROP ((offset_val (cols_one_row * n) s) = field_address (tarray tuchar (m * n)) 
+            (SUB ((cols_one_row * n) + n - 1 - (n-1))) s). { entailer!. rewrite arr_field_address; auto.
+            simpl. f_equal. lia. apply (matrix_bounds_within); lia. } rewrite H3; rename H3 into Hm_offset. 
+          forward.
+          assert (Hwf' : wf_matrix (F:=F) (all_cols_one_partial (F:=F) 
+            (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) m n). {
+          apply all_cols_one_partial_wf. lia. apply gauss_all_steps_rows_partial_wf. lia. assumption. }
         (*Now we are at the while loop - because of the [strong_inv] condition of the matrix,
           the loop guard is false (the loop finds the element to swap if one exists, but returns
           with an error whether or not one exists*)
         (*Because of this, we give a trivial loop invariant*)
         remember ((PROP ( )
            LOCAL (temp _w (Vint (Int.zero_ext 8 (Int.repr cols_one_row)));
-           temp _m (offset_val (cols_one_row * n - 1) s); temp _q (offset_val (cols_one_row * n + n - 1) s);
+           temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s);
+           temp _q (offset_val (cols_one_row * n + n - 1) s);
            temp _i (Vint (Int.repr cols_one_row)); temp _k (Vint (Int.repr gauss_step_row)); 
            temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
            gvars gv)
@@ -557,8 +824,8 @@ Proof.
                       (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
                          gauss_step_row cols_one_row)))) s))) as x.
          forward_loop x break: x; subst. (*so I don't have to write it twice*)
-        ++ entailer!.
-        ++ assert_PROP (force_val (sem_sub_pi tuchar Signed 
+        { entailer!. }
+        { assert_PROP (force_val (sem_sub_pi tuchar Signed 
             (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr gauss_step_row))) =
             offset_val (cols_one_row * n + n - 1 - gauss_step_row) s). { entailer!.
            rewrite sem_sub_pi_offset;auto. simpl. f_equal. lia. rep_lia. }
@@ -574,18 +841,16 @@ Proof.
               Zlength (map Int.repr (flatten_mx
               (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
               gauss_step_row cols_one_row))))). {
-            entailer!. list_solve. } simpl_reptype.
-           (*For some reason, we need this too*)
-           assert_PROP ((0 <= cols_one_row * n + n - 1 - gauss_step_row <
-            Zlength (flatten_mx (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-         gauss_step_row cols_one_row)))). { entailer!. list_solve. } forward. 
-          ** entailer!. rewrite (@flatten_mx_Znth m n); try lia. 
-             pose proof (qpoly_int_bound (get (F:=F) (all_cols_one_partial (F:=F) 
+           entailer!. list_solve. } simpl_reptype. rewrite Zlength_map in H3.
+           forward.
+          { entailer!. rewrite (@flatten_mx_Znth m n); try lia. 
+            pose proof (qpoly_int_bound (get (F:=F) (all_cols_one_partial (F:=F) 
                 (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
-                cols_one_row gauss_step_row)). rewrite Int.unsigned_repr; rep_lia. assumption.
-          ** entailer!. rewrite sem_sub_pi_offset; auto. rep_lia.
-          ** forward_if. (*contradiction due to [strong_inv]*)
-             assert (Znth (cols_one_row * n + n - 1 - gauss_step_row)
+                cols_one_row gauss_step_row)). rewrite Int.unsigned_repr; rep_lia. assumption. }
+          { entailer!. rewrite sem_sub_pi_offset; auto. rep_lia. }
+          { forward_if.
+            { (*contradiction due to [strong_inv]*)
+              assert (Znth (cols_one_row * n + n - 1 - gauss_step_row)
                 (flatten_mx (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
                 gauss_step_row cols_one_row)) <> 0%Z). {
               rewrite (@flatten_mx_Znth m n); try lia. 2: assumption. intro Hzero.
@@ -595,14 +860,16 @@ Proof.
               apply (gauss_all_steps_columns_partial_zeroes_list Hrm H1 (proj2 Hmn) Hwf Hstr Hcm). 
               replace (ssralg.GRing.zero (ssralg.GRing.Field.zmodType F)) with (q0 modulus_poly_deg_pos) by reflexivity.
               destruct ((get (F:=F)
-             (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
+              (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
                 gauss_step_row cols_one_row) cols_one_row gauss_step_row)) eqn : G. unfold q0. unfold r0. exist_eq.
               simpl in Hzero. assumption. } 
-             apply mapsto_memory_block.repr_inj_unsigned in H7. contradiction. 2: rep_lia.
-             rewrite (@flatten_mx_Znth m n); try lia. eapply Z_expand_bounds.
-             3 : { apply qpoly_int_bound. } lia. rep_lia. assumption. 
-             forward. entailer!.
-      ++ (*after the while loop*)
+              apply mapsto_memory_block.repr_inj_unsigned in H6. contradiction. 2: rep_lia.
+              rewrite (@flatten_mx_Znth m n); try lia. eapply Z_expand_bounds.
+              3 : { apply qpoly_int_bound. } lia. rep_lia. assumption. }
+            { forward. entailer!. }
+          }
+        }
+      { (*after the while loop*)
          assert_PROP (force_val (sem_sub_pi tuchar Signed 
             (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr gauss_step_row))) =
             field_address (tarray tuchar (m * n)) (SUB  (cols_one_row * n + n - 1 - gauss_step_row)) s). {
@@ -618,19 +885,119 @@ Proof.
          pose proof (Hpolybound:= (qpoly_int_bound (get (F:=F) (all_cols_one_partial (F:=F) 
                 (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
                 cols_one_row gauss_step_row))).
-          forward.
-          all: try rewrite (@flatten_mx_Znth m n); try lia; try assumption. 
-          ** entailer!. lia.
-          ** entailer!.  rewrite sem_sub_pi_offset; auto. rep_lia.
-          ** forward.
-             --- entailer!. apply modulus_poly_bound. apply (@ssrfun.svalP _ (fun x => deg x < deg mod_poly)).
-             --- (*safety stuff may need to factor out*) entailer!. rewrite inverse_contents_Znth. rewrite poly_of_int_inv.
-                 simpl. rewrite unsigned_repr. unfold poly_inv. apply (proj2 (qpoly_int_bound _)).
-                 unfold poly_inv. split. apply (proj1 (qpoly_int_bound _)). eapply Z.le_lt_trans.
-                 apply (proj2 (qpoly_int_bound _)). rep_lia. apply modulus_poly_bound. apply (@ssrfun.svalP _ (fun x => deg x < deg mod_poly)).
-             --- forward. (*simplify before for loop - TODO: also, can we factor out macros?*)
-                 rewrite inverse_contents_Znth. rewrite poly_of_int_inv.
-                 (*waiting on the loop until I find about about macros*)
+          forward; try rewrite (@flatten_mx_Znth m n); try lia; try assumption.
+        { entailer!. lia. }
+        { entailer!. rewrite sem_sub_pi_offset; auto. rep_lia. }
+        { forward.
+          { entailer!. apply modulus_poly_bound. apply (@ssrfun.svalP _ (fun x => deg x < deg mod_poly)). }
+          { entailer!. rewrite inverse_contents_Znth. rewrite poly_of_int_inv.
+            simpl. rewrite unsigned_repr. unfold poly_inv. apply (proj2 (qpoly_int_bound _)).
+            unfold poly_inv. split. apply (proj1 (qpoly_int_bound _)). eapply Z.le_lt_trans.
+            apply (proj2 (qpoly_int_bound _)). rep_lia. apply modulus_poly_bound.
+            apply (@ssrfun.svalP _ (fun x => deg x < deg mod_poly)). }
+          { forward. (*simplify before for loop*)
+            rewrite inverse_contents_Znth. 2 : { apply modulus_poly_bound.
+            apply (@ssrfun.svalP _ (fun x => deg x < deg mod_poly)). } rewrite poly_of_int_inv. simpl.
+            remember (get (F:=F) (all_cols_one_partial (F:=F)
+                      (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row
+                       cols_one_row) cols_one_row gauss_step_row) as qij eqn : Hqij. 
+            remember (proj1_sig qij) as pij eqn : Hpij.
+            (*assert_PROP ((offset_val (cols_one_row * n + n - 1) s) = 
+              field_address (tarray tuchar (m * n)) (SUB (cols_one_row * n + n - 1)) s). {
+            entailer!. rewrite arr_field_address. simpl. f_equal. lia. auto. 
+            pose proof (matrix_bounds_within m n cols_one_row 0). lia. } rewrite H6. clear H6.*)
+            remember (find_inv mod_poly modulus_poly_deg_pos qij) as qij_inv eqn : Hqinv.
+            replace (poly_inv mod_poly modulus_poly_deg_pos pij) with (proj1_sig qij_inv). 2 : {
+            unfold poly_inv. rewrite Hpij. rewrite poly_to_qpoly_unfold. rewrite Hqinv. reflexivity. }
+            (*Scalar multiplication loop*)
+            (*Unfortunately, lots of duplication here: can we save locals in a variable?*)
+            forward_loop (EX (j : Z),
+            PROP (0 <= j <= n)
+            LOCAL (temp _inv (Vint (Int.zero_ext 8 (Int.repr (poly_to_int (proj1_sig qij_inv)))));
+              temp _t'11 (Vint (Int.repr (poly_to_int (proj1_sig qij_inv))));
+              temp _t'10 (Vint (Int.repr (poly_to_int pij)));
+              temp _w (Vint (Int.zero_ext 8 (Int.repr cols_one_row)));
+              temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s);
+              (*temp _q (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1)] s);*)
+              temp _q (offset_val (cols_one_row * n + n - 1) s);
+              temp _i (Vint (Int.repr cols_one_row)); temp _k (Vint (Int.repr gauss_step_row)); 
+              temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
+              gvars gv;
+              (*temp _n (field_address0 (tarray tuchar (m * n)) (SUB (cols_one_row * n + n - 1 - j)) s))*)
+              temp _n (offset_val (cols_one_row * n + n - 1 - j) s))
+            SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+                 data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+                 data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+                 data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr
+                  (flatten_mx (scalar_mul_row_partial (all_cols_one_partial (F:=F) 
+                    (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
+                    cols_one_row qij_inv j)))) s))
+            break: (PROP ()
+              LOCAL (temp _inv (Vint (Int.zero_ext 8 (Int.repr (poly_to_int (proj1_sig qij_inv)))));
+              temp _t'11 (Vint (Int.repr (poly_to_int (proj1_sig qij_inv))));
+              temp _t'10 (Vint (Int.repr (poly_to_int pij)));
+              temp _w (Vint (Int.zero_ext 8 (Int.repr cols_one_row)));
+              temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s); 
+              temp _q (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1)] s);
+              temp _i (Vint (Int.repr cols_one_row)); temp _k (Vint (Int.repr gauss_step_row)); 
+              temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
+              gvars gv)
+              SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+                 data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+                 data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+                 data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr
+                  (flatten_mx (scalar_mul_row (all_cols_one_partial (F:=F) 
+                    (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
+                    cols_one_row qij_inv)))) s)).
+            { forward. Exists 0%Z. entailer!. rewrite scalar_mul_row_partial_0. cancel. }
+            { Intros j. (*TODO: this still doesn't quite work because when the loop exits, n is too small and so the
+                          if conditions doesn't typecheck*)
+
+
+ assert (Hcj: 0 <= cols_one_row * n + n - 1 - j <= m * n).
+
+
+ forward_if.
+              { rewrite <- Hm_offset. rewrite isptr_denote_tc_test_order; auto. unfold test_order_ptrs.
+                assert (Hsame: sameblock (offset_val (cols_one_row * n + n - 1 - j) s) 
+                  (offset_val (cols_one_row * n) s) = true). eapply sameblock_trans.
+                apply sameblock_symm. all: try apply isptr_offset_val_sameblock; auto. rewrite Hsame; clear Hsame.
+                apply andp_right.
+                - eapply derives_trans. 2: {  sep_apply 
+                    (memory_block_weak_valid_pointer Ews (m * n) s (cols_one_row * n + n - 1 - j)); auto; try rep_lia.
+                  assert (0 <= cols_one_row * n + n - 1 - j < m * n). apply matrix_bounds_within. lia. lia.
+                  pose proof (matrix_bounds_within m n cols_one_row j).
+                   4: apply derives_refl. entailer!.
+                sep_apply (data_at_memory_block Ews (tarray tuchar fec_n) _ s).
+    apply andp_right.
+                Search weak_valid_pointer.
+                Search weak_valid_pointer.
+
+
+
+              { assert (0 <= cols_one_row * n + n - 1 < m * n).
+                assert (0 <= cols_one_row * n + n - 1 - 0 < m * n). apply matrix_bounds_within; lia. lia.
+                destruct (field_compatible_dec (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1)] s).
+                rewrite <- field_address_offset; auto.
+                rewrite arr_field_address0; auto; try lia. rewrite arr_field_address; auto; try lia.
+                exfalso. apply n0. apply arr_field_compatible; try lia; auto. }
+              { rewrite scalar_mul_row_partial_0. cancel. }
+            }
+            { Intros j. forward_if.
+              { Search isptr. Print field_compatible0. Check isptr_denote_tc_test_order. assert (Hibound: 0 <= cols_one_row * n + n - 1 - i <= m * n). 
+                
+
+
+
+ entailer!. rewrite !arr_field_address0; auto. simpl. 
+              { entailer!. Print scalar_mul_row_partial.
+ reflexivity. all: auto.
+                apply matrix_bounds_within; lia.
+                 (*Loop to scalar multiply a row*)
+                 forward_loop
+                 forward.
+                 
+  assert (forall v, sem_cast tuchar tuchar (Vint v) = Some (Vint v)). { intros. simpl. unfold sem_cast_i2i. destruct t; try reflexivity. unfold sem_cast. simpl.
 
  
 
