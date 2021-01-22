@@ -324,6 +324,14 @@ Proof.
 Qed.
 
 
-
+(*The reverse of the xor spec above, useful in other cases*)
+Lemma xor_poly_to_int: forall p1 p2,
+  Z.lxor (poly_to_int p1) (poly_to_int p2) = poly_to_int (p1 +~ p2).
+Proof.
+  intros. pose proof (poly_to_int_bounded p1). pose proof (poly_to_int_bounded p2).
+  rewrite <- poly_of_int_to_int.
+  - rewrite xor_addition; try lia. rewrite !poly_of_int_inv. reflexivity.
+  - rewrite Z.lxor_nonneg. lia.
+Qed.
 
 

@@ -487,7 +487,7 @@ Proof.
   - rewrite Hin; try lia; apply Znth_In; lia.
 Qed.
 
-Lemma add_multiple_partial_outisde: forall m n mx r1 r2 k b j,
+Lemma add_multiple_partial_outside: forall m n mx r1 r2 k b j,
   wf_matrix mx m n ->
   0 <= r1 < m ->
   0 <= r2 < m ->
@@ -504,6 +504,21 @@ Proof.
   rewrite Znth_app2; rewrite Hcomlen; try lia.
   rewrite Znth_sublist; try lia. list_solve. rewrite Hin; try lia; apply Znth_In; lia.
 Qed.
+
+Lemma add_multiple_partial_other_row: forall m n mx r1 r2 k b i j,
+  wf_matrix mx m n ->
+  0 <= r1 < m ->
+  0 <= r2 < m ->
+  0 <= b < n ->
+  0 <= j < n ->
+  0 <= i < m ->
+  i <> r2 ->
+  get (add_multiple_partial mx r1 r2 k b) i j = get mx i j.
+Proof.
+  move => m n mx r1 r2 k b i j [Hlen [Hn Hin]] Hr1 Hr2 Hb Hj Hi Hir2.
+  rewrite /add_multiple_partial /get.
+  rewrite upd_Znth_diff; try lia. reflexivity.
+Qed. 
   
 
 Definition add_multiple (mx: matrix) (r1 r2 : Z) (k: F) : matrix :=
@@ -567,12 +582,14 @@ Definition sub_all_rows_partial (mx: matrix) (r: Z) (bound: Z) :=
 
 Lemma sub_all_rows_plus_1: forall mx r b,
   0 <= b ->
-  b <> r ->
-  sub_all_rows_partial mx r (b+1) = add_multiple (sub_all_rows_partial mx r b) r b (- 1).
+  sub_all_rows_partial mx r (b+1) = if Z.eq_dec b r then (sub_all_rows_partial mx r b) else 
+     add_multiple (sub_all_rows_partial mx r b) r b (- 1).
 Proof.
-  move => mx r b Hb Hbr. rewrite /sub_all_rows_partial Ziota_plus_1; try lia.
-  rewrite fold_left_app /=.
-  by case : (Z.eq_dec b r) => [Hbreq // | Hbrneq /=].
+  move => mx r b Hb. rewrite /sub_all_rows_partial Ziota_plus_1; try lia.
+  case : (Z.eq_dec b r) => [Heq //= | Hneq //=].
+  - subst. rewrite fold_left_app /=. by case : (Z.eq_dec r r).
+  - rewrite fold_left_app /=.
+    by case : (Z.eq_dec b r) => [Hbreq // | Hbrneq /=].
 Qed. 
 
 Lemma sub_all_rows_outside: forall m n mx r bound i j,
@@ -651,6 +668,15 @@ Section AllSteps.
 
 Definition gauss_all_steps_rows_partial (mx: matrix) m (bound : Z) :=
   fold_left (fun acc r => let A1 := (all_cols_one_partial acc r m) in sub_all_rows_partial A1 r m) (Ziota 0 bound) mx.
+
+Lemma gauss_all_steps_rows_partial_plus_1: forall mx m b,
+  0 <= b ->
+  gauss_all_steps_rows_partial mx m (b+1) =
+  sub_all_rows_partial (all_cols_one_partial (gauss_all_steps_rows_partial mx m b) b m) b m.
+Proof.
+  move => mx m n Hb. rewrite /gauss_all_steps_rows_partial Ziota_plus_1; try lia.
+  by rewrite fold_left_app.
+Qed. 
 
 Lemma gauss_all_steps_rows_equiv: forall {m n} (mx: matrix) (Hmn : m <= n) r,
   wf_matrix mx m n ->
