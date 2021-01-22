@@ -93,6 +93,11 @@ Definition get (mx: matrix) (i j : Z) :=
   let row := Znth i mx in
   Znth j row.
 
+Definition set (mx: matrix) (i j : Z) (k: F) :=
+  let row := Znth i mx in
+  let new_row := upd_Znth j row k in
+  upd_Znth i mx new_row.
+
 Lemma matrix_m_pos: forall {m n} (mx: matrix) (Hwf: wf_matrix mx m n),
   0 <= m.
 Proof.
@@ -148,6 +153,23 @@ Proof.
   subst; rewrite upd_Znth_diff; try lia. apply Hin. by apply Znth_In.
 Qed.
 
+Lemma scalar_mul_row_outside: forall m n mx r k b j,
+  wf_matrix mx m n ->
+  0 <= r < m ->
+  0 <= b < n ->
+  0 <= j < n ->
+  b <= j ->
+  get (scalar_mul_row_partial mx r k b) r j = get mx r j.
+Proof.
+  move => m n mx r k b j [Hlen [Hn Hin]] Hr Hb Hj Hbj. rewrite /scalar_mul_row_partial /get.
+  rewrite upd_Znth_same; try lia.
+  have Hsub: Zlength (sublist 0 b (Znth r mx)) = b. rewrite Zlength_sublist; try lia. rewrite Hin; try lia.
+  apply Znth_In; lia. 
+  rewrite Znth_app2; rewrite Zlength_map. rewrite Hsub.
+  rewrite Znth_sublist; try list_solve. rewrite Hin. lia. apply Znth_In; lia.
+  rewrite Hsub. lia.
+Qed.
+
 Lemma scalar_mul_row_spec: forall mx m n r k i j,
   wf_matrix mx m n ->
   (0 <= r < m) ->
@@ -162,6 +184,51 @@ Proof.
   subst.  rewrite upd_Znth_same; try lia. rewrite Znth_map. by [].
   rewrite Hin => [//|]. by apply Znth_In; lia. rewrite upd_Znth_diff => [//|||//]. all: lia.
 Qed. 
+
+Lemma cat_app: forall {A: Type} (l1 l2 : list A),
+  l1 ++ l2 = (l1 ++ l2)%list.
+Proof.
+  move => A l1 l2. elim : l1 => [// | h t IH /=].
+  by rewrite IH.
+Qed.
+
+(*TODO: move*)
+Lemma upd_Znth_twice: forall {A: Type} `{H: Inhabitant A} (l: list A) r x y,
+  upd_Znth r (upd_Znth r l x) y = upd_Znth r l y.
+Proof.
+  move => A Hin l r x y. have [Hout | Hin']: ((0 > r \/ r >= Zlength l) \/ 0 <= r < Zlength l) by lia.
+  - by rewrite !upd_Znth_out_of_range.
+  - apply Znth_eq_ext. list_solve. move => i Hilen.
+    have [Hir | Hir] : (i =r \/ i <> r) by lia.
+    + subst. rewrite !upd_Znth_same; list_solve.
+    + rewrite !upd_Znth_diff; list_solve.
+Qed.
+
+Lemma scalar_mul_row_plus_1_aux: forall mx r k b,
+  0 <= r < Zlength mx ->
+  0 <= b < Zlength (Znth r mx) ->
+  scalar_mul_row_partial mx r k (b+1)%Z = set (scalar_mul_row_partial mx r k b) r b (k * (get mx r b)).
+Proof.
+  move => mx r k b hr Hb. rewrite /scalar_mul_row_partial /set.
+  rewrite !sublist_last_1; try lia. rewrite upd_Znth_twice upd_Znth_same; try lia.
+  rewrite upd_Znth_app2.
+  - have ->: Zlength [seq k * x | x <- sublist 0 b (Znth r mx)] = b by rewrite Zlength_map; list_solve.
+    have ->: ((b - b)%Z = 0%Z) by lia.
+    rewrite (sublist_split b (b+1)%Z); try lia. rewrite sublist_len_1 => [|//].
+    by rewrite upd_Znth0 map_cat -catA.
+  - rewrite !Zlength_map. rewrite !Zlength_sublist; try lia. (*why doesn't lia do this?*)
+    apply Z.lt_le_incl. apply Hb.
+Qed. 
+
+Lemma scalar_mul_row_plus_1: forall mx m n r k b,
+  wf_matrix mx m n ->
+  0 <= r < m ->
+  0 <= b < n ->
+  scalar_mul_row_partial mx r k (b+1)%Z = set (scalar_mul_row_partial mx r k b) r b (k * (get mx r b)).
+Proof.
+  move => mx m n r k b [Hlen [Hn Hin]] Hr Hb. apply scalar_mul_row_plus_1_aux. lia. rewrite Hin. by [].
+  apply Znth_In. list_solve.
+Qed.
 
 (*Prove equivalent to [sc_mul]*)
 Lemma scalar_mul_row_equiv: forall {m n} (mx: matrix) r k (Hr: 0 <= r < m),
@@ -229,11 +296,54 @@ Proof.
   move : Hb => [Hxz Hzxlen]. move: Hzxlen. rewrite Z2Nat.inj_lt; try lia. by rewrite Z2Nat.inj_add; try lia.
 Qed. 
 
+Lemma Ziota_plus_1: forall (x len : Z),
+  0 <= x ->
+  0 <= len ->
+  Ziota x (len + 1) = Ziota x len ++ [:: (x +len)%Z].
+Proof.
+  move => x len Hx Hlen. rewrite /Ziota.
+  have ->: (Z.to_nat (len + 1) = Z.to_nat len + 1%nat)%nat by rewrite Z2Nat.inj_add; try lia.
+  rewrite iotaD map_cat /=.
+  f_equal. f_equal.
+  have ->: ((Z.to_nat x + Z.to_nat len)%nat = Z.to_nat (x + len)%Z) by rewrite Z2Nat.inj_add; try lia.
+  lia.
+Qed.
+
 (*Function to make all columns one (repeated scalar multiplication)*)
 Section AllColsOne.
 
 Definition all_cols_one_partial (mx: matrix) (c: Z) (bound: Z) :=
   fold_left (fun acc x => scalar_mul_row acc x (get mx x c)^-1 ) (Ziota 0 bound) mx.
+
+Lemma all_cols_one_plus_1: forall mx c b,
+  0 <= b ->
+  all_cols_one_partial mx c (b+1) = scalar_mul_row (all_cols_one_partial mx c b) b (get mx b c)^-1.
+Proof.
+  move => mx c b Hb. rewrite /all_cols_one_partial Ziota_plus_1; try lia.
+  by rewrite fold_left_app /=.
+Qed.
+
+Lemma all_cols_one_outside: forall m n mx c bound i j,
+  wf_matrix mx m n ->
+  0 <= bound <= i ->
+  0 <= bound <= m ->
+  0 <= i < m ->
+  0 <= j < n ->
+  get (all_cols_one_partial mx c bound) i j = get mx i j.
+Proof.
+  move => m n mx c bound i j Hwf Hbi Hbm Hi Hj. rewrite /all_cols_one_partial.
+  have: ~In i (Ziota 0 bound) by rewrite Zseq_In; lia.
+  have: forall x, In x (Ziota 0 bound) -> 0 <= x < bound by move => x; rewrite Zseq_In; lia.
+  remember mx as mx' eqn : Hmx. rewrite {1}Hmx {Hmx}. move : mx' Hwf.  
+  elim : (Ziota 0 bound) => [//|h t IH mx' Hwf Hallin Hnotin /=].
+  have Hh: 0 <= h < m. have H: 0 <= h < bound by apply Hallin; left. lia.
+  rewrite IH. rewrite (scalar_mul_row_spec _ Hwf) => [|//|//|//].
+  - case: (Z.eq_dec i h) => [Hih /= | Hneq /=]. subst. exfalso. apply Hnotin. by left. by [].
+  - rewrite /scalar_mul_row. apply scalar_mul_row_partial_wf => [|//|//]. move: Hwf => [Hlen [Hn Hin]].
+    rewrite Hin. lia. apply Znth_In; lia. 
+  - move => x Hinx. apply Hallin. by right.
+  - move => Hint. apply Hnotin. by right.
+Qed.
 
 Lemma all_cols_one_equiv_partial: forall {m n} (mx: matrix) (c: Z) (Hc: 0 <= c < n) bound,
   0 <= bound <= m ->

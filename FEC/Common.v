@@ -246,6 +246,38 @@ Definition flatten_mx (mx: matrix F) : list Z :=
 Definition whole_Zlength (l: matrix F) :=
   fold_right (fun x acc => Zlength x + acc) 0%Z l.
 
+Lemma flatten_mx_Zlength: forall l,
+  Zlength (flatten_mx l) = whole_Zlength l.
+Proof.
+  intros. induction l; simpl.
+  - list_solve.
+  - rewrite Zlength_app. rewrite Zlength_rev. rewrite Zlength_map. rewrite IHl. reflexivity.
+Qed.
+
+Lemma whole_Zlength_app: forall l1 l2,
+  whole_Zlength (l1 ++ l2) = whole_Zlength l1 + whole_Zlength l2.
+Proof.
+  intros. induction l1.
+  - simpl. lia.
+  - simpl. rewrite <- Z.add_assoc. f_equal. apply IHl1.
+Qed. 
+
+Lemma whole_Zlength_upd_Znth: forall mx i l,
+  Zlength l = Zlength (Znth i mx) ->
+  whole_Zlength (upd_Znth i mx l) = whole_Zlength mx.
+Proof.
+  intros mx i l Hlen.
+  assert ((0 > i \/ i >= Zlength mx) \/ (0 <= i < Zlength mx)) by lia. destruct H.
+  - rewrite upd_Znth_out_of_range; auto.
+  - rewrite upd_Znth_unfold; auto. rewrite !whole_Zlength_app. simpl.
+    assert (mx = (sublist 0 i mx) ++ (Znth i mx :: sublist (i+1) (Zlength mx) mx)). {
+    rewrite <- (sublist_same 0 (Zlength mx)) at 1; try reflexivity.
+    rewrite (sublist_split 0 i); try lia. 
+    rewrite (sublist_split i (i+1)); try lia. rewrite sublist_len_1; try lia. auto. } 
+    rewrite H0 at 4. rewrite !whole_Zlength_app. simpl. replace (Zlength (Znth i mx)) with (Zlength l).
+    (*why can't lia solve this?*) list_solve.
+Qed.
+
 Lemma whole_Zlength_nonneg: forall l,
   0 <= whole_Zlength l.
 Proof.
@@ -340,6 +372,63 @@ Proof.
   - assert (i * n + n - 1 < m * n). { 
     assert (i * n + n <= m * n). { replace (i * n + n) with ((i+1)*n) by lia.
     apply Z.mul_le_mono_nonneg_r; lia. } lia. } lia.
+Qed.
+
+(*We want the opposite direction: for some 0 <= z < m * n, we want i and j which are the indices in the matrix*)
+Definition find_indices (n z: Z) :=
+  (Z.div z n, z mod n).
+
+Lemma find_indices_correct: forall m n z,
+  0 < n ->
+  0 <= z < m * n ->
+  0 <= z / n < m /\
+  0 <= (n - 1 - (z mod n)) < n /\
+  z = (z / n) * n + n - 1 - (n - 1 - (z mod n)).
+Proof.
+  intros m n z Hn Hz. split. pose proof (Z.mul_div_le z _ Hn).
+  assert (n * (z / n) < n * m) by lia.
+  rewrite <- Z.mul_lt_mono_pos_l in H0. split. apply Z.div_pos; lia. assumption. assumption.
+  split. pose proof (Z.mod_pos_bound z n Hn). split; lia.
+  rewrite Zmod_eq; lia.
+Qed.
+
+Lemma flatten_mx_set: forall {m n} (mx: matrix F) i j q,
+  wf_matrix mx m n ->
+  0 <=i < m ->
+  0 <= j < n ->
+  upd_Znth (i * n + n - 1 - j) (flatten_mx mx) (poly_to_int (proj1_sig q))  = flatten_mx (set mx i j q).
+Proof.
+  intros m n mx i j q Hwf Hi Hj.
+  apply Znth_eq_ext.
+  - rewrite Zlength_upd_Znth. unfold set. rewrite !flatten_mx_Zlength.
+    rewrite whole_Zlength_upd_Znth. reflexivity. list_solve.
+  - intros i' Hilen'.
+    rewrite Zlength_upd_Znth in Hilen'. rewrite flatten_mx_Zlength in Hilen'.
+    rewrite (whole_Zlength_wf_matrix _ _ _ Hwf) in Hilen'.
+    assert (Hwf' : wf_matrix (F:=F) (set (F:=F) mx i j q) m n). {
+      unfold set. destruct Hwf as [Hlen [Hn Hin]]. unfold wf_matrix. split.
+      list_solve. split; auto.
+      intros x' Hinx'. rewrite In_Znth_iff in Hinx'. destruct Hinx' as [z [Hzlen Hznth]].
+      assert (z = i \/ z <> i) by lia. destruct H; subst. rewrite upd_Znth_same; try lia.
+      rewrite Zlength_upd_Znth. apply Hin. apply Znth_In; auto.
+      rewrite upd_Znth_diff; try lia. apply Hin. apply Znth_In; auto. list_solve. list_solve. }
+    assert (i' <> (i * n + n - 1 - j) \/ i' = (i * n + n - 1 - j)) by lia. destruct H.
+    + rewrite upd_Znth_diff; try lia.
+      all: try (rewrite flatten_mx_Zlength; rewrite (whole_Zlength_wf_matrix _ _ _ Hwf)); try lia.
+      unfold set.
+      assert (H0n : 0 < n) by lia.
+      pose proof (find_indices_correct _ _ _ H0n Hilen') as [Hx [Hy Hi']].
+      rewrite Hi'. rewrite !(@flatten_mx_Znth m n); auto.
+      f_equal. f_equal. unfold get.
+      assert (( (i' / n) = i) \/ ((i' / n) <> i)) by lia. destruct H0.
+      * subst. rewrite upd_Znth_same. list_solve. destruct Hwf as [Hlen [Hn Hin]]. lia.
+      * destruct Hwf as [Hlen [Hn Hin]]. rewrite upd_Znth_diff; try lia. reflexivity.
+      * apply matrix_bounds_within; lia.
+    + rewrite H. rewrite upd_Znth_same. rewrite (@flatten_mx_Znth m n); try lia; auto.
+      unfold get. unfold set. destruct Hwf as [Hlen [Hn Hin]].
+      repeat(rewrite upd_Znth_same; try lia). rewrite Hin. assumption. apply Znth_In; lia.
+      rewrite flatten_mx_Zlength. rewrite (whole_Zlength_wf_matrix _ _ _ Hwf). 
+      apply matrix_bounds_within; lia.
 Qed.
 
 

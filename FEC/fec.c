@@ -583,8 +583,15 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
 	    }
 
 	  inv = fec_invefec[*(q - k)];
-	  for (n = q; n >= m; n--)	/* Loop 3 */ //JOSH - need n >= m because of previous change
-	    *n = fec_gf_mult (*n, inv);
+    //JOSH - we need to make this change because otherwise the loop guard is not provable -
+    //when the loop exits we have n < m, so n can point to unitialized memory
+    n = q + 1;
+    while(n > m) {
+      n--;
+      *n = fec_gf_mult(*n, inv);
+    }
+	  // for (n = q; n >= m; n--)	/* Loop 3 */ //JOSH - need n >= m because of previous change
+	  //   *n = fec_gf_mult (*n, inv);
 
 #ifdef FEC_DBG_PRINT_TRANS
 
@@ -632,8 +639,14 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
       q = (p + (i * j_max) + j_max - 1);	/* last row i entry */
       m = q - j_max;
       inv = fec_invefec[*(q - i)];
-      for (n = q; n > m; n--)	/* Loop 3 */
-	*n = fec_gf_mult (*n, inv);
+      //JOSH - same as above
+      n = q + 1;
+      while(n > m) {
+        n--;
+        *n = fec_gf_mult(*n, inv);
+      }
+ //      for (n = q; n > m; n--)//	 Loop 3 
+	// *n = fec_gf_mult (*n, inv);
     }
 
   return (0);

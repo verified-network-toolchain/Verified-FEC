@@ -3180,15 +3180,17 @@ Definition f_fec_matrix_transform := {|
                               (Sset _inv
                                 (Ecast (Etempvar _t'11 tuchar) tuchar))))
                           (Ssequence
-                            (Sset _n (Etempvar _q (tptr tuchar)))
-                            (Sloop
+                            (Sset _n
+                              (Ebinop Oadd (Etempvar _q (tptr tuchar))
+                                (Econst_int (Int.repr 1) tint) (tptr tuchar)))
+                            (Swhile
+                              (Ebinop Ogt (Etempvar _n (tptr tuchar))
+                                (Etempvar _m (tptr tuchar)) tint)
                               (Ssequence
-                                (Sifthenelse (Ebinop Oge
-                                               (Etempvar _n (tptr tuchar))
-                                               (Etempvar _m (tptr tuchar))
-                                               tint)
-                                  Sskip
-                                  Sbreak)
+                                (Sset _n
+                                  (Ebinop Osub (Etempvar _n (tptr tuchar))
+                                    (Econst_int (Int.repr 1) tint)
+                                    (tptr tuchar)))
                                 (Ssequence
                                   (Ssequence
                                     (Sset _t'9
@@ -3204,11 +3206,7 @@ Definition f_fec_matrix_transform := {|
                                        (Etempvar _inv tuchar) :: nil)))
                                   (Sassign
                                     (Ederef (Etempvar _n (tptr tuchar))
-                                      tuchar) (Etempvar _t'2 tuchar))))
-                              (Sset _n
-                                (Ebinop Osub (Etempvar _n (tptr tuchar))
-                                  (Econst_int (Int.repr 1) tint)
-                                  (tptr tuchar)))))))))))
+                                      tuchar) (Etempvar _t'2 tuchar))))))))))))
               (Sset _i
                 (Ecast
                   (Ebinop Oadd (Etempvar _i tuchar)
@@ -3318,13 +3316,16 @@ Definition f_fec_matrix_transform := {|
                           (Etempvar _t'5 tuchar) (tptr tuchar)) tuchar))
                     (Sset _inv (Ecast (Etempvar _t'6 tuchar) tuchar))))
                 (Ssequence
-                  (Sset _n (Etempvar _q (tptr tuchar)))
-                  (Sloop
+                  (Sset _n
+                    (Ebinop Oadd (Etempvar _q (tptr tuchar))
+                      (Econst_int (Int.repr 1) tint) (tptr tuchar)))
+                  (Swhile
+                    (Ebinop Ogt (Etempvar _n (tptr tuchar))
+                      (Etempvar _m (tptr tuchar)) tint)
                     (Ssequence
-                      (Sifthenelse (Ebinop Ogt (Etempvar _n (tptr tuchar))
-                                     (Etempvar _m (tptr tuchar)) tint)
-                        Sskip
-                        Sbreak)
+                      (Sset _n
+                        (Ebinop Osub (Etempvar _n (tptr tuchar))
+                          (Econst_int (Int.repr 1) tint) (tptr tuchar)))
                       (Ssequence
                         (Ssequence
                           (Sset _t'4
@@ -3337,10 +3338,7 @@ Definition f_fec_matrix_transform := {|
                             ((Etempvar _t'4 tuchar) ::
                              (Etempvar _inv tuchar) :: nil)))
                         (Sassign (Ederef (Etempvar _n (tptr tuchar)) tuchar)
-                          (Etempvar _t'3 tuchar))))
-                    (Sset _n
-                      (Ebinop Osub (Etempvar _n (tptr tuchar))
-                        (Econst_int (Int.repr 1) tint) (tptr tuchar)))))))))
+                          (Etempvar _t'3 tuchar))))))))))
         (Sset _i
           (Ecast
             (Ebinop Oadd (Etempvar _i tuchar) (Econst_int (Int.repr 1) tint)
