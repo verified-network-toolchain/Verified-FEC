@@ -429,6 +429,19 @@ Proof.
   rewrite !Znth_pos_cons; try by []. apply IH; list_solve.
 Qed.
 
+Lemma combine_app: forall {X Y Z} `{Inhabitant X} `{Inhabitant Y} `{Inhabitant Z} l1 l2 l3 l4 (f: X -> Y -> Z),
+  Zlength l1 = Zlength l3 ->
+  Zlength l2 = Zlength l4 ->
+  combine (l1 ++ l2) (l3 ++ l4) f = (combine l1 l3 f) ++ (combine l2 l4 f).
+Proof.
+  move => X Y Z I1 I2 I3 l1 l2 l3 l4 f. move : l2 l3 l4. elim : l1 => [/= l2 l3 l4 H13 H24|h t IH l2 l3 l4 H13 H24 /=].
+  - by have ->: l3 = nil by list_solve.
+  - move : H13 IH. case : l3; move => h' t'.
+    + list_solve.
+    + move => Hht IH. have Htt': Zlength t = Zlength t' by list_solve.
+      rewrite /=. by rewrite IH.
+Qed. 
+
 Section AddRow.
 
 (*Once again, we only add the first [bound] indices, which will help in the VST proofs*)
@@ -436,6 +449,62 @@ Definition add_multiple_partial (mx: matrix) (r1 r2 : Z) (k : F) (bound: Z) : ma
    let new_r2 := combine (sublist 0 bound (Znth r2 mx)) (sublist 0 bound (Znth r1 mx)) (fun x y => x + (k * y)) ++
     sublist bound (Zlength (Znth r2 mx)) (Znth r2 mx) in
   upd_Znth r2 mx new_r2.
+
+Lemma add_multiple_partial_0: forall mx r1 r2 k,
+  add_multiple_partial mx r1 r2 k 0 = mx.
+Proof.
+  move => mx r1 r2 k. rewrite /add_multiple_partial. rewrite sublist_nil /= sublist_same => [|//|//].
+  have [Hout | Hin]: ((0 > r2 \/ r2 >= Zlength mx) \/ 0 <= r2 < Zlength mx) by lia.
+  - by apply upd_Znth_out_of_range.
+  - apply Znth_eq_ext. list_solve. move => i len.
+    have [Heq | Hneq]: (i = r2 \/ i <> r2) by lia.
+    + subst. by rewrite upd_Znth_same; try lia.
+    + rewrite upd_Znth_diff => [//|//|//|//]. list_solve.
+Qed.
+
+Lemma add_multiple_partial_plus_1: forall m n mx r1 r2 k b,
+  wf_matrix mx m n ->
+  0 <= r1 < m ->
+  0 <= r2 < m ->
+  0 <= b < n ->
+  add_multiple_partial mx r1 r2 k (b + 1) =
+    set (add_multiple_partial mx r1 r2 k b) r2 b ((get mx r2 b) + (k * (get mx r1 b)))%R.
+Proof.
+  move => m n mx r1 r2 k b [Hlen [Hn Hin]] Hr1 Hr2 Hb.
+  rewrite /add_multiple_partial /set.
+  rewrite !sublist_last_1; try lia. rewrite upd_Znth_twice upd_Znth_same; try lia.
+  have Hcomblen:
+     Zlength (combine (sublist 0 b (Znth r2 mx)) (sublist 0 b (Znth r1 mx)) (fun x y : F => x + k * y)) = b.
+  { rewrite combine_Zlength; rewrite !Zlength_sublist; try lia. all: rewrite Hin; try lia; apply Znth_In; lia. }
+  rewrite upd_Znth_app2; rewrite Hcomblen.
+  - have ->: ((b - b)%Z = 0%Z) by lia.
+    rewrite (sublist_split b (b+1)%Z); try lia. rewrite sublist_len_1 => [|//].
+    rewrite upd_Znth0. rewrite combine_app //=.
+    by rewrite -catA. rewrite !Zlength_sublist; try lia. 
+    all: rewrite Hin; try lia; apply Znth_In; lia.
+  - pose proof (Zlength_nonneg (sublist b (Zlength (Znth r2 mx)) (Znth r2 mx))); lia.
+  - rewrite Hin; try lia; apply Znth_In; lia.
+  - rewrite Hin; try lia; apply Znth_In; lia.
+Qed.
+
+Lemma add_multiple_partial_outisde: forall m n mx r1 r2 k b j,
+  wf_matrix mx m n ->
+  0 <= r1 < m ->
+  0 <= r2 < m ->
+  0 <= b < n ->
+  0 <= j < n ->
+  b <= j ->
+  get (add_multiple_partial mx r1 r2 k b) r2 j = get mx r2 j.
+Proof.
+  move => m n mx r1 r2 k b j [Hlen [Hn Hin]] Hr1 Hr2 Hb Hj Hbj.
+  rewrite /add_multiple_partial /get.
+  rewrite upd_Znth_same; try lia.
+  have Hcomlen: Zlength (combine (sublist 0 b (Znth r2 mx)) (sublist 0 b (Znth r1 mx)) (fun x y : F => x + k * y)) = b
+   by rewrite combine_Zlength !Zlength_sublist; try lia; rewrite Hin; try lia; apply Znth_In; lia.
+  rewrite Znth_app2; rewrite Hcomlen; try lia.
+  rewrite Znth_sublist; try lia. list_solve. rewrite Hin; try lia; apply Znth_In; lia.
+Qed.
+  
 
 Definition add_multiple (mx: matrix) (r1 r2 : Z) (k: F) : matrix :=
   add_multiple_partial mx r1 r2 k (Zlength (Znth r1 mx)).
@@ -495,6 +564,41 @@ Section SubRows.
 
 Definition sub_all_rows_partial (mx: matrix) (r: Z) (bound: Z) :=
   fold_left (fun acc x => if Z.eq_dec x r then acc else add_multiple acc r x (- 1)) (Ziota 0 bound) mx.
+
+Lemma sub_all_rows_plus_1: forall mx r b,
+  0 <= b ->
+  b <> r ->
+  sub_all_rows_partial mx r (b+1) = add_multiple (sub_all_rows_partial mx r b) r b (- 1).
+Proof.
+  move => mx r b Hb Hbr. rewrite /sub_all_rows_partial Ziota_plus_1; try lia.
+  rewrite fold_left_app /=.
+  by case : (Z.eq_dec b r) => [Hbreq // | Hbrneq /=].
+Qed. 
+
+Lemma sub_all_rows_outside: forall m n mx r bound i j,
+  wf_matrix mx m n ->
+  0 <= r < m ->
+  0 <= bound <= i ->
+  0 <= bound <= m ->
+  0 <= i < m ->
+  0 <= j < n ->
+  get (sub_all_rows_partial mx r bound) i j = get mx i j.
+Proof.
+  move => m n mx r bound i j Hwf Hr Hbi Hbm Hi Hj. rewrite /sub_all_rows_partial.
+  have : ~In i (Ziota 0 bound) by rewrite Zseq_In; lia.
+  have: forall x, In x (Ziota 0 bound) -> 0 <= x < bound by move => x; rewrite Zseq_In; lia.
+  move : mx Hwf.
+  elim : (Ziota 0 bound) => [//|h t IH mx' Hwf Hallin Hnotin /=].
+  have Hh: 0 <= h < m. have H: 0 <= h < bound by apply Hallin; left. lia.
+  case : (Z.eq_dec h r) => [Hhr /= | Hhr /=].
+  - subst. apply IH => [//||]. move => x Hinx. apply Hallin. by right.
+    move => Hint. apply Hnotin. by right.
+  - rewrite IH. rewrite (add_multiple_spec _ Hwf) => [|//|//|//|//].
+    case : (Z.eq_dec i h) => [Hih /= | Hih /=]. subst. exfalso. apply Hnotin. by left.
+    by []. apply add_multiple_partial_wf; try lia; auto.
+    move : Hwf => [Hlen [Hn Hin]]. rewrite Hin; try lia; apply Znth_In; lia.
+    move => x' Hinx'. apply Hallin. by right. move => Hint. apply Hnotin. by right.
+Qed.
 
 Lemma sub_all_rows_equiv: forall {m n} (mx: matrix) (r: Z) (Hr: 0 <= r < m),
   wf_matrix mx m n ->

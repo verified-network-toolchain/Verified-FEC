@@ -88,16 +88,16 @@ Ltac solve_qpoly_bounds :=
 Lemma body_fec_matrix_transform : semax_body Vprog Gprog f_fec_matrix_transform fec_matrix_transform_spec.
 Proof.
   start_function. destruct H as [Hmnpos [Hmn [Hnbound [Hwf Hstr]]]].
-  forward_loop (EX (row : Z),
-    PROP (0 <= row <= m)
-    LOCAL (temp _k (Vint (Int.repr (row))); temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n));
+  forward_loop (EX (k : Z),
+    PROP (0 <= k <= m)
+    LOCAL (temp _k (Vint (Int.repr (k))); temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n));
       gvars gv)
     SEP(data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
    data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
    data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
    data_at Ews (tarray tuchar (m * n))
      (map Vint (map Int.repr (flatten_mx 
-        (gauss_all_steps_rows_partial mx m row )))) s))
+        (gauss_all_steps_rows_partial mx m k )))) s))
     break: (PROP ()
            LOCAL (temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n));
       gvars gv)
@@ -108,37 +108,37 @@ Proof.
      (map Vint (map Int.repr (flatten_mx 
         (gauss_all_steps_rows_partial mx m m )))) s)). 
 { forward. Exists 0%Z. entailer!. }
-{ Intros gauss_step_row. forward_if.
+{ Intros k. forward_if.
   { (*body of outer loop *) 
     (*now there are 2 inner loops; the first is [all_cols_one_partial]*)
     forward_loop 
-    (EX (row : Z),
-      PROP (0 <= row <= m)
-      LOCAL (temp _i (Vint (Int.repr (row))); temp _k (Vint (Int.repr gauss_step_row)); temp _p s; 
+    (EX (i : Z),
+      PROP (0 <= i <= m)
+      LOCAL (temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k)); temp _p s; 
       temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); gvars gv)
       SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
         data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr 
           (flatten_mx (all_cols_one_partial 
-            (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row row )))) s))
+            (gauss_all_steps_rows_partial (F:=F) mx m k) k i )))) s))
       break: (PROP ()
-        LOCAL (temp _k (Vint (Int.repr gauss_step_row)); temp _p s; 
+        LOCAL (temp _k (Vint (Int.repr k)); temp _p s; 
       temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); gvars gv)
       SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
         data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr 
           (flatten_mx (all_cols_one_partial 
-            (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row m )))) s)).
+            (gauss_all_steps_rows_partial (F:=F) mx m k) k m )))) s)).
     { forward. Exists 0%Z. entailer!. }
-    { Intros cols_one_row. forward_if.
+    { Intros i. forward_if.
       { forward. (*Want to simplify pointer in q*)
         assert_PROP ((force_val (sem_binary_operation' Osub (tptr tuchar) tint
           (eval_binop Oadd (tptr tuchar) tuchar (eval_binop Oadd (tptr tuchar) tint s
-           (eval_binop Omul tuchar tuchar (Vint (Int.repr cols_one_row))
+           (eval_binop Omul tuchar tuchar (Vint (Int.repr i))
            (Vint (Int.repr n)))) (Vint (Int.repr n))) (Vint (Int.repr 1)))) =
-           (offset_val (((cols_one_row * n) + n) - 1) s)). { entailer!.
+           (offset_val (((i * n) + n) - 1) s)). { entailer!.
         rewrite sem_sub_pi_offset; auto. rep_lia. }
         rewrite H3. clear H3.
         forward.
@@ -146,28 +146,28 @@ Proof.
         { (*Now, we will simplify pointer in m*)
           assert_PROP ((force_val
                (sem_binary_operation' Oadd (tptr tuchar) tint
-                  (eval_binop Osub (tptr tuchar) tuchar (offset_val (cols_one_row * n + n - 1) s)
+                  (eval_binop Osub (tptr tuchar) tuchar (offset_val (i * n + n - 1) s)
                      (Vint (Int.repr n))) (Vint (Int.repr 1)))) =
-            offset_val (cols_one_row * n) s). { entailer!.
+            offset_val (i * n) s). { entailer!.
           rewrite sem_sub_pi_offset; auto; try rep_lia. f_equal. simpl. rewrite sem_add_pi_ptr_special; auto;
           try rep_lia. simpl. rewrite offset_offset_val. f_equal. lia. }
           rewrite H3; clear H3.
-          assert_PROP ((offset_val (cols_one_row * n) s) = field_address (tarray tuchar (m * n)) 
-            (SUB ((cols_one_row * n) + n - 1 - (n-1))) s). { entailer!. rewrite arr_field_address; auto.
+          assert_PROP ((offset_val (i * n) s) = field_address (tarray tuchar (m * n)) 
+            (SUB ((i * n) + n - 1 - (n-1))) s). { entailer!. rewrite arr_field_address; auto.
             simpl. f_equal. lia. apply (matrix_bounds_within); lia. } rewrite H3; rename H3 into Hm_offset. 
           forward.
           assert (Hwf' : wf_matrix (F:=F) (all_cols_one_partial (F:=F) 
-            (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) m n). {
+            (gauss_all_steps_rows_partial (F:=F) mx m k) k i) m n). {
           apply all_cols_one_partial_wf. lia. apply gauss_all_steps_rows_partial_wf. lia. assumption. }
         (*Now we are at the while loop - because of the [strong_inv] condition of the matrix,
           the loop guard is false (the loop finds the element to swap if one exists, but returns
           with an error whether or not one exists*)
         (*Because of this, we give a trivial loop invariant*)
         remember ((PROP ( )
-           LOCAL (temp _w (Vint (Int.zero_ext 8 (Int.repr cols_one_row)));
-           temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s);
-           temp _q (offset_val (cols_one_row * n + n - 1) s);
-           temp _i (Vint (Int.repr cols_one_row)); temp _k (Vint (Int.repr gauss_step_row)); 
+           LOCAL (temp _w (Vint (Int.zero_ext 8 (Int.repr i)));
+           temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s);
+           temp _q (offset_val (i * n + n - 1) s);
+           temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k)); 
            temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
            gvars gv)
            SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
@@ -177,47 +177,47 @@ Proof.
              (map Vint
                 (map Int.repr
                    (flatten_mx
-                      (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-                         gauss_step_row cols_one_row)))) s))) as x.
+                      (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k)
+                         k i)))) s))) as x.
          forward_loop x break: x; subst. (*so I don't have to write it twice*)
         { entailer!. }
         { assert_PROP (force_val (sem_sub_pi tuchar Signed 
-            (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr gauss_step_row))) =
-            offset_val (cols_one_row * n + n - 1 - gauss_step_row) s). { entailer!.
+            (offset_val (i * n + n - 1) s) (Vint (Int.repr k))) =
+            offset_val (i * n + n - 1 - k) s). { entailer!.
            rewrite sem_sub_pi_offset;auto. simpl. f_equal. lia. rep_lia. }
            (*TODO: will need more general stuff probably*)
-           assert (0 <= cols_one_row * n + n - 1 - gauss_step_row < m * n). {
+           assert (0 <= i * n + n - 1 - k < m * n). {
             apply matrix_bounds_within; lia. }
            assert_PROP (force_val (sem_sub_pi tuchar Signed 
-            (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr gauss_step_row))) =
-            field_address (tarray tuchar (m * n)) (SUB  (cols_one_row * n + n - 1 - gauss_step_row)) s). {
+            (offset_val (i * n + n - 1) s) (Vint (Int.repr k))) =
+            field_address (tarray tuchar (m * n)) (SUB  (i * n + n - 1 - k)) s). {
             entailer!. rewrite H3. rewrite arr_field_address; auto. simpl. f_equal. lia. }
             clear H3.
-           assert_PROP ((0 <= cols_one_row * n + n - 1 - gauss_step_row <
+           assert_PROP ((0 <= i * n + n - 1 - k <
               Zlength (map Int.repr (flatten_mx
-              (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-              gauss_step_row cols_one_row))))). {
+              (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k)
+              k i))))). {
            entailer!. list_solve. } simpl_reptype. rewrite Zlength_map in H3.
            forward.
           { entailer!. rewrite (@flatten_mx_Znth m n); try lia. 
             pose proof (qpoly_int_bound (get (F:=F) (all_cols_one_partial (F:=F) 
-                (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
-                cols_one_row gauss_step_row)). rewrite Int.unsigned_repr; rep_lia. assumption. }
+                (gauss_all_steps_rows_partial (F:=F) mx m k) k i) 
+                i k)). rewrite Int.unsigned_repr; rep_lia. assumption. }
           { entailer!. rewrite sem_sub_pi_offset; auto. rep_lia. }
           { forward_if.
             { (*contradiction due to [strong_inv]*)
-              assert (Znth (cols_one_row * n + n - 1 - gauss_step_row)
-                (flatten_mx (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-                gauss_step_row cols_one_row)) <> 0%Z). {
+              assert (Znth (i * n + n - 1 - k)
+                (flatten_mx (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k)
+                k i)) <> 0%Z). {
               rewrite (@flatten_mx_Znth m n); try lia. 2: assumption. intro Hzero.
               rewrite poly_to_int_zero_iff in Hzero. 
-              assert (Hrm : 0 <= gauss_step_row < m) by lia.
-              assert (Hcm : 0 <= cols_one_row < m) by lia.
+              assert (Hrm : 0 <= k < m) by lia.
+              assert (Hcm : 0 <= i < m) by lia.
               apply (gauss_all_steps_columns_partial_zeroes_list Hrm H1 (proj2 Hmn) Hwf Hstr Hcm). 
               replace (ssralg.GRing.zero (ssralg.GRing.Field.zmodType F)) with (q0 modulus_poly_deg_pos) by reflexivity.
               destruct ((get (F:=F)
-              (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-                gauss_step_row cols_one_row) cols_one_row gauss_step_row)) eqn : G. unfold q0. unfold r0. exist_eq.
+              (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k)  k i) i k)) eqn : G.
+              unfold q0. unfold r0. exist_eq.
               simpl in Hzero. assumption. } 
               apply mapsto_memory_block.repr_inj_unsigned in H6. contradiction. 2: rep_lia.
               rewrite (@flatten_mx_Znth m n); try lia. eapply Z_expand_bounds.
@@ -227,20 +227,19 @@ Proof.
         }
       { (*after the while loop*)
          assert_PROP (force_val (sem_sub_pi tuchar Signed 
-            (offset_val (cols_one_row * n + n - 1) s) (Vint (Int.repr gauss_step_row))) =
-            field_address (tarray tuchar (m * n)) (SUB  (cols_one_row * n + n - 1 - gauss_step_row)) s). {
+            (offset_val (i * n + n - 1) s) (Vint (Int.repr k))) =
+            field_address (tarray tuchar (m * n)) (SUB  (i * n + n - 1 - k)) s). {
             entailer!. rewrite sem_sub_pi_offset;auto. simpl. rewrite arr_field_address; auto. simpl. f_equal. lia.
             apply matrix_bounds_within; lia. rep_lia. } 
-         assert (0 <= cols_one_row * n + n - 1 - gauss_step_row < m * n). {
+         assert (0 <= i * n + n - 1 - k < m * n). {
             apply matrix_bounds_within; lia. }
-         assert_PROP ((0 <= cols_one_row * n + n - 1 - gauss_step_row <
+         assert_PROP ((0 <= i * n + n - 1 - k <
           Zlength (map Int.repr (flatten_mx
-         (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-            gauss_step_row cols_one_row))))). entailer!. list_solve. rewrite Zlength_map in H5.
+         (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k i))))). 
+         entailer!. list_solve. rewrite Zlength_map in H5.
          (*Doing some stuff to simplify here so we don't need to repeat this in each branch*)
          pose proof (Hpolybound:= (qpoly_int_bound (get (F:=F) (all_cols_one_partial (F:=F) 
-                (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
-                cols_one_row gauss_step_row))).
+                (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k))).
           forward; try rewrite (@flatten_mx_Znth m n); try lia; try assumption.
         { entailer!. lia. }
         { entailer!. rewrite sem_sub_pi_offset; auto. rep_lia. }
@@ -251,21 +250,16 @@ Proof.
           { forward. forward. (*simplify before for loop*)
             rewrite inverse_contents_Znth. 2: solve_qpoly_bounds.  rewrite poly_of_int_inv. simpl.
             remember (get (F:=F) (all_cols_one_partial (F:=F)
-                      (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row
-                       cols_one_row) cols_one_row gauss_step_row) as qij eqn : Hqij. 
+                      (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k) as qij eqn : Hqij. 
             remember (proj1_sig qij) as pij eqn : Hpij.
-            (*assert_PROP ((offset_val (cols_one_row * n + n - 1) s) = 
-              field_address (tarray tuchar (m * n)) (SUB (cols_one_row * n + n - 1)) s). {
-            entailer!. rewrite arr_field_address. simpl. f_equal. lia. auto. 
-            pose proof (matrix_bounds_within m n cols_one_row 0). lia. } rewrite H6. clear H6.*)
             remember (find_inv mod_poly modulus_poly_deg_pos qij) as qij_inv eqn : Hqinv.
             replace (poly_inv mod_poly modulus_poly_deg_pos pij) with (proj1_sig qij_inv). 2 : {
             unfold poly_inv. rewrite Hpij. rewrite poly_to_qpoly_unfold. rewrite Hqinv. reflexivity. }
             assert_PROP ((force_val
-               (sem_add_ptr_int tuchar Signed (offset_val (cols_one_row * n + n - 1) s)
-                  (Vint (Int.repr 1)))) = offset_val (cols_one_row * n + n) s). { entailer!.
+               (sem_add_ptr_int tuchar Signed (offset_val (i * n + n - 1) s)
+                  (Vint (Int.repr 1)))) = offset_val (i * n + n) s). { entailer!.
             f_equal. lia. } rewrite H6; clear H6.
-            assert (Hmn_leq: 0 <= cols_one_row * n + n <= m * n). { split; try lia. 
+            assert (Hmn_leq: 0 <= i * n + n <= m * n). { split; try lia. 
               replace n with (1 * n) at 2 by lia. rewrite <- Z.mul_add_distr_r.
               apply Z.mul_le_mono_nonneg_r; lia. } 
             (*Scalar multiplication loop*)
@@ -275,30 +269,30 @@ Proof.
             LOCAL (temp _inv (Vint (Int.zero_ext 8 (Int.repr (poly_to_int (proj1_sig qij_inv)))));
               temp _t'11 (Vint (Int.repr (poly_to_int (proj1_sig qij_inv))));
               temp _t'10 (Vint (Int.repr (poly_to_int pij)));
-              temp _w (Vint (Int.zero_ext 8 (Int.repr cols_one_row)));
-              temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s);
+              temp _w (Vint (Int.zero_ext 8 (Int.repr i)));
+              temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s);
               (*temp _q (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1)] s);*)
-              temp _q (offset_val (cols_one_row * n + n - 1) s);
-              temp _i (Vint (Int.repr cols_one_row)); temp _k (Vint (Int.repr gauss_step_row)); 
+              temp _q (offset_val (i * n + n - 1) s);
+              temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k)); 
               temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
               gvars gv;
-              temp _n (field_address0 (tarray tuchar (m * n)) (SUB (cols_one_row * n + n - j)) s))
+              temp _n (field_address0 (tarray tuchar (m * n)) (SUB (i * n + n - j)) s))
               (*temp _n (offset_val (cols_one_row * n + n - 1 - j) s))*)
             SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
                  data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
                  data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
                  data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr
                   (flatten_mx (scalar_mul_row_partial (all_cols_one_partial (F:=F) 
-                    (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
-                    cols_one_row qij_inv j)))) s))
+                    (gauss_all_steps_rows_partial (F:=F) mx m k) k i) 
+                    i qij_inv j)))) s))
             break: (PROP ()
               LOCAL (temp _inv (Vint (Int.zero_ext 8 (Int.repr (poly_to_int (proj1_sig qij_inv)))));
               temp _t'11 (Vint (Int.repr (poly_to_int (proj1_sig qij_inv))));
               temp _t'10 (Vint (Int.repr (poly_to_int pij)));
-              temp _w (Vint (Int.zero_ext 8 (Int.repr cols_one_row)));
-              temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s); 
-              temp _q (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1)] s);
-              temp _i (Vint (Int.repr cols_one_row)); temp _k (Vint (Int.repr gauss_step_row)); 
+              temp _w (Vint (Int.zero_ext 8 (Int.repr i)));
+              temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s); 
+              temp _q (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1)] s);
+              temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k)); 
               temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
               gvars gv)
               SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
@@ -306,52 +300,51 @@ Proof.
                  data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
                  data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr
                   (flatten_mx (scalar_mul_row (all_cols_one_partial (F:=F) 
-                    (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row cols_one_row) 
-                    cols_one_row qij_inv)))) s)).
+                    (gauss_all_steps_rows_partial (F:=F) mx m k) k i) 
+                    i qij_inv)))) s)).
             { Exists 0%Z. entailer!. rewrite arr_field_address0; auto. simpl. f_equal; lia.
               rewrite scalar_mul_row_partial_0. cancel. }
-            { Intros j. assert (Hcn : 0 <= cols_one_row * n). { apply Z.mul_nonneg_nonneg; lia. } 
+            { Intros j. assert (Hcn : 0 <= i * n). { apply Z.mul_nonneg_nonneg; lia. } 
               forward_if.
               { rewrite !arr_field_address0; auto. rewrite arr_field_address; auto.
                 rewrite isptr_denote_tc_test_order; auto. unfold test_order_ptrs.
-                assert (Hsame: sameblock (offset_val (sizeof tuchar * (cols_one_row * n + n - j)) s)
-                (offset_val (sizeof tuchar * (cols_one_row * n + n - 1 - (n - 1))) s) = true). {
+                assert (Hsame: sameblock (offset_val (sizeof tuchar * (i * n + n - j)) s)
+                (offset_val (sizeof tuchar * (i * n + n - 1 - (n - 1))) s) = true). {
                 eapply sameblock_trans. apply sameblock_symm. all: apply isptr_offset_val_sameblock; auto. }
                 rewrite Hsame; clear Hsame. repeat(sep_apply data_at_memory_block).
                 apply andp_right.
                 - sep_eapply memory_block_weak_valid_pointer; auto; try(simpl; lia).
-                  instantiate (i := sizeof tuchar * (cols_one_row * n + n - j)). simpl. lia. entailer!.
+                  instantiate (1 := sizeof tuchar * (i * n + n - j)). simpl. lia. entailer!.
                 - sep_eapply memory_block_weak_valid_pointer; auto; try(simpl; lia).
-                  instantiate (i := sizeof tuchar * (cols_one_row * n + n - 1 - (n - 1))). simpl. lia. 
+                  instantiate (1 := sizeof tuchar * (i * n + n - 1 - (n - 1))). simpl. lia. 
                   entailer!.
                 - apply matrix_bounds_within; lia.
                 - lia. }
               { forward. entailer!. apply field_address0_isptr. apply arr_field_compatible0; auto; try lia.
                 assert_PROP ((field_address (tarray tuchar (m * n)) 
-                    [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s) =
-                    (field_address0 (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s)). {
+                    [ArraySubsc (i * n + n - 1 - (n - 1))] s) =
+                    (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s)). {
                 entailer!. rewrite <- Hm_offset. rewrite arr_field_address0; auto. f_equal; simpl; lia. lia. }
                 rewrite H8 in H7; clear H8.
                 assert_PROP (j < n). { entailer!. apply ptr_comparison_gt_iff in H7; auto. all: simpl; lia. }
                 clear H7.
                 assert_PROP ((force_val
                 (sem_binary_operation' Osub (tptr tuchar) tint
-                  (field_address0 (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - j)] s)
+                  (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - j)] s)
                   (Vint (Int.repr 1)))) = 
-                (field_address (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - j)] s)). {
+                (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - j)] s)). {
                 entailer!. rewrite !arr_field_address0; auto; try lia.
                 rewrite !arr_field_address; auto; try lia. rewrite sem_sub_pi_offset; auto; try rep_lia.
                 f_equal; simpl; lia. } rewrite H7; clear H7. 
                 (*Need length bound also*)
-                assert_PROP (0 <= cols_one_row * n + n - 1 - j < Zlength (map Int.repr
+                assert_PROP (0 <= i * n + n - 1 - j < Zlength (map Int.repr
                 (flatten_mx (scalar_mul_row_partial (F:=F)
-                (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-                gauss_step_row cols_one_row) cols_one_row qij_inv j)))). { entailer!. list_solve. }
+                (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i qij_inv j)))).
+                 { entailer!. list_solve. }
                 rewrite Zlength_map in H7.
                 assert (Hwf'' : wf_matrix (F:=F) (scalar_mul_row_partial (F:=F)
-                  (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-                  gauss_step_row cols_one_row) cols_one_row qij_inv j) m n). {
-                  apply scalar_mul_row_partial_wf; try lia. auto. }
+                  (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i qij_inv j) m n). 
+                { apply scalar_mul_row_partial_wf; try lia. auto. }
                 forward.
                 - entailer!. rewrite (@flatten_mx_Znth m n); try lia.
                   rewrite unsigned_repr; solve_qpoly_bounds. auto. 
@@ -374,34 +367,25 @@ Proof.
                     rewrite arr_field_address0; auto; try lia. f_equal; lia.
                     rewrite !upd_Znth_map. (*need to simplify the scalar_mult*)
                     rewrite (@scalar_mul_row_plus_1 F _ m n). simpl_reptype.
-                    remember ((scalar_mul_row_partial (F:=F)
-                        (all_cols_one_partial (F:=F)
-                           (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row
-                           cols_one_row) cols_one_row
-                        (find_inv mod_poly modulus_poly_deg_pos
-                           (get (F:=F)
-                              (all_cols_one_partial (F:=F)
-                                 (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row)
-                                 gauss_step_row cols_one_row) cols_one_row gauss_step_row)) j)) as mx'.
+                    remember ((scalar_mul_row_partial (F:=F) (all_cols_one_partial (F:=F)
+                      (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i
+                      (find_inv mod_poly modulus_poly_deg_pos (get (F:=F) (all_cols_one_partial (F:=F)
+                      (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k)) j)) as mx'.
                     replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) with
                      (r_mul _ modulus_poly_deg_pos) by reflexivity. unfold r_mul. 
                     unfold poly_mult_mod. 
-                    remember ((get (F:=F)
-                        (all_cols_one_partial (F:=F)
-                           (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row
-                           cols_one_row) cols_one_row gauss_step_row)) as elt.
-                    assert (Hget: (get (F:=F) mx' cols_one_row j) = (get (F:=F)
-                            (all_cols_one_partial (F:=F)
-                               (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row
-                               cols_one_row) cols_one_row j)). {
+                    remember ((get (F:=F)(all_cols_one_partial (F:=F) 
+                      (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k)) as elt.
+                    assert (Hget: (get (F:=F) mx' i j) = (get (F:=F) (all_cols_one_partial (F:=F)
+                            (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i j)). {
                      rewrite Heqmx'. rewrite (@scalar_mul_row_outside _ m n); try lia. reflexivity.
                      auto. } rewrite Hget. clear Hget. rewrite poly_mult_comm.
                       rewrite <- (@flatten_mx_set m n). simpl. cancel. all: try lia; auto. } 
               { (*scalar mul loop return*) forward. entailer!.
                 - rewrite arr_field_address; auto; try lia. f_equal; simpl; lia. 
                 - assert_PROP ((field_address (tarray tuchar (m * n)) 
-                    [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s) =
-                    (field_address0 (tarray tuchar (m * n)) [ArraySubsc (cols_one_row * n + n - 1 - (n - 1))] s)). {
+                    [ArraySubsc (i * n + n - 1 - (n - 1))] s) =
+                    (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s)). {
                   entailer!. rewrite <- Hm_offset. rewrite arr_field_address0; auto. f_equal; simpl; lia. lia. }
                   rewrite H31 in H7; clear H31.
                   (*need to know that j = n at end of loop*)
@@ -412,14 +396,12 @@ Proof.
                     rewrite ptr_comparison_gt_iff. reflexivity. all: auto. all: simpl; lia. }
                     lia. } 
                   assert (j = n) by lia. subst; clear Hjn H7. unfold scalar_mul_row. 
-                  assert (Hlenn: (Zlength
-                     (Znth cols_one_row
-                        (all_cols_one_partial (F:=F)
-                           (gauss_all_steps_rows_partial (F:=F) mx m gauss_step_row) gauss_step_row
-                           cols_one_row))) = n). destruct Hwf' as [Hlen [Hn' Hin]]. apply Hin.
-                    apply Znth_In; lia. rewrite Hlenn; cancel. } }
+                  assert (Hlenn: (Zlength (Znth i (all_cols_one_partial (F:=F)
+                          (gauss_all_steps_rows_partial (F:=F) mx m k) k i))) = n).
+                  { destruct Hwf' as [Hlen [Hn' Hin]]. apply Hin.
+                    apply Znth_In; lia. } rewrite Hlenn; cancel. } }
             (*no idea what level I'm on - coqide has stopped highlighting brackets, but at end of col loop*)
-            forward. Exists (cols_one_row + 1). entailer!.
+            forward. Exists (i + 1). entailer!.
             { f_equal. unfold Int.zero_ext. f_equal. rewrite Zbits.Zzero_ext_mod; try lia.
               replace (two_p 8) with (256) by reflexivity. rewrite Z.mod_small; rewrite unsigned_repr; rep_lia. }
             { rewrite all_cols_one_plus_1; try lia. 
@@ -427,6 +409,108 @@ Proof.
               rewrite (@all_cols_one_outside F m n); try lia. cancel.
               apply gauss_all_steps_rows_partial_wf; try lia; assumption. } } } } } }
       (*now we are completely finishing the col loop*)
-    { forward. entailer!. replace (cols_one_row) with m by lia. cancel. } }
+    { forward. entailer!. replace (i) with m by lia. cancel. } }
   { (*start of second part: add kth row to all other rows*)
+    forward. (*simplify r*)
+    assert_PROP ((force_val (sem_binary_operation' Osub (tptr tuchar) tint
+                  (eval_binop Oadd (tptr tuchar) tuchar (eval_binop Oadd (tptr tuchar) tint s
+                  (eval_binop Omul tuchar tuchar (Vint (Int.repr k))
+                  (Vint (Int.repr n)))) (Vint (Int.repr n))) (Vint (Int.repr 1)))) = 
+                 offset_val (k * n + n - 1) s). { entailer!.
+    rewrite sem_sub_pi_offset; auto. rep_lia. } rewrite H1; clear H1.
+    (*can't use [forward_for_simple_bound] because it cases i to a tuchar*)
+    (*TODO: again, lots of duplication*)
+    forward_loop (EX (i : Z),
+      PROP (0 <= i <= m)
+      LOCAL  (temp _r (offset_val (k * n + n - 1) s); temp _k (Vint (Int.repr k));
+              temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); temp _i (Vint (Int.repr i));
+              gvars gv)
+      SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+            data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+            data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+            data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr (flatten_mx
+          (sub_all_rows_partial (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i)))) s))
+      break: 
+      (PROP ()
+      LOCAL  (temp _r (offset_val (k * n + n - 1) s); temp _k (Vint (Int.repr k));
+              temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n));
+              gvars gv)
+      SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+            data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+            data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+            data_at Ews (tarray tuchar (m * n)) (map Vint (map Int.repr (flatten_mx
+          (sub_all_rows_partial (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k m)))) s)).
+    { (*initialization of subtract all rows loop*) 
+      forward. Exists 0%Z. entailer!. }
+    { (*Body of subtract all rows loop *) 
+      Intros i. forward_if.
+      { (*i < m (loop body)*) 
+        forward_if True. (*TODO: see*)
+        { (*when i != k*)
+          forward. (*simplify q*)
+          assert_PROP ((force_val (sem_binary_operation' Osub (tptr tuchar) tint
+            (eval_binop Oadd (tptr tuchar) tuchar (eval_binop Oadd (tptr tuchar) tint s
+            (eval_binop Omul tuchar tuchar (Vint (Int.repr i)) (Vint (Int.repr n))))
+            (Vint (Int.repr n))) (Vint (Int.repr 1)))) =
+            offset_val (i * n + n - 1) s). { entailer!. rewrite sem_sub_pi_offset; auto. rep_lia. }
+          rewrite H4; clear H4.
+          forward_for (fun (j : Z) => PROP (0 <= j <= m)
+            LOCAL (temp _q (offset_val (i * n + n - 1) s); temp _r (offset_val (k * n + n - 1) s);
+              temp _k (Vint (Int.repr k)); temp _p s; temp _i_max (Vint (Int.repr m));
+              temp _j_max (Vint (Int.repr n)); temp _i (Vint (Int.repr i)); temp _j (Vint (Int.repr j)); gvars gv)
+            SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+             data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+             data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+             data_at Ews (tarray tuchar (m * n))
+               (map Vint (map Int.repr (flatten_mx
+               (add_multiple_partial (sub_all_rows_partial (F:=F)(all_cols_one_partial (F:=F) 
+                  (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i (q1 modulus_poly_deg_pos) j)))) s)).
+           { (*beginning of subtraction loop*) forward. Exists 0%Z. entailer!.
+             
+    
+
+
+)))
+     s))
+          
+
+
+
+        }
+      }
+      { (*i >= m (end of loop)*) }
+
+
+    }
+    { (*postcondition of subtract all rows loop*) admit. } 
+
+
+    forward_for_simple_bound n 
+    
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
   
