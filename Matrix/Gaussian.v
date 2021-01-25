@@ -1654,6 +1654,25 @@ Proof.
       have: nat_of_ord (widen_ord (ltn_ord r') (Ordinal Hsuc)) == r by []. by [].
 Qed.
 
+(*We want to know that after [gauss_step_restrict] with input r, A r r = 1 (this is not true for previous LC's*)
+Lemma last_lc_1: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m),
+  strong_inv A Hmn r ->
+  gauss_invar A r r ->
+  (gauss_one_step_restrict A r Hmn) r (widen_ord Hmn r) = 1.
+Proof.
+  move => m n A Hmn r Hstr Hinv. rewrite /gauss_one_step_restrict.
+  rewrite /sub_all_rows_noif foldr_remAll /=. 
+  rewrite mx_row_transform_notin.
+  - rewrite mx_row_transform.
+    + rewrite /sc_mul mxE eq_refl. apply GRing.mulVf. by apply strong_inv_nonzero_cols.
+    + move => A' i j r' Hir. rewrite /sc_mul mxE. by have ->: i == r' = false by move : Hir; by case (i == r').
+    + move => A' B' r' Hab Hnotin j. rewrite /sc_mul !mxE eq_refl. by rewrite Hab.
+    + apply ord_enum_uniq.
+    + apply mem_ord_enum.
+  - move => A' i j r' Hir. rewrite /add_mul mxE. by have ->: i == r' = false by move : Hir; by case (i == r').
+  - apply remAll_notin.
+Qed.
+
 (*For the all-steps functions, we don't need to use Function since this time, we know that r and c increase by 1
   each time. Thus, we can fold over a list. We will need both directions*)
 (*Note: although we will never hit the None case, it makes the proofs much easier if we can use [iota] rather 
@@ -1742,6 +1761,22 @@ Proof.
     move : IH => /(_ (a.+1) (gauss_one_step_restrict A (Sub a Ha) Hmn) Ha1 Habm1 Hinv1 Hstr1) IH.
     rewrite strong_inv_dep. apply IH. by have: (a + b.+1)%N == (a.+1 + b)%N by apply (introT eqP); rewrite Hab1.
 Qed.
+
+(*Finally, we want to know that the last row (a + b) has leading coefficient 1*)
+Lemma gauss_all_steps_restrict_aux_lc_1: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (a b: nat) (Ha: a < m)
+  (Hab : a + b.-1 < m),
+  0 < b ->
+  gauss_invar A a a ->
+  strong_inv A Hmn (Ordinal Ha) ->
+  (gauss_all_steps_restrict_aux A Hmn a b) (Ordinal Hab) (widen_ord Hmn (Ordinal Hab)) = 1.
+Proof.
+  move => m n A Hmn a b Ha Hab H0b Hinv Hstr. rewrite /gauss_all_steps_restrict_aux.
+  have Hb: b = ((b.-1) + 1)%N by rewrite addn1 (ltn_predK H0b).
+  have ->: (iota a b) = (iota a (b.-1 + 1)%N) by rewrite {1}Hb.
+  rewrite iotaD foldl_cat /= insubT -/(gauss_all_steps_restrict_aux A Hmn a b.-1) /=.
+  apply last_lc_1. apply (@gauss_all_steps_restrict_aux_strong _ _ _ _ _ _ Ha Hab Hinv Hstr).
+  apply (gauss_all_steps_restrict_aux_inv (ltnW Hab) Hinv Hstr).
+Qed. 
 
 Definition gauss_all_steps_restrict_end {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
   gauss_all_steps_restrict_aux A Hmn r (m - r).
@@ -1852,34 +1887,71 @@ Qed.
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
   which oeprates on the result of gaussian elimination*)
 
-(*In this case, we know all the leading coefficients are at position r (ror row r)*)
-Definition mk_identity {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) :=
-  foldr (fun x acc => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (ord_enum m).
+(*In this case, we know all the leading coefficients are at position r (ror row r). We provide a 
+  generic upper bound because the last row is not needed*)
+Definition mk_identity {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (b: nat) :=
+  foldr (fun x acc => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (pmap insub (iota 0 b)).
 
-Lemma mk_identity_equiv: forall {m n} (A:'M[F]_(m, n)) (Hmn: m <= n),
+Lemma mk_identity_val_in: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (b: nat) (i: 'I_m) (j: 'I_n),
   (forall (r': 'I_m), lead_coef A r' = Some (widen_ord Hmn r')) ->
-  mk_identity A Hmn = all_lc_1 A.
+  i < b ->
+  mk_identity A Hmn b i j = (A i (widen_ord Hmn i))^-1 * A i j.
 Proof.
-  move => m n A Hmn Hlc. rewrite /mk_identity /all_lc_1. elim : (ord_enum m) => [//|h t IH /=].
-  by rewrite Hlc IH.
+  move => m n A Hmn b i j Hlc Hib. rewrite mx_row_transform.
+  - by rewrite /sc_mul mxE eq_refl.
+  - move => A' i' j' r' Hir'. rewrite /sc_mul mxE. by have ->: i' == r' = false by move : Hir'; by case : (i' == r').
+  - move => A' B' r Hab Hnotin j'. by rewrite /sc_mul !mxE eq_refl Hab.
+  - apply pmap_sub_uniq. apply iota_uniq.
+  - by rewrite mem_pmap_sub /= mem_iota add0n.
 Qed.
 
-Definition mk_identity_l {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) :=
-  foldl (fun acc x => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (ord_enum m).
-
-Lemma mk_identity_foldl: forall {m n} (A: 'M[F]_(m, n)) Hmn,
-  mk_identity A Hmn = mk_identity_l A Hmn.
+Lemma mk_identity_val_notin: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (b: nat) (i: 'I_m) (j: 'I_n),
+  (forall (r': 'I_m), lead_coef A r' = Some (widen_ord Hmn r')) ->
+  b <= i ->
+  mk_identity A Hmn b i j = A i j.
 Proof.
-  move => m n A Hmn. rewrite /mk_identity /mk_identity_l.
-  have {2}->: (ord_enum m) = rev (rev ((ord_enum m))) by rewrite revK. rewrite foldl_rev.
+  move => m n A Hmn b i j Hlc Hbi. rewrite mx_row_transform_notin.
+  - by [].
+  - move => A' i' j' r Hir'. rewrite /sc_mul mxE.
+    by (move : Hir'; case : (i' ==r)).
+  - rewrite mem_pmap_sub /= mem_iota add0n negb_and. rewrite leqNgt in Hbi.
+    by rewrite Hbi orbT.
+Qed.
+
+Lemma mk_identity_equiv: forall {m n} (A:'M[F]_(m, n)) (Hmn: m <= n) (Hm: m.-1 < m),
+  (forall (r': 'I_m), lead_coef A r' = Some (widen_ord Hmn r')) ->
+  A (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)) = 1 ->
+  mk_identity A Hmn (m.-1) = all_lc_1 A.
+Proof.
+  move => m n A Hmn Hm Hlc Hlast.
+  have H0m: (0 < m) by rewrite -ltn_predL.
+  rewrite -matrixP /eqrel => x y. 
+  rewrite all_lc_1_val Hlc.
+  have /orP[Hin | Hnotin]: ((x < m.-1) || (m.-1 <= x)) by rewrite orbC leq_eqVlt orbC orbA eq_sym ltn_total.
+  - by rewrite mk_identity_val_in.
+  - rewrite mk_identity_val_notin =>[|//|//]. 
+    have Hxm: x <= m.-1 by rewrite -ltn_pred.
+    have Hxm1 : nat_of_ord x == m.-1 by rewrite -leq_both_eq Hxm Hnotin.
+    have /eqP Hxord: x == Ordinal Hm by []. by rewrite Hxord Hlast GRing.invr1 GRing.mul1r.
+Qed. 
+
+Definition mk_identity_l {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (b: nat) :=
+  foldl (fun acc x => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (pmap insub (iota 0 b)).
+
+Lemma mk_identity_foldl: forall {m n} (A: 'M[F]_(m, n)) Hmn b,
+  mk_identity A Hmn b = mk_identity_l A Hmn b.
+Proof.
+  move => m n A Hmn b. rewrite /mk_identity /mk_identity_l.
+  have {2}->: (pmap insub (iota 0 b)) = rev (rev ((pmap insub (iota 0 b)))). move => p s; by rewrite revK. rewrite foldl_rev.
   apply mx_row_transform_rev.
-  - move => A' i j r Hir. rewrite /sc_mul mxE. have ->: i == r = false. move : Hir; by case : (i == r). by [].
+  - move => A' i j r Hir. rewrite /sc_mul mxE. move : Hir; by case : (i == r).
   - move => A' B' r Hab H{H} j. by rewrite /sc_mul !mxE eq_refl Hab.
-  - apply ord_enum_uniq.
+  - apply pmap_sub_uniq. apply iota_uniq.
 Qed.
 
+(*The only complication is that we don't need to scalar multiply the last row*)
 Definition gaussian_elim_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) :=
-  mk_identity (gauss_all_steps_restrict_end A Hmn 0) Hmn.
+  mk_identity (gauss_all_steps_restrict_end A Hmn 0) Hmn (m.-1).
 
 (*We can disreguard the trivial case of m = 0*)
 Lemma matrix_zero_rows: forall {n} (A B: 'M[F]_(0, n)), A = B.
@@ -1892,12 +1964,17 @@ Lemma gaussian_elim_equiv:  forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 
   gaussian_elim_restrict A Hmn = gaussian_elim A.
 Proof.
   move => m n A Hmn Hm Hstrong. rewrite /gaussian_elim_restrict /gaussian_elim.
-  have: gauss_invar (gauss_all_steps_restrict_end A Hmn 0) m m
-  by apply (gauss_all_steps_inv (gauss_invar_init A) Hstrong). rewrite gauss_all_steps_equiv =>[ | |//].
-  have H0n: 0 < n by apply (ltn_leq_trans Hm Hmn). rewrite !insubT /=.
-  have ->: (widen_ord Hmn (Ordinal Hm)) = (Ordinal H0n) by apply (elimT eqP). move => Hinvar.
-  apply mk_identity_equiv. move => r'. apply (gauss_invar_square_lc Hmn (leqnn m)). by []. by [].
-  apply (gauss_invar_init A).
+  have Hinv: gauss_invar (gauss_all_steps_restrict_end A Hmn 0) m m
+  by apply (gauss_all_steps_inv (gauss_invar_init A) Hstrong).
+  rewrite mk_identity_equiv.
+  - f_equal. rewrite gauss_all_steps_equiv =>[ | |//].
+    have H0n: 0 < n by apply (ltn_leq_trans Hm Hmn). rewrite !insubT /=.
+    have ->: (widen_ord Hmn (Ordinal Hm)) = (Ordinal H0n) by apply (elimT eqP). by [].
+    apply gauss_invar_init.
+  - by rewrite ltn_predL.
+  - move => r'. by apply (gauss_invar_square_lc Hmn (leqnn m)).
+  - move => Hm1. rewrite /gauss_all_steps_restrict_end. rewrite subn0.
+    apply (@gauss_all_steps_restrict_aux_lc_1 m n A Hmn 0 m Hm) => [//||//]. apply gauss_invar_init.
 Qed. 
 
 (*Not sure if we actually need this now*)
@@ -1931,9 +2008,11 @@ Proof.
   move => m n A Hmn Hm Hstr x y Hym. rewrite /gaussian_elim_restrict mk_identity_equiv.
   apply gauss_invar_square_inverse.
   by []. apply (@gauss_all_steps_inv m n A Hmn 0 Hm). apply gauss_invar_init. by []. by [].
+  by rewrite ltn_predL.
   move => r. apply (gauss_invar_square_lc Hmn (leqnn m)). 
   by apply (gauss_all_steps_inv (gauss_invar_init A) Hstr). by []. 
+  move => Hm1. rewrite /gauss_all_steps_restrict_end. rewrite subn0.
+  apply (@gauss_all_steps_restrict_aux_lc_1 m n A Hmn 0 m Hm) => [//||//]. apply gauss_invar_init.
 Qed.
-
 
 End Gauss.
