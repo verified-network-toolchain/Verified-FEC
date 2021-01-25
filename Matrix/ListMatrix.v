@@ -732,20 +732,28 @@ Definition all_lc_one_rows_partial (mx: matrix) (bound : Z) :=
 
 Lemma all_lc_one_rows_equiv: forall {m n} (mx: matrix) (Hmn: m <= n),
   wf_matrix mx m n ->
-  matrix_to_mx m n (all_lc_one_rows_partial mx m) = mk_identity (matrix_to_mx m n mx) (le_Z_N Hmn).
+  matrix_to_mx m n (all_lc_one_rows_partial mx (m-1)) = mk_identity (matrix_to_mx m n mx) (le_Z_N Hmn) (Z.to_nat m-1).
 Proof.
   move => m n mx Hmn Hwf. rewrite mk_identity_foldl /all_lc_one_rows_partial /mk_identity_l /Ziota /ord_enum.
-  have ->: (Z.to_nat 0) = 0%N by lia. remember mx as mx' eqn : Hmx. rewrite {2}Hmx {3}Hmx. 
-  have Hwf' : wf_matrix mx m n by rewrite -Hmx. move : Hwf' Hwf.
-  have: forall n, n \in (iota 0 (Z.to_nat m)) -> (n < Z.to_nat m)%N. move => n'. by rewrite mem_iota. 
-  move : {Hmx} mx. elim : (iota 0 (Z.to_nat m)) => [//|h t IH mx Hin Hwf Hwf'].
-  rewrite /=. have Hhm: (h < Z.to_nat m)%N. apply Hin. by rewrite in_cons eq_refl.
-  have Hhm': 0 <= Z.of_nat h < m. split. lia. have Hbound' : (h < Z.to_nat m)%coq_nat by apply (elimT ltP). lia.
-  rewrite insubT IH /=; try by [].
-  rewrite scalar_mul_row_equiv. rewrite {5}/matrix_to_mx mxE. f_equal. f_equal. apply (elimT eqP).
-  have: nat_of_ord (Z_to_ord Hhm') == Z.to_nat (Z.of_nat h) by []. by rewrite Nat2Z.id. by [].
-  move => n' Hnin. apply Hin. by rewrite in_cons Hnin orbT. apply scalar_mul_row_partial_wf; try lia.
-  move : Hwf => [Hlen [H0n Hinlen]]. rewrite Hinlen =>[//|]. apply Znth_In; lia. by [].
+  have[H0m | H0m]: m = 0%Z \/ 0 < m. apply matrix_m_pos in Hwf. lia.
+  - by subst. 
+  - have Hm1: (Z.to_nat (m-1)) = (Z.to_nat m - 1)%coq_nat by lia.
+    have HmN: Z.to_nat (m - 1) = (Z.to_nat m - 1)%N by []. rewrite {Hm1} -HmN {HmN}.
+    have ->: (Z.to_nat 0) = 0%N by lia. remember mx as mx' eqn : Hmx. rewrite {2}Hmx {3}Hmx. 
+    have Hwf' : wf_matrix mx m n by rewrite -Hmx. move : Hwf' Hwf.
+    have: forall n, n \in (iota 0 (Z.to_nat (m-1))) -> (n < Z.to_nat (m-1))%N. move => n'. by rewrite mem_iota. 
+    move : {Hmx} mx. elim : (iota 0 (Z.to_nat (m-1))) => [//|h t IH mx Hin Hwf Hwf'].
+    rewrite /=.
+    have Hm1: (Z.to_nat (m-1) < Z.to_nat m)%N. have Htemp: (Z.to_nat (m-1) < Z.to_nat m)%coq_nat by lia.
+    by apply (introT ltP).
+    have Hhm1: (h < Z.to_nat (m-1))%N. apply Hin. by rewrite in_cons eq_refl.
+    have Hhm: (h < Z.to_nat m)%N by apply (ltn_trans Hhm1 Hm1).
+    have Hhm': 0 <= Z.of_nat h < m. split. lia. have Hbound' : (h < Z.to_nat m)%coq_nat by apply (elimT ltP). lia.
+    rewrite insubT IH /=; try by [].
+    rewrite scalar_mul_row_equiv. rewrite {5}/matrix_to_mx mxE. f_equal. f_equal. apply (elimT eqP).
+    have: nat_of_ord (Z_to_ord Hhm') == Z.to_nat (Z.of_nat h) by []. by rewrite Nat2Z.id. by [].
+    move => n' Hnin. apply Hin. by rewrite in_cons Hnin orbT. apply scalar_mul_row_partial_wf; try lia.
+    move : Hwf => [Hlen [H0n Hinlen]]. rewrite Hinlen =>[//|]. apply Znth_In; lia. by [].
 Qed.
 
 Lemma all_lc_one_rows_partial_wf: forall {m n} mx bound,
@@ -770,7 +778,8 @@ End LCOne.
 Section GaussFull.
 
 Definition gauss_restrict_rows (mx: matrix) m :=
-  all_lc_one_rows_partial (gauss_all_steps_rows_partial mx m m) m.
+  all_lc_one_rows_partial (gauss_all_steps_rows_partial mx m m) (m-1).
+
 
 Lemma gauss_restrict_rows_equiv: forall {m n} (mx: matrix) (Hmn: m <= n),
   wf_matrix mx m n ->
@@ -779,7 +788,8 @@ Proof.
   move => m n mx Hmn Hwf.
   have H0m: 0 <= m by apply (matrix_m_pos Hwf).
   rewrite /gauss_restrict_rows /gaussian_elim_restrict all_lc_one_rows_equiv.
-  rewrite gauss_all_steps_rows_equiv. by rewrite -gauss_all_steps_restrict_both_dirs. by []. lia.
+  rewrite gauss_all_steps_rows_equiv. rewrite -gauss_all_steps_restrict_both_dirs.
+  by rewrite subn1. by []. lia.
   apply gauss_all_steps_rows_partial_wf =>[|//]. lia.
 Qed.
 
@@ -787,8 +797,11 @@ Lemma gauss_restrict_rows_wf: forall {m n} (mx: matrix),
   wf_matrix mx m n ->
   wf_matrix (gauss_restrict_rows mx m) m n.
 Proof.
-  move => m n mx Hwf. have H0m: 0 <= m by apply (matrix_m_pos Hwf). apply all_lc_one_rows_partial_wf.
-  lia. apply gauss_all_steps_rows_partial_wf. lia. by [].
+  move => m n mx Hwf. have H0m: 0 <= m by apply (matrix_m_pos Hwf).
+  have [H0meq | H0mlt]:  (0%Z = m \/ 0 < m) by lia.
+  - subst. by rewrite /gauss_restrict_rows /= /gauss_all_steps_rows_partial /= /all_lc_one_rows_partial /=.
+  - apply all_lc_one_rows_partial_wf.
+    lia. apply gauss_all_steps_rows_partial_wf. lia. by [].
 Qed.
 
 End GaussFull.
