@@ -730,6 +730,38 @@ Section LCOne.
 Definition all_lc_one_rows_partial (mx: matrix) (bound : Z) :=
   fold_left (fun acc x => scalar_mul_row acc x (get mx x x)^-1) (Ziota 0 bound) mx.
 
+Lemma all_lc_one_plus_one: forall mx b,
+  0 <= b ->
+  all_lc_one_rows_partial mx (b+1) = scalar_mul_row (all_lc_one_rows_partial mx b) b (get mx b b)^-1.
+Proof.
+  move => mx b Hb. rewrite /all_lc_one_rows_partial Ziota_plus_1; try lia.
+  by rewrite fold_left_app /=.
+Qed.
+
+Lemma all_lc_one_outside: forall m n mx bound i j,
+  wf_matrix mx m n ->
+  0 <= bound <= i ->
+  0 <= i < m ->
+  0 <= j < n ->
+  get (all_lc_one_rows_partial mx bound) i j = get mx i j.
+Proof.
+  move => m n mx b i j Hwf Hbi Hi Hj.
+  rewrite /all_lc_one_rows_partial.
+  have: ~In i (Ziota 0 b) by rewrite Zseq_In; lia.
+  have: forall x, In x (Ziota 0 b) -> 0 <= x < b by move => x; rewrite Zseq_In; lia.
+  remember mx as mx' eqn : Hmx. rewrite {1}Hmx {Hmx}. move : mx' Hwf.  
+  elim : (Ziota 0 b) => [//|h t IH mx' Hwf Hallin Hnotin /=].
+  have Hh: 0 <= h < m. have H: 0 <= h < b by apply Hallin; left. lia.
+  rewrite IH. rewrite (scalar_mul_row_spec _ Hwf) => [|//|//|//].
+  - case: (Z.eq_dec i h) => [Hih /= | Hneq /=]. subst. exfalso. apply Hnotin. by left. by [].
+  - apply scalar_mul_row_partial_wf => [|//|//]. move: Hwf => [Hlen [Hn Hin]].
+    rewrite Hin. lia. apply Znth_In; lia. 
+  - move => x Hinx. apply Hallin. by right.
+  - move => Hint. apply Hnotin. by right.
+Qed.
+
+(*There is a slight complication - we only go to m - 1 because the last row's leading coefficient is already 1. This
+  optimization is present in the C code*)
 Lemma all_lc_one_rows_equiv: forall {m n} (mx: matrix) (Hmn: m <= n),
   wf_matrix mx m n ->
   matrix_to_mx m n (all_lc_one_rows_partial mx (m-1)) = mk_identity (matrix_to_mx m n mx) (le_Z_N Hmn) (Z.to_nat m-1).
