@@ -11,12 +11,13 @@ make_compspecs prog. Defined.
 Definition Vprog : varspecs.
 mk_varspecs prog. Defined.
 
-(*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards). *)
+(*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
+  We require that m > 0 since the last loop goes from 0 to m - 1 *)
 Definition fec_matrix_transform_spec :=
   DECLARE _fec_matrix_transform
   WITH gv: globals, m : Z, n : Z, mx : matrix F, s : val
   PRE [ tptr tuchar, tuchar, tuchar]
-    PROP (0 < m * n /\ (0 <= m <= n) /\ n <= Byte.max_unsigned /\ (wf_matrix mx m n) /\ (strong_inv_list m n mx 0))
+    PROP (0 < m /\ 0 < m * n /\ (0 <= m <= n) /\ n <= Byte.max_unsigned /\ (wf_matrix mx m n) /\ (strong_inv_list m n mx 0))
     PARAMS ( s; Vint (Int.repr m); Vint (Int.repr n))
     GLOBALS (gv)
     SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);

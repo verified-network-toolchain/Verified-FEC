@@ -23,4 +23,4 @@ FEC/fec.v
 FEC/Common.v
 FEC/Specs.v
 FEC/Verif_field.v
-#FEV/Verif_matrix.v
+FEC/Verif_matrix.v

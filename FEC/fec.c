@@ -637,7 +637,7 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
   for (i = 0; i < i_max - 1; i++)
     {				/* not need on last */
       q = (p + (i * j_max) + j_max - 1);	/* last row i entry */
-      m = q - j_max;
+      m = q - j_max + 1; //JOSH : same as above
       inv = fec_invefec[*(q - i)];
       //JOSH - same as above
       n = q + 1;

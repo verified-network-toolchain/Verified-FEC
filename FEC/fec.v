@@ -3301,8 +3301,10 @@ Definition f_fec_matrix_transform := {|
                 (Econst_int (Int.repr 1) tint) (tptr tuchar)))
             (Ssequence
               (Sset _m
-                (Ebinop Osub (Etempvar _q (tptr tuchar))
-                  (Etempvar _j_max tuchar) (tptr tuchar)))
+                (Ebinop Oadd
+                  (Ebinop Osub (Etempvar _q (tptr tuchar))
+                    (Etempvar _j_max tuchar) (tptr tuchar))
+                  (Econst_int (Int.repr 1) tint) (tptr tuchar)))
               (Ssequence
                 (Ssequence
                   (Sset _t'5
