@@ -226,7 +226,110 @@ Proof.
   move => m n A. apply row_equivalent_lin_indep. apply gaussian_elim_row_equiv.
 Qed.
 
+(*A matrix with a row of zeroes does not have linearly independent rows*)
+Lemma row_zero_not_lin_indep: forall {m n} (A : 'M[F]_(m, n)) (r: 'I_m),
+  (forall (c: 'I_n), A r c = 0) ->
+  ~rows_lin_indep A.
+Proof.
+  move => m n A r Hzero. rewrite /rows_lin_indep => Hlin. move : Hlin => /(_ (fun x => if x == r then 1 else 0)).
+  have Hcond: (forall j : 'I_n, \sum_(i < m) (if i == r then 1 else 0) * A i j = 0). {
+   move => j. 
+    have->: \sum_(i < m) (if i == r then 1 else 0) * A i j = \sum_(i < m) (if r == i then A i j else 0).
+    apply eq_big =>[//|]. move => i H{H}. rewrite eq_sym. case : (r == i).
+    by rewrite GRing.mul1r. by rewrite GRing.mul0r.
+  rewrite sum_if. apply Hzero. }
+  move => /(_ Hcond r). rewrite eq_refl. move => Honez. have: (GRing.one F) != 0 by rewrite GRing.oner_neq0.
+  by rewrite Honez eq_refl.
+Qed.
 
+(*The identity matrix does have linearly independent rows*)
+Lemma identity_lin_indep: forall n,
+  @rows_lin_indep n n (1%:M).
+Proof.
+  move => n. rewrite /rows_lin_indep => c Hsum x.
+  move : Hsum => /(_ x).
+  have->: \sum_(i < n) c i * 1%:M i x = c x. {
+  have->: \sum_(i < n) c i * 1%:M i x = \sum_(i < n) (if x == i then c i else 0).
+  apply eq_big => [//|i H{H}]. rewrite id_A eq_sym. 
+  case : (x == i). by rewrite GRing.mulr1. by rewrite GRing.mulr0.
+  apply sum_if. } by [].
+Qed.
 
+(*Results about row echelon form. TODO: move to Gaussian.v probably.*)
+(*These are pretty simple applications of results proved in Gaussian.v already*)
 
+(*For an n x n matrix in row echelon form, it is either a diagonal matrix with all nonzero entries along the
+  diagonal or it has a row of zeroes*)
+Lemma row_echelon_diag_or_zeroes: forall {n} (A: 'M[F]_n),
+  row_echelon A ->
+  (forall (x y: 'I_n), (A x y == 0) = (x != y)) \/ (exists (r: 'I_n), forall (c: 'I_n), A r c = 0).
+Proof.
+  move => n A [[b [Hb Hzeroes]] [Hinc Hcols]].
+  rewrite leq_eqVlt in Hb. move : Hb => /orP[/eqP Hb | Hbn].
+  - subst. have Hinv: gauss_invar A n n. {
+    rewrite /gauss_invar. repeat(split).
+    + move => r' Hrn'. case Hlc: (lead_coef A r') =>[col |].
+      * by exists col. 
+      * have Hnr': (n <= r'). rewrite -Hzeroes. by apply (introT eqP).
+        rewrite ltnNge in Hrn'. by rewrite Hnr' in Hrn'.
+    + move => r1 r2 c1 c2 Hr12 Hr2n. by apply Hinc.
+    + move => r' c' Hcn'. by apply Hcols.
+    + move => r' c' Hnr'. have Hlt: r' < n by []. rewrite ltnNge in Hlt. by rewrite Hnr' in Hlt. }
+    left. move => x y. have Hxn: (x < n) by []. have Hyn: (y < n) by [].
+    apply (gauss_invar_square_id (leqnn n) (leqnn n) Hinv Hxn Hyn).
+  - right. exists (Ordinal Hbn). rewrite -lead_coef_none_iff. apply (elimT eqP). by rewrite Hzeroes.
+Qed.
 
+(*Therefore, an n x n matrix in reduced row echelon form is either the identity or has a row of zeroes*)
+Lemma red_row_echelon_id_or_zeroes: forall {n} (A: 'M[F]_n),
+  red_row_echelon A ->
+  (A = (1%:M)) \/ (exists (r: 'I_n), forall (c: 'I_n), A r c = 0).
+Proof.
+  move => n A [Hre Hlc].
+  apply row_echelon_diag_or_zeroes in Hre. case: Hre => [Hdiag | Hzeroes].
+  - left. rewrite -matrixP /eqrel => x y; rewrite id_A.
+    have Hlcs: forall (r: 'I_n), lead_coef A r = Some r. { move => r. rewrite lead_coef_some_iff.
+    split. by rewrite Hdiag eq_refl. move => x' Hxr'. apply (elimT eqP). rewrite Hdiag.
+    move: Hxr'. rewrite ltn_neqAle => /andP [Hxr H{H}]. by rewrite eq_sym. }
+    case Hxy : (x == y).
+    + eq_subst Hxy. apply Hlc. apply Hlcs.
+    + apply (elimT eqP). by rewrite Hdiag Hxy.
+  - by right.
+Qed.
+
+(** Invertible Matrices *)
+
+(*We give 2 necessary and sufficient conditions for invertibility:
+  that A is row equivalent to the identity and that A has linearly independent rows*)
+
+Lemma unitmx_iff_gauss_id: forall {n} (A: 'M[F]_n),
+  A \in unitmx <-> gaussian_elim A = 1%:M.
+Proof.
+  move => n A. split.
+  - move => Hinv.
+    have Hred: red_row_echelon (gaussian_elim A) by apply gaussian_elim_rref.
+    apply red_row_echelon_id_or_zeroes in Hred. case: Hred => [// | [r Hzero]].
+    have Hginv: (gaussian_elim A) \in unitmx by rewrite -(row_equivalent_unitmx_iff (gaussian_elim_row_equiv A)).
+    apply row_zero_not_unitmx in Hzero. by rewrite Hginv in Hzero.
+  - rewrite (row_equivalent_unitmx_iff (gaussian_elim_row_equiv A)). move->. apply unitmx1.
+Qed. 
+
+Lemma unitmx_iff_row_equiv_identity: forall {n} (A: 'M[F]_n),
+  A \in unitmx <-> row_equivalent A 1%:M.
+Proof.
+  move => n A. split.
+  - move => Hinv. apply unitmx_iff_gauss_id in Hinv. rewrite -Hinv. apply gaussian_elim_row_equiv.
+  - move => Hre. apply row_equivalent_unitmx_iff in Hre. rewrite Hre. apply unitmx1.
+Qed.
+
+Lemma unitmx_iff_lin_indep_rows: forall {n} (A: 'M[F]_n),
+  A \in unitmx <-> rows_lin_indep A.
+Proof.
+  move => n A. rewrite gauss_elim_lin_indep unitmx_iff_gauss_id. split.
+  - move ->. apply identity_lin_indep.
+  - move => Hre. have Hred: red_row_echelon (gaussian_elim A) by apply gaussian_elim_rref.
+    apply red_row_echelon_id_or_zeroes in Hred. case: Hred => [// | [r Hzero]].
+    by apply row_zero_not_lin_indep in Hzero.
+Qed. 
+
+End LinIndep.
