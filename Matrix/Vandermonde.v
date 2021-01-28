@@ -84,9 +84,6 @@ Section PrimitiveVandermonde.
 Local Open Scope ring_scope.
 
 (*The specific Vandermonde matrix that we will actually use*)
-
-Check qpoly_fieldType.
-
 Variable f: poly.
 
 Variable Hpos: (deg f > 0)%Z.
@@ -106,13 +103,6 @@ Proof.
 Qed.
 
 Definition F := qpoly_fieldType Hpos Hirred.
-(*
-(*Need result about x*)
-Lemma deg_x: (deg x < deg f)%Z.
-Proof.
-Admitted.
-  (*rewrite deg_x.  Search PolyDefs.deg 1%Z.
-  have: 1%Z = deg x. rewrite deg_x.*)*)
 
 Definition qx : qpoly f := poly_to_qpoly f Hpos x.
 
@@ -294,7 +284,6 @@ Proof.
   by apply (subseq_uniq (rem_nth_subseq l n y)).
 Qed.
 
-(*maybe move above*)
 Lemma vandermonde_remove_col_list: forall m n (Hmn: m <= n) l (r:'I_m) (j: nat),
   submx_remove_col (@vandermonde F m n l) Hmn r j = vandermonde r r (rem_nth (take (r.+1) l) j).
 Proof.
@@ -304,7 +293,7 @@ Proof.
   - rewrite /=. rewrite nth_take. by []. by rewrite -(addn1 y) -(addn1 r) ltn_add2r.
 Qed.
 
-Lemma vandermonde_remove_col: forall m n (Hmn: m <= n) (r: 'I_m) (j: nat),
+Lemma vandermonde_remove_col_unitmx: forall m n (Hmn: m <= n) (r: 'I_m) (j: nat),
   j < r ->
   (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   submx_remove_col (vandermonde_powers m n) Hmn r j \in unitmx.
@@ -321,25 +310,63 @@ Proof.
     rewrite rem_nth_size; rewrite Hsz. apply pred_Sn. by apply (ltn_trans Hjr).
 Qed.
 
-(*This is not true, duh - only true for powers - TODO start with this*)
-(*
-Lemma vandermonde_add_row_list: forall m n (Hmn: m <= n) l (r j:'I_m),
-  (submx_add_row (@vandermonde F m n l) Hmn r j)^T = vandermonde (r.+1) (r.+1) (take r l ++ (nth 0 l j :: nil)).
+Lemma vandermonde_powers_add_row_list: forall m n (Hmn: m <= n) (r j:'I_m),
+  (submx_add_row (@vandermonde_powers m n) Hmn r j)^T = 
+    vandermonde (r.+1) (r.+1) ((map (fun i => (qx ^+ i)) (iota 0 r)) ++ (qx ^+ j :: nil)).
 Proof.
-  move => m n Hmn l r j. rewrite /submx_remove_col /vandermonde -matrixP /trmx /eqrel => x y.
+  move => m n Hmn r j. rewrite /submx_remove_col /vandermonde -matrixP /trmx /eqrel => x y.
   rewrite !mxE /=.
+  have Hxn: x < n. have Hxr: x < r.+1 by []. rewrite ltnS in Hxr.
+    have Hrm: r < m by []. have Hxm: x < m by apply (leq_ltn_trans Hxr Hrm).
+    by apply (ltn_leq_trans Hxm Hmn).
   have: y < r.+1 by []. rewrite ltnS leq_eqVlt => /orP[/eqP Hyr | Hyr].
   - rewrite Hyr ltnn. rewrite nth_cat.
-    have Hrsz: r < size (take r l) = false. {
-    have /orP[Hlt | Hgt]: ((r < size l) || (size l <= r)) by apply ltn_leq_total.
-    + by rewrite size_take Hlt ltnn.
-    + rewrite take_oversize =>[//|//]. by rewrite ltnNge Hgt. }
-    rewrite Hrsz /=.*)
-    
-     
+    rewrite size_map size_iota ltnn subnn /=.
+    rewrite (nth_map 0%nat). rewrite nth_iota. rewrite add0n. apply GRing.exprAC. by [].
+    by rewrite size_iota.
+  - rewrite Hyr /=. rewrite nth_cat size_map size_iota Hyr.
+    rewrite !(nth_map 0%nat) /=. rewrite !nth_iota.
+    rewrite !add0n. apply GRing.exprAC. by []. by []. by rewrite size_iota.
+    by rewrite size_iota.
+Qed.
 
+Lemma vandermonde_add_row_unitmx: forall m n (Hmn: m <= n) (r j:'I_m),
+  (r <= j) ->
+  (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
+  submx_add_row (vandermonde_powers m n) Hmn r j \in unitmx.
+Proof.
+  move => m n Hmn r j Hrj Hn. rewrite -unitmx_tr vandermonde_powers_add_row_list.
+  apply vandermonde_unitmx.
+  - rewrite cats1 rcons_uniq.
+    have->: (qx ^+ j \notin [seq (@GRing.exp F qx i) | i <- iota 0 r]). {
+      case Hin: (qx ^+ j \in [seq qx ^+ i | i <- iota 0 r]) =>[|//]. 
+      apply (elimT mapP) in Hin. move : Hin => [i Hi Heq].
+      move : Hi; rewrite mem_iota add0n => /andP[H{H} Hir].
+      have: (@GRing.exp F qx j != qx ^+ i). {
+      have Hjbound: j < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat. {
+        have Hjm: j < m by []. have Hjn: j < n by apply (ltn_leq_trans Hjm Hmn).
+        apply (ltn_trans Hjn Hn). }
+      apply powers_unequal.
+      + rewrite eq_sym. have: i < j by apply (ltn_leq_trans Hir Hrj). by rewrite ltn_neqAle => /andP[Hneq H{H}].
+      + by [].
+      + have Hij: i < j by apply (ltn_leq_trans Hir Hrj). apply (ltn_trans Hij Hjbound). }
+      by rewrite Heq eq_refl. }
+    rewrite /=. apply power_list_uniq.
+    have Hrn: r < n. have Hrm: r < m. have Hjm: j < m by []. by apply (leq_ltn_trans Hrj Hjm).
+    by apply (ltn_leq_trans Hrm Hmn). by apply (ltn_trans Hrn Hn).
+  - by rewrite size_cat /= size_map size_iota addn1.
+Qed.
+
+(*Finally, the result we want: The Vandermonde matrix consisting of powers of the primitive element
+  satisfied [strong_inv 0]*)
+Lemma vandermonde_strong_inv: forall m n (Hmn: m <= n) (Hm: 0 < m),
+  (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
+  strong_inv (vandermonde_powers m n) Hmn (Ordinal Hm).
+Proof.
+  move => m n Hmn Hm Hn. rewrite /strong_inv => r' H{H}.
+  split; move => j Hrj.
+  - by apply vandermonde_remove_col_unitmx.
+  - by apply vandermonde_add_row_unitmx.
+Qed.
 
 End PrimitiveVandermonde.
-
-
-
