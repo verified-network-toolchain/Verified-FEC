@@ -10,17 +10,16 @@ Poly/ConcretePolys.v
 # - takes about 20 mins
 InjectiveSurjective.v
 Poly/PrimitiveFacts.v
-#Poly/FieldDemo.v
 IntFacts.v
 Poly/IntPoly.v
 PropList.v
-#Poly/Verif_FieldDemo.v
 Matrix/Gaussian.v
 Matrix/ListMatrix.v
 Matrix/PolyField.v
-FEC/fec.v
-#Example/sumarray_ptr.v
-FEC/Common.v
-FEC/Specs.v
-FEC/Verif_field.v
-FEC/Verif_matrix.v
+Matrix/LinIndep.v
+Matrix/Vandermonde.v
+#FEC/fec.v
+#FEC/Common.v
+#FEC/Specs.v
+#FEC/Verif_field.v
+#FEC/Verif_matrix.v
