@@ -12,6 +12,7 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import Gaussian.
+Require Import PropList.
 
 
 Lemma sublist_split_Zlength: forall {A} mid (l: list A),
@@ -403,15 +404,15 @@ Qed.
 End AllColsOne.
 
 (*Combine two lists with a pairwise binary operation - TODO: move probably*)
-Fixpoint combine {X Y Z: Type} (l1 : list X) (l2: list Y) (f: X -> Y -> Z) : list Z :=
+Fixpoint combineWith {X Y Z: Type} (l1 : list X) (l2: list Y) (f: X -> Y -> Z) : list Z :=
   match (l1, l2) with
-  | (h1 :: t1, h2 :: t2) => f h1 h2 :: combine t1 t2 f
+  | (h1 :: t1, h2 :: t2) => f h1 h2 :: combineWith t1 t2 f
   | (_, _) => nil
   end.
 
-Lemma combine_Zlength: forall {X Y Z} l1 l2 (f : X -> Y -> Z),
+Lemma combineWith_Zlength: forall {X Y Z} l1 l2 (f : X -> Y -> Z),
   Zlength l1 = Zlength l2 ->
-  Zlength (combine l1 l2 f) = Zlength l1.
+  Zlength (combineWith l1 l2 f) = Zlength l1.
 Proof.
   move => X Y Z l1. elim : l1 => [//| h t IH l2 f /=]. case : l2.
   - by move ->.
@@ -421,7 +422,7 @@ Qed.
 Lemma combine_Znth: forall {X Y Z} `{Inhabitant X} `{Inhabitant Y} `{Inhabitant Z} l1 l2 (f: X -> Y -> Z) z,
   Zlength l1 = Zlength l2 ->
   0 <= z < Zlength l1 ->
-  Znth z (combine l1 l2 f) = f (Znth z l1) (Znth z l2).
+  Znth z (combineWith l1 l2 f) = f (Znth z l1) (Znth z l2).
 Proof.
   move => X Y Z I1 I2 H3 l1. elim: l1 => [l2 f z|h t IH l2 f z]. list_solve.
   case : l2. list_solve. move => h' t' Hlen Hz. rewrite //=.
@@ -432,7 +433,7 @@ Qed.
 Lemma combine_app: forall {X Y Z} `{Inhabitant X} `{Inhabitant Y} `{Inhabitant Z} l1 l2 l3 l4 (f: X -> Y -> Z),
   Zlength l1 = Zlength l3 ->
   Zlength l2 = Zlength l4 ->
-  combine (l1 ++ l2) (l3 ++ l4) f = (combine l1 l3 f) ++ (combine l2 l4 f).
+  combineWith (l1 ++ l2) (l3 ++ l4) f = (combineWith l1 l3 f) ++ (combineWith l2 l4 f).
 Proof.
   move => X Y Z I1 I2 I3 l1 l2 l3 l4 f. move : l2 l3 l4. elim : l1 => [/= l2 l3 l4 H13 H24|h t IH l2 l3 l4 H13 H24 /=].
   - by have ->: l3 = nil by list_solve.
@@ -446,7 +447,7 @@ Section AddRow.
 
 (*Once again, we only add the first [bound] indices, which will help in the VST proofs*)
 Definition add_multiple_partial (mx: matrix) (r1 r2 : Z) (k : F) (bound: Z) : matrix :=
-   let new_r2 := combine (sublist 0 bound (Znth r2 mx)) (sublist 0 bound (Znth r1 mx)) (fun x y => x + (k * y)) ++
+   let new_r2 := combineWith (sublist 0 bound (Znth r2 mx)) (sublist 0 bound (Znth r1 mx)) (fun x y => x + (k * y)) ++
     sublist bound (Zlength (Znth r2 mx)) (Znth r2 mx) in
   upd_Znth r2 mx new_r2.
 
@@ -474,8 +475,8 @@ Proof.
   rewrite /add_multiple_partial /set.
   rewrite !sublist_last_1; try lia. rewrite upd_Znth_twice upd_Znth_same; try lia.
   have Hcomblen:
-     Zlength (combine (sublist 0 b (Znth r2 mx)) (sublist 0 b (Znth r1 mx)) (fun x y : F => x + k * y)) = b.
-  { rewrite combine_Zlength; rewrite !Zlength_sublist; try lia. all: rewrite Hin; try lia; apply Znth_In; lia. }
+     Zlength (combineWith (sublist 0 b (Znth r2 mx)) (sublist 0 b (Znth r1 mx)) (fun x y : F => x + k * y)) = b.
+  { rewrite combineWith_Zlength; rewrite !Zlength_sublist; try lia. all: rewrite Hin; try lia; apply Znth_In; lia. }
   rewrite upd_Znth_app2; rewrite Hcomblen.
   - have ->: ((b - b)%Z = 0%Z) by lia.
     rewrite (sublist_split b (b+1)%Z); try lia. rewrite sublist_len_1 => [|//].
@@ -499,8 +500,8 @@ Proof.
   move => m n mx r1 r2 k b j [Hlen [Hn Hin]] Hr1 Hr2 Hb Hj Hbj.
   rewrite /add_multiple_partial /get.
   rewrite upd_Znth_same; try lia.
-  have Hcomlen: Zlength (combine (sublist 0 b (Znth r2 mx)) (sublist 0 b (Znth r1 mx)) (fun x y : F => x + k * y)) = b
-   by rewrite combine_Zlength !Zlength_sublist; try lia; rewrite Hin; try lia; apply Znth_In; lia.
+  have Hcomlen: Zlength (combineWith (sublist 0 b (Znth r2 mx)) (sublist 0 b (Znth r1 mx)) (fun x y : F => x + k * y)) = b
+   by rewrite combineWith_Zlength !Zlength_sublist; try lia; rewrite Hin; try lia; apply Znth_In; lia.
   rewrite Znth_app2; rewrite Hcomlen; try lia.
   rewrite Znth_sublist; try lia. list_solve. rewrite Hin; try lia; apply Znth_In; lia.
 Qed.
@@ -535,7 +536,7 @@ Proof.
   split. list_solve. split =>[//| l]. rewrite In_Znth_iff =>[[i [Hlen Hznth]]].
   have {} Hlen: 0 <= i < Zlength mx by list_solve.
   have [Heq | Hneq]: i = r2 \/ i <> r2 by lia. subst.
-  rewrite upd_Znth_same => [|//]. rewrite Zlength_app combine_Zlength. rewrite sublist_split_Zlength =>[|//].
+  rewrite upd_Znth_same => [|//]. rewrite Zlength_app combineWith_Zlength. rewrite sublist_split_Zlength =>[|//].
   apply Hin. by apply Znth_In; lia. apply sublist_same_Zlength. lia. rewrite !Hin. by [].
   all: try(apply Znth_In; lia). rewrite -Hznth upd_Znth_diff; try lia. apply Hin. by (apply Znth_In; lia).
 Qed.
@@ -955,3 +956,43 @@ Proof.
 Qed. 
 
 End ListMx.
+
+Require Import Vandermonde.
+Require Import Poly.
+Require Import PolyMod.
+Import WPoly.
+Require Import PolyField.
+
+(*Weight matrix definition*)
+Section WeightMx.
+
+Variable f : poly.
+Variable Hpos : deg f > 0.
+Variable Hirred : irreducible f.
+Definition F := qpoly_fieldType Hpos Hirred.
+
+Definition weight_mx_list (m n : Z) : matrix F :=
+  prop_list (fun i => (prop_list (fun j => (poly_to_qpoly f Hpos (monomial (Z.to_nat (i * j))))) n)) m.
+
+Lemma weight_matrix_wf: forall m n, 0 <= n -> 0 <= m -> wf_matrix (weight_mx_list m n) m n.
+Proof.
+  move => m n Hn Hm. rewrite /wf_matrix /weight_mx_list. repeat(split).
+  - rewrite prop_list_length; lia.
+  - by [].
+  - move => x. rewrite In_Znth_iff. move => [i [Hilen Hith]].
+    rewrite <- Hith. rewrite prop_list_Znth. rewrite prop_list_length; lia.
+    rewrite prop_list_length in Hilen; lia.
+Qed.
+
+Lemma weight_mx_list_spec: forall m n, 
+  0 <= m ->
+  0 <= n ->
+  matrix_to_mx m n (weight_mx_list m n) = vandermonde_powers Hpos Hirred (Z.to_nat m) (Z.to_nat n).
+Proof.
+  move => m n Hm Hn. rewrite -matrixP /eqrel. move => x y. rewrite mxE vandermonde_powers_val /get /weight_mx_list.
+  rewrite !prop_list_Znth. rewrite exp_monomial =>[|//]. f_equal. f_equal. 
+  have->: (x * y)%N = (x * y)%coq_nat by []. lia.
+  split; try lia. have /ltP Hy: (y < Z.to_nat n)%N by []. lia.
+  split; try lia. have /ltP Hx: (x < Z.to_nat m)%N by []. lia.
+Qed. 
+End WeightMx.

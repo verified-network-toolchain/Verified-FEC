@@ -74,7 +74,6 @@ Require Import PolyField.
 Require Import Poly.
 Require Import Coq.ZArith.BinInt.
 Require Import PolyMod.
-Require Import PrimitiveFacts.
 Require Import Lia.
 
 Import WPoly.
@@ -136,8 +135,8 @@ Proof.
     rewrite /poly_to_qpoly /qmul /r_mul /poly_mult_mod /=. exist_eq. by rewrite monomial_expand -pmod_mult_distr.
 Qed.
   
-(*First, we need to know that x^i != x^j if i != j and i, j < 2 ^ (deg f) -1. We proved something very similar in
-  [PrimitiveFacts]*)
+(*First, we need to know that x^i != x^j if i != j and i, j < 2 ^ (deg f) -1. We proved something very similar
+  (but unfortunately a bit different due to how the C code works) in [PrimitiveFacts]*)
 Lemma powers_unequal: forall (n m : nat), n != m ->
   (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   (m < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
