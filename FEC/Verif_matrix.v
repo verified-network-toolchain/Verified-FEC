@@ -2,76 +2,12 @@ Require Import VST.floyd.proofauto.
 
 Require Import fec.
 Require Import Common.
+Require Import CommonVST.
 Require Import Specs.
 
 Import WPoly.
 
 Set Bullet Behavior "Strict Subproofs".
-
-(*TODO: move probably*)
-
-Lemma lt_plus_lt: forall z1 z2 z3, 
-  0 <= z1 -> 
-  z1 + z2 < z3 -> 
-  z2 < z3.
-Proof.
-  intros z1 z2 z3 Hz1 Hz12. rewrite Z.lt_add_lt_sub_r in Hz12. lia.
-Qed.
-
-(*Transform the "if" condition in a pointer comparison into something usable (for the gt case)*)
-Lemma ptr_comparison_gt_iff: forall t size p i j,
-  field_compatible (tarray t size) [] p ->
-  0 <= i <= size ->
-  0 <= j <= size ->
-  0 < sizeof t ->
-  isptr p ->
-  typed_true tint (force_val (sem_cmp_pp Cgt (field_address0 (tarray t size) (SUB i) p)
-    (field_address0 (tarray t size) (SUB j) p))) <-> i > j.
-Proof.
-  intros t size p i j Hcomp Hi Hj Hszof Hptr.
-  assert (Hptri : isptr (field_address0 (tarray t size) [ArraySubsc i] p)).
-  apply field_address0_isptr. apply arr_field_compatible0; auto.
-  assert (Hptrj: isptr (field_address0 (tarray t size) [ArraySubsc j] p)).
-  apply field_address0_isptr. apply arr_field_compatible0; auto.
-  rewrite force_sem_cmp_pp; auto. unfold compare_pp.
-  destruct (field_address0 (tarray t size) [ArraySubsc i] p) eqn : Fi; inversion Hptri.
-  destruct (field_address0 (tarray t size) [ArraySubsc j] p) eqn : Fj; inversion Hptrj.
-  clear Hptri Hptrj.
-  assert (Hsame: sameblock (Vptr b i0) (Vptr b0 i1) = true). { rewrite <- Fi. rewrite <- Fj.
-  rewrite !arr_field_address0; auto. eapply sameblock_trans. apply sameblock_symm.
-  all: apply  isptr_offset_val_sameblock; auto. } 
-  simpl in Hsame. unfold eq_block. destruct (peq b b0); try inversion Hsame. subst. clear Hsame.
-  simpl. rewrite arr_field_address0 in Fi; auto. rewrite arr_field_address0 in Fj; auto.
-  destruct p; inversion Hptr. simpl in *. inversion Fi; subst. inversion Fj; subst.
-  clear Fi Fj Hptr. unfold Ptrofs.ltu.
-  assert (Hi2 : 0 <= Ptrofs.unsigned i2) by rep_lia. unfold field_compatible in Hcomp. 
-  destruct Hcomp as [Ht [Hcomp [HHsz Hrest]]]. simpl in HHsz.
-  replace (Z.max 0 size) with size in HHsz by lia.
-  (*We will use these a bunch of times*)
-  assert (Hij: forall k, 0 <= k <= size -> 0 <= sizeof t * k < Ptrofs.modulus). {
-    intros k Hk. unfold sizeof in *. split. lia.
-    assert (Ctypes.sizeof t * k <= Ctypes.sizeof t * size).  apply Z.mul_le_mono_pos_l; lia.
-    assert (Ctypes.sizeof t * size < Ptrofs.modulus). apply (lt_plus_lt (Ptrofs.unsigned i2)). lia. assumption.
-    lia. } 
-  assert (Hij' : forall k, 0 <= k <= size ->
-      0 <= Ptrofs.unsigned i2 + Ptrofs.unsigned (Ptrofs.repr (sizeof t * k)) < Ptrofs.modulus). {
-    intros k Hk. unfold sizeof in *. rewrite Ptrofs.unsigned_repr_eq. rewrite Zmod_small.
-    2: apply Hij; lia. split. lia. 
-    assert (Ptrofs.unsigned i2 + Ctypes.sizeof t * k <= Ptrofs.unsigned i2 + Ctypes.sizeof t * size).
-    apply Zplus_le_compat_l. apply Z.mul_le_mono_nonneg_l; lia. eapply Z.le_lt_trans. apply H. assumption. }
-  unfold Ptrofs.unsigned. simpl. rewrite !Ptrofs.Z_mod_modulus_eq. rewrite !Zmod_small.
-  all: try apply Hij'; auto.
-  destruct (zlt (Ptrofs.unsigned i2 + Ptrofs.unsigned (Ptrofs.repr (sizeof t * j)))
-          (Ptrofs.unsigned i2 + Ptrofs.unsigned (Ptrofs.repr (sizeof t * i)))).
-    - assert (Hptrlt: Ptrofs.unsigned (Ptrofs.repr (sizeof t * j)) < Ptrofs.unsigned (Ptrofs.repr (sizeof t * i))) by lia.
-      clear l. unfold Ptrofs.unsigned in Hptrlt. simpl in Hptrlt. rewrite !Ptrofs.Z_mod_modulus_eq in Hptrlt.
-      rewrite !Zmod_small in Hptrlt. rewrite <- Z.mul_lt_mono_pos_l in Hptrlt; auto. all: try apply Hij; auto.
-      split; intros; auto. lia. reflexivity.
-    - assert (Hptrlt: Ptrofs.unsigned (Ptrofs.repr (sizeof t * i)) <= Ptrofs.unsigned (Ptrofs.repr (sizeof t * j))) by lia.
-      clear g. unfold Ptrofs.unsigned in Hptrlt. simpl in Hptrlt. rewrite !Ptrofs.Z_mod_modulus_eq in Hptrlt.
-      rewrite !Zmod_small in Hptrlt. rewrite <- Z.mul_le_mono_pos_l in Hptrlt; auto. all: try apply Hij; auto.
-      split; intros; try lia. inversion H.
-Qed.
 
 Ltac solve_qpoly_bounds :=
   let pose_bounds p :=

@@ -1,6 +1,7 @@
 Require Import VST.floyd.proofauto.
 
 Require Import Common.
+Require Import CommonVST.
 Require Import Specs.
 Require Import fec.
 Require Import Poly.
