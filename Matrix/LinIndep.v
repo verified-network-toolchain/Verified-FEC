@@ -332,4 +332,225 @@ Proof.
     by apply row_zero_not_lin_indep in Hzero.
 Qed. 
 
+
+(** Flipping Rows*)
+(*A similar result: If we flip all the rows of a matrix, the resulting matrix is invertible iff A is*)
+
+(*Create ordinal for m - i if i : 'I_m*)
+Lemma ord_sub_bound_lt {m} (i: 'I_m) : m - i - 1 < m.
+Proof.
+  rewrite -subnDA ltn_subLR. rewrite addnC addnA addn1.
+  have Hmi: m <= m + i by rewrite -{1}(addn0 m) leq_add2l.
+  by apply (leq_ltn_trans Hmi). by rewrite addn1.
+Qed.
+
+(*The ordinal (m - i -1) for i : 'I_m*)
+Definition rev_ord {m} (i: 'I_m) : 'I_m := Ordinal (ord_sub_bound_lt i).
+
+Lemma rev_ordK : forall m, involutive (@rev_ord m).
+Proof.
+  move => m x. rewrite /rev_ord /=.
+  have: (m - (m - x - 1) - 1 == x)%N. rewrite -(subnDA x m 1%N). rewrite subKn. by rewrite addn1 subn1 -pred_Sn.
+  by rewrite addn1. move => /eqP Hx. 
+  have: (nat_of_ord(Ordinal (ord_sub_bound_lt (Ordinal (ord_sub_bound_lt x)))) == x) by rewrite -{3}Hx.
+  move => /eqP Hord. by apply ord_inj.
+Qed. 
+
+(*TODO: move*)
+Lemma ltn_add2rl: forall n1 n2 m1 m2,
+  n1 < n2 ->
+  m1 < m2 ->
+  n1 + m1 < n2 + m2.
+Proof.
+  move => n1 n2 m1 m2 Hn Hm. have Hleft: n1 + m1 < n1 + m2 by rewrite ltn_add2l.
+  have Hright: n1 + m2 < n2 + m2 by rewrite ltn_add2r. by apply (ltn_trans Hleft Hright).
+Qed.
+
+(*A few lemmas for working with division by 2 (which arises because we only want to swap the first m/2 rows)*)
+
+Lemma div_lt_bound: forall (n: nat),
+  (n < n./2 + 1) = (n == 0)%N.
+Proof.
+  move => n. elim : n => [//= | n IH /=].
+  rewrite -(addn1 n) ltn_add2r. rewrite uphalf_half. case  Hodd: (odd n) => [/=|/=].
+  - rewrite addnC IH. case Hn0 : (n == 0)%N. by eq_subst Hn0.
+    rewrite addn1. by [].
+  - rewrite add0n. have->: n < n./2 = false. rewrite -divn2.
+    case Hn : (n < n %/ 2) =>[|//]. have Hnle : (n %/ 2 <= n) by apply leq_div.
+    have: (n < n) by apply (ltn_leq_trans Hn Hnle). by rewrite ltnn.
+    by rewrite addn1.
+Qed.
+
+Lemma sub_half_lower: forall (n: nat),
+  n./2 <= n - n./2.
+Proof.
+  move => n. rewrite leq_subRL. rewrite addnn -{2}(odd_double_half n).
+  case : (odd n) =>[/=|/=]. by rewrite addnC addn1 leqnSn. by rewrite add0n leqnn.
+  rewrite -divn2. apply leq_div.
+Qed.
+
+Lemma sub_half_upper: forall n,
+  n - n./2 <= n./2 + 1.
+Proof.
+  move => n. rewrite leq_subLR addnA addnn -{1}(odd_double_half n) addnC leq_add2l.
+  by case (odd n).
+Qed.
+
+Lemma div_2_pos: forall n,
+  1 < n ->
+  0 < n./2.
+Proof.
+  move => n H1n. by rewrite -divn2 divn_gt0.
+Qed.
+
+(*The lemma we need (which ensures that we will not repeat rows when swapping*)
+Lemma rev_ord_one_small: forall {m} (i: 'I_m), 
+  (i < m %/ 2) ->  ~~(rev_ord i < m %/ 2).
+Proof.
+  move => m i Hi. have->: nat_of_ord (rev_ord i) = (m - i - 1)%N by []. 
+  have Hi1: (i + 1 < m %/2 + 1) by rewrite ltn_add2r.
+  have: (i + 1 <= m) by rewrite addn1. rewrite leq_eqVlt => /orP[/eqP Himeq | Himlt].
+  + move: Hi1. by rewrite Himeq divn2 div_lt_bound -{1}Himeq addn1.
+  + have Him: (m - (m %/ 2 + 1) < m - (i + 1)) by rewrite ltn_sub2l.
+    rewrite !subnDA in Him.
+    have Hlb: (m %/2 -1 <= m - m %/ 2 - 1). apply leq_sub2r. by rewrite divn2 sub_half_lower.
+    case Hcon: (m - i - 1 < m %/ 2) => [|//].
+    have Hlb': (m %/ 2 - 1 < m - i - 1) by apply (leq_ltn_trans Hlb).
+    (*Need to know that m %/2 > 0*)
+    have Hmdiv0: 0 < m %/ 2. rewrite divn2. apply div_2_pos. 
+    have H1i: 1 <= i + 1 by rewrite -{1}(add0n 1%N) leq_add2r. apply (leq_ltn_trans H1i Himlt).
+    (*finally, we can get the contradiction*)
+    have: m %/ 2 <= m - i - 1. move: Hlb'. by rewrite ltn_subLR.
+    by rewrite leqNgt Hcon.
+Qed.
+
+(*Every row will be accounted for*)
+Lemma rev_ord_bound_total: forall {m} (i: 'I_m),
+  (i < m %/ 2) || (rev_ord i < m %/ 2) || ((nat_of_ord i == m %/2) && (nat_of_ord (rev_ord i) == m %/2)).
+Proof.
+  move => m i.
+  have->: nat_of_ord (rev_ord i) = (m - i - 1)%N by [].
+  case Hi : (i < m %/ 2) => [//|/=].
+  case Hrev: (m - i - 1 < m %/ 2) => [//|/=].
+  have {}Hi: (m %/2 <= i) by rewrite leqNgt Hi.
+  have {}Hrev: (m %/2 <= m - i - 1) by rewrite leqNgt Hrev.
+  have: (m %/ 2 == (m - i - 1)%N). { rewrite -leq_both_eq Hrev /=.
+  rewrite -(leq_add2r 1%N) in Hi. 
+  have Hup: (m - (i + 1) <= m - (m %/ 2 + 1)) by rewrite leq_sub2l.
+  rewrite !subnDA in Hup.
+  have: m - m %/ 2 - 1 <= m %/2 + 1 - 1. apply leq_sub2r. by rewrite !divn2 sub_half_upper.
+  rewrite addn1 (subn1 ((m %/ 2).+1)) -pred_Sn => Hm. by apply (leq_trans Hup). }
+  rewrite eq_sym; move ->; rewrite andbT. 
+  rewrite -leq_both_eq Hi andbT.
+  move: Hrev. rewrite -subnDA. rewrite leq_subRL. 2: by rewrite addn1.
+  rewrite addnC. rewrite -leq_psubRL. 2: by rewrite addn1. 
+  move => Him. have Him1: i + 1 <= m %/2 + 1. rewrite !divn2. rewrite divn2 in Him.
+  apply (leq_trans Him (sub_half_upper _)). by rewrite leq_add2r in Him1.
+Qed.
+
+(* The matrix we want to work with*)
+Definition flip_rows {m n} (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
+  \matrix_(i < m, j < n) A (rev_ord i) j.
+
+(*Need to show row equivalence*)
+Definition flip_rows_iter_aux {m n} (A: 'M[F]_(m, n)) (l: list 'I_m) : 'M[F]_(m, n) :=
+  foldr (fun r (acc : 'M[F]_(m, n)) => xrow r (rev_ord r) acc) A l.
+
+Definition flip_rows_iter {m n} (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
+  flip_rows_iter_aux A (pmap insub (iota 0 (m %/ 2))).
+
+Lemma flip_rows_iter_aux_notin_val : forall {m n} (A: 'M[F]_(m, n)) (l: list 'I_m) (x : 'I_m) (y : 'I_n),
+  (*(forall x, x \in l -> x < m %/ 2) ->*)
+  x \notin l ->
+  rev_ord x \notin l ->
+  flip_rows_iter_aux A l x y = A x y.
+Proof.
+  move => m n A l x y. elim: l => [Hnot Hnotrev //= | h t IH Hnot Hnotrev /=].
+  rewrite xrow_val. move : Hnot Hnotrev. rewrite !in_cons !negb_or => /andP[Hxh Hxt] /andP[Hrevh Hrevt].
+  have->: (x == h) = false by move : Hxh; case:(x == h).
+  case Hhrev: (x == rev_ord h). have Hcon: h == rev_ord x. eq_subst Hhrev; by rewrite rev_ordK.
+  by rewrite eq_sym in Hcon; rewrite Hcon in Hrevh. by apply IH.
+Qed.
+
+(*This lemma is quite annoying, because we have to be careful that we do not include the row and its corresponding one twice*)
+Lemma flip_rows_iter_aux_in_val : forall {m n} (A: 'M[F]_(m, n)) (l: list 'I_m) (x : 'I_m) (y : 'I_n),
+  uniq l ->
+  (forall x, x \in l -> x < m %/ 2) ->
+  (x \in l \/ rev_ord x \in l) ->
+  flip_rows_iter_aux A l x y = A (rev_ord x) y.
+Proof.
+  move => m n A l x y. elim : l => [Huniq Hsmall Hin //= | h t IH Huniq Hsmall Hin /=].
+  - by case : Hin; rewrite in_nil.
+  - move : Huniq; rewrite /= => /andP[Hnoth Hnott]. rewrite xrow_val. case: Hin => [Hx | Hrevx].
+    + move : Hx; rewrite in_cons => /orP[Hh | Ht].
+      * rewrite Hh. eq_subst Hh. apply flip_rows_iter_aux_notin_val.
+        -- case Hin : (rev_ord h \in t) =>[|//].
+           have Hrevsmall: rev_ord h < m %/ 2. apply Hsmall. by rewrite in_cons Hin orbT.
+           have Hhsmall: h < m %/ 2. apply Hsmall. by rewrite in_cons eq_refl. apply rev_ord_one_small in Hhsmall.
+           by rewrite Hrevsmall in Hhsmall.
+        -- by rewrite rev_ordK. 
+      * case Hxh : (x == h). eq_subst Hxh. by rewrite Ht in Hnoth.
+        case Hxhrev: (x == rev_ord h).
+        -- eq_subst Hxhrev. have Hhsmall: h < m %/2. apply Hsmall. by rewrite in_cons eq_refl.
+           apply rev_ord_one_small in Hhsmall.
+           have Hrevsmall: rev_ord h < m %/ 2. apply Hsmall. by rewrite in_cons Ht orbT. 
+           by rewrite Hrevsmall in Hhsmall.
+        -- apply IH. by []. move => x' Hin. apply Hsmall. by rewrite in_cons Hin orbT. by left.
+    + move: Hrevx; rewrite in_cons => /orP [Hrevh | Hrevt].
+      * eq_subst Hrevh. case Hrev: (x == rev_ord x). eq_subst Hrev. rewrite -!Hrev.
+        apply flip_rows_iter_aux_notin_val. by rewrite Hrev. by [].
+        rewrite rev_ordK eq_refl. apply flip_rows_iter_aux_notin_val. by [].
+        rewrite rev_ordK. have Hrevsmall: rev_ord x < m %/ 2. apply Hsmall. by rewrite in_cons eq_refl.
+        apply rev_ord_one_small in Hrevsmall. rewrite rev_ordK in Hrevsmall.
+        case Hxin: (x \in t) =>[|//]. rewrite -Hrevsmall. rewrite Hsmall. by []. by rewrite in_cons Hxin orbT.
+      * case Hxh: (x == h).
+        -- eq_subst Hxh. have Hhsmall: (h < m %/2). apply Hsmall. by rewrite in_cons eq_refl.
+           apply rev_ord_one_small in Hhsmall. 
+           have Hrevsmall: (rev_ord h < m %/ 2). apply Hsmall. by rewrite in_cons Hrevt orbT.
+           by rewrite Hrevsmall in Hhsmall.
+        -- case Hxrevh : (x == rev_ord h). eq_subst Hxrevh. rewrite rev_ordK in Hrevt. by rewrite Hrevt in Hnoth.
+           apply IH. by []. move => x' Hinx'. apply Hsmall. by rewrite in_cons Hinx' orbT. by right.
+Qed.
+
+(*The first result we need: The nice way of writing this matrix is the same as the iterative way*)
+Lemma flip_rows_iter_val: forall {m n} (A: 'M[F]_(m, n)),
+  flip_rows_iter A = flip_rows A.
+Proof.
+  move => m n A. rewrite /flip_rows_iter /flip_rows -matrixP /eqrel => x y; rewrite mxE.
+  have Hallin: forall x0 : 'I_m, x0 \in pmap insub (iota 0 (m %/ 2)) -> x0 < m %/ 2. { move => x'.
+    by rewrite mem_pmap_sub /= mem_iota add0n. }
+  have Hu: uniq (pmap insub (iota 0 (m %/ 2))). move => p s. apply pmap_sub_uniq. apply iota_uniq.
+  pose proof (rev_ord_bound_total x) as Hx. move : Hx => /orP[/orP [Hx | Hrev] | /andP[Hx Hrev]].
+  - apply flip_rows_iter_aux_in_val. apply Hu. apply Hallin. left.
+    by rewrite mem_pmap_sub /= mem_iota add0n.
+  - apply flip_rows_iter_aux_in_val. apply Hu. apply Hallin. right.
+    by rewrite mem_pmap_sub /= mem_iota add0n.
+  - rewrite flip_rows_iter_aux_notin_val. have Hxrevnat: nat_of_ord x == nat_of_ord (rev_ord x). eq_subst Hx.
+    rewrite Hx. by rewrite eq_sym. have /eqP Heq: x == rev_ord x by []. by rewrite {1}Heq.
+    rewrite mem_pmap_sub /= mem_iota add0n negb_and. eq_subst Hx. by rewrite Hx ltnn orbT.
+    rewrite mem_pmap_sub /= mem_iota add0n negb_and. eq_subst Hrev.
+    have Hrevnat :  nat_of_ord (rev_ord x) = (m - x - 1)%N by []. by rewrite -Hrevnat Hrev ltnn orbT.
+Qed.
+
+Lemma flip_rows_iter_aux_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (l: list 'I_m),
+  row_equivalent A (flip_rows_iter_aux A l).
+Proof.
+  move => m n A l. elim : l => [//= | h t IH/=].
+  - apply row_equiv_refl.
+  - apply (row_equivalent_trans IH). apply ero_row_equiv. apply ero_swap.
+Qed.
+
+Lemma flip_rows_row_equivalent: forall {m n} (A: 'M[F]_(m, n)),
+  row_equivalent A (flip_rows A).
+Proof.
+  move => m n A. rewrite -flip_rows_iter_val. apply flip_rows_iter_aux_row_equiv.
+Qed.
+
+(*The second result we want: flipping the rows of a matrix does not affect its invertibility*)
+Lemma flip_rows_unitmx_iff: forall {n} (A: 'M[F]_n),
+  A \in unitmx <-> (flip_rows A) \in unitmx.
+Proof.
+  move => n A. by rewrite (row_equivalent_unitmx_iff (flip_rows_row_equivalent A)).
+Qed. 
+
 End LinIndep.
