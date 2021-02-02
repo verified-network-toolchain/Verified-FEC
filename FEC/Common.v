@@ -39,6 +39,9 @@ Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
 Definition modulus : Z := proj1_sig (opaque_constant 285).
 Definition modulus_eq : modulus = 285%Z := proj2_sig (opaque_constant _).
 
+Definition fec_max_h : Z := proj1_sig (opaque_constant 128).
+Definition fec_max_h_eq : fec_max_h = 128%Z := proj2_sig (opaque_constant _).
+
 Lemma fec_n_bound: 8 <= fec_n <= 256.
 Proof.
 rewrite fec_n_eq. lia.
@@ -232,15 +235,33 @@ Definition F := qpoly_fieldType modulus_poly_deg_pos modulus_poly_irred.
 
 Instance F_inhab : Inhabitant (ssralg.GRing.Field.sort F) := inhabitant_F F.
 
-(*Matrices are represented in the C code by a single pointer, pointing to a location in memory of
+(*Matrices are represented in the C code in two different ways: as a 2D array with reversed rows
+  and as a single pointer, pointing to a location in memory of
   size m * n, such that the reversed rows appear one after another. We need to flatten a matrix
   into a single list to represent this in Coq*)
+
+Definition rev_mx (mx: matrix F) : list (list Z) :=
+  map (fun l => rev (map (fun q => poly_to_int (proj1_sig q)) l)) mx.
 
 Definition flatten_mx_aux (mx: matrix F) (base: list Z) : list Z :=
   fold_right (fun l acc => rev (map (fun q => poly_to_int (proj1_sig q)) l) ++ acc) base  mx.
 
 Definition flatten_mx (mx: matrix F) : list Z :=
   flatten_mx_aux mx nil.
+
+Lemma rev_concat_flatten : forall (mx: matrix F),
+  concat (rev_mx mx) = flatten_mx mx.
+Proof.
+  intros mx. induction mx.
+  - reflexivity.
+  - simpl. f_equal. apply IHmx.
+Qed.
+
+Definition map_int_val_2d (l: list (list Z)) : list (list val) :=
+  map (fun l' => map Vint (map Int.repr l')) l.
+
+Definition rev_mx_val (mx: matrix F) : list (list val) :=
+  map_int_val_2d (rev_mx mx).
 
 (*Since matrices are not necessarily well formed*)
 Definition whole_Zlength (l: matrix F) :=

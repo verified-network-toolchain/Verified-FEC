@@ -11,6 +11,28 @@ make_compspecs prog. Defined.
 Definition Vprog : varspecs.
 mk_varspecs prog. Defined.
 
+Definition fec_generate_weights_spec :=
+  DECLARE _fec_generate_weights
+  WITH gv : globals
+  PRE [ ]
+    PROP ()
+    PARAMS ()
+    GLOBALS (gv)
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
+            (list_repeat (Z.to_nat fec_max_h) (list_repeat (Z.to_nat (fec_n -1)) (Vint Int.zero))) (gv _fec_weights))
+  POST [tvoid]
+    PROP ()
+    RETURN ()
+    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
+            (rev_mx_val (gauss_restrict_rows 
+            (weight_mx_list modulus_poly_deg_pos modulus_poly_irred fec_max_h  (fec_n - 1)) fec_max_h)) (gv _fec_weights)).
+
 (*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
   We require that m > 0 since the last loop goes from 0 to m - 1 *)
 Definition fec_matrix_transform_spec :=
@@ -82,5 +104,6 @@ Definition fec_find_mod_spec :=
     RETURN (Vint (Int.repr modulus))
     SEP ().
 
-Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec].
+Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
+  fec_generate_weights_spec].
 

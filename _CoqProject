@@ -22,5 +22,5 @@ FEC/fec.v
 FEC/Common.v
 FEC/CommonVST.v
 FEC/Specs.v
-FEC/Verif_field.v
+#FEC/Verif_field.v
 FEC/Verif_matrix.v
