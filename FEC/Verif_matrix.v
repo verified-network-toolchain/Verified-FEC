@@ -211,8 +211,24 @@ Proof.
           apply Znth_eq_ext.
           + rewrite Zlength_rev. rewrite Zlength_map. rewrite prop_list_length. rewrite Forall_forall in H1.
             rewrite H1. reflexivity. apply Znth_In; try rep_lia. list_solve. rep_lia.
-          + intros j' Hj'. rewrite Znth_rev. rewrite !Znth_map. rewrite Zlength_map. rewrite prop_list_length.
-            rewrite prop_list_Znth. rewrite H2. f_equal. simpl.
+          + intros j' Hj'. rewrite Zlength_map in Hi'. rewrite Forall_forall in H1. rewrite H1 in Hj'.
+            2: { apply Znth_In; rep_lia. } rewrite Znth_rev.
+            rewrite !Znth_map. rewrite Zlength_map. rewrite prop_list_length.
+            rewrite prop_list_Znth. rewrite H2. f_equal. simpl. f_equal. f_equal. lia. rep_lia.
+            assumption. rep_lia. rep_lia. rewrite Zlength_map. rewrite prop_list_length; try rep_lia.
+            rewrite Zlength_map. rewrite prop_list_length; rep_lia.
+          + rewrite Zlength_map in Hi'. rep_lia.
+          + assert (Hfn: 0 <= fec_n - 1) by rep_lia. assert (Hfh: 0 <= fec_max_h) by rep_lia.
+            pose proof (weight_matrix_wf modulus_poly_deg_pos modulus_poly_irred Hfn Hfh) as Hwf.
+            destruct Hwf as [Hlen [Hn Hinlen]]. simpl_reptype. rewrite Hlen. rep_lia.
+
+            rewrite Zlength_map in Hi'. rep_lia. 
+            rewrite Forall_forall in H1. rewrite H1 in Hj'. assumption. apply Znth_In; try rep_lia.
+            rewrite Zlength_map in Hi'; rep_lia. rep_lia.
+
+
+ list_solve. lia.
+            (*TODO: need to redo vandermonde a bit*)
 
 
 

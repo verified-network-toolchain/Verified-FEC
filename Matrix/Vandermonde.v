@@ -105,19 +105,20 @@ Definition F := qpoly_fieldType Hpos Hirred.
 
 Definition qx : qpoly f := poly_to_qpoly f Hpos x.
 
-Definition vandermonde_powers m n : 'M[F]_(m, n) := vandermonde m n (map (fun i => (qx ^+ i)) (iota 0 n)).
+(*Because the C code actually reverses the rows, we need rev of the natural choice 1, x, x^2, etc*)
+Definition vandermonde_powers m n : 'M[F]_(m, n) := vandermonde m n (rev (map (fun i => (qx ^+ i)) (iota 0 n))).
 
 (*Alternate definition, useful for rewriting*)
 Lemma vandermonde_powers_val: forall (m n: nat) (i : 'I_m) (j: 'I_n),
-  vandermonde_powers m n i j = (qx ^+ (i * j)).
+  vandermonde_powers m n i j = (qx ^+ (i * (n - j - 1))).
 Proof.
   move => m n i j. rewrite /vandermonde_powers /vandermonde mxE.
-  have Hjsz: j < size (iota 0 n) by rewrite size_iota.
-  have->: [seq qx ^+ i0 | i0 <- iota 0 n]`_j = qx ^+ j. { move => Hf.
-  rewrite (nth_map 0%nat) => [|//]. rewrite nth_iota. by rewrite add0n. by []. }
+  have Hjsz: j < size (iota 0 n) by rewrite size_iota. rewrite -map_rev.
+  have->: [seq qx ^+ i0 | i0 <- rev(iota 0 n)]`_j = qx ^+ (n - j - 1). { move => Hf.
+  rewrite (nth_map 0%nat) => [|//]. rewrite nth_rev=>[|//]. rewrite size_iota nth_iota.
+  by rewrite add0n -subnDA addn1. apply rev_ord_proof. by rewrite size_rev. }  
   by rewrite GRing.exprAC GRing.exprM.
 Qed. 
-
 
 (*Now we need to prove [strong_inv] for this matrix*)
 
@@ -299,9 +300,9 @@ Lemma vandermonde_remove_col_unitmx: forall m n (Hmn: m <= n) (r: 'I_m) (j: nat)
 Proof.
   move => m n Hmn r j Hjr Hnbound.
   rewrite vandermonde_remove_col_list. apply vandermonde_unitmx.
-  - apply rem_nth_uniq. apply 0. apply take_uniq. by apply power_list_uniq.
-  - have Hsz: size (take r.+1 [seq (@GRing.exp F qx i) | i <- iota 0 n]) = r.+1. {
-    rewrite size_take size_map size_iota.
+  - apply rem_nth_uniq. apply 0. apply take_uniq. rewrite rev_uniq. by apply power_list_uniq.
+  - have Hsz: size (take r.+1 (rev  [seq (@GRing.exp F qx i) | i <- iota 0 n])) = r.+1. {
+    rewrite size_take size_rev size_map size_iota.
     have Hrm: r.+1 <= m by []. have: r.+1 <= n by apply (leq_trans Hrm Hmn).
     rewrite leq_eqVlt => /orP[/eqP Hr1n | Hr1n].
     + rewrite Hr1n. rewrite ltnn -Hr1n. apply pred_Sn.
@@ -309,24 +310,114 @@ Proof.
     rewrite rem_nth_size; rewrite Hsz. apply pred_Sn. by apply (ltn_trans Hjr).
 Qed.
 
+(* The row matrix is much more complicated.
+  Let P be the original powers matrix. Then p_ij = x^i(n-j-1).
+  So row i consists of x^i(n-1), x^i(n-2),..., x^i(n-r). We cannot simply take the transpose, because this
+  is the reverse of a vandermonde matrix - every column goes in decreasing powers of x.
+  So we proved a result that we can flip all the rows while preserving invertibility, allowing us to 
+  get x^i(n-r), x^i(n-r+1),... in each column (after transpose). But this is still not good enough, since
+  we start with some extra powers of x (ie, a column might be x^4, x^6, x^8,...). So before doing the above,
+  we first scalar multiply each row i by p_ir^-1 = x^-(i(n-r-1)).
+  So the transformations are as follows:
+  p_{ij} = x^{i(n-j-1)}
+  p1_{ij} = x^{i(r-j)} (scalar multiply)
+  p2_{ij} = x^{j(r-i)} (transpose)
+  p3_{ij} = x^{ji} (flip all rows (i -> r.+1 - i - 1)
+  Finally, p3 is a vandermonde matrix, so it is invertible. Since all of these transformations preserve
+  invertibility, p is also invertible. *)
+
+Lemma pred_lt: forall n, 0 < n -> n.-1 < n.
+Proof.
+  move => n Hn. by rewrite ltn_predL.
+Qed.
+
+Definition pred_ord (n: nat) (Hn: 0 < n) : 'I_n := Ordinal (pred_lt Hn).
+
+Definition scalar_mult_last_inv {m n} (Hn: 0 < n) (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
+  foldr (fun (r: 'I_m) acc => sc_mul acc (A r (pred_ord Hn))^-1 r) A (ord_enum m).
+
+Lemma scalar_mult_last_inv_val: forall {m n} (Hn: 0 < n) (A: 'M[F]_(m, n)) i j,
+  scalar_mult_last_inv Hn A i j = (A i j) * (A i (pred_ord Hn))^-1.
+Proof.
+  move => m n Hn A i j. rewrite mx_row_transform.
+  - by rewrite /sc_mul mxE eq_refl GRing.mulrC.
+  - move => A' i' j' r Hir'. rewrite /sc_mul mxE. 
+    by have->:(i' == r = false) by move: Hir'; case (i' == r).
+  - move => A' B r Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
+  - apply ord_enum_uniq.
+  - apply mem_ord_enum.
+Qed.
+
+Lemma qx_not_zero: qx != @GRing.zero F.
+Proof.
+  case Hx : (qx == 0) =>[|//].
+  eq_subst Hx. move: Hx. have->: @GRing.zero F = q0 Hpos by []. move => Hx. inversion Hx.
+  have: f = x. rewrite -divides_x. rewrite divides_pmod_iff. by []. left.
+  move => Hz. have: (deg f < 0)%Z. rewrite Hz. by rewrite deg_zero. lia. by []. by move => Hf; subst.
+Qed. 
+
+(*This is the big lemma that will allow us to prove the transpose of this matrix equivalent to a vandermonde mx*)
+Lemma scalar_mult_last_inv_vandermonde_powers: forall {m n} (Hmn: m <= n) (r : 'I_m) y i j,
+  r <= nat_of_ord y ->
+  (scalar_mult_last_inv (ltn0Sn r) (submx_add_row (@vandermonde_powers m n) Hmn r y)) i j = 
+    qx ^+ ((if i < r then nat_of_ord i else nat_of_ord y) * (r-j)).
+Proof.
+  move => m n Hmn r y i j Hry. rewrite scalar_mult_last_inv_val !mxE.
+  have /eqP Hord: nat_of_ord (widen_ord (leq_trans (ltn_ord r) Hmn) j) == j by []. rewrite !Hord.
+  have /eqP Hord' : nat_of_ord (widen_ord (leq_trans (ltn_ord r) Hmn) (pred_ord (ltn0Sn r))) == r by [].
+  rewrite {Hord} !Hord' {Hord'} !nth_rev; rewrite !size_map size_iota.
+  have Hnsub: forall p, n - p.+1 < n. { move => p. rewrite ltn_subrL ltn0Sn /=.
+  have: 0 <= n by []. rewrite leq_eqVlt => /orP[Hn0 | //]. eq_subst Hn0.
+  have Hrm: r < m by []. rewrite leqn0 in Hmn. eq_subst Hmn. by []. }
+  rewrite !(nth_map 0%nat); try (by rewrite size_iota). rewrite !nth_iota; try (by rewrite Hnsub).
+  rewrite !add0n.
+  have Hsimpl: forall (z : nat),
+  (@GRing.exp F qx (n - j.+1)) ^+ z / qx ^+ (n - r.+1) ^+ z = qx ^+ (z * (r - j)). {
+  move => z. have: 0 <= z by []. rewrite leq_eqVlt => /orP[Hz0 | Hz].
+  + eq_subst Hz0. rewrite -!GRing.exprM !muln0 mul0n !GRing.expr0. apply GRing.mulfV.
+    apply GRing.oner_neq0.
+  + have: j <= r by rewrite ltnSE. rewrite leq_eqVlt => /orP[Hjreq | Hlt].
+    - eq_subst Hjreq. rewrite Hjreq subnn muln0 GRing.expr0. apply GRing.mulfV.
+      rewrite -GRing.exprM. rewrite GRing.expf_neq0. by []. apply qx_not_zero.
+    - rewrite -!GRing.exprM. rewrite -!GRing.Theory.expfB.
+      2: { have Hjr1: j.+1 < r.+1 by []. rewrite ltn_mul2r Hz /=.
+        apply ltn_sub2l.
+        have Hrm: r.+1 <= m by []. have Hjm: j.+1 < m by apply (ltn_leq_trans Hjr1 Hrm).
+        apply (ltn_leq_trans Hjm Hmn). by []. }
+      rewrite -mulnBl subnBA. rewrite -addnABC. rewrite addnC -subnBA. 
+      by rewrite subnn subn0 subSS mulnC. by rewrite leqnn.
+      have Hjm: j < m by apply (ltn_trans Hlt). by apply (ltn_leq_trans Hjm Hmn). by [].
+      have Hrm: r < m by []. by apply (ltn_leq_trans Hrm). }
+  have: i <= r by rewrite ltnSE. rewrite leq_eqVlt => /orP[Hireq | Hlt].
+  - eq_subst Hireq. rewrite Hireq ltnn. apply Hsimpl.
+  - rewrite Hlt /=. apply Hsimpl.
+  - have Hrm: r < m by []. by apply (ltn_leq_trans Hrm).
+  - have Hjr: j <= r by rewrite -ltnS. have Hrm : r < m by [].
+    have Hjm: j < m by apply (leq_ltn_trans Hjr Hrm). by apply (ltn_leq_trans Hjm).
+Qed. 
+
+
+(*The row matrix is a bit more complicated. The resulting matrix isn't Vandermonde, but
+  if we transpose it and then flip all the rows, then it is. So we use the [flip_rows] result as well*)
+
 Lemma vandermonde_powers_add_row_list: forall m n (Hmn: m <= n) (r j:'I_m),
-  (submx_add_row (@vandermonde_powers m n) Hmn r j)^T = 
+  (r <= j) ->
+  flip_rows ((scalar_mult_last_inv (ltn0Sn r) (submx_add_row (@vandermonde_powers m n) Hmn r j))^T) =
     vandermonde (r.+1) (r.+1) ((map (fun i => (qx ^+ i)) (iota 0 r)) ++ (qx ^+ j :: nil)).
 Proof.
-  move => m n Hmn r j. rewrite /submx_remove_col /vandermonde -matrixP /trmx /eqrel => x y.
-  rewrite !mxE /=.
+  move => m n Hmn r j Hrj. rewrite /flip_rows /vandermonde -matrixP /eqrel => x y.
+  rewrite mxE mxE scalar_mult_last_inv_vandermonde_powers. 2: by []. rewrite  !mxE.
   have Hxn: x < n. have Hxr: x < r.+1 by []. rewrite ltnS in Hxr.
     have Hrm: r < m by []. have Hxm: x < m by apply (leq_ltn_trans Hxr Hrm).
     by apply (ltn_leq_trans Hxm Hmn).
+  have Hx: (r - (r.+1 - x - 1))%nat = x.
+    rewrite -subnDA addnC subnDA subn1 -pred_Sn. apply subKn. by rewrite -ltnS.
   have: y < r.+1 by []. rewrite ltnS leq_eqVlt => /orP[/eqP Hyr | Hyr].
   - rewrite Hyr ltnn. rewrite nth_cat.
-    rewrite size_map size_iota ltnn subnn /=.
-    rewrite (nth_map 0%nat). rewrite nth_iota. rewrite add0n. apply GRing.exprAC. by [].
-    by rewrite size_iota.
+    rewrite size_map size_iota ltnn subnn /=. by rewrite Hx -GRing.exprM.
   - rewrite Hyr /=. rewrite nth_cat size_map size_iota Hyr.
     rewrite !(nth_map 0%nat) /=. rewrite !nth_iota.
-    rewrite !add0n. apply GRing.exprAC. by []. by []. by rewrite size_iota.
-    by rewrite size_iota.
+    rewrite !add0n. by rewrite Hx -GRing.exprM. by []. by rewrite size_iota.
 Qed.
 
 Lemma vandermonde_add_row_unitmx: forall m n (Hmn: m <= n) (r j:'I_m),
@@ -334,7 +425,21 @@ Lemma vandermonde_add_row_unitmx: forall m n (Hmn: m <= n) (r j:'I_m),
   (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   submx_add_row (vandermonde_powers m n) Hmn r j \in unitmx.
 Proof.
-  move => m n Hmn r j Hrj Hn. rewrite -unitmx_tr vandermonde_powers_add_row_list.
+  move => m n Hmn r j Hrj Hn.
+  (*lots of layers to show*)
+  have Hinv: row_equivalent (submx_add_row (vandermonde_powers m n) Hmn r j)
+    (scalar_mult_last_inv (ltn0Sn r) (submx_add_row (vandermonde_powers m n) Hmn r j)). {
+  apply mx_row_transform_equiv. move => A' r'. apply ero_row_equiv. apply ero_sc_mul.
+  rewrite !mxE /=. (*need to do it here to show that not zero*)
+  have Hnr: n - r.+1 < n.  rewrite ltn_subrL ltn0Sn /=. have: 0 <= n by []. 
+  rewrite leq_eqVlt => /orP[Hn0 | //]. eq_subst Hn0.
+  have Hrm: r < m by []. rewrite leqn0 in Hmn. eq_subst Hmn. by [].
+  rewrite nth_rev size_map size_iota. rewrite (nth_map 0%nat). rewrite nth_iota.
+  rewrite add0n -!GRing.exprVn -GRing.exprM GRing.expf_neq0. by [].
+  apply GRing.invr_neq0. apply qx_not_zero. by []. by rewrite size_iota.
+  have Hrm: r < m by []. by apply (ltn_leq_trans Hrm). }
+  apply row_equivalent_unitmx_iff in Hinv. rewrite Hinv {Hinv}.
+  rewrite -unitmx_tr flip_rows_unitmx_iff vandermonde_powers_add_row_list =>[|//].
   apply vandermonde_unitmx.
   - rewrite cats1 rcons_uniq.
     have->: (qx ^+ j \notin [seq (@GRing.exp F qx i) | i <- iota 0 r]). {

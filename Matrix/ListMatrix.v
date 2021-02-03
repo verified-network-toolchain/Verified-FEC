@@ -972,7 +972,7 @@ Variable Hirred : irreducible f.
 Definition F := qpoly_fieldType Hpos Hirred.
 
 Definition weight_mx_list (m n : Z) : matrix F :=
-  prop_list (fun i => (prop_list (fun j => (poly_to_qpoly f Hpos (monomial (Z.to_nat (i * j))))) n)) m.
+  prop_list (fun i => (prop_list (fun j => (poly_to_qpoly f Hpos (monomial (Z.to_nat (i * (n - j - 1)))))) n)) m.
 
 Lemma weight_matrix_wf: forall m n, 0 <= n -> 0 <= m -> wf_matrix (weight_mx_list m n) m n.
 Proof.
@@ -990,9 +990,13 @@ Lemma weight_mx_list_spec: forall m n,
   matrix_to_mx m n (weight_mx_list m n) = vandermonde_powers Hpos Hirred (Z.to_nat m) (Z.to_nat n).
 Proof.
   move => m n Hm Hn. rewrite -matrixP /eqrel. move => x y. rewrite mxE vandermonde_powers_val /get /weight_mx_list.
-  rewrite !prop_list_Znth. rewrite exp_monomial =>[|//]. f_equal. f_equal. 
-  have->: (x * y)%N = (x * y)%coq_nat by []. lia.
-  split; try lia. have /ltP Hy: (y < Z.to_nat n)%N by []. lia.
+  have /ltP Hynat: (y < Z.to_nat n)%N by [].
+  have Hyn: 0 <= Z.of_nat y < n by split; lia.
+  rewrite !prop_list_Znth. rewrite exp_monomial =>[|//]. f_equal. f_equal.
+  have->: (x * (Z.to_nat n - y - 1))%N = (x * (Z.to_nat n - y - 1))%coq_nat by [].
+  rewrite Z2Nat.inj_mul; try lia. rewrite Nat2Z.id. rewrite Z2Nat.inj_sub; try lia.
+  rewrite Z2Nat.inj_sub; try lia. rewrite Nat2Z.id. by rewrite Nat.mul_sub_distr_l.
+  by [].
   split; try lia. have /ltP Hx: (x < Z.to_nat m)%N by []. lia.
 Qed. 
 End WeightMx.
