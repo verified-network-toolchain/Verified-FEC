@@ -23,6 +23,15 @@ Proof.
   unfold Int.eqm in H0. eapply Zbits.eqmod_small_eq. apply H0. all: rep_lia. 
 Qed.
 
+Lemma zbits_small: forall i,
+  0 <= i < 256 ->
+  Zbits.Zzero_ext 8 i = i.
+Proof.
+  intros i Hi. rewrite Zbits.Zzero_ext_mod; [|rep_lia]. replace (two_p 8) with (256) by reflexivity.
+  rewrite Zmod_small; lia.
+Qed.
+
+
 (** Facts about [FEC_N and modulus] (hardcoded for now) *)
 
 (*We keep fec_n, modulus, and (poly_of_int modulus) opaque, since for some reason when that is not the case,
@@ -54,13 +63,36 @@ Definition mod_poly_eq : mod_poly = poly_of_int modulus := proj2_sig (opaque_con
 Lemma modulus_poly: mod_poly = p256.
 Proof.
   rewrite mod_poly_eq. rewrite modulus_eq. reflexivity.
-Qed. 
+Qed.
 
 Lemma modulus_poly_deg: deg mod_poly = Z.log2 (fec_n).
 Proof.
   rewrite modulus_poly. replace (deg p256) with 8 by reflexivity. rewrite fec_n_eq.
   reflexivity. 
 Qed.
+
+Lemma modulus_poly_deg_pos: deg mod_poly > 0.
+Proof.
+  rewrite modulus_poly_deg. rewrite fec_n_eq. replace (Z.log2 256) with 8 by reflexivity.
+  lia.
+Qed.
+
+Lemma modulus_poly_not_x: mod_poly <> x.
+Proof.
+  intros. rewrite modulus_poly. intro C; inversion C. 
+Qed.
+
+Lemma modulus_poly_primitive: primitive mod_poly.
+Proof.
+  rewrite modulus_poly. apply p256_primitive. 
+Qed.
+
+Instance mod_poly_PrimPoly : PrimPoly mod_poly := {
+  f_pos := modulus_poly_deg_pos;
+  f_prim := modulus_poly_primitive;
+  f_notx := modulus_poly_not_x}.
+
+(*Other results about degrees of mod_poly and other polynomials*)
 
 Lemma modulus_poly_deg_bounds: 3 <= deg mod_poly <= 8.
 Proof.
@@ -76,17 +108,13 @@ Proof.
   replace (Z.log2 256) with 8 by reflexivity. lia.
 Qed.
 
-Lemma modulus_poly_deg_pos: deg mod_poly > 0.
-Proof.
-  rewrite modulus_poly_deg. rewrite fec_n_eq. replace (Z.log2 256) with 8 by reflexivity.
-  lia.
-Qed.
-
+(*
 Lemma modulus_poly_not_zero: mod_poly <> zero.
 Proof.
   intro. pose proof modulus_poly_deg_pos. assert (deg zero < 0) by (rewrite deg_zero; reflexivity). rewrite H in H0.
   lia.
 Qed.
+*)
 
 Lemma polys_deg_bounded: forall z,
   0 <= z < fec_n ->
@@ -124,20 +152,12 @@ Proof.
   lia. lia. rewrite fec_n_pow_2 in H2. lia.
 Qed. 
 
-Lemma modulus_poly_not_x: mod_poly <> x.
-Proof.
-  intros. rewrite modulus_poly. intro C; inversion C. 
-Qed.
-
-Lemma modulus_poly_primitive: primitive mod_poly.
-Proof.
-  rewrite modulus_poly. apply p256_primitive. 
-Qed.
-
+(*
 Lemma modulus_poly_irred: irreducible mod_poly.
 Proof.
   apply modulus_poly_primitive.
 Qed.
+*)
 
 Lemma field_size_fec_n: Z.of_nat (field_size mod_poly) = fec_n - 1.
 Proof.
@@ -149,8 +169,8 @@ Lemma modulus_poly_monomial: forall n,
   0 < poly_to_int ((monomial n) %~ mod_poly).
 Proof.
   intros. apply poly_to_int_monomial_irred.
-  apply modulus_poly_irred. apply modulus_poly_not_x.
-  apply modulus_poly_deg_pos.
+  apply f_irred. apply mod_poly_PrimPoly.
+  apply f_notx. apply f_pos.
 Qed.
 
 Lemma modulus_pos: 0 <= modulus < Int.modulus.
@@ -231,7 +251,11 @@ Proof.
   rewrite prop_list_Znth. reflexivity. lia.
 Qed.
 
+(*
 Definition F := qpoly_fieldType modulus_poly_deg_pos modulus_poly_irred.
+*)
+
+Definition F := qpoly_fieldType f_pos (@f_irred mod_poly mod_poly_PrimPoly).
 
 Instance F_inhab : Inhabitant (ssralg.GRing.Field.sort F) := inhabitant_F F.
 

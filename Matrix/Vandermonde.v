@@ -83,7 +83,13 @@ Section PrimitiveVandermonde.
 Local Open Scope ring_scope.
 
 (*The specific Vandermonde matrix that we will actually use*)
+Context (f: poly) `{Hprim: PrimPoly f}.
+
+(*Variable f_irred: irreducible f.*)
+
+(*
 Variable f: poly.
+Variable f_prim : PrimPoly f.
 
 Variable Hpos: (deg f > 0)%Z.
 
@@ -95,15 +101,11 @@ Variable Hprim: primitive f.
 
 Variable Hnotx: f <> x.
 
-Lemma f_nonzero: f <> zero.
-Proof.
-  move => Hfz. have Hzpos: (deg zero > 0)%Z by rewrite -Hfz.
-  have Hzneg: (deg zero < 0)%Z by rewrite deg_zero. lia.
-Qed.
+*)
 
-Definition F := qpoly_fieldType Hpos Hirred.
+Definition F := qpoly_fieldType f_pos (@f_irred f Hprim).
 
-Definition qx : qpoly f := poly_to_qpoly f Hpos x.
+Definition qx : qpoly f := poly_to_qpoly f f_pos x.
 
 (*Because the C code actually reverses the rows, we need rev of the natural choice 1, x, x^2, etc*)
 Definition vandermonde_powers m n : 'M[F]_(m, n) := vandermonde m n (rev (map (fun i => (qx ^+ i)) (iota 0 n))).
@@ -124,16 +126,17 @@ Qed.
 
 (*Transform statement about x^n from ssreflect ring ops to polynomial functions*)
 Lemma exp_monomial: forall (n: nat),
-  (@GRing.exp F qx n) = poly_to_qpoly f Hpos (monomial n).
+  (@GRing.exp F qx n) = poly_to_qpoly f f_pos (monomial n).
 Proof.
   move => n. elim: n.
   - rewrite GRing.expr0. rewrite monomial_0. 
-    have->: (GRing.one F) = q1 Hpos by []. rewrite /q1 /r1 /poly_to_qpoly. exist_eq.
-    rewrite pmod_refl =>[//|//|]. have <-: (0%Z = deg one) by rewrite deg_one. lia.
+    have->: (GRing.one F) = q1 f_pos by []. rewrite /q1 /r1 /poly_to_qpoly. exist_eq.
+    rewrite pmod_refl =>[//|//|]. apply f_pos. have <-: (0%Z = deg one) by rewrite deg_one. case: Hprim. lia.
   - move => n IH.
     rewrite GRing.exprS IH.
-    have ->: (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) = qmul Hpos by [].
-    rewrite /poly_to_qpoly /qmul /r_mul /poly_mult_mod /=. exist_eq. by rewrite monomial_expand -pmod_mult_distr.
+    have ->: (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) = qmul f_pos by [].
+    rewrite /poly_to_qpoly /qmul /r_mul /poly_mult_mod /=. exist_eq.
+    move : Hprim => [f_pos f_prim f_notx]. by rewrite monomial_expand -pmod_mult_distr.
 Qed.
   
 (*First, we need to know that x^i != x^j if i != j and i, j < 2 ^ (deg f) -1. We proved something very similar
@@ -151,28 +154,30 @@ Proof.
   case Heq : (qx ^+ m == qx ^+ n) =>[|//].
   rewrite eq_sym -GRing.subr_eq0 in Heq.
   have /eqP Hn_split: n == (m + (n - m))%nat. rewrite addnC subnK. by []. by rewrite ltnW.
-  move : Heq. have Hzero: (GRing.zero F = q0 Hpos) by []. 
+  move : Heq. have Hzero: (GRing.zero F = q0 f_pos) by []. have f_irred: irreducible f. apply (f_irred). apply Hprim.
+  (*move : Hprim => [f_pos f_prim f_notx].*) 
   rewrite Hn_split {Hn_split} GRing.exprD -{2}(GRing.mulr1 (qx ^+ m)) -GRing.mulrDr GRing.mulf_eq0 =>
   /orP[Hm0 | Hnm0].
   - have {}Hm0 : (@GRing.exp F qx m) = 0 by apply (elimT eqP). move : Hm0.
     rewrite Hzero exp_monomial /poly_to_qpoly /q0 /r0 => Hpoly. case: Hpoly => [Hmzero].
     have Hdiv: f |~ (monomial m). rewrite divides_pmod_iff. by []. 
-    left. by apply f_nonzero. exfalso.
-    apply (irred_doesnt_divide_monomial f m Hpos Hirred Hnotx Hdiv).
+    left. apply f_nonzero. apply f_pos. exfalso.
+    apply (irred_doesnt_divide_monomial f m f_pos f_irred f_notx Hdiv).
   - have {}Hnm0: (@GRing.exp F qx (n - m)) + 1 = 0 by apply (elimT eqP). move: Hnm0. 
     rewrite exp_monomial Hzero.
-    have ->: (GRing.one F = q1 Hpos) by []. 
-    have ->: (GRing.add (V:=ssralg.GRing.Field.zmodType F)) = qadd Hpos by []. 
+    have ->: (GRing.one F = q1 f_pos) by []. 
+    have ->: (GRing.add (V:=ssralg.GRing.Field.zmodType F)) = qadd f_pos by []. 
     rewrite /qadd /q1 /q0 /poly_to_qpoly /r_add /= /r0 => Hpoly; case: Hpoly => [Hmnpoly].
-    move: Hmnpoly; rewrite /poly_add_mod. rewrite -(pmod_refl f Hpos one). rewrite -pmod_add_distr =>[Hmod |//].
-    have Hdiv: ( f |~ nth_minus_one (n - m)). rewrite divides_pmod_iff. by [].
-    by left; apply f_nonzero. move : Hprim => [Hdeg [Hir [Hn0 Hnodiv]]].
+    move: Hmnpoly; rewrite /poly_add_mod. rewrite -(pmod_refl f f_pos one). rewrite -pmod_add_distr =>[Hmod |//].
+    have Hdiv: ( f |~ nth_minus_one (n - m)). rewrite divides_pmod_iff. by []. left.
+    apply f_nonzero. apply f_pos. move : Hprim => [f_pos f_prim f_notx]. move : f_prim => [Hdeg [Hir [Hn0 Hnodiv]]].
     apply Hnodiv in Hdiv. case: Hdiv => [Hmn0 | Hlarge].
     + have: (n - m == 0)%nat by apply (introT eqP). by rewrite subn_eq0 leqNgt Hnm.
     + have Hnup: (n >= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat)%coq_nat.
       have: (n - m <= n)%coq_nat. apply (elimT leP).  by rewrite leq_subr. lia.
       have Hnlow: (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat)%coq_nat by apply (elimT ltP). lia.
-    + have <-: (0%Z = deg one) by rewrite deg_one. lia. }
+    + apply f_pos. 
+    + have <-: (0%Z = deg one) by rewrite deg_one. move : Hprim => [f_pos A]. lia. }
    move => n m Hnm Hn Hm.
    pose proof (ltn_total n m) as Hmntotal. move: Hmntotal => /orP[/orP[Hlt | Heq] |Hgt].
    - by apply Hgen.
@@ -182,7 +187,7 @@ Qed.
 
 (*We need the above in order to prove our lists are uniq for proving the variable vandermonde submatrices invertible*)
 Lemma power_list_uniq: forall (n: nat),
-  n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat ->
+  n <= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat ->
   uniq [seq (@GRing.exp F qx i) | i <- iota 0 n].
 Proof.
   move => n Hn. rewrite map_inj_in_uniq. by rewrite iota_uniq.
@@ -190,9 +195,9 @@ Proof.
   apply (elimT eqP). case Hxy: (x == y) =>[//|].
   have:  (@ GRing.exp F qx x) != qx ^+ y. apply powers_unequal. by rewrite Hxy.
   move : Hx. rewrite mem_iota add0n => /andP[H{H} Hx].
-  by apply (ltn_trans Hx).
+  by apply (ltn_leq_trans Hx).
   move : Hy. rewrite mem_iota add0n => /andP[H{H} Hy].
-  by apply (ltn_trans Hy). by rewrite Hqxy eq_refl.
+  by apply (ltn_leq_trans Hy). by rewrite Hqxy eq_refl.
 Qed.
 
 (*Now we deal with the matrices more directly*)
@@ -295,7 +300,7 @@ Qed.
 
 Lemma vandermonde_remove_col_unitmx: forall m n (Hmn: m <= n) (r: 'I_m) (j: nat),
   j < r ->
-  (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
+  (n <= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   submx_remove_col (vandermonde_powers m n) Hmn r j \in unitmx.
 Proof.
   move => m n Hmn r j Hjr Hnbound.
@@ -351,9 +356,10 @@ Qed.
 Lemma qx_not_zero: qx != @GRing.zero F.
 Proof.
   case Hx : (qx == 0) =>[|//].
-  eq_subst Hx. move: Hx. have->: @GRing.zero F = q0 Hpos by []. move => Hx. inversion Hx.
+  eq_subst Hx. move: Hx. have->: @GRing.zero F = q0 f_pos by []. move => Hx. inversion Hx.
   have: f = x. rewrite -divides_x. rewrite divides_pmod_iff. by []. left.
-  move => Hz. have: (deg f < 0)%Z. rewrite Hz. by rewrite deg_zero. lia. by []. by move => Hf; subst.
+  move => Hz. have: (deg f < 0)%Z. rewrite Hz. by rewrite deg_zero. move : Hprim => [f_pos A]. lia.
+  apply f_pos. move : Hprim => [f_pos f_prim f_notx]. by move => Hf; subst.
 Qed. 
 
 (*This is the big lemma that will allow us to prove the transpose of this matrix equivalent to a vandermonde mx*)
@@ -422,7 +428,7 @@ Qed.
 
 Lemma vandermonde_add_row_unitmx: forall m n (Hmn: m <= n) (r j:'I_m),
   (r <= j) ->
-  (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
+  (n <= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   submx_add_row (vandermonde_powers m n) Hmn r j \in unitmx.
 Proof.
   move => m n Hmn r j Hrj Hn.
@@ -449,7 +455,7 @@ Proof.
       have: (@GRing.exp F qx j != qx ^+ i). {
       have Hjbound: j < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat. {
         have Hjm: j < m by []. have Hjn: j < n by apply (ltn_leq_trans Hjm Hmn).
-        apply (ltn_trans Hjn Hn). }
+        apply (ltn_leq_trans Hjn Hn). }
       apply powers_unequal.
       + rewrite eq_sym. have: i < j by apply (ltn_leq_trans Hir Hrj). by rewrite ltn_neqAle => /andP[Hneq H{H}].
       + by [].
@@ -457,14 +463,14 @@ Proof.
       by rewrite Heq eq_refl. }
     rewrite /=. apply power_list_uniq.
     have Hrn: r < n. have Hrm: r < m. have Hjm: j < m by []. by apply (leq_ltn_trans Hrj Hjm).
-    by apply (ltn_leq_trans Hrm Hmn). by apply (ltn_trans Hrn Hn).
+    by apply (ltn_leq_trans Hrm Hmn). by apply (ltnW(ltn_leq_trans Hrn Hn)).
   - by rewrite size_cat /= size_map size_iota addn1.
 Qed.
 
 (*Finally, the result we want: The Vandermonde matrix consisting of powers of the primitive element
   satisfied [strong_inv 0]*)
 Lemma vandermonde_strong_inv: forall m n (Hmn: m <= n) (Hm: 0 < m),
-  (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
+  (n <= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   strong_inv (vandermonde_powers m n) Hmn (Ordinal Hm).
 Proof.
   move => m n Hmn Hm Hn. rewrite /strong_inv => r' H{H}.

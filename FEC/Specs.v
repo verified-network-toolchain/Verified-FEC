@@ -1,6 +1,7 @@
 Require Import VST.floyd.proofauto.
 
 Require Import Common.
+Require Import VandermondeList.
 Require Import fec.
 
 Import WPoly.
@@ -18,7 +19,8 @@ Definition fec_generate_weights_spec :=
     PROP ()
     PARAMS ()
     GLOBALS (gv)
-    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+    SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace);
+         data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
          data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
          data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
@@ -26,12 +28,13 @@ Definition fec_generate_weights_spec :=
   POST [tvoid]
     PROP ()
     RETURN ()
-    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
+    SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace);
+         data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
          data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
          data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
             (rev_mx_val (gauss_restrict_rows 
-            (weight_mx_list modulus_poly_deg_pos modulus_poly_irred fec_max_h  (fec_n - 1)) fec_max_h)) (gv _fec_weights)).
+            (weight_mx_list fec_max_h  (fec_n - 1)) fec_max_h)) (gv _fec_weights)).
 
 (*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
   We require that m > 0 since the last loop goes from 0 to m - 1 *)

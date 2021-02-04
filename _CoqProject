@@ -20,6 +20,7 @@ Matrix/LinIndep.v
 Matrix/Vandermonde.v
 FEC/fec.v
 FEC/Common.v
+Matrix/VandermondeList.v
 FEC/CommonVST.v
 FEC/Specs.v
 #FEC/Verif_field.v

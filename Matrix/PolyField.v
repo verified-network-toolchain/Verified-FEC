@@ -11,6 +11,35 @@ Set Bullet Behavior "Strict Subproofs".
 Require Import PolyMod.
 Require Import PrimitiveFacts.
 
+Import Poly.WPoly.
+
+Section PrimFieldClass.
+
+(*We define a typeclass for a primitive polynomial and some additional properties which will be sufficient
+  for it to be the modulus for a finite field. This allows us to bundle together the relevant conditions 
+  and make more arguments implicit*)
+Class PrimPoly (f: poly) : Type := {
+  f_pos : (deg f > 0)%Z;
+  f_prim : primitive f;
+  f_notx : f <> x}.
+
+Lemma f_irred: forall f `{PrimPoly f}, irreducible f.
+Proof.
+  intros f Hprim. destruct Hprim. unfold primitive in f_prim0.
+  apply f_prim0.
+Qed.
+
+Lemma f_nonzero: forall f `{PrimPoly f}, f <> zero.
+Proof.
+  intros f Hprim. destruct Hprim. intro Hfz.
+  assert (Hzpos: (deg zero > 0)%Z) by (rewrite <- Hfz; auto).
+  assert (Hzneg : (deg zero < 0)%Z) by (rewrite deg_zero; reflexivity). lia.
+Qed.
+
+End PrimFieldClass.
+
+(*Now we define the (mathcomp) field of polynomials modulo an irreducible polynomial*)
+
 Section PolyField.
 
 Import Poly.WPoly.
@@ -21,7 +50,6 @@ Variable Hired: irreducible f.
 
 (*EqType*)
 
-(*TODO: move*)
 Definition eq_qpoly (a b: qpoly f) : bool :=
   if (poly_eq_dec (proj1_sig a) (proj1_sig b)) then true else false.
 
