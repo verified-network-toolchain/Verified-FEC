@@ -1,7 +1,6 @@
 Require Import VST.floyd.functional_base.
 Require Import Poly.
 Require Import PolyMod.
-Import WPoly.
 (** * Concrete ireducible and primitive polynomials over GF(2) *)
 
 (*note: we include in a different file bc proving primitive takes a long time - there are a lot of

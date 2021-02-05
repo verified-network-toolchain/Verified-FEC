@@ -75,8 +75,7 @@ Require Import Poly.
 Require Import Coq.ZArith.BinInt.
 Require Import PolyMod.
 Require Import Lia.
-
-Import WPoly.
+Require Import PrimitiveFacts (*for typeclass*).
 
 Section PrimitiveVandermonde.
 
@@ -85,27 +84,10 @@ Local Open Scope ring_scope.
 (*The specific Vandermonde matrix that we will actually use*)
 Context (f: poly) `{Hprim: PrimPoly f}.
 
-(*Variable f_irred: irreducible f.*)
 
-(*
-Variable f: poly.
-Variable f_prim : PrimPoly f.
+Definition F := @qpoly_fieldType f Hpos0 Hprim. (*Hpos (@f_irred f Hprim).*)
 
-Variable Hpos: (deg f > 0)%Z.
-
-(*Technically we don't need this one, but I'm not sure if there will be an issue if I prove it separately and then
-  we have two different proofs*)
-Variable Hirred: irreducible f.
-
-Variable Hprim: primitive f.
-
-Variable Hnotx: f <> x.
-
-*)
-
-Definition F := qpoly_fieldType f_pos (@f_irred f Hprim).
-
-Definition qx : qpoly f := poly_to_qpoly f f_pos x.
+Definition qx : qpoly f := poly_to_qpoly f x.
 
 (*Because the C code actually reverses the rows, we need rev of the natural choice 1, x, x^2, etc*)
 Definition vandermonde_powers m n : 'M[F]_(m, n) := vandermonde m n (rev (map (fun i => (qx ^+ i)) (iota 0 n))).
@@ -116,7 +98,7 @@ Lemma vandermonde_powers_val: forall (m n: nat) (i : 'I_m) (j: 'I_n),
 Proof.
   move => m n i j. rewrite /vandermonde_powers /vandermonde mxE.
   have Hjsz: j < size (iota 0 n) by rewrite size_iota. rewrite -map_rev.
-  have->: [seq qx ^+ i0 | i0 <- rev(iota 0 n)]`_j = qx ^+ (n - j - 1). { move => Hf.
+  have->: [seq qx ^+ i0 | i0 <- rev(iota 0 n)]`_j = qx ^+ (n - j - 1). {
   rewrite (nth_map 0%nat) => [|//]. rewrite nth_rev=>[|//]. rewrite size_iota nth_iota.
   by rewrite add0n -subnDA addn1. apply rev_ord_proof. by rewrite size_rev. }  
   by rewrite GRing.exprAC GRing.exprM.
@@ -126,17 +108,16 @@ Qed.
 
 (*Transform statement about x^n from ssreflect ring ops to polynomial functions*)
 Lemma exp_monomial: forall (n: nat),
-  (@GRing.exp F qx n) = poly_to_qpoly f f_pos (monomial n).
+  (@GRing.exp F qx n) = poly_to_qpoly f (monomial n).
 Proof.
   move => n. elim: n.
-  - rewrite GRing.expr0. rewrite monomial_0. 
-    have->: (GRing.one F) = q1 f_pos by []. rewrite /q1 /r1 /poly_to_qpoly. exist_eq.
-    rewrite pmod_refl =>[//|//|]. apply f_pos. have <-: (0%Z = deg one) by rewrite deg_one. case: Hprim. lia.
+  - rewrite GRing.expr0. rewrite monomial_0.
+    have->: (GRing.one F) = q1 (f:=f) by []. rewrite /q1 /r1 /poly_to_qpoly. exist_eq.
+    rewrite pmod_refl =>[//|]. have <-: (0%Z = deg one) by rewrite deg_one. case: Hpos0. lia.
   - move => n IH.
     rewrite GRing.exprS IH.
-    have ->: (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) = qmul f_pos by [].
-    rewrite /poly_to_qpoly /qmul /r_mul /poly_mult_mod /=. exist_eq.
-    move : Hprim => [f_pos f_prim f_notx]. by rewrite monomial_expand -pmod_mult_distr.
+    have ->: (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) = qmul (f:=f) by [].
+    rewrite /poly_to_qpoly /qmul /r_mul /poly_mult_mod /=. exist_eq. by rewrite monomial_expand -pmod_mult_distr.
 Qed.
   
 (*First, we need to know that x^i != x^j if i != j and i, j < 2 ^ (deg f) -1. We proved something very similar
@@ -154,30 +135,29 @@ Proof.
   case Heq : (qx ^+ m == qx ^+ n) =>[|//].
   rewrite eq_sym -GRing.subr_eq0 in Heq.
   have /eqP Hn_split: n == (m + (n - m))%nat. rewrite addnC subnK. by []. by rewrite ltnW.
-  move : Heq. have Hzero: (GRing.zero F = q0 f_pos) by []. have f_irred: irreducible f. apply (f_irred). apply Hprim.
+  move : Heq. have Hzero: (GRing.zero F = q0 (f:=f)) by []. have f_irred: irreducible f. eapply (f_irred). apply Hprim.
   (*move : Hprim => [f_pos f_prim f_notx].*) 
   rewrite Hn_split {Hn_split} GRing.exprD -{2}(GRing.mulr1 (qx ^+ m)) -GRing.mulrDr GRing.mulf_eq0 =>
   /orP[Hm0 | Hnm0].
   - have {}Hm0 : (@GRing.exp F qx m) = 0 by apply (elimT eqP). move : Hm0.
-    rewrite Hzero exp_monomial /poly_to_qpoly /q0 /r0 => Hpoly. case: Hpoly => [Hmzero].
+    rewrite Hzero exp_monomial /poly_to_qpoly /q0 /r0 => Hpoly. exist_inv Hpoly.
     have Hdiv: f |~ (monomial m). rewrite divides_pmod_iff. by []. 
-    left. apply f_nonzero. apply f_pos. exfalso.
-    apply (irred_doesnt_divide_monomial f m f_pos f_irred f_notx Hdiv).
+    left. apply f_nonzero. apply Hpos0. exfalso. have Hirred: irreducible f by eapply f_irred.
+    apply (irred_doesnt_divide_monomial f m Hpos Hirred Hnotx Hdiv).
   - have {}Hnm0: (@GRing.exp F qx (n - m)) + 1 = 0 by apply (elimT eqP). move: Hnm0. 
     rewrite exp_monomial Hzero.
-    have ->: (GRing.one F = q1 f_pos) by []. 
-    have ->: (GRing.add (V:=ssralg.GRing.Field.zmodType F)) = qadd f_pos by []. 
-    rewrite /qadd /q1 /q0 /poly_to_qpoly /r_add /= /r0 => Hpoly; case: Hpoly => [Hmnpoly].
-    move: Hmnpoly; rewrite /poly_add_mod. rewrite -(pmod_refl f f_pos one). rewrite -pmod_add_distr =>[Hmod |//].
-    have Hdiv: ( f |~ nth_minus_one (n - m)). rewrite divides_pmod_iff. by []. left.
-    apply f_nonzero. apply f_pos. move : Hprim => [f_pos f_prim f_notx]. move : f_prim => [Hdeg [Hir [Hn0 Hnodiv]]].
+    have ->: (GRing.one F = q1 (f:=f)) by []. 
+    have ->: (GRing.add (V:=ssralg.GRing.Field.zmodType F)) = qadd (f:=f) by []. 
+    rewrite /qadd /q1 /q0 /poly_to_qpoly /r_add /= /r0 => Hpoly; exist_inv Hpoly.
+    move: Hpoly; rewrite /poly_add_mod. rewrite -(pmod_refl f one). rewrite -pmod_add_distr =>[Hmod].
+    have Hdiv: ( f |~ nth_minus_one (n - m)). rewrite divides_pmod_iff. by []. left. 
+    by apply f_nonzero. case: Hprim => [[Hdeg [Hir [Hn0 Hnodiv]]] f_notx].
     apply Hnodiv in Hdiv. case: Hdiv => [Hmn0 | Hlarge].
     + have: (n - m == 0)%nat by apply (introT eqP). by rewrite subn_eq0 leqNgt Hnm.
     + have Hnup: (n >= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat)%coq_nat.
       have: (n - m <= n)%coq_nat. apply (elimT leP).  by rewrite leq_subr. lia.
       have Hnlow: (n < (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat)%coq_nat by apply (elimT ltP). lia.
-    + apply f_pos. 
-    + have <-: (0%Z = deg one) by rewrite deg_one. move : Hprim => [f_pos A]. lia. }
+    +  have<-:(0%Z = deg one) by rewrite deg_one. case: Hpos0; lia. } 
    move => n m Hnm Hn Hm.
    pose proof (ltn_total n m) as Hmntotal. move: Hmntotal => /orP[/orP[Hlt | Heq] |Hgt].
    - by apply Hgen.
@@ -356,11 +336,10 @@ Qed.
 Lemma qx_not_zero: qx != @GRing.zero F.
 Proof.
   case Hx : (qx == 0) =>[|//].
-  eq_subst Hx. move: Hx. have->: @GRing.zero F = q0 f_pos by []. move => Hx. inversion Hx.
-  have: f = x. rewrite -divides_x. rewrite divides_pmod_iff. by []. left.
-  move => Hz. have: (deg f < 0)%Z. rewrite Hz. by rewrite deg_zero. move : Hprim => [f_pos A]. lia.
-  apply f_pos. move : Hprim => [f_pos f_prim f_notx]. by move => Hf; subst.
-Qed. 
+  eq_subst Hx. move: Hx. have->: @GRing.zero F = q0 (f:=f) by []. move => Hx. exist_inv Hx.
+  have: f = x. rewrite -divides_x. rewrite divides_pmod_iff. by []. left. by apply f_nonzero.
+  case: Hpos0; lia. by move : Hprim => [f_prim f_notx] fx. 
+Qed.
 
 (*This is the big lemma that will allow us to prove the transpose of this matrix equivalent to a vandermonde mx*)
 Lemma scalar_mult_last_inv_vandermonde_powers: forall {m n} (Hmn: m <= n) (r : 'I_m) y i j,

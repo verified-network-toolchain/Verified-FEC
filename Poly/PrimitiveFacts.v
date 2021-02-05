@@ -4,15 +4,30 @@ Require Import PolyMod.
 Require Import Coq.Logic.FinFun.
 Require Import Helper.
 Require Import InjectiveSurjective.
-Import WPoly.
 
 (** * Working with Primitive Polynomials and Primitive Elements*)
 
+(*If f = x, GF(2)/(f) = gf(2). This is a trivial case that is annoying and we don't need, since none of our
+  finite fields are GF(2)*)
+Class PrimPoly (f: poly) `{Hpos: PosPoly f} := {
+  Hprim : primitive f;
+  Hnotx: f <> x}.
+
+Lemma f_irred: forall f `{PrimPoly f}, irreducible f.
+Proof.
+  intros f Hpos Hprim. destruct Hprim. unfold primitive in Hprim0.
+  apply Hprim0.
+Qed.
+
+Lemma deg_gt_one: forall f `{PrimPoly f}, deg one < deg f.
+Proof.
+  intros f Hpos Hprim. replace (deg one) with (0%Z) by (rewrite deg_one; reflexivity).
+  destruct Hpos; lia.
+Qed.
+
 Section Primitive.
 
-Variable f : poly.
-Variable Hnontrivial: deg f > 0.
-Variable Hprim: primitive f.
+Context (f: poly) `{Hprim: PrimPoly f}.
 
 Definition field_size := (2 ^ (Z.to_nat (deg f)) - 1)%nat.
 
@@ -22,7 +37,8 @@ Lemma monomial_add_field_size: forall n,
   (monomial n) %~ f = monomial (n + field_size) %~ f.
 Proof.
   intros. rewrite <- monomial_exp_law. rewrite pmod_mult_distr; try assumption.
-  unfold primitive in Hprim. destruct Hprim. destruct H0. destruct H1.
+  destruct Hprim. 
+  unfold primitive in Hprim0. destruct Hprim0. destruct H0. destruct H1.
   rewrite divides_pmod_iff in H1. unfold divides_pmod in H1. unfold field_size.
   unfold nth_minus_one in H1. rewrite <- pmod_cancel in H1. rewrite H1. 
   rewrite <- pmod_mult_distr. rewrite poly_mult_1_r. reflexivity. all: try assumption.
@@ -82,7 +98,7 @@ Definition nonzero_qpoly := {q: qpoly f | proj1_sig q <> zero}.
 Lemma in_leq_degree_nonzero: forall x,
   In x (polys_leq_degree_nonzero (Z.to_nat (deg f) - 1)) -> deg x < deg f.
 Proof.
-  intros. apply polys_leq_degree_nonzero_spec in H. lia.
+  intros. apply polys_leq_degree_nonzero_spec in H. destruct Hpos0. lia.
 Qed.
 
 Definition list_of_qpoly_nonzero' : list (qpoly f) := exist_list (fun x => deg x < deg f) 
@@ -104,16 +120,14 @@ Proof.
   intros. unfold all_nonzero_qpolys. rewrite (exist_list_in (fun x : qpoly f => proj1_sig x <> zero) ).
   unfold list_of_qpoly_nonzero'. rewrite (exist_list_in  (fun x : poly => deg x < deg f)).
   apply polys_leq_degree_nonzero_spec. destruct q. simpl. split. assumption.
-  destruct x0. simpl. lia.
+  destruct x. simpl. lia.
 Qed.
-
-
 
 Lemma all_nonzero_qpolys_length: length (all_nonzero_qpolys) = field_size.
 Proof.
   unfold field_size. unfold all_nonzero_qpolys. rewrite (exist_list_length (fun x : qpoly f => proj1_sig x <> zero)).
   unfold list_of_qpoly_nonzero'. rewrite (exist_list_length (fun x : poly => deg x < deg f)).
-  rewrite polys_leq_degree_nonzero_length.
+  rewrite polys_leq_degree_nonzero_length. destruct Hpos0.
   assert ((Z.to_nat (deg f) - 1 + 1)%nat = Z.to_nat (deg f)) by lia. rewrite H. reflexivity.
 Qed.
 
@@ -140,21 +154,17 @@ Qed.
   are finite, it is surjective as well*)
 
 Definition primitive_map' (b: bounded_int field_size) : qpoly f :=
-  exist _ (monomial (Z.to_nat (proj1_sig b)) %~ f) (pmod_lt_deg f Hnontrivial _).
-
-
-(*If f = x, GF(2)/(f) = gf(2). This is a trivial case that is annoying and we don't need*)
-Variable Hnotx : f <> x.
+  exist _ (monomial (Z.to_nat (proj1_sig b)) %~ f) (pmod_lt_deg f _).
 
 Lemma primitive_map'_nonzero: forall b,
   proj1_sig (primitive_map' b) <> zero.
 Proof.
   intros. unfold primitive_map'. simpl. intro.
   destruct b; simpl in H.
-  assert (f |~ (monomial (Z.to_nat x0))). rewrite divides_pmod_iff.
+  assert (f |~ (monomial (Z.to_nat x))). rewrite divides_pmod_iff.
   unfold divides_pmod. apply H. left. apply f_nonzero. assumption. 
-  apply (irred_doesnt_divide_monomial f (Z.to_nat x0)); try assumption.
-  unfold primitive in Hprim. apply Hprim.
+  apply (irred_doesnt_divide_monomial f (Z.to_nat x)); try assumption. apply Hpos.
+  apply (@f_irred f Hpos0). apply Hprim. apply Hnotx.
 Qed.
 
 Definition primitive_map (b: bounded_int field_size) : nonzero_qpoly :=
@@ -162,9 +172,9 @@ Definition primitive_map (b: bounded_int field_size) : nonzero_qpoly :=
 
 Lemma primitive_map_injective: Injective primitive_map.
 Proof.
-  unfold Injective. intros. unfold primitive_map in H. inversion H. clear H.
-  destruct x0; destruct y; simpl in H1. exist_eq.
-  rewrite pmod_cancel in H1; try assumption.
+  unfold Injective. intros. unfold primitive_map in H. unfold primitive_map' in H. repeat(exist_inv H).
+  destruct x; destruct y; simpl in H. exist_eq.
+  rewrite pmod_cancel in H; try assumption.
   (*2 cases are the same, so we abstract in an assertion*)
   (*Proof idea: if x^i = x^j mod f, wlog assume i <= j. Then x^ix^(j-i) - x^i = 0 %f, so
     x^i(x^(j-i) - 1) = 0% f. Since f is irreducible, x^i = 0 % f or x^(j-i) -1 = 0 % f.
@@ -182,18 +192,18 @@ Proof.
     simpl in H2. subst. rewrite poly_div_correct in P; try assumption.
     destruct P. rewrite poly_add_0_r in H2.
     assert (f |~ monomial (Z.to_nat y)). unfold divides. exists q. rewrite H2. apply poly_mult_comm.
-    exfalso. apply (irred_doesnt_divide_monomial f (Z.to_nat y)); try assumption. unfold primitive in Hprim.
-    apply Hprim. apply f_nonzero. assumption.
+    exfalso. apply (irred_doesnt_divide_monomial f (Z.to_nat y)); try assumption. apply Hpos. 
+    eapply f_irred. apply Hprim. apply Hnotx. apply f_nonzero. apply Hpos0. 
   - unfold primitive in Hprim. 
     assert (f |~ nth_minus_one (Z.to_nat (y' - y))). unfold nth_minus_one.
     rewrite poly_add_comm. rewrite divides_pmod_iff. unfold divides_pmod. apply H2. left.
-    apply f_nonzero; assumption. destruct Hprim. destruct H7. destruct H8.
+    apply f_nonzero; assumption. destruct Hprim. destruct Hprim0. destruct H7. destruct H8.
     apply H9 in H5. 
-    destruct H5. lia. unfold field_size in H. unfold field_size in H0. lia.
-  - unfold primitive in Hprim. apply Hprim. }
-  assert (x0 <= x1 \/ x0 > x1) by lia.
-  destruct H0. apply H; try assumption. 
-  symmetry. apply H; try assumption; try lia. rewrite poly_add_comm. apply H1.
+    destruct H5. lia. unfold field_size in H0. unfold field_size in H1. lia.
+  - eapply f_irred. assumption.  }
+  assert (x <= x0 \/ x > x0) by lia.
+  destruct H1. apply H0; try assumption. 
+  symmetry. apply H0; try assumption; try lia. rewrite poly_add_comm. apply H.
 Qed.
 
 Lemma primitive_map_surjective: Surjective primitive_map.
@@ -212,10 +222,9 @@ Lemma primitive_power_exists: forall (q: qpoly f),
 Proof.
   intros. pose proof (primitive_map_surjective). unfold Surjective in H0.
   remember (exist (fun x => proj1_sig x <> zero) q H) as q'.
-  specialize (H0 q'). destruct H0. destruct x0. exists x0. split. assumption.
+  specialize (H0 q'). destruct H0. destruct x. exists x. split. assumption.
   rewrite Heqq' in H0. unfold primitive_map in H0. inversion H0.
-  destruct q. unfold primitive_map' in H2. inversion H2.
-  simpl. reflexivity.
+  destruct q. unfold primitive_map' in H2. exist_inv H2. reflexivity. 
 Qed.
 
 Definition find_power_aux (l: list Z) (p: poly) : Z :=
@@ -229,9 +238,9 @@ Proof.
   - simpl. simpl in H. destruct H. destruct H. destruct H.
   - simpl. split. destruct H. destruct H. destruct H. subst. if_tac. reflexivity. contradiction.
     if_tac. assumption. apply IHl. 
-    exists x0. split; assumption. if_tac. left. reflexivity.
+    exists x. split; assumption. if_tac. left. reflexivity.
     destruct H. destruct H. destruct H. subst. contradiction. 
-    right. apply IHl. exists x0. split; assumption.
+    right. apply IHl. exists x. split; assumption.
 Qed.
 
 Lemma find_power_aux_notin_spec: forall l p,
@@ -260,7 +269,7 @@ Proof.
   pose proof primitive_power_exists.
   remember  ((exist (fun x => deg x < deg f) p H0)) as q. specialize (H2 q).
   assert (proj1_sig q <> zero). intro. rewrite Heqq in H3. simpl in H3. contradiction.
-  apply H2 in H3. destruct H3. exists x0. destruct H3. split. 
+  apply H2 in H3. destruct H3. exists x. destruct H3. split. 
   apply all_bounded_ints_non_dep_spec. apply H3. rewrite Heqq in H4. simpl in H4.
   apply H4. }
   specialize (H1 H2); clear H2.
@@ -291,11 +300,9 @@ Qed.
 Lemma find_power_zero: find_power zero = 0%Z.
 Proof.
   unfold find_power. apply find_power_aux_notin_spec. intros.
-  intro. apply (irred_doesnt_divide_monomial f (Z.to_nat z)); try assumption. apply Hprim.
+  intro. apply (irred_doesnt_divide_monomial f (Z.to_nat z)); try assumption. apply Hpos.
+  eapply f_irred. assumption. apply Hnotx. 
   rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. apply f_nonzero. assumption.
 Qed. 
-
-
-
 
 End Primitive.

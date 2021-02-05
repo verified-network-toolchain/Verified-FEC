@@ -7,8 +7,6 @@ Require Export GF2.
 (** Computable Polynomials over GF2 - wraps the definitions in PolyDefs.v into 
   dependent types for clean interface *)
 
-Module WPoly.
-
 Ltac exist_eq := apply ProofIrrelevance.ProofIrrelevanceTheory.subset_eq_compat.
 
 (*This definition should not need to be unwrapped outside this file *)
@@ -620,6 +618,3 @@ Lemma polys_of_degree_length: forall n,
 Proof.
   intros. unfold polys_of_degree. apply P.list_of_polys_snd_length. 
 Qed.
-
-
-End WPoly.

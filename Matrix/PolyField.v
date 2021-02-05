@@ -11,56 +11,46 @@ Set Bullet Behavior "Strict Subproofs".
 Require Import PolyMod.
 Require Import PrimitiveFacts.
 
-Import Poly.WPoly.
-
-Section PrimFieldClass.
-
-(*We define a typeclass for a primitive polynomial and some additional properties which will be sufficient
-  for it to be the modulus for a finite field. This allows us to bundle together the relevant conditions 
-  and make more arguments implicit*)
-Class PrimPoly (f: poly) : Type := {
-  f_pos : (deg f > 0)%Z;
-  f_prim : primitive f;
-  f_notx : f <> x}.
-
-Lemma f_irred: forall f `{PrimPoly f}, irreducible f.
-Proof.
-  intros f Hprim. destruct Hprim. unfold primitive in f_prim0.
-  apply f_prim0.
-Qed.
-
-Lemma f_nonzero: forall f `{PrimPoly f}, f <> zero.
-Proof.
-  intros f Hprim. destruct Hprim. intro Hfz.
-  assert (Hzpos: (deg zero > 0)%Z) by (rewrite <- Hfz; auto).
-  assert (Hzneg : (deg zero < 0)%Z) by (rewrite deg_zero; reflexivity). lia.
-Qed.
-
-End PrimFieldClass.
-
-(*Now we define the (mathcomp) field of polynomials modulo an irreducible polynomial*)
+(*Now we define the (mathcomp) field of polynomials modulo a primitive polynomial. We could only require
+  that f is irreducible, but we are only interested in primitive polynomials, so it is easier to make 
+  all of the assumptions the same*)
 
 Section PolyField.
 
-Import Poly.WPoly.
+Import Poly.
 
+Context (f: poly) `{Hprim: PrimPoly f}.
+(*
 Variable f: poly.
 Variable Hnontriv: (deg f > 0)%Z.
 Variable Hired: irreducible f.
 
+Instance Hpos : PosPoly f.
+apply Build_PosPoly. apply Hnontriv.
+Defined.
+*)
 (*EqType*)
 
 Definition eq_qpoly (a b: qpoly f) : bool :=
-  if (poly_eq_dec (proj1_sig a) (proj1_sig b)) then true else false.
+  if (qpoly_eq_dec f a b) then true else false.
+(* (proj1_sig a) (proj1_sig b)) then true else (*false.*)
 
+Definition eq_qpoly (a b: qpoly f) : bool :=
+  if (poly_eq_dec (proj1_sig a) (proj1_sig b)) then true else false.
+*)
 Lemma qpoly_eq_reflect: forall x y, reflect (x = y) (eq_qpoly x y).
 Proof.
-  move => x y. case Heq: (eq_qpoly x y).
+  move => x y. rewrite /eq_qpoly. case Heq: (qpoly_eq_dec f x y) =>[/=|/=]. 
+  - by apply ReflectT.
+  - by apply ReflectF.
+Qed.
+(*
+   rewrite eq_refl.  case Heq: (eq_qpoly x y).
   - move : Heq; rewrite /eq_qpoly. move : x y => [x Hx] [y Hy]. rewrite /=.
     case : (poly_eq_dec x y) =>[Heq H{H}/=|//]. subst. apply ReflectT. by apply exist_ext.
   - move : Heq; rewrite /eq_qpoly. move : x y => [x Hx] [y Hy]. rewrite /=.
     case: (poly_eq_dec x y) => [//|Hneq H{H}]. apply ReflectF. move => Hex. by case: Hex.
-Qed.
+Qed.*)
 
 Lemma poly_eq_axiom: Equality.axiom eq_qpoly.
 Proof.
@@ -76,8 +66,8 @@ Canonical qpoly_eqtype := EqType (qpoly f) qpoly_eq_mixin.
 
 (*FiniteType*)
 
-Definition q0 := @r0 _ Hnontriv.
-Definition qlist := (q0 :: map (fun x => proj1_sig x) (all_nonzero_qpolys f Hnontriv)).
+Definition q0 := r0 f.
+Definition qlist := (q0 :: map (fun x => proj1_sig x) (all_nonzero_qpolys f)).
 
 (*TODO: move*)
 (*Generalized version of lemma in ListMarix - TODO remove from there*)
@@ -104,12 +94,12 @@ Qed.
 
 Lemma uniq_qlist: uniq qlist.
 Proof.
-  rewrite /qlist /=. have Hnotin: ~In q0 [seq sval x0 | x0 <- all_nonzero_qpolys f Hnontriv].
+  rewrite /qlist /=. have Hnotin: ~In q0 [seq sval x0 | x0 <- all_nonzero_qpolys f].
   rewrite in_map_iff. move => [[x Hx] [Hzero Hin]]. move : Hzero; rewrite /q0 /r0 /= => Hz.
   apply Hx. by rewrite Hz.
-  have {Hnotin} ->: (q0 \notin [seq sval x0 | x0 <- all_nonzero_qpolys f Hnontriv]).
-  case Hin : (q0 \in [seq sval x0 | x0 <- all_nonzero_qpolys f Hnontriv]).
-  have: (q0 \in [seq sval x0 | x0 <- all_nonzero_qpolys f Hnontriv]) by []. by rewrite in_mem_In =>{} Hin. by [].
+  have {Hnotin} ->: (q0 \notin [seq sval x0 | x0 <- all_nonzero_qpolys f]).
+  case Hin : (q0 \in [seq sval x0 | x0 <- all_nonzero_qpolys f]).
+  have: (q0 \in [seq sval x0 | x0 <- all_nonzero_qpolys f]) by []. by rewrite in_mem_In =>{} Hin. by [].
   rewrite uniq_NoDup. apply FinFun.Injective_map_NoDup. move => [x Hx] [y Hy]. rewrite /=. move => Hxy. by
   apply exist_ext. apply all_nonzero_qpolys_NoDups.
 Qed.
@@ -118,7 +108,7 @@ Lemma qpoly_finite: Finite.axiom qlist.
 Proof.
   move => q. rewrite count_uniq_mem. 2: apply uniq_qlist. case Hz : (eq_qpoly q q0).
   - have ->: q = q0 by apply (elimT (qpoly_eq_reflect q q0)). by rewrite in_cons eq_refl.
-  - rewrite /qlist in_cons. have->: (q \in [seq sval x0 | x0 <- all_nonzero_qpolys f Hnontriv]).
+  - rewrite /qlist in_cons. have->: (q \in [seq sval x0 | x0 <- all_nonzero_qpolys f]).
     rewrite in_mem_In. rewrite in_map_iff.
     have Hnz: q <> q0. move => Heq. subst. have: eq_qpoly q0 q0 by apply (introT (qpoly_eq_reflect _ _)).
     by rewrite Hz. have Hsv : sval q <> zero. move => Hs. apply Hnz. move : Hnz Hz Hs.
@@ -183,15 +173,15 @@ Canonical qpoly_finitetype := FinType (qpoly f) qpoly_finitemixin.
 
 (*TODO: some duplication with stuff in PolyMod, may remove that*)
 
-Definition qadd := @r_add _ Hnontriv.
+Definition qadd := r_add f.
 
-Definition q1 := @r1 _ Hnontriv.
+Definition q1 := r1 f.
 
 Lemma qpoly_addA : associative qadd.
 Proof.
   move => [x Hx] [y Hy] [z Hz]. rewrite /qadd /r_add /=. apply exist_ext. 
-  rewrite /poly_add_mod pmod_add_reduce =>[|//]. rewrite -poly_add_assoc.
-  rewrite (poly_add_comm ((x +~ y) %~ f)) pmod_add_reduce =>[|//]. by rewrite poly_add_comm.
+  by rewrite /poly_add_mod pmod_add_reduce -poly_add_assoc (poly_add_comm ((x +~ y) %~ f)) 
+  pmod_add_reduce poly_add_comm.
 Qed.
 
 Lemma qpoly_addC: commutative qadd.
@@ -217,13 +207,13 @@ Definition qpoly_zmodmixin := ZmodMixin qpoly_addA qpoly_addC qpoly_add0q qpoly_
 Canonical qpoly_zmodtype := ZmodType _ qpoly_zmodmixin.
 
 (*RingType*)
-Definition qmul := @r_mul _ Hnontriv.
+Definition qmul := r_mul f.
 
 Lemma qpoly_mulA : associative qmul.
 Proof.
   move => [x Hx] [y Hy] [z Hz]. rewrite /qmul /r_mul /=. apply exist_ext.
-  rewrite /poly_mult_mod (poly_mult_comm ((x *~ y) %~ f)) pmod_mult_reduce  =>[|//].
-  rewrite pmod_mult_reduce =>[|//]. by rewrite -poly_mult_assoc poly_mult_comm.
+  by rewrite /poly_mult_mod (poly_mult_comm ((x *~ y) %~ f)) pmod_mult_reduce pmod_mult_reduce 
+  -poly_mult_assoc poly_mult_comm.
 Qed.
 
 Lemma qpoly_mulC: commutative qmul.
@@ -241,8 +231,8 @@ Qed.
 Lemma qpoly_mulD : left_distributive qmul qadd.
 Proof.
   move => [x Hx] [y Hy] [z Hz]. rewrite /qadd /qmul /r_add /r_mul /=. apply exist_ext.
-  rewrite /poly_mult_mod /poly_add_mod. rewrite -pmod_add_distr =>[|//].
-  rewrite poly_mult_comm pmod_mult_reduce =>[|//]. by rewrite poly_mult_comm poly_mult_distr_r.
+  by rewrite /poly_mult_mod /poly_add_mod -pmod_add_distr poly_mult_comm pmod_mult_reduce 
+  poly_mult_comm poly_mult_distr_r.
 Qed.
 
 Lemma qpoly_1not0: q1 != q0.
@@ -262,11 +252,11 @@ Canonical qpoly_comring := ComRingType (qpoly f) qpoly_mulC.
 Definition qpoly_unit : pred (qpoly f) :=
   fun x => x != q0.
 
-Definition qpoly_inv := @find_inv _ Hnontriv.
+Definition qpoly_inv := find_inv f.
 
 Lemma qpoly_mulrV : {in qpoly_unit, right_inverse q1 qpoly_inv qmul}.
 Proof.
-  move => x Hin. rewrite /qmul /qpoly_inv /q1. apply find_inv_correct. by [].
+  move => x Hin. rewrite /qmul /qpoly_inv /q1. apply find_inv_correct. eapply f_irred. by [].
   move : Hin. rewrite unfold_in /q0 => Hin Heq. by move: Hin; rewrite Heq eq_refl.
 Qed.
 
@@ -284,7 +274,7 @@ Qed.
 Lemma qpoly_inv0id : {in [predC qpoly_unit], qpoly_inv =1 id}.
 Proof.
   move => x Hin. have Hnz: ~~ (x != q0) by []. have /eqP {} Hnz: x == q0 by move : Hnz; case: (x == q0).
-  subst. by rewrite /qpoly_inv /q0 -find_inv_zero.
+  subst. rewrite /qpoly_inv /q0 -find_inv_zero. by []. by eapply f_irred.
 Qed.
 
 Definition qpoly_unitringmixin := UnitRingMixin qpoly_mulVr qpoly_mulrV qpoly_unitP qpoly_inv0id.

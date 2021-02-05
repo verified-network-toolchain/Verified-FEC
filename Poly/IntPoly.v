@@ -5,7 +5,6 @@ Require Import Poly.
 Require Import PolyMod.
 Require Import IntFacts.
 Require Import Helper.
-Import WPoly.
 (** * Polynomials Represented By Integers*)
 
 (*There is a natural encoding of polynomials over GF(2) as integers - the ith coefficient is the ith bit*)
@@ -228,11 +227,11 @@ Lemma poly_to_int_zero_iff: forall p,
 Proof.
   intros. split; intros.
   - unfold poly_to_int in H. unfold to_list in H. unfold zero. destruct p. exist_eq.
-    simpl in H. generalize dependent w. induction x0.
+    simpl in H. generalize dependent w. induction x.
     + reflexivity.
-    + intros. unfold bits_to_int in H; fold bits_to_int in H.  destruct a. assert (bits_to_int x0 = 0%Z) by lia.
-      destruct x0. unfold P.wf_poly in w. assert (0=1). apply w. solve_neq. inversion H1.
-      apply IHx0 in H0. inversion H0. rewrite P.wf_poly_cons in w. assumption. solve_neq.
+    + intros. unfold bits_to_int in H; fold bits_to_int in H.  destruct a. assert (bits_to_int x = 0%Z) by lia.
+      destruct x. unfold P.wf_poly in w. assert (0=1). apply w. solve_neq. inversion H1.
+      apply IHx in H0. inversion H0. rewrite P.wf_poly_cons in w. assumption. solve_neq.
       lia.
   - subst. reflexivity.
 Qed.

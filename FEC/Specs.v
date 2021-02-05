@@ -3,8 +3,7 @@ Require Import VST.floyd.proofauto.
 Require Import Common.
 Require Import VandermondeList.
 Require Import fec.
-
-Import WPoly.
+Require Import Poly.
 
 Instance CompSpecs : compspecs.
 make_compspecs prog. Defined.

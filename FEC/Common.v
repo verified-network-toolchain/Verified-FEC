@@ -11,8 +11,6 @@ Require Export ListMatrix.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Import WPoly.
-
 (*Probably helpful more generally*)
 Lemma unsigned_repr: forall z,
   0 <= z < Int.modulus -> Int.unsigned (Int.repr z) = z.
@@ -87,10 +85,12 @@ Proof.
   rewrite modulus_poly. apply p256_primitive. 
 Qed.
 
+Instance mod_poly_PosPoly : PosPoly mod_poly := {
+  Hpos := modulus_poly_deg_pos;}.
+
 Instance mod_poly_PrimPoly : PrimPoly mod_poly := {
-  f_pos := modulus_poly_deg_pos;
-  f_prim := modulus_poly_primitive;
-  f_notx := modulus_poly_not_x}.
+  Hprim := modulus_poly_primitive;
+  Hnotx := modulus_poly_not_x}.
 
 (*Other results about degrees of mod_poly and other polynomials*)
 
@@ -169,8 +169,7 @@ Lemma modulus_poly_monomial: forall n,
   0 < poly_to_int ((monomial n) %~ mod_poly).
 Proof.
   intros. apply poly_to_int_monomial_irred.
-  apply f_irred. apply mod_poly_PrimPoly.
-  apply f_notx. apply f_pos.
+  eapply f_irred. apply mod_poly_PrimPoly. apply Hnotx. apply Hpos.
 Qed.
 
 Lemma modulus_pos: 0 <= modulus < Int.modulus.
@@ -192,7 +191,7 @@ Definition index_to_power_contents :=
 
 Definition inverse_contents bound :=
     (map Vint (map Int.repr (prop_list (fun z => 
-      poly_to_int (poly_inv mod_poly modulus_poly_deg_pos  (poly_of_int z))) bound))).
+      poly_to_int (poly_inv mod_poly (poly_of_int z))) bound))).
 
 Ltac solve_prop_length := try (unfold power_to_index_contents); try(unfold inverse_contents); rewrite? Zlength_map; rewrite prop_list_length; lia.
 
@@ -245,7 +244,7 @@ Qed.
 
 Lemma inverse_contents_Znth: forall bound i,
   0 <= i < bound ->
-  Znth i (inverse_contents bound) = Vint (Int.repr (poly_to_int (poly_inv mod_poly modulus_poly_deg_pos (poly_of_int i)))).
+  Znth i (inverse_contents bound) = Vint (Int.repr (poly_to_int (poly_inv mod_poly (poly_of_int i)))).
 Proof.
   intros. unfold inverse_contents. rewrite? Znth_map; try solve_prop_length.
   rewrite prop_list_Znth. reflexivity. lia.
@@ -255,7 +254,7 @@ Qed.
 Definition F := qpoly_fieldType modulus_poly_deg_pos modulus_poly_irred.
 *)
 
-Definition F := qpoly_fieldType f_pos (@f_irred mod_poly mod_poly_PrimPoly).
+Definition F := @qpoly_fieldType mod_poly mod_poly_PosPoly mod_poly_PrimPoly.
 
 Instance F_inhab : Inhabitant (ssralg.GRing.Field.sort F) := inhabitant_F F.
 
@@ -486,8 +485,8 @@ Proof.
 Qed. 
 
 (*TODO: move*)
-Lemma poly_to_qpoly_unfold: forall (f: poly) (Hnonneg: deg f > 0) (a: qpoly f),
-  poly_to_qpoly f Hnonneg (proj1_sig a) = a.
+Lemma poly_to_qpoly_unfold: forall (f: poly) (Hpos: PosPoly f) (a: qpoly f),
+  poly_to_qpoly f (proj1_sig a) = a.
 Proof.
   intros. unfold poly_to_qpoly.
   destruct a. simpl. exist_eq. apply pmod_refl; auto.

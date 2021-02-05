@@ -5,8 +5,7 @@ Require Import Common.
 Require Import CommonVST.
 Require Import VandermondeList.
 Require Import Specs.
-
-Import WPoly.
+Require Import Poly.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -15,7 +14,7 @@ Ltac solve_qpoly_bounds :=
     pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p));
     pose proof fec_n_eq; rep_lia in
   let pose_mod_bounds p :=
-    pose proof (modulus_poly_bound (p %~ mod_poly) (pmod_lt_deg mod_poly modulus_poly_deg_pos p));
+    pose proof (modulus_poly_bound (p %~ mod_poly) (pmod_lt_deg mod_poly p));
     pose proof fec_n_eq; rep_lia in
   match goal with
   | [H: _ |- poly_to_int (proj1_sig ?p) <= ?x] => pose_bounds p
@@ -71,6 +70,8 @@ Hint Rewrite fec_max_h_eq : rep_lia.
 (*TODO: move after gaussian when done*)
 Lemma body_fec_generate_weights : semax_body Vprog Gprog f_fec_generate_weights fec_generate_weights_spec.
 Proof.
+  pose proof (mod_poly_PosPoly) as Hpospoly.
+  pose proof (mod_poly_PrimPoly) as Hprimpoly.
   start_function. freeze Ftrace := (data_at _ _ _ (gv _trace)).
   forward_loop (EX (i : Z) (l: list (list Z)),
     PROP (0 <= i <= fec_max_h /\ Zlength l = fec_max_h /\ Forall (fun x => Zlength x = fec_n - 1) l /\
@@ -173,16 +174,16 @@ Proof.
                   (*TODO: this should really be a separate lemma*)
                   remember (Z.to_nat (i * j / (fec_n - 1))) as pow. clear Heqpow. induction pow. 
                   rewrite Nat.mul_0_r. rewrite monomial_0. pose proof modulus_poly_deg. 
-                  rewrite pmod_refl; try lia. reflexivity. replace (deg one) with 0%Z by (rewrite deg_one; reflexivity). lia.
+                  rewrite pmod_refl; try lia. reflexivity. auto. apply (@deg_gt_one _ _ Hprimpoly).
                   replace (Z.to_nat (fec_n - 1) * S pow)%nat with (Z.to_nat (fec_n - 1) + (Z.to_nat (fec_n - 1) * pow))%nat by rep_lia.
-                  rewrite <- monomial_exp_law. rewrite pmod_mult_distr by lia. rewrite IHpow. rewrite poly_mult_1_r.
+                  rewrite <- monomial_exp_law. rewrite pmod_mult_distr by auto. rewrite IHpow. rewrite poly_mult_1_r.
                   rewrite divides_pmod_iff in Hdiv. unfold divides_pmod in Hdiv. unfold nth_minus_one in Hdiv.
-                  rewrite <- pmod_cancel in Hdiv by lia. rewrite pmod_twice by lia.
+                  rewrite <- pmod_cancel in Hdiv by auto. rewrite pmod_twice by auto.
                   replace (Z.to_nat (fec_n - 1)) with (Z.to_nat fec_n - 1)%nat by rep_lia. rewrite Hdiv.
-                  rewrite pmod_refl; try lia. reflexivity. replace (deg one) with 0%Z by (rewrite deg_one; reflexivity). lia.
-                  left. apply f_nonzero. apply mod_poly_PrimPoly. }
+                  rewrite pmod_refl; try lia. reflexivity. auto.  apply (@deg_gt_one _ _ Hprimpoly). 
+                  left. apply f_nonzero. auto.  }
                   rewrite <- (poly_mult_1_r (monomial (Z.to_nat (i * j - (fec_n - 1) * (i * j / (fec_n - 1)))))).
-                  rewrite <- Hone. rewrite pmod_mult_reduce by lia. rewrite monomial_exp_law.
+                  rewrite <- Hone. rewrite pmod_mult_reduce by auto. rewrite monomial_exp_law.
                   f_equal. f_equal. rewrite <- Z2Nat.inj_add; try rep_lia. rewrite <- Hrem.
                   pose proof (Z.mod_pos_bound (i * j) (fec_n - 1)). lia.
               --- unfold Int.zero_ext. rewrite unsigned_repr; try rep_lia.
@@ -382,7 +383,7 @@ Proof.
               assert (Hrm : 0 <= k < m) by lia.
               assert (Hcm : 0 <= i < m) by lia.
               apply (gauss_all_steps_columns_partial_zeroes_list Hrm H1 (proj2 Hmn) Hwf Hstr Hcm). 
-              replace (ssralg.GRing.zero (ssralg.GRing.Field.zmodType F)) with (q0 modulus_poly_deg_pos) by reflexivity.
+              replace (ssralg.GRing.zero (ssralg.GRing.Field.zmodType F)) with (q0 (f:=mod_poly)) by reflexivity.
               destruct ((get (F:=F)
               (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k)  k i) i k)) eqn : G.
               unfold q0. unfold r0. exist_eq.
@@ -420,8 +421,8 @@ Proof.
             remember (get (F:=F) (all_cols_one_partial (F:=F)
                       (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k) as qij eqn : Hqij. 
             (*remember (proj1_sig qij) as pij eqn : Hpij.*)
-            remember (find_inv mod_poly modulus_poly_deg_pos qij) as qij_inv eqn : Hqinv.
-            replace (poly_inv mod_poly modulus_poly_deg_pos (proj1_sig qij)) with (proj1_sig qij_inv). 2 : {
+            remember (find_inv mod_poly qij) as qij_inv eqn : Hqinv.
+            replace (poly_inv mod_poly (proj1_sig qij)) with (proj1_sig qij_inv). 2 : {
             unfold poly_inv. rewrite poly_to_qpoly_unfold. rewrite Hqinv. reflexivity. }
             unfold Int.zero_ext.
             rewrite_repr qij_inv. rewrite_zbits qij_inv.
@@ -535,10 +536,10 @@ Proof.
                     rewrite (@scalar_mul_row_plus_1 F _ m n). simpl_reptype.
                     remember ((scalar_mul_row_partial (F:=F) (all_cols_one_partial (F:=F)
                       (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i
-                      (find_inv mod_poly modulus_poly_deg_pos (get (F:=F) (all_cols_one_partial (F:=F)
+                      (find_inv mod_poly (get (F:=F) (all_cols_one_partial (F:=F)
                       (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k)) j)) as mx'.
                     replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) with
-                     (r_mul _ modulus_poly_deg_pos) by reflexivity. unfold r_mul. 
+                     (r_mul mod_poly) by reflexivity. unfold r_mul. 
                     unfold poly_mult_mod. 
                     remember ((get (F:=F)(all_cols_one_partial (F:=F) 
                       (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k)) as elt.
@@ -571,7 +572,7 @@ Proof.
             { f_equal. unfold Int.zero_ext. f_equal. rewrite unsigned_repr; 
              [ rewrite zbits_small; [reflexivity | rep_lia] | rep_lia]. }
             { rewrite all_cols_one_plus_1; try lia. 
-              replace (ssralg.GRing.inv (R:=ssralg.GRing.Field.unitRingType F)) with (find_inv _ modulus_poly_deg_pos) by reflexivity.
+              replace (ssralg.GRing.inv (R:=ssralg.GRing.Field.unitRingType F)) with (find_inv mod_poly) by reflexivity.
               rewrite (@all_cols_one_outside F m n); try lia. cancel. solve_wf. } } } } } }
       (*now we are completely finishing the col loop*)
     { forward. entailer!. replace (i) with m by lia. cancel. } }
@@ -622,7 +623,7 @@ Proof.
                 (sub_all_rows_partial (F:=F)(all_cols_one_partial (F:=F) 
                   (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) else
                (add_multiple_partial (sub_all_rows_partial (F:=F)(all_cols_one_partial (F:=F) 
-                  (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i (q1 modulus_poly_deg_pos) n)
+                  (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i (q1 (f:=mod_poly)) n)
                 )))) s)). 
         { (*when i != k*)
           forward. (*simplify q*)
@@ -642,11 +643,11 @@ Proof.
              data_at Ews (tarray tuchar (m * n))
                (map Vint (map Int.repr (flatten_mx
                (add_multiple_partial (sub_all_rows_partial (F:=F)(all_cols_one_partial (F:=F) 
-                  (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i (q1 modulus_poly_deg_pos) j)))) s)).
+                  (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i (q1 (f:=mod_poly)) j)))) s)).
            { (*beginning of subtraction loop*) forward. Exists 0%Z. entailer!. rewrite add_multiple_partial_0.
              cancel. }
            { entailer!. }
-           { rename x0 into j. (*simplify *(q-j)*)
+           { rename x into j. (*simplify *(q-j)*)
              assert_PROP (force_val (sem_sub_pi tuchar Signed (offset_val (i * n + n - 1) s) (Vint (Int.repr j))) =
                 offset_val (i * n + n - 1 - j) s). { entailer!.  rewrite sem_sub_pi_offset; auto. simpl.
                 f_equal; rep_lia. rep_lia. }
@@ -658,7 +659,7 @@ Proof.
              assert_PROP ((0 <= i * n + n - 1 - j < Zlength (map Int.repr (flatten_mx (add_multiple_partial (F:=F)
               (sub_all_rows_partial (F:=F) (all_cols_one_partial (F:=F) 
               (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i
-              (q1 (f:=mod_poly) modulus_poly_deg_pos) j))))). { entailer!. list_solve. }
+              (q1 (f:=mod_poly)) j))))). { entailer!. list_solve. }
             rewrite Zlength_map in H7. forward.
             { entailer!. rewrite (@flatten_mx_Znth m n); try lia. rewrite unsigned_repr; solve_qpoly_bounds.
               solve_wf. }
@@ -675,7 +676,7 @@ Proof.
               assert_PROP ((0 <= k * n + n - 1 - j < Zlength (map Int.repr (flatten_mx
               (add_multiple_partial (F:=F)  (sub_all_rows_partial (F:=F)(all_cols_one_partial (F:=F) 
               (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i 
-              (q1 (f:=mod_poly) modulus_poly_deg_pos) j))))). { entailer!. list_solve. } rewrite Zlength_map in H10.
+              (q1 (f:=mod_poly)) j))))). { entailer!. list_solve. } rewrite Zlength_map in H10.
               forward.
               { entailer!. rewrite (@flatten_mx_Znth m n); try lia. rewrite unsigned_repr; solve_qpoly_bounds.
               solve_wf. }
@@ -688,7 +689,7 @@ Proof.
                   rewrite xor_poly_to_int.
                   remember (add_multiple_partial (F:=F) (sub_all_rows_partial (F:=F)
                            (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i
-                           (q1 (f:=mod_poly) modulus_poly_deg_pos) j) as mx'.
+                           (q1 (f:=mod_poly)) j) as mx'.
                   forward. 
                   (*end of subtraction loop*)
                   Exists (j+1). entailer!.
@@ -697,7 +698,7 @@ Proof.
                   { rewrite (@add_multiple_partial_plus_1 _ m n); try lia. 2: solve_wf.
                     rewrite <- (@flatten_mx_set m n); try lia. 2: solve_wf.
                     rewrite ssralg.GRing.mul1r. 
-                    replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType F)) with (qadd modulus_poly_deg_pos) by reflexivity.
+                    replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType F)) with (qadd (f:=mod_poly)) by reflexivity.
                     unfold qadd. unfold r_add. simpl. unfold poly_add_mod. simpl_reptype.
                     (*TODO: fix spelling*)
                     rewrite (@add_multiple_partial_outside _ m n); try lia. 2: solve_wf.
@@ -720,13 +721,13 @@ Proof.
                      rewrite pmod_refl; auto.
                      apply modulus_poly_bound in Hdeg. 
                      rewrite Zbits.Zzero_ext_mod; [|lia]. replace (two_p 8) with (256) by reflexivity.
-                     pose proof fec_n_bound; rewrite Zmod_small; rewrite unsigned_repr; rep_lia.
-                     apply modulus_poly_deg_pos. } rewrite Hsum. cancel. }
+                     pose proof fec_n_bound; rewrite Zmod_small; rewrite unsigned_repr; rep_lia. 
+                     apply mod_poly_PosPoly. } rewrite Hsum. cancel. }
                 }
               }
             }
           }
-          { (*end of subtraction loop*) entailer!. destruct (Z.eq_dec i k); try lia. rename x0 into j. replace j with n by lia. cancel. }
+          { (*end of subtraction loop*) entailer!. destruct (Z.eq_dec i k); try lia. rename x into j. replace j with n by lia. cancel. }
         }
         { (*i = k case (easier)*)
            forward. entailer!. destruct (Z.eq_dec k k); try lia. cancel. }
@@ -735,7 +736,7 @@ Proof.
           { rewrite sub_all_rows_plus_1; try lia. 
             replace (ssralg.GRing.opp (V:=ssralg.GRing.Ring.zmodType (ssralg.GRing.Field.ringType F))
                       (ssralg.GRing.one (ssralg.GRing.Field.ringType F))) with
-              (q1 (f:=mod_poly) modulus_poly_deg_pos) by reflexivity. 
+              (q1 (f:=mod_poly)) by reflexivity. 
             destruct (Z.eq_dec i k); simpl; cancel. unfold add_multiple.
             assert (Hwf' : wf_matrix (sub_all_rows_partial (F:=F)
                            (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k m)
@@ -825,8 +826,8 @@ Proof.
               remember ((get (F:=F)(all_lc_one_rows_partial (F:=F) 
                 (gauss_all_steps_rows_partial (F:=F) mx m m) i) i i)) as aii.
               forward. (*simplify inv*)
-              remember (find_inv mod_poly modulus_poly_deg_pos aii) as aii_inv eqn : Haiiinv.
-              replace (poly_inv mod_poly modulus_poly_deg_pos (proj1_sig aii)) with (proj1_sig aii_inv). 2 : {
+              remember (find_inv mod_poly aii) as aii_inv eqn : Haiiinv.
+              replace (poly_inv mod_poly (proj1_sig aii)) with (proj1_sig aii_inv). 2 : {
               unfold poly_inv. rewrite poly_to_qpoly_unfold. rewrite Haiiinv. reflexivity. }
               unfold Int.zero_ext. rewrite_repr aii_inv. rewrite_zbits aii_inv.
               forward.
@@ -906,14 +907,14 @@ Proof.
                       { rewrite !poly_of_int_inv. 
                         remember ((get (F:=F) (scalar_mul_row_partial (F:=F)
                         (all_lc_one_rows_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m m) i)i
-                        (find_inv mod_poly modulus_poly_deg_pos(get (F:=F)
+                        (find_inv mod_poly(get (F:=F)
                         (all_lc_one_rows_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m m) i) i i)) j) i j)) as aij.
-                         remember ((find_inv mod_poly modulus_poly_deg_pos (get (F:=F)
+                         remember ((find_inv mod_poly (get (F:=F)
                          (all_lc_one_rows_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m m) i)
                          i i))) as aii_inv.
                         rewrite (@scalar_mul_row_plus_1 F _ m n); try lia. 2: solve_wf.
                         replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType F)) with  
-                          (r_mul _ modulus_poly_deg_pos) by reflexivity. unfold r_mul. unfold poly_mult_mod.
+                          (r_mul mod_poly) by reflexivity. unfold r_mul. unfold poly_mult_mod.
                         rewrite !upd_Znth_map.
                         rewrite <- (@flatten_mx_set m n); try lia. 2: solve_wf. simpl.
                         rewrite Heqaij. rewrite poly_mult_comm.
@@ -948,7 +949,7 @@ Proof.
                     apply Hin. apply Znth_In; lia. }
                    rewrite Hlenn.
                    replace (ssralg.GRing.inv (R:=ssralg.GRing.Field.unitRingType F)) with 
-                  (find_inv _ modulus_poly_deg_pos) by reflexivity.
+                  (find_inv mod_poly) by reflexivity.
                    rewrite (@all_lc_one_outside _ m n); try lia. cancel. solve_wf.
               }
             }

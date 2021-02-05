@@ -13,14 +13,14 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import PropList.
-Import Poly.WPoly.
+Require Import Poly.
 Require Import Common.
 
 (*Weight matrix definition*)
 Section WeightMx.
 
 Definition weight_mx_list (m n : Z) : matrix (Common.F) :=
-  prop_list (fun i => (prop_list (fun j => (poly_to_qpoly mod_poly f_pos (monomial (Z.to_nat (i * (n - j - 1)))))) n)) m.
+  prop_list (fun i => (prop_list (fun j => (poly_to_qpoly mod_poly (monomial (Z.to_nat (i * (n - j - 1)))))) n)) m.
 
 Lemma weight_matrix_wf: forall m n, 0 <= n -> 0 <= m -> wf_matrix (weight_mx_list m n) m n.
 Proof.
