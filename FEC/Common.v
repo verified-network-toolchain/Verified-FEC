@@ -500,3 +500,13 @@ Lemma Z_expand_bounds: forall a b c d n,
 Proof.
   intros. lia.
 Qed.
+
+Lemma Zmod_mod: forall (z1 z2 : Z),
+  0 <= z1 ->
+  0%Z < z2 ->
+  Z.to_nat (z1 mod z2) = ((Z.to_nat z1) mod (Z.to_nat z2))%nat.
+Proof.
+  intros z1 z2 Hz1 Hz2. replace z1 with (Z.of_nat (Z.to_nat z1)) at 1 by lia.
+  replace z2 with (Z.of_nat (Z.to_nat z2)) at 1 by lia.
+  rewrite <- mod_Zmod. lia. lia.
+Qed. 

@@ -305,4 +305,35 @@ Proof.
   rewrite divides_pmod_iff. unfold divides_pmod. assumption. left. apply f_nonzero. assumption.
 Qed. 
 
+Lemma field_size_pos: (0 < field_size)%nat.
+Proof.
+  unfold field_size. destruct Hpos0. assert (1 < 2 ^ (Z.to_nat (deg f)))%nat; try lia.
+  replace 1%nat with (2 ^ 0)%nat at 1 by reflexivity.
+  apply Nat.pow_lt_mono_r; lia.
+Qed.
+
+(*Something that will be helpful in multiple VST proofs: if i = j (mod (field_size f)), then x^i %f = x^j %f*)
+Lemma monomial_powers_eq_mod: forall i j,
+  Nat.modulo i field_size = Nat.modulo j field_size ->
+ (monomial i) %~ f = (monomial j) %~ f.
+Proof.
+  intros i j Hmod. pose proof field_size_pos as Hsize.
+  rewrite (Nat.div_mod i field_size) by lia.
+  rewrite (Nat.div_mod j field_size) by lia.
+  destruct Hprim. destruct Hprim0 as [Hdeg [Hirred [Hnth Hnodiv]]].
+  rewrite <- !monomial_exp_law.
+  assert(forall (n: nat), monomial (field_size * n) %~ f = one). {
+    intros n. induction n.
+    - rewrite Nat.mul_0_r. rewrite monomial_0. rewrite pmod_refl; auto.
+    - replace (field_size * S n)%nat with (field_size + field_size * n)%nat by lia. rewrite <- monomial_exp_law.
+      rewrite pmod_mult_distr by auto.
+      rewrite IHn. rewrite poly_mult_1_r. rewrite pmod_twice by auto. unfold field_size.
+      unfold nth_minus_one in Hnth. rewrite divides_pmod_iff in Hnth. unfold divides_pmod in Hnth.
+      rewrite <- pmod_cancel in Hnth by auto. rewrite Hnth. rewrite pmod_refl; auto. left.
+      apply f_nonzero. auto. }
+  rewrite pmod_mult_distr by auto.
+  rewrite (pmod_mult_distr f (monomial (field_size * (j / field_size)))) by auto. rewrite !H.
+  rewrite !poly_mult_1_l. rewrite !pmod_twice by auto. rewrite Hmod. reflexivity.
+Qed.
+
 End Primitive.

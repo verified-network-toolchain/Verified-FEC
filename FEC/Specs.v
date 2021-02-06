@@ -11,6 +11,11 @@ make_compspecs prog. Defined.
 Definition Vprog : varspecs.
 mk_varspecs prog. Defined.
 
+Definition FIELD_TABLES gv :=
+  (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index) *
+      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power) *
+      data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec))%logic.
+
 Definition fec_generate_weights_spec :=
   DECLARE _fec_generate_weights
   WITH gv : globals
@@ -18,21 +23,14 @@ Definition fec_generate_weights_spec :=
     PROP ()
     PARAMS ()
     GLOBALS (gv)
-    SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace);
-         data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
-         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+    SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
             (list_repeat (Z.to_nat fec_max_h) (list_repeat (Z.to_nat (fec_n -1)) (Vint Int.zero))) (gv _fec_weights))
   POST [tvoid]
     PROP ()
     RETURN ()
-    SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace);
-         data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
-         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
-         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
-            (rev_mx_val (gauss_restrict_rows 
+    SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val (gauss_restrict_rows 
             (weight_mx_list fec_max_h  (fec_n - 1)) fec_max_h)) (gv _fec_weights)).
 
 (*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
@@ -44,17 +42,13 @@ Definition fec_matrix_transform_spec :=
     PROP (0 < m /\ 0 < m * n /\ (0 <= m <= n) /\ n <= Byte.max_unsigned /\ (wf_matrix mx m n) /\ (strong_inv_list m n mx 0))
     PARAMS ( s; Vint (Int.repr m); Vint (Int.repr n))
     GLOBALS (gv)
-    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
-         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
+    SEP (FIELD_TABLES gv;
          data_at Ews (tarray tuchar (m * n))(map Vint (map Int.repr( (flatten_mx mx)))) s)
   POST [tint]
     PROP()
     RETURN (Vint (Int.repr 0))
-    SEP(data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
-         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec);
-         data_at Ews (tarray tuchar (m * n)) 
+    SEP(FIELD_TABLES gv;
+        data_at Ews (tarray tuchar (m * n)) 
           (map Vint (map Int.repr (flatten_mx (gauss_restrict_rows mx m)))) s).
 
 Definition fec_gf_mult_spec :=
@@ -72,7 +66,6 @@ Definition fec_gf_mult_spec :=
     SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
       data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power)).
 
-(*TODO: make sure it is OK to assume initialized to 0, should be good for global variables*)
 Definition fec_generate_math_tables_spec :=
   DECLARE _fec_generate_math_tables
   WITH gv : globals
@@ -89,9 +82,7 @@ Definition fec_generate_math_tables_spec :=
   POST [ tvoid ]
     PROP ()
     RETURN ()
-    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-         data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power);
-         data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec)).
+    SEP (FIELD_TABLES gv).
 
 (*TODO: how to do without the WITH?*)
 Definition fec_find_mod_spec :=

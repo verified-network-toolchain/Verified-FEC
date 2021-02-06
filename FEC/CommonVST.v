@@ -21,6 +21,13 @@ Proof.
   intros z1 z2 z3 Hz1 Hz12. rewrite Z.lt_add_lt_sub_r in Hz12. lia.
 Qed.
 
+(*TODO: move*)
+Lemma typed_false_not_true: forall a b, typed_false a b -> ~(typed_true a b).
+Proof.
+  intros a b F T.
+  unfold typed_true in T; unfold typed_false in F; rewrite T in F; inversion F.
+Qed. 
+
 
 Section VSTFacts.
 
