@@ -4,23 +4,109 @@ Require Import Common.
 Require Import CommonVST.
 Require Import Poly.
 
-(*For any polynomial of degree < deg (mod_poly), poly_of_int p is within the bounds needed for all the VST goals.
-  This tactic solves many of these goals for qpolys and polys taken modulo mod_poly*)
-Ltac solve_qpoly_bounds :=
-  let pose_bounds p :=
-    pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p));
-    pose proof fec_n_eq; rep_lia in
-  let pose_mod_bounds p :=
-    pose proof (modulus_poly_bound (p %~ mod_poly) (pmod_lt_deg mod_poly p));
-    pose proof fec_n_eq; rep_lia in
-  match goal with
-  | [H: _ |- poly_to_int (proj1_sig ?p) <= ?x] => pose_bounds p
-  | [H: _ |- ?y <= poly_to_int (proj1_sig ?p) <= ?x] => pose_bounds p
-  | [H: _ |- ?y <= poly_to_int (proj1_sig ?p) < ?x] => pose_bounds p
-  | [H: _ |- poly_to_int (?p %~ mod_poly) <= ?x] => pose_mod_bounds p
-  | [H: _ |- ?y <= poly_to_int (?p %~ mod_poly) <= ?x] => pose_mod_bounds p
-  | [H: _ |- ?y <= poly_to_int (?p %~ mod_poly) < ?x] => pose_mod_bounds p
+Hint Rewrite fec_n_eq : rep_lia.
+Hint Rewrite fec_max_h_eq : rep_lia.
+Hint Rewrite modulus_eq : rep_lia.
+
+(*Solves goals of form ?p <> zero*)
+Ltac solve_poly_zero :=
+  let N := fresh in intro N;
+  repeat match goal with
+  | [ H: x = zero |- _ ] => inversion H
+  | [ H: poly_of_int ?x = zero |- _ ] => rewrite poly_of_int_zero in H; rep_lia
+  | [ H: mod_poly = zero |- _ ] => pose proof (@f_nonzero _ mod_poly_PosPoly); contradiction
+  | [ H: monomial ?n = zero |- _ ] => pose proof (monomial_nonzero n); contradiction
+  | [ H: monomial ?n %~ mod_poly = zero |- _ ] => pose proof (monomial_mod_nonzero n); contradiction
+  | [ H: ?p *~ ?q = zero |- _ ] => rewrite poly_mult_zero_iff in H; destruct H
   end.
+
+(*put information into the context about poly bounds from the goal (of the form 0 <= poly_to_int ?p < fec_n),
+  or degree info for [poly_to_int[*)
+Ltac pose_poly_bounds :=
+  (*inner/more general bounds*)
+  try (lazymatch goal with
+   | [ |- context [ poly_to_int (proj1_sig ?p) ]] => 
+      pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p))
+  | [ |- context [ poly_to_int (?p %~ mod_poly) ]] => 
+      pose proof (modulus_poly_bound (p %~ mod_poly) (pmod_lt_deg mod_poly p))
+  | [ |- context [ poly_of_int ?n ]] => 
+      let N := fresh in
+      assert (N: 0 <= n < fec_n) by rep_lia;
+      pose proof (polys_deg_bounded n N);
+      try(assert (poly_of_int n <> zero) by solve_poly_zero)
+  end);
+  (*more specific functions built from the smaller pieces*)
+  repeat(lazymatch goal with 
+  | [Hnz: ?p <> zero, Hdeg: deg ?p < deg mod_poly |- context [find_power mod_poly ?p]] =>
+      tryif (assert (0 < find_power mod_poly p <= fec_n - 1 ) by assumption) then fail else
+      let Hfp := fresh in
+      let Hfpbound := fresh in
+      pose proof (@find_power_spec mod_poly _ mod_poly_PrimPoly p Hnz Hdeg) as N;
+      destruct N as [Hfp Hfpbound]; rewrite field_size_fec_n in Hfpbound 
+  end).
+
+(*Solves goals with Int.unsigned (Int.repr _) and Zbits.Zzero_ext when the value is an integer, not a qpoly (ie,
+  rep_lia can prove that z is small enough)*)
+Ltac solve_repr_int :=
+  repeat match goal with
+  |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
+  |  [ |- context [ Int.unsigned (Int.repr ?x)]] => rewrite unsigned_repr by rep_lia
+  |  [ |- context [ Zbits.Zzero_ext 8 ?x]] => rewrite zbits_small by rep_lia
+  end; try rep_lia; auto.
+
+(*Solve goals that deal with poly bounds*)
+Ltac solve_poly_bounds :=
+  match goal with
+  | [ |- deg (poly_of_int ?n) < deg mod_poly] => apply polys_deg_bounded; rep_lia
+  | [ H: deg ?p < deg mod_poly |- 0 <= poly_to_int ?p < ?n] => pose proof (modulus_poly_bound p H); rep_lia
+  | [ |- _ ] => simpl; try rep_lia; pose_poly_bounds; solve_repr_int; rep_lia
+  end.
+
+(*Simplify expressions with [Int.unsigned (Int.repr (poly_to_int ?p))] and [Int.zero_ext 8 (poly_to_int ?p)],
+  where p is a poly that is smaller than mod_poly*)
+Ltac simpl_repr :=
+  repeat match goal with
+  | [ |- context [ Zbits.Zzero_ext 8 ?x]] =>
+       let N := fresh in
+      assert (N: Zbits.Zzero_ext 8 x = x) by (subst; rewrite zbits_small; [reflexivity | solve_poly_bounds]);
+      rewrite -> N; clear N
+  |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
+  |  [ |-  context [ Int.unsigned (Int.repr ?x)]] =>
+        let N := fresh in
+        assert (N: Int.unsigned (Int.repr x) = x) by (subst;
+        rewrite unsigned_repr; [ reflexivity | solve_poly_bounds]); rewrite -> N; clear N
+  end; auto; try rep_lia; try solve_poly_bounds.
+
+(*Simplify an integer expression with zeroes*)
+Ltac simplify_zeroes  :=
+  repeat lazymatch goal with
+    | [ |- context [ 0%Z + ?z ] ] => rewrite Z.add_0_l
+    | [ |- context [ ?z + 0%Z ] ] => rewrite Z.add_0_r
+    | [ |- context [ 0%Z * ?z ] ] => rewrite Z.mul_0_l
+    | [ |- context [ ?z * 0%Z ] ] => rewrite Z.mul_0_r
+  end.
+
+(*Put info about [find_power mod_poly p] in the context, solves obligations automatically. H1 and H2 are the
+  names for the new info (find_power def and bounds)*)
+Ltac pose_power p H1 H2 :=
+  let H := fresh in
+  assert (H: p = monomial (Z.to_nat (find_power mod_poly p)) %~ mod_poly /\ 0 < find_power mod_poly p <= fec_n - 1) by
+  (rewrite <- field_size_fec_n; pose_poly_bounds; apply (@find_power_spec mod_poly _ mod_poly_PrimPoly p); auto);
+  destruct H as [H1 H2].
+
+(*Similar, but for [poly_inv mod_poly p/*)
+Ltac pose_inv p H1 H2 :=
+  let P := fresh in
+  assert (P : p %~ mod_poly <> zero) by (rewrite (@pmod_refl _ mod_poly_PosPoly); [ solve_poly_zero | solve_poly_bounds ]);
+  let H := fresh in
+  assert (H: ((p *~ poly_inv mod_poly p) %~ mod_poly = one) /\ deg (poly_inv mod_poly p) < deg mod_poly) by
+    (pose_poly_bounds; apply (poly_inv_spec _ (@f_irred _ _ mod_poly_PrimPoly) _ P));
+  destruct H as [H1 H2].
+
+(*replace [poly_of_int 0%Z] with [zero] everywhere*)
+Ltac rewrite_zero:=
+  let N := fresh in
+  assert (N: poly_of_int 0%Z = zero) by (rewrite poly_of_int_zero; lia); rewrite N in *; clear N.
 
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
@@ -36,38 +122,6 @@ Ltac solve_wf :=
   | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ ) _ _] => apply all_lc_one_rows_partial_wf
   end; try lia); assumption.
 
-(* Remove Int.unsigned (Int.repr ?z) and Zbits.Zzero_ext 8 x for qpolys*)
-Ltac simpl_repr :=
-  repeat match goal with
-  | [ |- context [ Zbits.Zzero_ext 8 ?x]] =>
-       let N := fresh in
-    assert (N: Zbits.Zzero_ext 8 x = x) by (
-      rewrite Zbits.Zzero_ext_mod; [|rep_lia]; replace (two_p 8) with (256) by reflexivity;
-      rewrite Zmod_small; [reflexivity | solve_qpoly_bounds]); rewrite -> N; clear N
-  |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
-  |  [ |-  context [ Int.unsigned (Int.repr ?x)]] =>
-        let N := fresh in
-        assert (N: Int.unsigned (Int.repr x) = x) by (subst;
-        rewrite unsigned_repr; [ reflexivity | solve_qpoly_bounds]); rewrite -> N; clear N
-  end.
-
-(*Solves goals with Int.unsigned (Int.repr _) and Zbits.Zzero_ext when the value is an integer, not a qpoly (ie,
-  rep_lia can prove that z is small enough)*)
-Ltac solve_repr_int :=
-  repeat lazymatch goal with
-  |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
-  |  [ |-  context [ Int.unsigned (Int.repr ?x)]] => rewrite unsigned_repr by rep_lia
-  |  [ |- context [ Zbits.Zzero_ext 8 ?x]] => rewrite zbits_small; try rep_lia
-  end.
-
-(*Simplify an integer expression with zeroes*)
-Ltac simplify_zeroes  :=
-  repeat lazymatch goal with
-    | [ |- context [ 0%Z + ?z ] ] => rewrite Z.add_0_l
-    | [ |- context [ ?z + 0%Z ] ] => rewrite Z.add_0_r
-    | [ |- context [ 0%Z * ?z ] ] => rewrite Z.mul_0_l
-    | [ |- context [ ?z * 0%Z ] ] => rewrite Z.mul_0_r
-  end.
 
 (*Solve goals relating to [offset_val], adding/subtracting pointers, showing offsets are equal, and
   relating offsets to array fields*)

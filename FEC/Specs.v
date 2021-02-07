@@ -11,9 +11,15 @@ make_compspecs prog. Defined.
 Definition Vprog : varspecs.
 mk_varspecs prog. Defined.
 
+(*For multiplication, we do not need the inverse table*)
+Definition INDEX_TABLES gv :=
+   (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index) *
+      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power))%logic.
+
+
+(*In most of the functions, we need the three field tables to be populated*)
 Definition FIELD_TABLES gv :=
-  (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index) *
-      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power) *
+  (INDEX_TABLES gv * 
       data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec))%logic.
 
 Definition fec_generate_weights_spec :=
@@ -58,13 +64,11 @@ Definition fec_gf_mult_spec :=
     PROP (0 <= f < fec_n /\ 0 <= g < fec_n)
     PARAMS (Vint (Int.repr f); Vint (Int.repr g))
     GLOBALS (gv)
-    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power))
+    SEP (INDEX_TABLES gv)
   POST [ tuchar ]
     PROP ()
     RETURN (Vint (Int.repr (poly_to_int (((poly_of_int f) *~ (poly_of_int g)) %~ mod_poly ))))
-    SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index);
-      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power)).
+    SEP (INDEX_TABLES gv).
 
 Definition fec_generate_math_tables_spec :=
   DECLARE _fec_generate_math_tables

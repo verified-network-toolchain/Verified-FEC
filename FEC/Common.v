@@ -510,3 +510,17 @@ Proof.
   replace z2 with (Z.of_nat (Z.to_nat z2)) at 1 by lia.
   rewrite <- mod_Zmod. lia. lia.
 Qed. 
+
+(*TODO: move to COmmon*)
+Lemma Int_eq_reflect: forall (a b : int),
+  reflect (a = b) (Int.eq a b).
+Proof.
+  intros. destruct (Int.eq a b) eqn : Heq. apply ReflectT. apply Int.same_if_eq; auto.
+  apply ReflectF. apply int_eq_false_e; auto.
+Qed.
+
+Lemma monomial_mod_nonzero: forall (n: nat),
+  monomial n %~ mod_poly <> zero.
+Proof.
+  intros n Hz. pose proof modulus_poly_monomial n. rewrite <- poly_to_int_zero_iff in Hz. lia.
+Qed.

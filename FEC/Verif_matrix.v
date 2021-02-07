@@ -10,37 +10,8 @@ Require Import FECTactics.
 
 Set Bullet Behavior "Strict Subproofs".
 
+(** Verification of [fec_generate_weights]*)
 
-(*
-(*Remove (Int.repr (Int.unsigned _)) and (Int.zero_ext) from qpolys*)
-Ltac rewrite_repr x :=
-    let N := fresh in
-      assert (N: Int.unsigned (Int.repr (poly_to_int (proj1_sig x))) = poly_to_int (proj1_sig x)) by (subst;
-        rewrite unsigned_repr; [ reflexivity | solve_qpoly_bounds]); rewrite -> N; clear N.
-Ltac rewrite_zbits x :=
-  let N := fresh in
-    assert (N: Zbits.Zzero_ext 8 (poly_to_int (proj1_sig x)) = poly_to_int (proj1_sig x)) by (
-      rewrite Zbits.Zzero_ext_mod; [|rep_lia]; replace (two_p 8) with (256) by reflexivity;
-      rewrite Zmod_small; [reflexivity | solve_qpoly_bounds]); rewrite -> N; clear N.
-
-(*Do the same for polys that are taken mod mod_poly. NOTE: if there is a way to match substrings in
-  ltac goals, I can combine the above and automate*)
-Ltac rewrite_repr_mod x :=
-   assert (N: Int.unsigned (Int.repr (poly_to_int (x %~ mod_poly))) = poly_to_int (x %~ mod_poly)) by (subst;
-    rewrite unsigned_repr; [ reflexivity | solve_qpoly_bounds]); rewrite -> N; clear N.
-Ltac rewrite_zbits_mod x :=
-  let N := fresh in
-    assert (N: Zbits.Zzero_ext 8 (poly_to_int (x %~ mod_poly)) = poly_to_int (x %~ mod_poly)) by (
-      rewrite Zbits.Zzero_ext_mod; [|rep_lia]; replace (two_p 8) with (256) by reflexivity;
-      rewrite Zmod_small; [reflexivity | solve_qpoly_bounds]); rewrite -> N; clear N.
-*)
-
-Hint Rewrite fec_n_eq : rep_lia.
-Hint Rewrite fec_max_h_eq : rep_lia.
-
-
-(** Verification [fec_generate_weights]*)
-(*TODO: move after gaussian when done*)
 Lemma body_fec_generate_weights : semax_body Vprog Gprog f_fec_generate_weights fec_generate_weights_spec.
 Proof.
   pose proof (mod_poly_PosPoly) as Hpospoly.
@@ -86,10 +57,10 @@ Proof.
               unfold Int.mods. rewrite !Int.signed_repr; try rep_lia. rewrite Z.rem_mod_nonneg by rep_lia.
               rewrite unsigned_repr; rep_lia. split. rep_lia. assert (i * j <= fec_max_h * (fec_n - 1)).
               apply Z.mul_le_mono_nonneg; lia. assert (fec_max_h * (fec_n - 1) = 32640). rewrite fec_max_h_eq.
-              rewrite fec_n_eq. reflexivity. rep_lia. } unfold FIELD_TABLES. Intros.
+              rewrite fec_n_eq. reflexivity. rep_lia. } unfold FIELD_TABLES. unfold INDEX_TABLES. Intros.
             forward.
           ++ entailer!. simpl. rewrite Hidx. assumption. 
-          ++ entailer!. rewrite Hidx. rewrite power_to_index_contents_Znth. simpl. simpl_repr. solve_qpoly_bounds.  assumption.            
+          ++ entailer!. rewrite Hidx. rewrite power_to_index_contents_Znth. simpl. simpl_repr. solve_poly_bounds.           
           ++ entailer!. (*Why do I get this goal?*)
              destruct H23. apply repr_inj_signed in H24;  rep_lia.
           ++ simpl. rewrite Hidx. rewrite power_to_index_contents_Znth; [| assumption]. 
@@ -121,14 +92,14 @@ Proof.
                   subst. rewrite upd_Znth_same by rep_lia. f_equal. apply (@monomial_powers_eq_mod _ _ Hprimpoly).
                   rewrite Zmod_mod by lia. assert (Hfsz: Z.to_nat 255 = field_size mod_poly). {
                   apply Nat2Z.inj. rewrite field_size_fec_n. rep_lia. } rewrite Hfsz. apply Nat.mod_mod; lia.
-              --- solve_repr_int. reflexivity. 
+              --- solve_repr_int. 
             ** unfold map_int_val_2d. rewrite <- !upd_Znth_map. rewrite !Znth_map. entailer!.
                rep_lia.
         -- (*end of inner loop*) forward. Exists lj. entailer!. intros x Hx y Hy.
            apply H7. rep_lia.
       * Intros lj. forward. Exists (i+1)%Z. Exists lj. entailer!. split.
         -- intros x Hx y Hy. apply H6; lia.
-        -- solve_repr_int. reflexivity. 
+        -- solve_repr_int. 
     + (*end of outer loop*) forward. entailer!.
       assert (Hweight: (map_int_val_2d l) = (rev_mx_val (weight_mx_list fec_max_h (fec_n - 1)))). {
       unfold rev_mx_val. unfold map_int_val_2d. unfold rev_mx. rewrite !map_map.
@@ -264,7 +235,7 @@ Proof.
               k i))))). {
            entailer!. list_solve. } simpl_reptype. rewrite Zlength_map in H5.
            forward.
-          { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_qpoly_bounds. solve_wf. } 
+          { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_poly_bounds. } 
           { entailer!. solve_offset. }
           { forward_if.
             { (*contradiction due to [strong_inv]*)
@@ -282,7 +253,7 @@ Proof.
               unfold q0. unfold r0. exist_eq.
               simpl in Hzero. assumption. } 
               apply mapsto_memory_block.repr_inj_unsigned in H6. contradiction. 2: rep_lia.
-              rewrite (@flatten_mx_Znth m n); try lia. solve_qpoly_bounds. assumption.  }
+              rewrite (@flatten_mx_Znth m n); try lia. solve_poly_bounds. assumption.  }
             { forward. entailer!. }
           }
         }
@@ -298,17 +269,17 @@ Proof.
          entailer!. list_solve. rewrite Zlength_map in H5.
          (*Doing some stuff to simplify here so we don't need to repeat this in each branch*)
           forward; try (rewrite (@flatten_mx_Znth m n); try lia; try assumption).
-        { entailer!. simpl_repr. solve_qpoly_bounds. }
+        { entailer!. simpl_repr.  }
         { entailer!. solve_offset.  }
-        { unfold FIELD_TABLES. Intros. (*need for "forward"*)
+        { unfold FIELD_TABLES. unfold INDEX_TABLES. Intros. (*need for "forward"*)
           assert ((Int.min_signed <= poly_to_int (proj1_sig (get (F:=F) 
             (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k)) <=
-            Int.max_signed)) by solve_qpoly_bounds. forward.
-          { entailer!. solve_qpoly_bounds. }
+            Int.max_signed)) by solve_poly_bounds. forward.
+          { entailer!. solve_poly_bounds. }
           { entailer!. rewrite inverse_contents_Znth. rewrite poly_of_int_inv. simpl. 
-            unfold poly_inv. rewrite unsigned_repr. all: solve_qpoly_bounds. } 
+            unfold poly_inv. rewrite unsigned_repr. all: solve_poly_bounds. } 
           { forward. forward. (*simplify before for loop*)
-            rewrite inverse_contents_Znth by solve_qpoly_bounds. rewrite poly_of_int_inv. simpl. 
+            rewrite inverse_contents_Znth by solve_poly_bounds. rewrite poly_of_int_inv. simpl. 
             remember (get (F:=F) (all_cols_one_partial (F:=F)
                       (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i k) as qij eqn : Hqij. 
             remember (find_inv mod_poly qij) as qij_inv eqn : Hqinv.
@@ -342,7 +313,7 @@ Proof.
                     (flatten_mx (scalar_mul_row (all_cols_one_partial (F:=F) 
                     (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i qij_inv)))) s)))%assert5).
             { Exists 0%Z. rewrite HeqLOCALS. entailer!. solve_offset. 
-              rewrite scalar_mul_row_partial_0. unfold FIELD_TABLES. cancel.  }
+              rewrite scalar_mul_row_partial_0. unfold FIELD_TABLES. unfold INDEX_TABLES. cancel.  }
             { Intros j. assert (Hcn : 0 <= i * n). { apply Z.mul_nonneg_nonneg; lia. } rewrite HeqLOCALS.
               forward_if.
               { rewrite !arr_field_address0; auto. rewrite arr_field_address; auto.
@@ -384,18 +355,18 @@ Proof.
                   (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k i) i qij_inv j) m n)
                 by solve_wf.
                 forward.
-                - entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_qpoly_bounds. auto.
+                - entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_poly_bounds.
                 - rewrite (@flatten_mx_Znth m n); try lia; auto.
                   remember ((get (F:=F)
                            (scalar_mul_row_partial (F:=F)
                               (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k)
                                  k i) i qij_inv j) i j)) as aij.
                   forward_call.
-                  + unfold FIELD_TABLES. entailer!.
-                  + simpl_repr. split; solve_qpoly_bounds. 
+                  + unfold FIELD_TABLES. unfold INDEX_TABLES. entailer!.
+                  + simpl_repr. subst. split; solve_poly_bounds.
                   + (*simplify result of function call*) simpl_repr.
                     rewrite !poly_of_int_inv. forward. Exists (j+1). rewrite HeqLOCALS. entailer!. solve_offset.
-                    unfold FIELD_TABLES. cancel. 
+                    unfold FIELD_TABLES. unfold INDEX_TABLES. cancel. 
                     rewrite !upd_Znth_map. (*need to simplify the scalar_mult*)
                     rewrite (@scalar_mul_row_plus_1 F _ m n). simpl_reptype.
                     remember ((scalar_mul_row_partial (F:=F) (all_cols_one_partial (F:=F)
@@ -430,7 +401,7 @@ Proof.
                     apply Znth_In; lia. } rewrite Hlenn; cancel. } }
             (*no idea what level I'm on - coqide has stopped highlighting brackets, but at end of col loop*)
             rewrite HeqLOCALS; forward. Exists (i + 1). entailer!.
-            { solve_repr_int. reflexivity.  }
+            { solve_repr_int. }
             { rewrite all_cols_one_plus_1 by lia. 
               replace (ssralg.GRing.inv (R:=ssralg.GRing.Field.unitRingType F)) with (find_inv mod_poly) by reflexivity.
               rewrite (@all_cols_one_outside F m n); try lia. cancel. solve_wf. } } } } } }
@@ -495,7 +466,7 @@ Proof.
               (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i
               (q1 (f:=mod_poly)) j))))). { entailer!. list_solve. }
             rewrite Zlength_map in H7. forward.
-            { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_qpoly_bounds. solve_wf. }
+            { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_wf. }
             { entailer!. solve_offset. }
             { (*Simplify *(r-j) *)
               rewrite (@flatten_mx_Znth m n); [ | solve_wf | lia | lia].
@@ -509,13 +480,13 @@ Proof.
               (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i 
               (q1 (f:=mod_poly)) j))))). { entailer!. list_solve. } rewrite Zlength_map in H10.
               forward.
-              { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_qpoly_bounds. solve_wf.  }
+              { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr. solve_wf.  }
               { entailer!. solve_offset. }
               { (*actual subtraction*) 
                 rewrite (@flatten_mx_Znth m n); [ | solve_wf | lia | lia]. forward.
                 { entailer!. solve_offset. }
                 { (*need lots of simplification*)
-                  unfold Int.xor. simpl_repr. (*rewrite !unsigned_repr; try solve_qpoly_bounds.*)
+                  unfold Int.xor. simpl_repr. solve_repr_int. (*rewrite !unsigned_repr; try solve_qpoly_bounds.*)
                   rewrite xor_poly_to_int.
                   remember (add_multiple_partial (F:=F) (sub_all_rows_partial (F:=F)
                            (all_cols_one_partial (F:=F) (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i
@@ -523,7 +494,7 @@ Proof.
                   forward. 
                   (*end of subtraction loop*)
                   Exists (j+1). entailer!.
-                  { solve_repr_int. reflexivity. } 
+                  { solve_repr_int. } 
                   { rewrite (@add_multiple_partial_plus_1 _ m n); try lia; [| solve_wf]. 
                     rewrite <- (@flatten_mx_set m n); [| solve_wf | lia | lia].
                     rewrite ssralg.GRing.mul1r. 
@@ -556,7 +527,7 @@ Proof.
         { (*i = k case (easier)*)
            forward. rewrite HeqLOCALS; entailer!. destruct (Z.eq_dec k k); try lia. cancel. }
         { (*postcondition of sub_all_rows loop*) rewrite HeqLOCALS; forward. Exists (i+1). rewrite HeqLOCALS; entailer!.
-          { solve_repr_int. reflexivity. }
+          { solve_repr_int. }
           { rewrite sub_all_rows_plus_1 by lia.
             replace (ssralg.GRing.opp (V:=ssralg.GRing.Ring.zmodType (ssralg.GRing.Field.ringType F))
                       (ssralg.GRing.one (ssralg.GRing.Field.ringType F))) with
@@ -572,7 +543,7 @@ Proof.
         }
         { (*postcondition of gauss_one_step loop*)
           rewrite HeqLOCALS; forward. Exists (k+1). entailer!.
-          { solve_repr_int. reflexivity.  }
+          { solve_repr_int.  }
           { rewrite gauss_all_steps_rows_partial_plus_1. cancel. lia. }
         }
       }
@@ -616,16 +587,16 @@ Proof.
           entailer!. assert (0 <= i * n + n - 1 - i < m * n). apply matrix_bounds_within; lia. list_solve. }
           rewrite Zlength_map in H4. forward.
           { (*pointer access is valid*) entailer!. rewrite (@flatten_mx_Znth m n); [ | solve_wf | lia | lia].
-            simpl_repr. solve_qpoly_bounds. }
+            simpl_repr. }
           { entailer!. solve_offset. }
           { rewrite (@flatten_mx_Znth m n); [| solve_wf | lia |lia ].
             pose proof (Hpolybound:= (qpoly_int_bound (get (F:=F) (all_lc_one_rows_partial (F:=F) 
                   (gauss_all_steps_rows_partial (F:=F) mx m m) i) i i))). unfold FIELD_TABLES. Intros.
             forward.
             { entailer!. }
-            { entailer!. rewrite inverse_contents_Znth; [| solve_qpoly_bounds]. simpl. 
-              rewrite poly_of_int_inv. unfold poly_inv. simpl_repr. solve_qpoly_bounds. }
-            { rewrite inverse_contents_Znth; [| solve_qpoly_bounds]. rewrite poly_of_int_inv.
+            { entailer!. rewrite inverse_contents_Znth; [| solve_poly_bounds]. simpl. 
+              rewrite poly_of_int_inv. unfold poly_inv. simpl_repr. }
+            { rewrite inverse_contents_Znth; [| solve_poly_bounds]. rewrite poly_of_int_inv.
               remember ((get (F:=F)(all_lc_one_rows_partial (F:=F) 
                 (gauss_all_steps_rows_partial (F:=F) mx m m) i) i i)) as aii.
               forward. (*simplify inv*)
@@ -685,14 +656,13 @@ Proof.
                    list_solve. }
                   rewrite Zlength_map in H6. 
                   forward.
-                  { entailer!. rewrite (@flatten_mx_Znth m n); [| solve_wf | lia | lia]. simpl_repr. 
-                    solve_qpoly_bounds. }
+                  { entailer!. rewrite (@flatten_mx_Znth m n); [| solve_wf | lia | lia]. simpl_repr. }
                   { rewrite (@flatten_mx_Znth m n); [ | solve_wf | lia | lia].
                     remember ((get (F:=F)(scalar_mul_row_partial (F:=F)  (all_lc_one_rows_partial (F:=F)
                               (gauss_all_steps_rows_partial (F:=F) mx m m) i) i aii_inv j) i j)) as aij.
                     forward_call.
                     { unfold FIELD_TABLES. entailer!. }
-                    { simpl_repr. split; solve_qpoly_bounds. } 
+                    { simpl_repr. split; solve_poly_bounds. } 
                     { simpl_repr.
                       forward. (*loop invariant preservation*)
                       Exists (j+1). entailer!.
@@ -716,7 +686,7 @@ Proof.
                   }
                 }
               }
-              { (*end of outer loop*) forward. Exists (i+1). entailer!. solve_repr_int. reflexivity.
+              { (*end of outer loop*) forward. Exists (i+1). entailer!. solve_repr_int.
                 rewrite all_lc_one_plus_one; [| lia]. unfold scalar_mul_row.
                 (*need to know that j = n*)
                 assert (Haddr: (field_address (tarray tuchar (m * n)) 

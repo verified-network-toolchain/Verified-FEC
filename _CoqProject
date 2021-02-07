@@ -24,5 +24,5 @@ Matrix/VandermondeList.v
 FEC/CommonVST.v
 FEC/Specs.v
 FEC/FECTactics.v
-#FEC/Verif_field.v
+FEC/Verif_field.v
 FEC/Verif_matrix.v
