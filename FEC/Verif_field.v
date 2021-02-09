@@ -1,4 +1,4 @@
-Require Import VST.floyd.proofauto.
+  Require Import VST.floyd.proofauto.
 
 Require Import Common.
 Require Import CommonVST.
@@ -63,11 +63,8 @@ Proof.
                   +++ forward. unfold INDEX_TABLES. entailer!. (*now, we prove that this actually computes the product for this case*)
                       rewrite power_to_index_contents_Znth; try rep_lia. f_equal. f_equal. f_equal.
                       rewrite Hfp at 2. rewrite Hgp at 2. rewrite <- pmod_mult_distr; [| apply mod_poly_PosPoly].
-                      rewrite (monomial_exp_law). apply (@monomial_powers_eq_mod mod_poly _ mod_poly_PrimPoly).
-                      replace (256 - 1) with (Z.of_nat (field_size mod_poly)) by (rewrite field_size_fec_n; rep_lia).
-                      rewrite Z2Nat.inj_sub by lia. rewrite Z2Nat.inj_add by lia.
-                      rewrite <- (Nat.mod_add _ 1 (field_size mod_poly)). f_equal. rewrite Nat2Z.id. rewrite Nat.mul_1_l.
-                      rewrite Nat.sub_add. reflexivity. all: pose proof field_size_fec_n; rep_lia.
+                      rewrite (monomial_exp_law). rewrite (@monomial_add_field_size mod_poly _ mod_poly_PrimPoly).
+                      f_equal. f_equal. pose proof field_size_fec_n. rep_lia.
           ++ (*other side of the if statement*) forward.
             ** entailer!. rewrite index_to_power_contents_Znth; try lia. solve_poly_bounds. 
             ** forward. 
@@ -139,7 +136,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
            entailer!. rewrite Znth_app1. 2: list_solve. rewrite power_to_index_contents_Znth. solve_poly_bounds. lia. 
         -- (*body continue with shift, rewrite shift into polynomial mult*)
            forward. 
-           (*TODO: The resulting if condition is weird for some reason *)
+           (*TODO: The resulting if condition is very strange and needs a lot of work to get into a usable form*)
            assert (Hshl : (Int.shl (Int.repr (poly_to_int (monomial (Z.to_nat (i - 1)) %~ mod_poly))) (Int.repr 1)) =
                      (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))))). {
            unfold Int.shl. rewrite !unsigned_repr; try rep_lia. 2: solve_poly_bounds. 
@@ -155,7 +152,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
              assert (2 ^ (1 + deg (monomial (Z.to_nat (i - 1)) %~ mod_poly) + 1) - 1 <=
               2 ^ (1 + 8 + 1) - 1). { rewrite <- Z.sub_le_mono_r.
               apply Z.pow_le_mono_r. lia. apply Zplus_le_compat_r. apply Zplus_le_compat_l.
-              pose proof (pmod_lt_deg mod_poly (monomial (Z.to_nat (i - 1)))). pose proof modulus_poly_deg_bounds; lia. }
+              pose proof (pmod_lt_deg mod_poly (monomial (Z.to_nat (i - 1)))). pose proof mod_poly_deg_eq; lia. }
             rep_lia. solve_poly_zero. }
           forward_if.
           ++  (*need to simplify condition in H4, not sure why it is not automated*)
@@ -172,7 +169,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
                  (*Core of proof: this actually finds x^i % f in this case (complicated because x * (x^(i-1) %f) overflows)*)
                 assert (Hdeg: deg (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)) = deg mod_poly). {
                   assert (Hupper: deg mod_poly <= deg (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))). {
-                  rewrite modulus_poly_deg. 
+                  rewrite mod_poly_deg_log. 
                   rewrite <- (poly_of_int_inv (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly) )).
                   rewrite poly_of_int_deg. apply Z.log2_le_mono. rep_lia.  apply poly_to_int_pos. solve_poly_zero. }
                   assert (Hlower: deg (monomial (Z.to_nat (i - 1)) %~ mod_poly) < deg mod_poly). {
@@ -190,7 +187,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
                   rewrite <- (pmod_refl mod_poly _ Hdeglt). rewrite <- mod_poly_eq. rewrite pmod_add_distr; auto.
                   rewrite pmod_same by auto. rewrite poly_add_0_r. rewrite <- (pmod_refl mod_poly x).
                   rewrite <- pmod_mult_distr by auto. rewrite <- monomial_expand. rewrite pmod_twice; auto.
-                  f_equal. f_equal. lia. rewrite deg_x. pose proof (modulus_poly_deg_bounds); lia.
+                  f_equal. f_equal. lia. rewrite deg_x. rewrite mod_poly_deg_eq; lia.
                   rewrite Z.lxor_nonneg. solve_poly_bounds. }
                 unfold Int.xor. rewrite Hshl. rewrite !unsigned_repr by rep_lia. rewrite Hxor. simpl_repr.
                 rewrite upd_Znth_app2 by list_solve. 
@@ -211,7 +208,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
              --- entailer!.
              --- entailer!. rewrite !power_to_index_contents_Znth by lia. simpl. rewrite Hshl. simpl_repr.
                  assert (Hdeg: deg (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)) < deg mod_poly). {
-                   rewrite modulus_poly_deg. rewrite <- (poly_of_int_inv (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))).
+                   rewrite mod_poly_deg_log. rewrite <- (poly_of_int_inv (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))).
                    replace (Z.log2 fec_n) with 8 by (rewrite fec_n_eq; reflexivity).
                    rewrite poly_of_int_deg. 
                    assert (Hle: poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)) <= 255) by lia.
@@ -233,7 +230,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
       * (*Now need to prove [fec_2_power] part*) 
         assert (Hbound: 0 <= poly_to_int (monomial (Z.to_nat i) %~ mod_poly) < fec_n) by solve_poly_bounds. 
         forward.
-        -- entailer!. (*rewrite fec_n_eq; lia.*)
+        -- entailer!. 
         -- entailer!. rewrite Znth_app1 by solve_prop_length. rewrite power_to_index_contents_Znth by lia. solve_poly_bounds. 
         -- rewrite Znth_app1 by solve_prop_length. rewrite power_to_index_contents_Znth by lia.
            forward. forward. 
@@ -281,7 +278,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
         rewrite Hl. unfold index_to_power_contents. cancel.
   - (*Second loop: calculate inverses*) 
     pose proof field_size_fec_n as Hfieldsize. 
-    assert (Hmodpos: deg mod_poly > 0) by (pose proof modulus_poly_deg_bounds; rep_lia).
+    assert (Hmodpos: deg mod_poly > 0) by (rewrite mod_poly_deg_eq; rep_lia).
     assert (Hirred: irreducible mod_poly) by (apply (@f_irred _ _ mod_poly_PrimPoly)).
     assert (Hmodnotx : mod_poly <> x) by (apply (@Hnotx _ _ mod_poly_PrimPoly)).
     clear Hpospoly.

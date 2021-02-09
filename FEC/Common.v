@@ -11,6 +11,8 @@ Require Export ListMatrix.
 
 Set Bullet Behavior "Strict Subproofs".
 
+(** Facts about Integer Representations and Bounds*)
+
 (*Probably helpful more generally*)
 Lemma unsigned_repr: forall z,
   0 <= z < Int.modulus -> Int.unsigned (Int.repr z) = z.
@@ -29,16 +31,34 @@ Proof.
   rewrite Zmod_small; lia.
 Qed.
 
+Lemma Z_expand_bounds: forall a b c d n,
+  a <= b ->
+  c <= d ->
+  b <= n <= c ->
+  a <= n <= d.
+Proof.
+  intros. lia.
+Qed.
 
-(** Facts about [FEC_N and modulus] (hardcoded for now) *)
+Lemma Zmod_mod: forall (z1 z2 : Z),
+  0 <= z1 ->
+  0%Z < z2 ->
+  Z.to_nat (z1 mod z2) = ((Z.to_nat z1) mod (Z.to_nat z2))%nat.
+Proof.
+  intros z1 z2 Hz1 Hz2. replace z1 with (Z.of_nat (Z.to_nat z1)) at 1 by lia.
+  replace z2 with (Z.of_nat (Z.to_nat z2)) at 1 by lia.
+  rewrite <- mod_Zmod. lia. lia.
+Qed. 
 
-(*We keep fec_n, modulus, and (poly_of_int modulus) opaque, since for some reason when that is not the case,
-  Qed takes forever. This also gives the benefit that the proofs work for any valid value of fec_n and modulus; we
-  just have to prove these small and easy lemmas*)
+Lemma Int_eq_reflect: forall (a b : int),
+  reflect (a = b) (Int.eq a b).
+Proof.
+  intros. destruct (Int.eq a b) eqn : Heq. apply ReflectT. apply Int.same_if_eq; auto.
+  apply ReflectF. apply int_eq_false_e; auto.
+Qed.
 
-(*Other than [modulus_poly], [fec_n_eq], and [modulus_eq], these lemmas are generic and true no matter the
-  choice of (valid) FEC_N and modulus (the proofs will be different). The above 3 lemmas are not used in 
-  any of the VST proofs, which are generic *)
+
+(** Facts about [FEC_N and modulus] *)
 
 Definition fec_n : Z := proj1_sig (opaque_constant 256).
 Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
@@ -49,73 +69,55 @@ Definition modulus_eq : modulus = 285%Z := proj2_sig (opaque_constant _).
 Definition fec_max_h : Z := proj1_sig (opaque_constant 128).
 Definition fec_max_h_eq : fec_max_h = 128%Z := proj2_sig (opaque_constant _).
 
-Lemma fec_n_bound: 8 <= fec_n <= 256.
-Proof.
-rewrite fec_n_eq. lia.
-Qed.
+Hint Rewrite fec_n_eq : rep_lia.
+Hint Rewrite fec_max_h_eq : rep_lia.
+Hint Rewrite modulus_eq : rep_lia.
 
 Definition mod_poly : poly := proj1_sig (opaque_constant (poly_of_int modulus)).
 Definition mod_poly_eq : mod_poly = poly_of_int modulus := proj2_sig (opaque_constant _).
 
-(*not used in main proof - proof is generic*)
+(*not used in VST proofs - we only need to know that it is irreducible, primitive, and has degree 8*)
 Lemma modulus_poly: mod_poly = p256.
 Proof.
   rewrite mod_poly_eq. rewrite modulus_eq. reflexivity.
 Qed.
 
-Lemma modulus_poly_deg: deg mod_poly = Z.log2 (fec_n).
+Lemma mod_poly_deg_log: deg mod_poly = Z.log2 (fec_n).
 Proof.
   rewrite modulus_poly. replace (deg p256) with 8 by reflexivity. rewrite fec_n_eq.
   reflexivity. 
 Qed.
 
-Lemma modulus_poly_deg_pos: deg mod_poly > 0.
+Lemma mod_poly_deg_eq: deg mod_poly = 8.
 Proof.
-  rewrite modulus_poly_deg. rewrite fec_n_eq. replace (Z.log2 256) with 8 by reflexivity.
-  lia.
+  rewrite modulus_poly. reflexivity.
 Qed.
 
-Lemma modulus_poly_not_x: mod_poly <> x.
+Lemma mod_poly_deg_pos: deg mod_poly > 0.
 Proof.
-  intros. rewrite modulus_poly. intro C; inversion C. 
+  rewrite mod_poly_deg_eq; lia.
 Qed.
 
-Lemma modulus_poly_primitive: primitive mod_poly.
+Lemma mod_poly_not_x: mod_poly <> x.
+Proof.
+  rewrite modulus_poly. intro C; inversion C. 
+Qed.
+
+Lemma mod_poly_primitive: primitive mod_poly.
 Proof.
   rewrite modulus_poly. apply p256_primitive. 
 Qed.
 
 Instance mod_poly_PosPoly : PosPoly mod_poly := {
-  Hpos := modulus_poly_deg_pos;}.
+  Hpos := mod_poly_deg_pos;}.
 
 Instance mod_poly_PrimPoly : PrimPoly mod_poly := {
-  Hprim := modulus_poly_primitive;
-  Hnotx := modulus_poly_not_x}.
+  Hprim := mod_poly_primitive;
+  Hnotx := mod_poly_not_x}.
 
 (*Other results about degrees of mod_poly and other polynomials*)
 
-Lemma modulus_poly_deg_bounds: 3 <= deg mod_poly <= 8.
-Proof.
-  rewrite modulus_poly_deg. pose proof fec_n_bound.
-  destruct H. apply Z.log2_le_mono in H. apply Z.log2_le_mono in H0.
-  replace (Z.log2 8) with 3 in H by reflexivity. replace (Z.log2 256) with 8 in H0 by reflexivity. lia.
-Qed.
-
-Lemma fec_n_log2: Z.log2 (fec_n - 1) < Z.log2 (fec_n).
-Proof.
-  rewrite fec_n_eq.
-  replace (Z.log2 (256 - 1)) with 7 by reflexivity.
-  replace (Z.log2 256) with 8 by reflexivity. lia.
-Qed.
-
-(*
-Lemma modulus_poly_not_zero: mod_poly <> zero.
-Proof.
-  intro. pose proof modulus_poly_deg_pos. assert (deg zero < 0) by (rewrite deg_zero; reflexivity). rewrite H in H0.
-  lia.
-Qed.
-*)
-
+(*A very important lemma for bounds of polys represented by ints*)
 Lemma polys_deg_bounded: forall z,
   0 <= z < fec_n ->
   deg (poly_of_int z) < deg mod_poly.
@@ -123,47 +125,28 @@ Proof.
   intros. destruct (Z.eq_dec 0 z).
   - subst. assert (poly_of_int 0 = zero) by (rewrite poly_of_int_zero; lia). rewrite H0.
     assert (deg zero < 0) by (rewrite deg_zero; reflexivity).
-    pose proof (modulus_poly_deg_pos). lia.
-  - rewrite poly_of_int_deg. rewrite modulus_poly_deg.
-    assert (z <= fec_n - 1) by lia.
-    apply Z.log2_le_mono in H0. pose proof fec_n_log2. lia. lia.
+    rewrite mod_poly_deg_eq; lia.
+  - rewrite poly_of_int_deg by lia. rewrite mod_poly_deg_eq.
+    assert (z <= Z.pred(2 ^ 8)) by rep_lia.
+    apply Z.log2_le_mono in H0.
+    rewrite Z.log2_pred_pow2 in H0; lia.
 Qed.
 
-Lemma fec_n_pow_2: 2 ^ (Z.log2 (fec_n)) = fec_n.
-Proof.
-  rewrite fec_n_eq. replace (Z.log2 256) with 8 by reflexivity. reflexivity.
-Qed.
-
-(*should be possible to prove from previous lemma, but not easy to relate Z.pow and Nat.pow*)
-Lemma fec_n_pow_2_nat: (2%nat ^ (Z.to_nat (Z.log2 fec_n)))%nat = Z.to_nat (fec_n).
-Proof.
-  rewrite fec_n_eq.  
-  replace (Z.log2 256) with 8 by reflexivity. reflexivity.
-Qed.
-
+(*Also important: The verse of this*)
 Lemma modulus_poly_bound: forall p,
   deg p < deg mod_poly ->
   0 <= poly_to_int p < fec_n.
 Proof.
   intros. pose proof (poly_to_int_bounded p).
-  rewrite modulus_poly_deg in H.
-  assert (poly_to_int p + 1 <= 2 ^ (deg p + 1)) by lia.
-  assert (2 ^ (deg p + 1) <= 2 ^ (Z.log2 fec_n)). apply Z.pow_le_mono_r.
-  lia. lia. rewrite fec_n_pow_2 in H2. lia.
+  rewrite mod_poly_deg_eq in H.
+  assert (2 ^ (deg p + 1) <= fec_n). { replace fec_n with (2 ^8) by rep_lia.  
+  apply Z.pow_le_mono_r; lia. } lia.
 Qed. 
-
-(*
-Lemma modulus_poly_irred: irreducible mod_poly.
-Proof.
-  apply modulus_poly_primitive.
-Qed.
-*)
 
 Lemma field_size_fec_n: Z.of_nat (field_size mod_poly) = fec_n - 1.
 Proof.
-  unfold field_size. rewrite modulus_poly_deg.
-  rewrite fec_n_pow_2_nat. pose proof fec_n_bound.  lia.
-Qed.
+  unfold field_size. rewrite mod_poly_deg_eq. rewrite fec_n_eq. reflexivity.
+Qed. 
 
 Lemma modulus_poly_monomial: forall n,
   0 < poly_to_int ((monomial n) %~ mod_poly).
@@ -172,9 +155,10 @@ Proof.
   eapply f_irred. apply mod_poly_PrimPoly. apply Hnotx. apply Hpos.
 Qed.
 
-Lemma modulus_pos: 0 <= modulus < Int.modulus.
+Lemma monomial_mod_nonzero: forall (n: nat),
+  monomial n %~ mod_poly <> zero.
 Proof.
-  rewrite modulus_eq. rep_lia.
+  intros n Hz. pose proof modulus_poly_monomial n. rewrite <- poly_to_int_zero_iff in Hz. lia.
 Qed.
 
 (** Definition of lookup tables *)
@@ -193,7 +177,18 @@ Definition inverse_contents bound :=
     (map Vint (map Int.repr (prop_list (fun z => 
       poly_to_int (poly_inv mod_poly (poly_of_int z))) bound))).
 
-Ltac solve_prop_length := try (unfold power_to_index_contents); try(unfold inverse_contents); rewrite? Zlength_map; rewrite prop_list_length; lia.
+Hint Rewrite Zlength_map : list_solve_rewrite. 
+
+(*Use this here, so we don't define it in [FECTactics]*)
+Ltac solve_prop_length :=
+  repeat lazymatch goal with
+  | [ |- context[ (power_to_index_contents ?b)]] => unfold power_to_index_contents
+  | [ |- context [ index_to_power_contents]] => unfold index_to_power_contents
+  | [ |- context [ (inverse_contents ?b) ]] => unfold inverse_contents
+  | [ |- context [ Zlength (map ?f ?l) ]] => rewrite !Zlength_map
+  | [ |- context [ Zlength (prop_list ?f ?z) ]] => rewrite prop_list_length
+  | [ |- _ ] => list_solve
+  end; try rep_lia; auto.
 
 Lemma power_to_index_contents_plus_1: forall bound,
   0 <= bound ->
@@ -219,12 +214,9 @@ Proof.
   rewrite prop_list_Znth. reflexivity. lia.
 Qed. 
 
-Hint Rewrite Zlength_map : list_solve_rewrite. 
-
 Lemma index_to_power_contents_length: Zlength (index_to_power_contents) = fec_n.
 Proof.
-  pose proof fec_n_bound.
-  unfold index_to_power_contents. solve_prop_length.
+  solve_prop_length.
 Qed.
 
 Lemma index_to_power_contents_Znth: forall i,
@@ -250,9 +242,7 @@ Proof.
   rewrite prop_list_Znth. reflexivity. lia.
 Qed.
 
-(*
-Definition F := qpoly_fieldType modulus_poly_deg_pos modulus_poly_irred.
-*)
+(** Field and Matrix Representations*)
 
 Definition F := @qpoly_fieldType mod_poly mod_poly_PosPoly mod_poly_PrimPoly.
 
@@ -319,7 +309,7 @@ Proof.
     rewrite (sublist_split 0 i); try lia. 
     rewrite (sublist_split i (i+1)); try lia. rewrite sublist_len_1; try lia. auto. } 
     rewrite H0 at 4. rewrite !whole_Zlength_app. simpl. replace (Zlength (Znth i mx)) with (Zlength l).
-    (*why can't lia solve this?*) list_solve.
+    f_equal. f_equal. rewrite Z.add_0_r. reflexivity. (*Why doesn't lia work*)
 Qed.
 
 Lemma whole_Zlength_nonneg: forall l,
@@ -403,19 +393,13 @@ Proof.
   rewrite (whole_Zlength_sublist _ m n); try lia. assumption.
 Qed.
 
-(*Matrix accesses are within bounds - this is a bit annoying due to the multiplication, can't just use lia*)
+(*Matrix accesses are within bounds*)
 Lemma matrix_bounds_within: forall m n i j,
   0 <= i < m ->
   0 <= j < n ->
   0 <= (i * n) + n - 1 - j < m * n.
 Proof.
-  intros m n i j Him Hjn. split.
-  - assert (1 + j <= i * n + n). { replace (i * n + n) with ((i+1) * n) by lia.
-    assert (1 + j <= n) by lia. eapply Z.le_trans. apply H. replace n with (1 * n) at 1 by lia.
-    apply Z.mul_le_mono_nonneg_r; lia. } lia.
-  - assert (i * n + n - 1 < m * n). { 
-    assert (i * n + n <= m * n). { replace (i * n + n) with ((i+1)*n) by lia.
-    apply Z.mul_le_mono_nonneg_r; lia. } lia. } lia.
+  intros m n i j Him Hjn. nia.
 Qed.
 
 (*We want the opposite direction: for some 0 <= z < m * n, we want i and j which are the indices in the matrix*)
@@ -436,6 +420,7 @@ Proof.
   rewrite Zmod_eq; lia.
 Qed.
 
+(*The analogue of [flatten_mx_Znth] for updating an entry in the matrix*)
 Lemma flatten_mx_set: forall {m n} (mx: matrix F) i j q,
   wf_matrix mx m n ->
   0 <=i < m ->
@@ -476,51 +461,5 @@ Proof.
 Qed.
 
 
-Lemma qpoly_int_bound: forall (q: qpoly mod_poly),
-  0 <= poly_to_int (proj1_sig q) <= Byte.max_unsigned.
-Proof.
-  intros q. destruct q. simpl.
-  apply modulus_poly_bound in l.
-  pose proof fec_n_bound. rep_lia.
-Qed. 
 
-(*TODO: move*)
-Lemma poly_to_qpoly_unfold: forall (f: poly) (Hpos: PosPoly f) (a: qpoly f),
-  poly_to_qpoly f (proj1_sig a) = a.
-Proof.
-  intros. unfold poly_to_qpoly.
-  destruct a. simpl. exist_eq. apply pmod_refl; auto.
-Qed.
 
-Lemma Z_expand_bounds: forall a b c d n,
-  a <= b ->
-  c <= d ->
-  b <= n <= c ->
-  a <= n <= d.
-Proof.
-  intros. lia.
-Qed.
-
-Lemma Zmod_mod: forall (z1 z2 : Z),
-  0 <= z1 ->
-  0%Z < z2 ->
-  Z.to_nat (z1 mod z2) = ((Z.to_nat z1) mod (Z.to_nat z2))%nat.
-Proof.
-  intros z1 z2 Hz1 Hz2. replace z1 with (Z.of_nat (Z.to_nat z1)) at 1 by lia.
-  replace z2 with (Z.of_nat (Z.to_nat z2)) at 1 by lia.
-  rewrite <- mod_Zmod. lia. lia.
-Qed. 
-
-(*TODO: move to COmmon*)
-Lemma Int_eq_reflect: forall (a b : int),
-  reflect (a = b) (Int.eq a b).
-Proof.
-  intros. destruct (Int.eq a b) eqn : Heq. apply ReflectT. apply Int.same_if_eq; auto.
-  apply ReflectF. apply int_eq_false_e; auto.
-Qed.
-
-Lemma monomial_mod_nonzero: forall (n: nat),
-  monomial n %~ mod_poly <> zero.
-Proof.
-  intros n Hz. pose proof modulus_poly_monomial n. rewrite <- poly_to_int_zero_iff in Hz. lia.
-Qed.

@@ -13,6 +13,7 @@ Poly/PrimitiveFacts.v
 IntFacts.v
 Poly/IntPoly.v
 PropList.v
+Matrix/CommonSSR.v
 Matrix/Gaussian.v
 Matrix/ListMatrix.v
 Matrix/PolyField.v

@@ -1,7 +1,7 @@
 Require Import VST.floyd.proofauto.
 (*Functions for working with arrays and memory in VST that are generic*)
 
-(*TODO: probably move these*)
+(*These first two are not directly related to VST but are used in the later proofs*)
 Lemma Zlength_concat: forall {A: Type} (n m : Z) (l: list (list A)),
   Zlength l = n ->
   Forall (fun x => Zlength x = m) l ->
@@ -21,7 +21,6 @@ Proof.
   intros z1 z2 z3 Hz1 Hz12. rewrite Z.lt_add_lt_sub_r in Hz12. lia.
 Qed.
 
-(*TODO: move*)
 Lemma typed_false_not_true: forall a b, typed_false a b -> ~(typed_true a b).
 Proof.
   intros a b F T.
@@ -35,6 +34,7 @@ Context {Comp : compspecs}.
 
 (** Working with pointers that we treat as arrays*)
 
+(*For simplifying pointer arithmetic*)
 Lemma sem_sub_pi_offset: forall ty s off n,
   isptr s ->
   complete_type cenv_cs ty = true ->
@@ -53,7 +53,8 @@ Proof.
   rewrite <- (Ptrofs.neg_repr). reflexivity.
 Qed.
 
-(*Useful utility lemmas from example*)
+(*Indexing into arrays*)
+
 Lemma arr_field_compatible0 : forall t size p i, 
   field_compatible (tarray t size) [] p ->
   0 <= i <= size ->
@@ -94,7 +95,7 @@ Proof.
   simpl. auto. exfalso. apply n. apply arr_field_compatible; auto.
 Qed.
 
-(*copied from previous - TODO: see what we need*)
+(*Useful for proving that pointers are valid for conditionals*)
 Lemma isptr_denote_tc_test_order: forall p1 p2,
   isptr p1 ->
   isptr p2 ->
@@ -144,6 +145,14 @@ Proof.
   destruct (peq b0 b1); try discriminate.
   subst.
   apply peq_true.
+Qed.
+
+Lemma sameblock_offset_val: forall p n1 n2,
+  isptr p ->
+  sameblock (offset_val n1 p) (offset_val n2 p) = true.
+Proof.
+  intros p n1 n2 Hptr. eapply sameblock_trans. eapply sameblock_symm. 
+  all: apply isptr_offset_val_sameblock; auto.
 Qed.
 
 (*Transform the "if" condition in a pointer comparison into something usable (for the gt case)*)
@@ -210,7 +219,6 @@ Proof.
   intros. erewrite <- data_at_singleton_array_eq. 2: reflexivity. entailer!.
 Qed.
 
-
 (*The crucial lemma for showing the relationship between 1D and 2D arrays: if we move over 1 array (in the 2D array)
   or m places (in the 1D array), the result is still compatible*)
 Lemma field_compatible0_1d_2d: forall n m t p,
@@ -267,6 +275,7 @@ Proof.
   repeat(split; auto). apply H. split; auto. apply H; split; auto. lia. lia.
 Qed.
 
+(*The full relationship between 1D and 2D arrays*)
 Lemma data_at_2darray_concat : forall sh t n m (al : list (list (reptype t))) p,
   Zlength al = n ->
   Forall (fun l => Zlength l = m) al ->

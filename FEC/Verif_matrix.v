@@ -409,7 +409,7 @@ Proof.
     { forward. entailer!. replace (i) with m by lia. cancel. } }
   { (*start of second part: add kth row to all other rows*)
     forward. (*simplify r*) pointer_to_offset s.
-    (*can't use [forward_for_simple_bound] because it cases i to a tuchar*)
+    (*can't use [forward_for_simple_bound] because it casts i to a tuchar*)
     remember [temp _r (offset_val (k * n + n - 1) s); temp _k (Vint (Int.repr k)); 
               temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
               gvars gv] as LOCALS.
@@ -589,9 +589,10 @@ Proof.
           { (*pointer access is valid*) entailer!. rewrite (@flatten_mx_Znth m n); [ | solve_wf | lia | lia].
             simpl_repr. }
           { entailer!. solve_offset. }
-          { rewrite (@flatten_mx_Znth m n); [| solve_wf | lia |lia ].
-            pose proof (Hpolybound:= (qpoly_int_bound (get (F:=F) (all_lc_one_rows_partial (F:=F) 
-                  (gauss_all_steps_rows_partial (F:=F) mx m m) i) i i))). unfold FIELD_TABLES. Intros.
+          { rewrite (@flatten_mx_Znth m n); [| solve_wf | lia |lia ]. (*need for "forward"*)
+            assert (Hpolybound: 0 <= poly_to_int (proj1_sig (get (F:=F) (all_lc_one_rows_partial (F:=F) 
+              (gauss_all_steps_rows_partial (F:=F) mx m m) i) i i)) <= Byte.max_unsigned) by solve_poly_bounds.
+            unfold FIELD_TABLES. Intros.
             forward.
             { entailer!. }
             { entailer!. rewrite inverse_contents_Znth; [| solve_poly_bounds]. simpl. 

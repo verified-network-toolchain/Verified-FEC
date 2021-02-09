@@ -31,20 +31,6 @@ Context (f: poly) `{Hprim: PrimPoly f}.
 
 Definition field_size := (2 ^ (Z.to_nat (deg f)) - 1)%nat.
 
-(*A useful fact about modding by a primitive poly*)
-
-Lemma monomial_add_field_size: forall n,
-  (monomial n) %~ f = monomial (n + field_size) %~ f.
-Proof.
-  intros. rewrite <- monomial_exp_law. rewrite pmod_mult_distr; try assumption.
-  destruct Hprim. 
-  unfold primitive in Hprim0. destruct Hprim0. destruct H0. destruct H1.
-  rewrite divides_pmod_iff in H1. unfold divides_pmod in H1. unfold field_size.
-  unfold nth_minus_one in H1. rewrite <- pmod_cancel in H1. rewrite H1. 
-  rewrite <- pmod_mult_distr. rewrite poly_mult_1_r. reflexivity. all: try assumption.
-  left. apply f_nonzero; assumption.
-Qed.
-
 (*we want to prove that x is a primitive element of GF(2)/(f) - ie, for any nonzero
   poly p with degree smaller than deg f,
   there is some 0 <= i < 2^(deg f) - 1 such that (x^i = p) mod f*)
@@ -334,6 +320,23 @@ Proof.
   rewrite pmod_mult_distr by auto.
   rewrite (pmod_mult_distr f (monomial (field_size * (j / field_size)))) by auto. rewrite !H.
   rewrite !poly_mult_1_l. rewrite !pmod_twice by auto. rewrite Hmod. reflexivity.
+Qed.
+
+(*In particular, we can add the field size*)
+
+Lemma monomial_add_field_size: forall n,
+  (monomial n) %~ f = monomial (n + field_size) %~ f.
+Proof.
+  intros. apply monomial_powers_eq_mod. pose proof field_size_pos.
+  rewrite <- Nat.add_mod_idemp_r by lia. rewrite Nat.mod_same by lia. f_equal. lia.
+Qed.
+
+(*One other useful lemma*)
+Lemma poly_to_qpoly_unfold: forall (f: poly) (Hpos: PosPoly f) (a: qpoly f),
+  poly_to_qpoly f (proj1_sig a) = a.
+Proof.
+  intros. unfold poly_to_qpoly.
+  destruct a. simpl. exist_eq. apply pmod_refl; auto.
 Qed.
 
 End Primitive.

@@ -4,10 +4,6 @@ Require Import Common.
 Require Import CommonVST.
 Require Import Poly.
 
-Hint Rewrite fec_n_eq : rep_lia.
-Hint Rewrite fec_max_h_eq : rep_lia.
-Hint Rewrite modulus_eq : rep_lia.
-
 (*Solves goals of form ?p <> zero*)
 Ltac solve_poly_zero :=
   let N := fresh in intro N;
@@ -196,7 +192,3 @@ Ltac pointer_to_offset_with p e :=
     assert_PROP (force_val (sem_add_ptr_int t s a1 a2) = offset_val n p) as N
     by (entailer!; solve_offset); rewrite N; clear N; rewrite Eq; clear Eq
   end.
-
-
-
-

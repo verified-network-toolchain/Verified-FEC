@@ -13,6 +13,7 @@ Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import Gaussian.
 Require Import PropList.
+Require Import CommonSSR.
 
 
 Lemma sublist_split_Zlength: forall {A} mid (l: list A),
@@ -34,6 +35,17 @@ Proof.
   have [Hin | Hout] : mid <= Zlength l1 \/ mid > Zlength l1 by lia.
   - rewrite !Zlength_sublist; lia.
   - rewrite !sublist_same_gen; lia.
+Qed.
+
+Lemma upd_Znth_twice: forall {A: Type} `{H: Inhabitant A} (l: list A) r x y,
+  upd_Znth r (upd_Znth r l x) y = upd_Znth r l y.
+Proof.
+  move => A Hin l r x y. have [Hout | Hin']: ((0 > r \/ r >= Zlength l) \/ 0 <= r < Zlength l) by lia.
+  - by rewrite !upd_Znth_out_of_range.
+  - apply Znth_eq_ext. list_solve. move => i Hilen.
+    have [Hir | Hir] : (i =r \/ i <> r) by lia.
+    + subst. rewrite !upd_Znth_same; list_solve.
+    + rewrite !upd_Znth_diff; list_solve.
 Qed.
 
 (*Convert bounded Z to ordinal*)
@@ -185,26 +197,14 @@ Proof.
   subst.  rewrite upd_Znth_same; try lia. rewrite Znth_map. by [].
   rewrite Hin => [//|]. by apply Znth_In; lia. rewrite upd_Znth_diff => [//|||//]. all: lia.
 Qed. 
-
+(*
 Lemma cat_app: forall {A: Type} (l1 l2 : list A),
   l1 ++ l2 = (l1 ++ l2)%list.
 Proof.
   move => A l1 l2. elim : l1 => [// | h t IH /=].
   by rewrite IH.
 Qed.
-
-(*TODO: move*)
-Lemma upd_Znth_twice: forall {A: Type} `{H: Inhabitant A} (l: list A) r x y,
-  upd_Znth r (upd_Znth r l x) y = upd_Znth r l y.
-Proof.
-  move => A Hin l r x y. have [Hout | Hin']: ((0 > r \/ r >= Zlength l) \/ 0 <= r < Zlength l) by lia.
-  - by rewrite !upd_Znth_out_of_range.
-  - apply Znth_eq_ext. list_solve. move => i Hilen.
-    have [Hir | Hir] : (i =r \/ i <> r) by lia.
-    + subst. rewrite !upd_Znth_same; list_solve.
-    + rewrite !upd_Znth_diff; list_solve.
-Qed.
-
+*)
 Lemma scalar_mul_row_plus_1_aux: forall mx r k b,
   0 <= r < Zlength mx ->
   0 <= b < Zlength (Znth r mx) ->
@@ -249,24 +249,9 @@ Qed.
 
 End ScMul.
 
-(*Version of [iota] for nonnegative integers - TODO move*)
+(*Version of [iota] for nonnegative integers*)
 Definition Ziota (x len : Z) :=
   map (fun y => Z.of_nat y) (iota (Z.to_nat x) (Z.to_nat len)).
-
-Lemma size_length: forall {A : Type} (l: list A),
-  size l = Datatypes.length l.
-Proof.
-  move => A l. elim: l => [//|h t IH /=].
-  by rewrite IH.
-Qed.
-
-Lemma in_mem_In: forall (l: list nat) x,
-  x \in l <-> In x l.
-Proof.
-  move => l x. elim: l => [//| h t IH /=].
-  rewrite in_cons -IH eq_sym. split => [/orP[/eqP Hx | Ht]| [Hx | Hlt]]. by left. by right.
-  subst. by rewrite eq_refl. by rewrite Hlt orbT.
-Qed.
 
 Lemma Zlength_iota: forall a b,
   Zlength (iota a b) = Z.of_nat b.
@@ -403,7 +388,7 @@ Qed.
 
 End AllColsOne.
 
-(*Combine two lists with a pairwise binary operation - TODO: move probably*)
+(*Combine two lists with a pairwise binary operation *)
 Fixpoint combineWith {X Y Z: Type} (l1 : list X) (l2: list Y) (f: X -> Y -> Z) : list Z :=
   match (l1, l2) with
   | (h1 :: t1, h2 :: t2) => f h1 h2 :: combineWith t1 t2 f
@@ -838,15 +823,7 @@ Proof.
 Qed.
 
 End GaussFull.
-(*
-Lemma Z_range_le_le_dec: forall x y z : Z,
-  { x <= y <= z } + {~ (x <= y <= z)}.
-Proof.
-  move => x y z. case : (Z_le_lt_dec x y) => [Hxy | Hxy].
-  - case : (Z_le_lt_dec y z) => [Hyz | Hyz]. left. lia. right. lia.
-  - right. lia.
-Qed.
-*)
+
 (*We need a way to specify that a list matrix m satisfies [strong_inv] without using dependent types*)
 Definition strong_inv_list m n (mx: matrix) (r: Z) : Prop :=
   match (range_le_lt_dec 0 r m) with

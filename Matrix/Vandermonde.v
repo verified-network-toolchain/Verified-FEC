@@ -4,6 +4,7 @@ Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.poly.
 Require Import LinIndep.
 Require Import Gaussian. (*TODO: maybe move summation things to common file*)
+Require Import CommonSSR.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -20,17 +21,6 @@ Local Open Scope ring_scope.
 Definition vandermonde (m n: nat) (l: list F) : 'M[F]_(m, n) :=
   \matrix_(i < m, j < n) (nth 0 l j) ^+ i.
 
-(*TODO: move*)
-(*Not sure why this is not included, also I couldn't get {in l, P} to work*)
-Lemma all_in: forall {A: eqType} (l: seq A) (p: pred A),
-  all p l <-> forall x, x \in l -> p x.
-Proof.
-  move => A l. elim: l =>[p // | h t IH p /=].
-  split. move => /andP[Hh Htl x]. rewrite in_cons => /orP[/eqP Hxh | Hxt].
-  by subst. by apply IH.
-  move => Hall. rewrite Hall. rewrite IH. move => x Hint. apply Hall. by rewrite in_cons Hint orbT.
-  by rewrite in_cons eq_refl.
-Qed.
 
 (*Proof idea: suffices to show rows linearly independent. If c1r1 + c2r2 +... + cnrn = 0,
   then poly c1 + c2x + ... + cnx^(n-1) has roots at each elt in column. Since there are n columns,
@@ -239,16 +229,6 @@ Proof.
   have: nth y (drop n l) 0 = h by rewrite -Hdrop /=. rewrite nth_drop addn0. by move->.
 Qed. 
 
-(*TODO: move*)
-Lemma ltn_leq_total: forall n m,
-  (n < m) || (m <= n).
-Proof.
-  move => m n.   
-  pose proof (ltn_total m n). move : H => /orP[/orP[Hlt | Heq] | Hgt].
-  + by rewrite Hlt.
-  + by rewrite (leq_eqVlt n) eq_sym Heq orbT.
-  + by rewrite (leq_eqVlt n) Hgt !orbT.
-Qed. 
 
 Lemma rem_nth_subseq: forall {A: eqType} (l: seq A) (n: nat) (y: A),
   subseq (rem_nth l n) l.
@@ -311,12 +291,6 @@ Qed.
   Finally, p3 is a vandermonde matrix, so it is invertible. Since all of these transformations preserve
   invertibility, p is also invertible. *)
 
-Lemma pred_lt: forall n, 0 < n -> n.-1 < n.
-Proof.
-  move => n Hn. by rewrite ltn_predL.
-Qed.
-
-Definition pred_ord (n: nat) (Hn: 0 < n) : 'I_n := Ordinal (pred_lt Hn).
 
 Definition scalar_mult_last_inv {m n} (Hn: 0 < n) (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
   foldr (fun (r: 'I_m) acc => sc_mul acc (A r (pred_ord Hn))^-1 r) A (ord_enum m).

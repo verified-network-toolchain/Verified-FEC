@@ -5,108 +5,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-
-Ltac eq_subst H := move : H => /eqP H; subst.
-
-(*Generic helper lemmas*)
-Lemma rwN: forall [P: Prop] [b: bool], reflect P b -> ~ P <-> ~~ b.
-Proof.
-  move => P b Hr. split. by apply introN. by apply elimN.
-Qed.
-
-Lemma ltn_total: forall (n1 n2: nat),
-  (n1 < n2) || (n1 == n2) || (n2 < n1).
-Proof.
-  move => n1 n2. case: (orP (leq_total n1 n2)); rewrite leq_eqVlt.
-  - move => le_n12; case (orP le_n12) => [Heq | Hlt].  rewrite Heq /=.
-    by rewrite orbT orTb. by rewrite Hlt !orTb.
-  - move => le_n21; case (orP le_n21) => [Heq | Hlt]. rewrite eq_sym Heq /=.
-    by rewrite orbT orTb. by rewrite Hlt !orbT.
-Qed. 
-
-Lemma ltn_leq_trans: forall [n m p : nat], m < n -> n <= p -> m < p.
-Proof.
-  move => m n p Hmn. rewrite leq_eqVlt => /orP[Hmp | Hmp]. eq_subst Hmp. by [].
-  move : Hmn Hmp. apply ltn_trans.
-Qed.
-
-(*exists in the library but this version is move convenient*)
-Lemma leq_both_eq: forall m n,
-  ((m <= n) && (n <= m)) = (m == n).
-Proof.
-  move => m n. case (orP (ltn_total m n)) => [/orP[Hlt | Heq] | Hgt].
-  - have : ( m == n = false). rewrite ltn_neqAle in Hlt. move : Hlt.
-    by case: (m == n). move ->. 
-    have: (n <= m = false). rewrite ltnNge in Hlt. move : Hlt.
-    by case : (n <= m). move ->. by rewrite andbF.
-  - by rewrite Heq leq_eqVlt Heq orTb leq_eqVlt eq_sym Heq orTb.
-  - have : ( m == n = false). rewrite ltn_neqAle in Hgt. move : Hgt.
-    rewrite eq_sym. by case: (m == n). move ->. 
-    have: (m <= n = false). rewrite ltnNge in Hgt. move : Hgt.
-    by case : (m <= n). move ->. by rewrite andFb.
-Qed.
-
-Lemma ltn_pred: forall m n,
-  0 < n ->
-  (m < n) = (m <= n.-1).
-Proof.
-  move => m n Hpos. have: n.-1 == (n - 1)%N by rewrite eq_sym subn1. move => /eqP Hn1. by rewrite Hn1 leq_subRL.
-Qed.
-
-(*If an 'I_m exists, then 0 < m*)
-Lemma ord_nonzero {m} (r: 'I_m) : 0 < m.
-Proof.
-  case : r. move => m'. case (orP (ltn_total m 0)) => [/orP[Hlt | Heq] | Hgt].
-  - by [].
-  - by eq_subst Heq.
-  - by [].
-Qed.
-
-Lemma remove_widen: forall {m n} (x: 'I_m) (H: m <= n),
-  nat_of_ord (widen_ord H x) = nat_of_ord x.
-Proof.
-  by [].
-Qed.
-
-Lemma rem_impl: forall b : Prop,
-  (true -> b) -> b.
-Proof.
-  move => b. move => H. by apply H.
-Qed.
-
-(*Results about [find] that mostly put the library lemmas into a more convenient form*)
-
-Lemma find_iff: forall {T: eqType} (a: pred T) (s: seq T) (r : nat) (t: T),
-  r < size s ->
-  find a s = r <-> (forall x, a (nth x s r)) /\ forall x y, y < r -> (a (nth x s y) = false).
-Proof.
-  move => T a s r t Hsz. split.
-  - move => Hfind. subst. split. move => x. apply nth_find. by rewrite has_find.
-    move => x. apply before_find.
-  - move => [Ha Hbef]. have Hfind := (findP a s). case : Hfind.
-    + move => Hhas. have H := (rwN (@hasP T a s)). rewrite Hhas in H.
-      have:~ (exists2 x : T, x \in s & a x) by rewrite H. move : H => H{H} Hex.
-      have : nth t s r \in s by apply mem_nth. move => Hnthin. 
-      have: (exists2 x : T, x \in s & a x) by exists (nth t s r). by [].
-    + move => i Hisz Hanth Hprev.
-      have Hlt := ltn_total i r. move : Hlt => /orP[H1 | Hgt].
-      move : H1 => /orP[Hlt | Heq].
-      * have : a (nth t s i) by apply Hanth. by rewrite Hbef.
-      * by eq_subst Heq.
-      * have : a (nth t s r) by apply Ha. by rewrite Hprev.
-Qed.
-
-(*Similar for None case*)
-Lemma find_none_iff: forall {T: eqType} (a: pred T) (s: seq T),
-  find a s = size s <-> (forall x, x \in s -> ~~ (a x)).
-Proof.
-  move => T a s. split.
-  - move => Hfind. have: ~~ has a s. case Hhas : (has a s). 
-    move : Hhas. rewrite has_find Hfind ltnn. by []. by [].
-    move => Hhas. by apply (elimT hasPn).
-  - move => Hnotin. apply hasNfind. apply (introT hasPn). move => x. apply Hnotin. 
-Qed.
-
+Require Import CommonSSR.
 
 Section Gauss.
 
@@ -117,7 +16,6 @@ Local Open Scope ring_scope.
 (*Preliminaries*)
 
 (*get elements of identity matrix*)
-(*TODO:is there a better way to get the field F in there?*)
 Lemma id_A : forall {n} (x y : 'I_n),
   (1%:M) x y = if x == y then 1 else (GRing.zero F).
 Proof.
@@ -486,7 +384,7 @@ Proof.
       move => Hfst. f_equal. have : (nat_of_ord (Sub (lead_coef_nat A row) Hlt) == nat_of_ord c)
       by rewrite -Hfst. move => Hnatord. 
       have : (Sub (lead_coef_nat A row) Hlt == c) by []. by move => /eqP Heq.
-Qed. (*TODO: maybe try to reduce duplication between this and previous*)
+Qed. 
 
 Lemma lead_coef_none_iff: forall {m n} (A: 'M[F]_(m, n)) (row: 'I_m),
   lead_coef A row = None <-> (forall (x : 'I_n),  A row x = 0).
@@ -1595,14 +1493,6 @@ Proof.
   apply (row_equivalent_trans IH). apply Hin.
 Qed.
 
-(*TODO: move*)
-Lemma widen_ord_inj: forall {m n: nat} (H: m <= n) x y, widen_ord H x = widen_ord H y -> x = y.
-Proof.
-  move => m n H x y Hw. apply (elimT eqP).
-  have: nat_of_ord (widen_ord H x) == x by []. have: nat_of_ord (widen_ord H y) == y by [].
-  move => /eqP Hy /eqP Hx. rewrite Hw in Hx. have: nat_of_ord x == nat_of_ord y by rewrite -Hx -Hy. by [].
-Qed.
-
 Lemma row_mx_fn_inj: forall {m} (r': 'I_m) (j: 'I_m) (Hj : r' <= j),
   injective (fun x : 'I_r'.+1 => if x < r' then widen_ord (ltn_ord r') x else j).
 Proof.
@@ -1728,7 +1618,6 @@ Proof.
   - by rewrite addn0.
   - have /eqP Hab1 : (a + b.+1 == a.+1 + b)%N by rewrite -(addn1 b) -(addn1 a) -(addnA a 1%N b) (addnC 1%N b).
     rewrite Hab1. rewrite insubT.
-    (*TODO: may want separate lemma*)
     have Hinv1 : (gauss_invar (gauss_one_step_restrict A (Sub a Ha) Hmn) a.+1 a.+1)
     by apply gauss_one_step_restrict_invar. 
     (*In this case: need to know if a.+1 = m*)
@@ -1780,13 +1669,8 @@ Qed.
 
 Definition gauss_all_steps_restrict_end {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
   gauss_all_steps_restrict_aux A Hmn r (m - r).
-  (*foldl (fun A' r' => match (insub r') with
-                       | Some r'' => gauss_one_step_restrict A' r'' Hmn
-                       | None => A'
-                      end) A (iota r (m - r)) .*)
 
 (*Equivalence with full version*)
-(*TODO: see if we need r <= m or if r < m is OK*)
 Lemma gauss_all_steps_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat) (Hr: r < m),
   gauss_invar A r r ->
   strong_inv A Hmn (Ordinal Hr) ->
@@ -1839,10 +1723,6 @@ Qed.
   this is equivalent*)
 Definition gauss_all_steps_restrict_beg {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
   gauss_all_steps_restrict_aux A Hmn 0 r.
-  (*foldl (fun A' r' => match (insub r') with
-                       | Some r'' => gauss_one_step_restrict A' r'' Hmn
-                       | None => A'
-                      end) A (iota 0 r) .*)
 
 Lemma gauss_all_steps_restrict_beg_unfold: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) (Hr: r < m),
   gauss_all_steps_restrict_beg A Hmn (r.+1) = gauss_one_step_restrict (gauss_all_steps_restrict_beg A Hmn r) (Ordinal Hr) Hmn.
@@ -1887,7 +1767,7 @@ Qed.
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
   which oeprates on the result of gaussian elimination*)
 
-(*In this case, we know all the leading coefficients are at position r (ror row r). We provide a 
+(*In this case, we know all the leading coefficients are at position r (for row r). We provide a 
   generic upper bound because the last row is not needed*)
 Definition mk_identity {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (b: nat) :=
   foldr (fun x acc => sc_mul acc (A x (widen_ord Hmn x))^-1 x) A (pmap insub (iota 0 b)).

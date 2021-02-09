@@ -2,6 +2,7 @@ From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.matrix.
 Require Import mathcomp.algebra.ssralg.
 Require Import Gaussian.
+Require Import CommonSSR.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -255,7 +256,7 @@ Proof.
   apply sum_if. } by [].
 Qed.
 
-(*Results about row echelon form. TODO: move to Gaussian.v probably.*)
+(*Results about row echelon form.*)
 (*These are pretty simple applications of results proved in Gaussian.v already*)
 
 (*For an n x n matrix in row echelon form, it is either a diagonal matrix with all nonzero entries along the
@@ -356,52 +357,6 @@ Proof.
   move => /eqP Hord. by apply ord_inj.
 Qed. 
 
-(*TODO: move*)
-Lemma ltn_add2rl: forall n1 n2 m1 m2,
-  n1 < n2 ->
-  m1 < m2 ->
-  n1 + m1 < n2 + m2.
-Proof.
-  move => n1 n2 m1 m2 Hn Hm. have Hleft: n1 + m1 < n1 + m2 by rewrite ltn_add2l.
-  have Hright: n1 + m2 < n2 + m2 by rewrite ltn_add2r. by apply (ltn_trans Hleft Hright).
-Qed.
-
-(*A few lemmas for working with division by 2 (which arises because we only want to swap the first m/2 rows)*)
-
-Lemma div_lt_bound: forall (n: nat),
-  (n < n./2 + 1) = (n == 0)%N.
-Proof.
-  move => n. elim : n => [//= | n IH /=].
-  rewrite -(addn1 n) ltn_add2r. rewrite uphalf_half. case  Hodd: (odd n) => [/=|/=].
-  - rewrite addnC IH. case Hn0 : (n == 0)%N. by eq_subst Hn0.
-    rewrite addn1. by [].
-  - rewrite add0n. have->: n < n./2 = false. rewrite -divn2.
-    case Hn : (n < n %/ 2) =>[|//]. have Hnle : (n %/ 2 <= n) by apply leq_div.
-    have: (n < n) by apply (ltn_leq_trans Hn Hnle). by rewrite ltnn.
-    by rewrite addn1.
-Qed.
-
-Lemma sub_half_lower: forall (n: nat),
-  n./2 <= n - n./2.
-Proof.
-  move => n. rewrite leq_subRL. rewrite addnn -{2}(odd_double_half n).
-  case : (odd n) =>[/=|/=]. by rewrite addnC addn1 leqnSn. by rewrite add0n leqnn.
-  rewrite -divn2. apply leq_div.
-Qed.
-
-Lemma sub_half_upper: forall n,
-  n - n./2 <= n./2 + 1.
-Proof.
-  move => n. rewrite leq_subLR addnA addnn -{1}(odd_double_half n) addnC leq_add2l.
-  by case (odd n).
-Qed.
-
-Lemma div_2_pos: forall n,
-  1 < n ->
-  0 < n./2.
-Proof.
-  move => n H1n. by rewrite -divn2 divn_gt0.
-Qed.
 
 (*The lemma we need (which ensures that we will not repeat rows when swapping*)
 Lemma rev_ord_one_small: forall {m} (i: 'I_m), 

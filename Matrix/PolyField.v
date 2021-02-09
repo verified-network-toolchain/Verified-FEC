@@ -10,6 +10,7 @@ Set Bullet Behavior "Strict Subproofs".
 
 Require Import PolyMod.
 Require Import PrimitiveFacts.
+Require Import CommonSSR.
 
 (*Now we define the (mathcomp) field of polynomials modulo a primitive polynomial. We could only require
   that f is irreducible, but we are only interested in primitive polynomials, so it is easier to make 
@@ -20,37 +21,18 @@ Section PolyField.
 Import Poly.
 
 Context (f: poly) `{Hprim: PrimPoly f}.
-(*
-Variable f: poly.
-Variable Hnontriv: (deg f > 0)%Z.
-Variable Hired: irreducible f.
 
-Instance Hpos : PosPoly f.
-apply Build_PosPoly. apply Hnontriv.
-Defined.
-*)
 (*EqType*)
 
 Definition eq_qpoly (a b: qpoly f) : bool :=
   if (qpoly_eq_dec f a b) then true else false.
-(* (proj1_sig a) (proj1_sig b)) then true else (*false.*)
 
-Definition eq_qpoly (a b: qpoly f) : bool :=
-  if (poly_eq_dec (proj1_sig a) (proj1_sig b)) then true else false.
-*)
 Lemma qpoly_eq_reflect: forall x y, reflect (x = y) (eq_qpoly x y).
 Proof.
   move => x y. rewrite /eq_qpoly. case Heq: (qpoly_eq_dec f x y) =>[/=|/=]. 
   - by apply ReflectT.
   - by apply ReflectF.
 Qed.
-(*
-   rewrite eq_refl.  case Heq: (eq_qpoly x y).
-  - move : Heq; rewrite /eq_qpoly. move : x y => [x Hx] [y Hy]. rewrite /=.
-    case : (poly_eq_dec x y) =>[Heq H{H}/=|//]. subst. apply ReflectT. by apply exist_ext.
-  - move : Heq; rewrite /eq_qpoly. move : x y => [x Hx] [y Hy]. rewrite /=.
-    case: (poly_eq_dec x y) => [//|Hneq H{H}]. apply ReflectF. move => Hex. by case: Hex.
-Qed.*)
 
 Lemma poly_eq_axiom: Equality.axiom eq_qpoly.
 Proof.
@@ -68,29 +50,6 @@ Canonical qpoly_eqtype := EqType (qpoly f) qpoly_eq_mixin.
 
 Definition q0 := r0 f.
 Definition qlist := (q0 :: map (fun x => proj1_sig x) (all_nonzero_qpolys f)).
-
-(*TODO: move*)
-(*Generalized version of lemma in ListMarix - TODO remove from there*)
-Lemma in_mem_In: forall {A: eqType} (l: list A) x,
-  x \in l <-> In x l.
-Proof.
-  move => A l x. elim: l => [//| h t IH /=].
-  rewrite in_cons -IH eq_sym. split => [/orP[/eqP Hx | Ht]| [Hx | Hlt]]. by left. by right.
-  subst. by rewrite eq_refl. by rewrite Hlt orbT.
-Qed.
-
-Lemma uniq_NoDup: forall {A: eqType} (l: list A),
-  uniq l <-> NoDup l.
-Proof.
-  move => A l. elim : l => [//=|h t IH].
-  - split =>[H{H}|//]. by apply NoDup_nil.
-  - rewrite /=. split => [/andP[Hnotin Hun]| ].
-    constructor. rewrite -in_mem_In. move => Hin. by move : Hin Hnotin ->.
-    by apply IH.
-    move => Hnod. inversion Hnod as [|x l Hnotin Hnodup] ; subst.
-    have->: h \notin t. case Hin: (h\in t). have: h\in t by []. by rewrite in_mem_In =>{} Hin.
-    by []. by rewrite IH.
-Qed. 
 
 Lemma uniq_qlist: uniq qlist.
 Proof.
@@ -171,8 +130,6 @@ Canonical qpoly_finitetype := FinType (qpoly f) qpoly_finitemixin.
 
 (*ZModType*)
 
-(*TODO: some duplication with stuff in PolyMod, may remove that*)
-
 Definition qadd := r_add f.
 
 Definition q1 := r1 f.
@@ -247,7 +204,6 @@ Canonical qpoly_ring := RingType (qpoly f) qpoly_comringmixin.
 Canonical qpoly_comring := ComRingType (qpoly f) qpoly_mulC.
 
 (*Unit Ring (ring with computable inverse)*)
-
 
 Definition qpoly_unit : pred (qpoly f) :=
   fun x => x != q0.
