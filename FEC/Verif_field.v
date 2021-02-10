@@ -156,9 +156,9 @@ pose proof mod_poly_PosPoly as Hpospoly.
             rep_lia. solve_poly_zero. }
           forward_if.
           ++  (*need to simplify condition in H4, not sure why it is not automated*)
-             rewrite power_to_index_contents_Znth in H4 by lia. unfold sem_cast_pointer in H4. unfold force_val in H4. 
+             rewrite power_to_index_contents_Znth in H4 by lia. unfold sem_cast_i2i in H4. unfold force_val in H4. 
              unfold both_int in H4. simpl sem_shift_ii in H4. unfold sem_cast_pointer in H4. rewrite Hshl in H4.
-             unfold Int.lt in H4.
+             unfold Int.lt in H4. unfold cast_int_int in H4.
              destruct (zlt
                  (Int.signed (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)))))
                  (Int.signed (Int.repr 256))) as [Hif | Hif]. inversion H4. clear H4.
@@ -199,9 +199,9 @@ pose proof mod_poly_PosPoly as Hpospoly.
                 rewrite Hlr. simpl. rewrite upd_Znth0. rewrite power_to_index_contents_plus_1 by lia.
                 rewrite <- app_assoc; simpl. cancel.
           ++ (*Now on other case of if statement, again need a lot of work to simplify if condition*)
-             rewrite power_to_index_contents_Znth in H4 by lia. unfold sem_cast_pointer in H4. unfold force_val in H4. 
+             rewrite power_to_index_contents_Znth in H4 by lia. unfold sem_cast_i2i in H4. unfold force_val in H4. 
              unfold both_int in H4. simpl sem_shift_ii in H4. unfold sem_cast_pointer in H4. rewrite Hshl in H4.
-             unfold Int.lt in H4.  destruct (zlt
+             unfold Int.lt in H4. unfold cast_int_int in H4.  destruct (zlt
              (Int.signed (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)))))
              (Int.signed (Int.repr 256))) as [Hlt | ]. 2: inversion H4. clear H4.
              rewrite !Int.signed_repr in Hlt by rep_lia. forward.

@@ -131,6 +131,8 @@ Ltac solve_offset :=
         auto; try rep_lia; try nia
   | [ |- context [ field_address0 (tarray ?t ?sz) [ArraySubsc ?n] ?p ]] => rewrite arr_field_address0; 
         auto; try rep_lia; try nia
+  | [ H : ?n <= Byte.max_unsigned |- Int.min_signed <= ?k * ?n <= Int.max_signed ] => 
+      assert (0 <= k * n <= Byte.max_unsigned * Byte.max_unsigned) by nia; rep_lia
   end).
 
 (*Determines the integer corresponding to a nested series of pointer arithmetic operations, used in [pointer_to_offset]*)
@@ -140,7 +142,7 @@ Ltac build_offset op v1 v2 :=
     let one_side va :=
       lazymatch va with
       | Vint (Int.repr ?n) => constr:(n)
-      | offset_val ?n ?p => n
+      | offset_val ?n ?p => constr:(n)
       | eval_binop ?op1 ?t1 ?t2 ?v3 ?v4 => build_offset' op1 v3 v4
       | ?s => constr:(0%Z)
       end

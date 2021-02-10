@@ -388,8 +388,8 @@ Proof.
   assert (Hlen2 : Zlength (rev (map (fun q : {p : poly | deg p < deg mod_poly} => poly_to_int (proj1_sig q)) (Znth i mx))) = n). 
   rewrite Zlength_rev. lia.
   rewrite app_Znth1. 2: list_solve. 
-  rewrite Znth_rev. 2: list_solve. list_simplify. rewrite Hin. rewrite Znth_map. f_equal. f_equal.
-  replace ((n - (n - 1 - j) - 1)) with j by lia. reflexivity. rewrite Hin. lia. all: try(apply Znth_In; lia).
+  rewrite Znth_rev. 2: list_solve. list_simplify. rewrite Hin. f_equal. f_equal.
+  replace ((n - (n - 1 - j) - 1)) with j by lia. reflexivity. all: try(apply Znth_In; lia).
   rewrite (whole_Zlength_sublist _ m n); try lia. assumption.
 Qed.
 
@@ -459,7 +459,3 @@ Proof.
       rewrite flatten_mx_Zlength. rewrite (whole_Zlength_wf_matrix _ _ _ Hwf). 
       apply matrix_bounds_within; lia.
 Qed.
-
-
-
-

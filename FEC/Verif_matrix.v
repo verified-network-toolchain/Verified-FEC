@@ -11,7 +11,7 @@ Require Import FECTactics.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Verification of [fec_generate_weights]*)
-
+(*
 Lemma body_fec_generate_weights : semax_body Vprog Gprog f_fec_generate_weights fec_generate_weights_spec.
 Proof.
   pose proof (mod_poly_PosPoly) as Hpospoly.
@@ -53,11 +53,14 @@ Proof.
       * Intros j. Intros lj. forward_if.
         -- (*Want to simplify the index*)
             assert (Hprod: 0 <= (i * j) mod 255 < fec_n). {  pose proof (Z.mod_pos_bound (i * j) 255). rep_lia. }
-            assert (Hidx : Int.unsigned (Int.mods (Int.repr (i * j)) (Int.repr 255)) = (i * j) mod 255). {
-              unfold Int.mods. rewrite !Int.signed_repr; try rep_lia. rewrite Z.rem_mod_nonneg by rep_lia.
-              rewrite unsigned_repr; rep_lia. split. rep_lia. assert (i * j <= fec_max_h * (fec_n - 1)).
+            assert (Hidx : Int.signed (Int.mods (Int.repr (i * j)) (Int.repr 255)) = (i * j) mod 255). {
+              assert (Int.min_signed <= i * j <= Int.max_signed). {
+              split. rep_lia. assert (i * j <= fec_max_h * (fec_n - 1)).
               apply Z.mul_le_mono_nonneg; lia. assert (fec_max_h * (fec_n - 1) = 32640). rewrite fec_max_h_eq.
-              rewrite fec_n_eq. reflexivity. rep_lia. } unfold FIELD_TABLES. unfold INDEX_TABLES. Intros.
+              rewrite fec_n_eq. reflexivity. rep_lia. }
+              unfold Int.mods. rewrite !Int.signed_repr; try rep_lia. rewrite Z.rem_mod_nonneg by rep_lia.
+              reflexivity. rewrite !Int.signed_repr by rep_lia. pose proof (Z.rem_bound_pos_pos (i * j) 255). rep_lia. }
+            unfold FIELD_TABLES. unfold INDEX_TABLES. Intros.
             forward.
           ++ entailer!. simpl. rewrite Hidx. assumption. 
           ++ entailer!. rewrite Hidx. rewrite power_to_index_contents_Znth. simpl. simpl_repr. solve_poly_bounds.           
@@ -156,7 +159,7 @@ Proof.
         rewrite !map_map. rewrite in_map_iff. intros [x [Hx Hin]]. subst.
         rewrite !Zlength_map. rewrite Zlength_rev. rewrite Zlength_map. apply Hinlen'. assumption.
       * auto.
-Qed.
+Qed.*)
       
 (** Verification of [fec_matrix_transform]*)
 
@@ -197,9 +200,9 @@ Proof.
                 (gauss_all_steps_rows_partial (F:=F) mx m k) k m )))) s)).
     { forward. Exists 0%Z. entailer!. }
     { Intros i. forward_if.
-      { forward. (*simplify q*) pointer_to_offset s. 
+      { forward. pointer_to_offset s.  (*simplify q*)
         forward.
-        { entailer!. rewrite sem_sub_pi_offset; auto; try rep_lia. }
+        { entailer!. solve_offset. }
         { pointer_to_offset_with s (i * n).  (*Now, we will simplify pointer in m*)
           forward.
           assert (Hwf' : wf_matrix (F:=F) (all_cols_one_partial (F:=F) 
@@ -408,7 +411,8 @@ Proof.
       (*now we are completely finishing the col loop*)
     { forward. entailer!. replace (i) with m by lia. cancel. } }
   { (*start of second part: add kth row to all other rows*)
-    forward. (*simplify r*) pointer_to_offset s.
+    forward.
+    (*simplify r*) pointer_to_offset s.
     (*can't use [forward_for_simple_bound] because it casts i to a tuchar*)
     remember [temp _r (offset_val (k * n + n - 1) s); temp _k (Vint (Int.repr k)); 
               temp _p s; temp _i_max (Vint (Int.repr m)); temp _j_max (Vint (Int.repr n)); 
@@ -441,7 +445,7 @@ Proof.
                   (gauss_all_steps_rows_partial (F:=F) mx m k) k m) k i) k i (q1 (f:=mod_poly)) n)
                 )))) s))%assert5)). 
         { (*when i != k*)
-          forward. (*simplify q*) pointer_to_offset s.
+          forward.  (*simplify q*) pointer_to_offset s.
           forward_for (fun (j : Z) => PROP (0 <= j <= n)
             LOCAL (temp _q (offset_val (i * n + n - 1) s); temp _r (offset_val (k * n + n - 1) s);
               temp _k (Vint (Int.repr k)); temp _p s; temp _i_max (Vint (Int.repr m));
