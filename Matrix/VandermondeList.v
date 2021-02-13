@@ -47,4 +47,41 @@ Proof.
   by [].
   split; try lia. have /ltP Hx: (x < Z.to_nat m)%N by []. lia.
 Qed. 
+
+Definition weight_mx := (gauss_restrict_rows 
+            (weight_mx_list fec_max_h  (fec_n - 1)) fec_max_h).
+
 End WeightMx.
+
+Require Import ListMatrix.
+Require Import ReedSolomon.
+Section Encoder.
+
+(* The ListMatrix version of the encoder*)
+Definition encode_list_mx (h k c : Z) (packets : list (list Z)) : matrix (Common.F) :=
+  list_matrix_multiply h k c (submatrix weight_mx h k) (extend_mx (int_to_poly_mx packets) c).
+
+(*Lift the above into ssreflect matrices and operations*)
+Lemma encoder_spec : forall (h k c : Z) (packets: list (list Z)) (Hh: h <= fec_max_h) (Hk: k <= fec_n - 1),
+  0 <= h ->
+  0 <= k ->
+  0 <= c ->
+  Zlength packets = k ->
+  Forall (fun x => Zlength x <= c) packets ->
+  matrix_to_mx h c (encode_list_mx h k c packets) = encoder   (le_Z_N Hh) (le_Z_N Hk)
+    (matrix_to_mx fec_max_h (fec_n - 1) weight_mx) 
+    (matrix_to_mx k c (extend_mx (int_to_poly_mx packets) c)).
+Proof.
+  move => h k c packets Hh Hk Hn0 Hk0 Hc0 Hlen Hin. rewrite /encode_list_mx /encoder.
+  have Hwf: wf_matrix weight_mx fec_max_h (fec_n - 1). apply gauss_restrict_rows_wf.
+    apply weight_matrix_wf; rep_lia.
+  rewrite list_matrix_multiply_correct.
+  by rewrite (@submatrix_to_mx _ (fec_max_h) (fec_n - 1) _ _ _ Hh Hk).
+  apply (submatrix_wf Hwf); rep_lia.
+  apply extend_mx_wf. by []. by rewrite int_to_poly_mx_length1. move: Hin.
+  rewrite !Forall_forall => Hin l. rewrite In_Znth_iff => [[x [Hxlen Hznth]]].
+  subst. rewrite int_to_poly_mx_length2. apply Hin. apply Znth_In; try lia.
+  by rewrite int_to_poly_mx_length1 in Hxlen.
+Qed.
+
+End Encoder.

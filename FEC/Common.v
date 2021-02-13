@@ -69,9 +69,13 @@ Definition modulus_eq : modulus = 285%Z := proj2_sig (opaque_constant _).
 Definition fec_max_h : Z := proj1_sig (opaque_constant 128).
 Definition fec_max_h_eq : fec_max_h = 128%Z := proj2_sig (opaque_constant _).
 
+Definition fec_max_cols : Z := proj1_sig (opaque_constant 16000).
+Definition fec_max_cols_eq: fec_max_cols = 16000%Z := proj2_sig(opaque_constant _).
+
 Hint Rewrite fec_n_eq : rep_lia.
 Hint Rewrite fec_max_h_eq : rep_lia.
 Hint Rewrite modulus_eq : rep_lia.
+Hint Rewrite fec_max_cols_eq : rep_lia.
 
 Definition mod_poly : poly := proj1_sig (opaque_constant (poly_of_int modulus)).
 Definition mod_poly_eq : mod_poly = poly_of_int modulus := proj2_sig (opaque_constant _).
@@ -261,6 +265,12 @@ Definition flatten_mx_aux (mx: matrix F) (base: list Z) : list Z :=
 
 Definition flatten_mx (mx: matrix F) : list Z :=
   flatten_mx_aux mx nil.
+
+(*We don't always need to reverse, however*)
+Definition norev_mx (mx: matrix F) : list (list Z) :=
+  map (fun l => map (fun q => poly_to_int (proj1_sig q)) l) mx.
+
+(*TODO: consolidate definitions so we don't define 5 versions of almost the same thing*)
 
 Lemma rev_concat_flatten : forall (mx: matrix F),
   concat (rev_mx mx) = flatten_mx mx.
@@ -458,4 +468,46 @@ Proof.
       repeat(rewrite upd_Znth_same; try lia). rewrite Hin. assumption. apply Znth_In; lia.
       rewrite flatten_mx_Zlength. rewrite (whole_Zlength_wf_matrix _ _ _ Hwf). 
       apply matrix_bounds_within; lia.
+Qed.
+
+(** Going from list (list Z) -> matrix F*)
+(* The reverse of the transformation in [Common] - to go from a matrix of ints (bounded correctly) to a matrix of qpolys.
+  This is essentially "interpreting the input as elements of a finite field"*)
+Definition int_to_poly_mx (l: list (list Z)) : matrix F :=
+  map (fun l' =>
+   (map (fun x => exist (fun x => deg x < deg mod_poly) (poly_of_int x %~ mod_poly) (pmod_lt_deg _ _)) l')) l.
+
+Lemma int_to_poly_mx_spec: forall (l: list (list Z)),
+  Forall (fun l' => Forall (fun z => 0 <= z <= Byte.max_unsigned) l') l ->
+  forall i j,
+  proj1_sig (Znth j (Znth i (int_to_poly_mx l))) = poly_of_int (Znth j (Znth i l)).
+Proof.
+  intros l Hall i j. unfold int_to_poly_mx.
+  assert (Hi: (0 <= i < Zlength l \/ ~ (0 <= i < Zlength l))) by lia. destruct Hi as [Hi | Hi].
+  - rewrite Znth_map by auto. 
+    assert (Hj: (0 <= j < Zlength (Znth i l) \/ ~ (0 <= j < Zlength (Znth i l)))) by lia. destruct Hj as [Hj | Hj].
+    + rewrite Znth_map by auto. simpl. rewrite pmod_refl. reflexivity. apply mod_poly_PosPoly.
+      apply polys_deg_bounded. rewrite Forall_forall in Hall.
+      specialize (Hall (Znth i l)). assert (Hin: In (Znth i l) l) by (apply Znth_In; lia).
+      specialize (Hall Hin). rewrite Forall_forall in Hall. specialize (Hall (Znth j (Znth i l))).
+      assert (Hin': In (Znth j (Znth i l)) (Znth i l)) by (apply Znth_In; lia).
+      specialize (Hall Hin'). rep_lia.
+    + rewrite Znth_outofbounds. simpl. rewrite Znth_outofbounds.
+      symmetry. rewrite poly_of_int_zero. unfold Inhabitant_Z. lia. lia. list_solve.
+  - rewrite !(Znth_outofbounds i). unfold Inhabitant_list. rewrite !Znth_nil. simpl. unfold default.
+    unfold Inhabitant_Z. symmetry. rewrite poly_of_int_zero. lia. lia. list_solve.
+Qed.
+
+Lemma int_to_poly_mx_length1: forall l,
+  Zlength (int_to_poly_mx l) = Zlength l.
+Proof.
+  intros. unfold int_to_poly_mx. list_solve.
+Qed.
+
+Lemma int_to_poly_mx_length2: forall l i,
+  Zlength (Znth i (int_to_poly_mx l)) = Zlength (Znth i l).
+Proof.
+  intros. assert (Hi: (0 <= i < Zlength l \/ ~ (0 <= i < Zlength l))) by lia. destruct Hi as [Hi | Hi].
+  - unfold int_to_poly_mx. rewrite Znth_map; list_solve.
+  - rewrite !Znth_outofbounds; [reflexivity | lia|]. rewrite int_to_poly_mx_length1. lia.
 Qed.

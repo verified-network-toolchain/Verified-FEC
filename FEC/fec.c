@@ -122,16 +122,17 @@ fec_sym gf_mult_table[FEC_N][FEC_N];	/* Multiplication table */
 
 #else /* do 3 lookups into a size n table */
 
-#define FEC_MAC(a,b,p)\
-{\
-  if (a && b) \
-     {\
-     if ((fec_2_power[a]+fec_2_power[b]) > FEC_N-1) \
-        p ^= fec_2_index[((fec_2_power[a]+fec_2_power[b])-(FEC_N-1))];\
-     else \
-        p ^= fec_2_index[(fec_2_power[a]+fec_2_power[b])];\
-     }\
-}
+#define FEC_MAC(a,b,p) p = p ^fec_gf_mult(a,b);
+// {\
+//   p = p ^ fec_gf_mult(a, b)
+//   if (a && b) \
+//      {\
+//      if ((fec_2_power[a]+fec_2_power[b]) > FEC_N-1) \
+//         p ^= fec_2_index[((fec_2_power[a]+fec_2_power[b])-(FEC_N-1))];\
+//      else \
+//         p ^= fec_2_index[(fec_2_power[a]+fec_2_power[b])];\
+//      }
+//}
 
 #endif
 

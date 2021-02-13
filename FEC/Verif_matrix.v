@@ -10,8 +10,14 @@ Require Import FECTactics.
 
 Set Bullet Behavior "Strict Subproofs".
 
+(** Verification of [rse_init]*)
+(*This is an extremely simple function that just calls fec_generate_math_tables and fec_generate_weights*)
+Lemma body_rse_init : semax_body Vprog Gprog f_rse_init rse_init_spec.
+Proof.
+  start_function. forward_call. forward_call. entailer!.
+Qed.
+
 (** Verification of [fec_generate_weights]*)
-(*
 Lemma body_fec_generate_weights : semax_body Vprog Gprog f_fec_generate_weights fec_generate_weights_spec.
 Proof.
   pose proof (mod_poly_PosPoly) as Hpospoly.
@@ -159,7 +165,7 @@ Proof.
         rewrite !map_map. rewrite in_map_iff. intros [x [Hx Hin]]. subst.
         rewrite !Zlength_map. rewrite Zlength_rev. rewrite Zlength_map. apply Hinlen'. assumption.
       * auto.
-Qed.*)
+Qed.
       
 (** Verification of [fec_matrix_transform]*)
 

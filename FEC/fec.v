@@ -246,39 +246,9 @@ Definition _t'41 : ident := 168%positive.
 Definition _t'42 : ident := 169%positive.
 Definition _t'43 : ident := 170%positive.
 Definition _t'44 : ident := 171%positive.
-Definition _t'45 : ident := 172%positive.
-Definition _t'46 : ident := 173%positive.
-Definition _t'47 : ident := 174%positive.
-Definition _t'48 : ident := 175%positive.
-Definition _t'49 : ident := 176%positive.
 Definition _t'5 : ident := 132%positive.
-Definition _t'50 : ident := 177%positive.
-Definition _t'51 : ident := 178%positive.
-Definition _t'52 : ident := 179%positive.
-Definition _t'53 : ident := 180%positive.
-Definition _t'54 : ident := 181%positive.
-Definition _t'55 : ident := 182%positive.
-Definition _t'56 : ident := 183%positive.
-Definition _t'57 : ident := 184%positive.
-Definition _t'58 : ident := 185%positive.
-Definition _t'59 : ident := 186%positive.
 Definition _t'6 : ident := 133%positive.
-Definition _t'60 : ident := 187%positive.
-Definition _t'61 : ident := 188%positive.
-Definition _t'62 : ident := 189%positive.
-Definition _t'63 : ident := 190%positive.
-Definition _t'64 : ident := 191%positive.
-Definition _t'65 : ident := 192%positive.
-Definition _t'66 : ident := 193%positive.
-Definition _t'67 : ident := 194%positive.
-Definition _t'68 : ident := 195%positive.
-Definition _t'69 : ident := 196%positive.
 Definition _t'7 : ident := 134%positive.
-Definition _t'70 : ident := 197%positive.
-Definition _t'71 : ident := 198%positive.
-Definition _t'72 : ident := 199%positive.
-Definition _t'73 : ident := 200%positive.
-Definition _t'74 : ident := 201%positive.
 Definition _t'8 : ident := 135%positive.
 Definition _t'9 : ident := 136%positive.
 
@@ -1148,7 +1118,7 @@ Definition f_rse_code := {|
                                            tvoid cc_default))
                     ((Evar ___stringlit_7 (tarray tschar 2)) ::
                      (Evar ___stringlit_6 (tarray tschar 10)) ::
-                     (Econst_int (Int.repr 178) tint) ::
+                     (Econst_int (Int.repr 179) tint) ::
                      (Evar ___func__ (tarray tschar 9)) :: nil))
                   (Sreturn (Some (Eunop Oneg (Econst_int (Int.repr 1) tint)
                                    tint))))))))
@@ -1209,19 +1179,15 @@ Definition f_fec_blk_encode := {|
   fn_vars := nil;
   fn_temps := ((_j, tint) :: (_n, tint) :: (_data, tuchar) :: (_i, tuchar) ::
                (_y, tuchar) :: (_z, tuchar) :: (_p, (tptr tuchar)) ::
-               (_pparity, (tptr (tptr tuchar))) :: (_t'2, tint) ::
+               (_pparity, (tptr (tptr tuchar))) :: (_t'2, tuchar) ::
                (_t'1, tuchar) ::
-               (_t'24, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'23, tschar) ::
-               (_t'22, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'21, (tptr tuchar)) ::
-               (_t'20, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'19, tuchar) :: (_t'18, (tptr tuchar)) ::
-               (_t'17, tuchar) :: (_t'16, tuchar) :: (_t'15, tuchar) ::
-               (_t'14, tuchar) :: (_t'13, tuchar) :: (_t'12, tuchar) ::
-               (_t'11, tuchar) :: (_t'10, tuchar) :: (_t'9, tuchar) ::
-               (_t'8, tuchar) :: (_t'7, tuchar) :: (_t'6, tuchar) ::
-               (_t'5, tint) :: (_t'4, (tptr tuchar)) ::
+               (_t'13, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'12, tschar) ::
+               (_t'11, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'10, (tptr tuchar)) ::
+               (_t'9, (tptr (Tstruct __IO_FILE noattr))) :: (_t'8, tuchar) ::
+               (_t'7, (tptr tuchar)) :: (_t'6, tuchar) :: (_t'5, tint) ::
+               (_t'4, (tptr tuchar)) ::
                (_t'3, (tptr (Tstruct __IO_FILE noattr))) :: nil);
   fn_body :=
 (Ssequence
@@ -1240,16 +1206,16 @@ Definition f_fec_blk_encode := {|
               Sskip
               Sbreak)
             (Ssequence
-              (Sset _t'23
+              (Sset _t'12
                 (Ederef
                   (Ebinop Oadd (Etempvar _pstat (tptr tschar))
                     (Etempvar _i tuchar) (tptr tschar)) tschar))
-              (Sifthenelse (Ebinop Oeq (Etempvar _t'23 tschar)
+              (Sifthenelse (Ebinop Oeq (Etempvar _t'12 tschar)
                              (Econst_int (Int.repr 1) tint) tint)
                 (Ssequence
                   (Sifthenelse (Econst_int (Int.repr 0) tint)
                     (Ssequence
-                      (Sset _t'24
+                      (Sset _t'13
                         (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                       (Scall None
                         (Evar _fprintf (Tfunction
@@ -1257,7 +1223,7 @@ Definition f_fec_blk_encode := {|
                                            (tptr (Tstruct __IO_FILE noattr))
                                            (Tcons (tptr tschar) Tnil)) tint
                                          {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                        ((Etempvar _t'24 (tptr (Tstruct __IO_FILE noattr))) ::
+                        ((Etempvar _t'13 (tptr (Tstruct __IO_FILE noattr))) ::
                          (Evar ___stringlit_8 (tarray tschar 52)) :: nil)))
                     Sskip)
                   (Sreturn (Some (Eunop Oneg (Econst_int (Int.repr 20) tint)
@@ -1270,13 +1236,13 @@ Definition f_fec_blk_encode := {|
       (Ssequence
         (Sifthenelse (Econst_int (Int.repr 0) tint)
           (Ssequence
-            (Sset _t'22 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
+            (Sset _t'11 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
             (Scall None
               (Evar _fprintf (Tfunction
                                (Tcons (tptr (Tstruct __IO_FILE noattr))
                                  (Tcons (tptr tschar) Tnil)) tint
                                {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-              ((Etempvar _t'22 (tptr (Tstruct __IO_FILE noattr))) ::
+              ((Etempvar _t'11 (tptr (Tstruct __IO_FILE noattr))) ::
                (Evar ___stringlit_9 (tarray tschar 24)) :: nil)))
           Sskip)
         (Ssequence
@@ -1298,21 +1264,21 @@ Definition f_fec_blk_encode := {|
                               (Econst_int (Int.repr 1) tint) tint) tuchar))
                         (Sset _z (Ecast (Etempvar _t'1 tuchar) tuchar)))
                       (Ssequence
-                        (Sset _t'21
+                        (Sset _t'10
                           (Ederef
                             (Ebinop Oadd
                               (Etempvar _pparity (tptr (tptr tuchar)))
                               (Etempvar _t'1 tuchar) (tptr (tptr tuchar)))
                             (tptr tuchar)))
                         (Sifthenelse (Eunop Onotbool
-                                       (Etempvar _t'21 (tptr tuchar)) tint)
+                                       (Etempvar _t'10 (tptr tuchar)) tint)
                           Sskip
                           Sbreak)))
                     Sskip)
                   (Ssequence
                     (Sifthenelse (Econst_int (Int.repr 0) tint)
                       (Ssequence
-                        (Sset _t'20
+                        (Sset _t'9
                           (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                         (Scall None
                           (Evar _fprintf (Tfunction
@@ -1320,7 +1286,7 @@ Definition f_fec_blk_encode := {|
                                              (tptr (Tstruct __IO_FILE noattr))
                                              (Tcons (tptr tschar) Tnil)) tint
                                            {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                          ((Etempvar _t'20 (tptr (Tstruct __IO_FILE noattr))) ::
+                          ((Etempvar _t'9 (tptr (Tstruct __IO_FILE noattr))) ::
                            (Evar ___stringlit_10 (tarray tschar 11)) ::
                            (Etempvar _z tuchar) :: nil)))
                       Sskip)
@@ -1338,7 +1304,7 @@ Definition f_fec_blk_encode := {|
                                                  cc_default))
                           ((Evar ___stringlit_11 (tarray tschar 14)) ::
                            (Evar ___stringlit_6 (tarray tschar 10)) ::
-                           (Econst_int (Int.repr 221) tint) ::
+                           (Econst_int (Int.repr 222) tint) ::
                            (Evar ___func____1 (tarray tschar 15)) :: nil)))
                       (Ssequence
                         (Sset _j (Econst_int (Int.repr 0) tint))
@@ -1384,7 +1350,7 @@ Definition f_fec_blk_encode := {|
                                                            tint)
                                               (Ssequence
                                                 (Ssequence
-                                                  (Sset _t'18
+                                                  (Sset _t'7
                                                     (Ederef
                                                       (Ebinop Oadd
                                                         (Etempvar _pdata (tptr (tptr tuchar)))
@@ -1392,149 +1358,40 @@ Definition f_fec_blk_encode := {|
                                                         (tptr (tptr tuchar)))
                                                       (tptr tuchar)))
                                                   (Ssequence
-                                                    (Sset _t'19
+                                                    (Sset _t'8
                                                       (Ederef
                                                         (Ecast
                                                           (Ebinop Oadd
-                                                            (Etempvar _t'18 (tptr tuchar))
+                                                            (Etempvar _t'7 (tptr tuchar))
                                                             (Etempvar _j tint)
                                                             (tptr tuchar))
                                                           (tptr tuchar))
                                                         tuchar))
                                                     (Sset _data
                                                       (Ecast
-                                                        (Etempvar _t'19 tuchar)
+                                                        (Etempvar _t'8 tuchar)
                                                         tuchar))))
                                                 (Ssequence
                                                   (Ssequence
-                                                    (Sset _t'17
+                                                    (Sset _t'6
                                                       (Ederef
                                                         (Etempvar _p (tptr tuchar))
                                                         tuchar))
-                                                    (Sifthenelse (Etempvar _t'17 tuchar)
-                                                      (Sset _t'2
-                                                        (Ecast
-                                                          (Etempvar _data tuchar)
-                                                          tbool))
-                                                      (Sset _t'2
-                                                        (Econst_int (Int.repr 0) tint))))
-                                                  (Sifthenelse (Etempvar _t'2 tint)
-                                                    (Ssequence
-                                                      (Sset _t'6
-                                                        (Ederef
-                                                          (Etempvar _p (tptr tuchar))
-                                                          tuchar))
-                                                      (Ssequence
-                                                        (Sset _t'7
-                                                          (Ederef
-                                                            (Ebinop Oadd
-                                                              (Evar _fec_2_power (tarray tuchar 256))
-                                                              (Etempvar _t'6 tuchar)
-                                                              (tptr tuchar))
-                                                            tuchar))
-                                                        (Ssequence
-                                                          (Sset _t'8
-                                                            (Ederef
-                                                              (Ebinop Oadd
-                                                                (Evar _fec_2_power (tarray tuchar 256))
-                                                                (Etempvar _data tuchar)
-                                                                (tptr tuchar))
-                                                              tuchar))
-                                                          (Sifthenelse 
-                                                            (Ebinop Ogt
-                                                              (Ebinop Oadd
-                                                                (Etempvar _t'7 tuchar)
-                                                                (Etempvar _t'8 tuchar)
-                                                                tint)
-                                                              (Ebinop Osub
-                                                                (Econst_int (Int.repr 256) tint)
-                                                                (Econst_int (Int.repr 1) tint)
-                                                                tint) tint)
-                                                            (Ssequence
-                                                              (Sset _t'13
-                                                                (Ederef
-                                                                  (Etempvar _p (tptr tuchar))
-                                                                  tuchar))
-                                                              (Ssequence
-                                                                (Sset _t'14
-                                                                  (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'13 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                (Ssequence
-                                                                  (Sset _t'15
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                  (Ssequence
-                                                                    (Sset _t'16
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Osub
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'14 tuchar)
-                                                                    (Etempvar _t'15 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _y
-                                                                    (Ecast
-                                                                    (Ebinop Oxor
-                                                                    (Etempvar _y tuchar)
-                                                                    (Etempvar _t'16 tuchar)
-                                                                    tint)
-                                                                    tuchar))))))
-                                                            (Ssequence
-                                                              (Sset _t'9
-                                                                (Ederef
-                                                                  (Etempvar _p (tptr tuchar))
-                                                                  tuchar))
-                                                              (Ssequence
-                                                                (Sset _t'10
-                                                                  (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'9 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                (Ssequence
-                                                                  (Sset _t'11
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                  (Ssequence
-                                                                    (Sset _t'12
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'10 tuchar)
-                                                                    (Etempvar _t'11 tuchar)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _y
-                                                                    (Ecast
-                                                                    (Ebinop Oxor
-                                                                    (Etempvar _y tuchar)
-                                                                    (Etempvar _t'12 tuchar)
-                                                                    tint)
-                                                                    tuchar))))))))))
-                                                    Sskip)))
+                                                    (Scall (Some _t'2)
+                                                      (Evar _fec_gf_mult 
+                                                      (Tfunction
+                                                        (Tcons tuchar
+                                                          (Tcons tuchar Tnil))
+                                                        tuchar cc_default))
+                                                      ((Etempvar _t'6 tuchar) ::
+                                                       (Etempvar _data tuchar) ::
+                                                       nil)))
+                                                  (Sset _y
+                                                    (Ecast
+                                                      (Ebinop Oxor
+                                                        (Etempvar _y tuchar)
+                                                        (Etempvar _t'2 tuchar)
+                                                        tint) tuchar))))
                                               Sskip))
                                           (Sset _p
                                             (Ebinop Oadd
@@ -1613,40 +1470,30 @@ Definition f_fec_blk_decode := {|
                (_m, (tptr tuchar)) :: (_j, tint) :: (_data_lost_row, tint) ::
                (_err, tint) :: (_xh, tuchar) :: (_xk, tuchar) ::
                (_xr, tuchar) :: (_pparity, (tptr (tptr tuchar))) ::
-               (_t'9, tint) :: (_t'8, tint) :: (_t'7, tint) ::
+               (_t'9, tuchar) :: (_t'8, tuchar) :: (_t'7, tuchar) ::
                (_t'6, tint) :: (_t'5, tint) :: (_t'4, tuchar) ::
                (_t'3, tuchar) :: (_t'2, tuchar) :: (_t'1, tuchar) ::
-               (_t'74, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'73, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'72, tschar) :: (_t'71, (tptr tuchar)) ::
-               (_t'70, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'69, tuchar) ::
-               (_t'68, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'67, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'66, tuchar) ::
-               (_t'65, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'64, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'63, tuchar) ::
-               (_t'62, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'61, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'60, (tptr (Tstruct __IO_FILE noattr))) :: (_t'59, tint) ::
-               (_t'58, tuchar) :: (_t'57, tuchar) :: (_t'56, tuchar) ::
-               (_t'55, (tptr (Tstruct __IO_FILE noattr))) ::
-               (_t'54, tuchar) :: (_t'53, tuchar) :: (_t'52, tuchar) ::
-               (_t'51, tuchar) :: (_t'50, (tptr tuchar)) ::
-               (_t'49, tuchar) :: (_t'48, tuchar) :: (_t'47, tuchar) ::
-               (_t'46, tuchar) :: (_t'45, tuchar) :: (_t'44, tuchar) ::
-               (_t'43, tuchar) :: (_t'42, tuchar) :: (_t'41, tint) ::
-               (_t'40, tuchar) :: (_t'39, (tptr tuchar)) ::
-               (_t'38, tuchar) :: (_t'37, tuchar) :: (_t'36, tuchar) ::
-               (_t'35, tuchar) :: (_t'34, tuchar) :: (_t'33, tuchar) ::
-               (_t'32, tuchar) :: (_t'31, tuchar) :: (_t'30, tuchar) ::
-               (_t'29, tuchar) :: (_t'28, tuchar) :: (_t'27, tuchar) ::
-               (_t'26, tuchar) :: (_t'25, tuchar) :: (_t'24, tuchar) ::
-               (_t'23, tuchar) :: (_t'22, tuchar) :: (_t'21, tuchar) ::
-               (_t'20, tuchar) :: (_t'19, tuchar) :: (_t'18, tuchar) ::
-               (_t'17, tuchar) :: (_t'16, tuchar) :: (_t'15, tuchar) ::
-               (_t'14, tuchar) :: (_t'13, (tptr tuchar)) :: (_t'12, tint) ::
+               (_t'44, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'43, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'42, tschar) :: (_t'41, (tptr tuchar)) ::
+               (_t'40, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'39, tuchar) ::
+               (_t'38, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'37, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'36, tuchar) ::
+               (_t'35, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'34, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'33, tuchar) ::
+               (_t'32, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'31, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'30, (tptr (Tstruct __IO_FILE noattr))) :: (_t'29, tint) ::
+               (_t'28, tuchar) :: (_t'27, tuchar) :: (_t'26, tuchar) ::
+               (_t'25, (tptr (Tstruct __IO_FILE noattr))) ::
+               (_t'24, tuchar) :: (_t'23, tuchar) :: (_t'22, tuchar) ::
+               (_t'21, tuchar) :: (_t'20, (tptr tuchar)) :: (_t'19, tint) ::
+               (_t'18, tuchar) :: (_t'17, (tptr tuchar)) ::
+               (_t'16, tuchar) :: (_t'15, tuchar) :: (_t'14, tuchar) ::
+               (_t'13, (tptr tuchar)) :: (_t'12, tint) ::
                (_t'11, (tptr (Tstruct __IO_FILE noattr))) ::
                (_t'10, (tptr (Tstruct __IO_FILE noattr))) :: nil);
   fn_body :=
@@ -1665,26 +1512,26 @@ Definition f_fec_blk_decode := {|
           (Ssequence
             (Sifthenelse (Econst_int (Int.repr 0) tint)
               (Ssequence
-                (Sset _t'74 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
+                (Sset _t'44 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                 (Scall None
                   (Evar _fprintf (Tfunction
                                    (Tcons (tptr (Tstruct __IO_FILE noattr))
                                      (Tcons (tptr tschar) Tnil)) tint
                                    {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                  ((Etempvar _t'74 (tptr (Tstruct __IO_FILE noattr))) ::
+                  ((Etempvar _t'44 (tptr (Tstruct __IO_FILE noattr))) ::
                    (Evar ___stringlit_13 (tarray tschar 36)) ::
                    (Etempvar _k tint) :: (Etempvar _c tint) :: nil)))
               Sskip)
             (Ssequence
               (Sifthenelse (Econst_int (Int.repr 0) tint)
                 (Ssequence
-                  (Sset _t'73
+                  (Sset _t'43
                     (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                   (Scall None
                     (Evar _fflush (Tfunction
                                     (Tcons (tptr (Tstruct __IO_FILE noattr))
                                       Tnil) tint cc_default))
-                    ((Etempvar _t'73 (tptr (Tstruct __IO_FILE noattr))) ::
+                    ((Etempvar _t'43 (tptr (Tstruct __IO_FILE noattr))) ::
                      nil)))
                 Sskip)
               (Ssequence
@@ -1697,11 +1544,11 @@ Definition f_fec_blk_decode := {|
                         Sskip
                         Sbreak)
                       (Ssequence
-                        (Sset _t'72
+                        (Sset _t'42
                           (Ederef
                             (Ebinop Oadd (Etempvar _pstat (tptr tschar))
                               (Etempvar _i tuchar) (tptr tschar)) tschar))
-                        (Sifthenelse (Ebinop Oeq (Etempvar _t'72 tschar)
+                        (Sifthenelse (Ebinop Oeq (Etempvar _t'42 tschar)
                                        (Econst_int (Int.repr 1) tint) tint)
                           (Ssequence
                             (Ssequence
@@ -1755,13 +1602,13 @@ Definition f_fec_blk_decode := {|
                               Sbreak)
                             (Ssequence
                               (Ssequence
-                                (Sset _t'71
+                                (Sset _t'41
                                   (Ederef
                                     (Ebinop Oadd
                                       (Etempvar _pparity (tptr (tptr tuchar)))
                                       (Etempvar _i tuchar)
                                       (tptr (tptr tuchar))) (tptr tuchar)))
-                                (Sifthenelse (Etempvar _t'71 (tptr tuchar))
+                                (Sifthenelse (Etempvar _t'41 (tptr tuchar))
                                   (Ssequence
                                     (Ssequence
                                       (Ssequence
@@ -1819,7 +1666,7 @@ Definition f_fec_blk_decode := {|
                                                            tvoid cc_default))
                                     ((Evar ___stringlit_14 (tarray tschar 14)) ::
                                      (Evar ___stringlit_6 (tarray tschar 10)) ::
-                                     (Econst_int (Int.repr 301) tint) ::
+                                     (Econst_int (Int.repr 302) tint) ::
                                      (Evar ___func____2 (tarray tschar 15)) ::
                                      nil))))))
                           (Sset _i
@@ -1828,13 +1675,13 @@ Definition f_fec_blk_decode := {|
                                 (Econst_int (Int.repr 1) tint) tint) tuchar))))
                       (Ssequence
                         (Ssequence
-                          (Sset _t'59 (Evar _trace tint))
-                          (Sifthenelse (Ebinop Ogt (Etempvar _t'59 tint)
+                          (Sset _t'29 (Evar _trace tint))
+                          (Sifthenelse (Ebinop Ogt (Etempvar _t'29 tint)
                                          (Econst_int (Int.repr 1) tint) tint)
                             (Ssequence
                               (Sifthenelse (Econst_int (Int.repr 0) tint)
                                 (Ssequence
-                                  (Sset _t'70
+                                  (Sset _t'40
                                     (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                   (Scall None
                                     (Evar _fprintf (Tfunction
@@ -1843,7 +1690,7 @@ Definition f_fec_blk_decode := {|
                                                        (Tcons (tptr tschar)
                                                          Tnil)) tint
                                                      {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                    ((Etempvar _t'70 (tptr (Tstruct __IO_FILE noattr))) ::
+                                    ((Etempvar _t'40 (tptr (Tstruct __IO_FILE noattr))) ::
                                      (Evar ___stringlit_15 (tarray tschar 9)) ::
                                      nil)))
                                 Sskip)
@@ -1862,10 +1709,10 @@ Definition f_fec_blk_decode := {|
                                         Sbreak)
                                       (Sifthenelse (Econst_int (Int.repr 0) tint)
                                         (Ssequence
-                                          (Sset _t'68
+                                          (Sset _t'38
                                             (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                           (Ssequence
-                                            (Sset _t'69
+                                            (Sset _t'39
                                               (Ederef
                                                 (Ebinop Oadd
                                                   (Evar _lost (tarray tuchar 128))
@@ -1880,9 +1727,9 @@ Definition f_fec_blk_decode := {|
                                                                    Tnil))
                                                                tint
                                                                {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                              ((Etempvar _t'68 (tptr (Tstruct __IO_FILE noattr))) ::
+                                              ((Etempvar _t'38 (tptr (Tstruct __IO_FILE noattr))) ::
                                                (Evar ___stringlit_16 (tarray tschar 5)) ::
-                                               (Etempvar _t'69 tuchar) ::
+                                               (Etempvar _t'39 tuchar) ::
                                                nil))))
                                         Sskip))
                                     (Sset _i
@@ -1893,7 +1740,7 @@ Definition f_fec_blk_decode := {|
                                 (Ssequence
                                   (Sifthenelse (Econst_int (Int.repr 0) tint)
                                     (Ssequence
-                                      (Sset _t'67
+                                      (Sset _t'37
                                         (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                       (Scall None
                                         (Evar _fprintf (Tfunction
@@ -1903,7 +1750,7 @@ Definition f_fec_blk_decode := {|
                                                              (tptr tschar)
                                                              Tnil)) tint
                                                          {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                        ((Etempvar _t'67 (tptr (Tstruct __IO_FILE noattr))) ::
+                                        ((Etempvar _t'37 (tptr (Tstruct __IO_FILE noattr))) ::
                                          (Evar ___stringlit_17 (tarray tschar 10)) ::
                                          nil)))
                                     Sskip)
@@ -1922,10 +1769,10 @@ Definition f_fec_blk_decode := {|
                                             Sbreak)
                                           (Sifthenelse (Econst_int (Int.repr 0) tint)
                                             (Ssequence
-                                              (Sset _t'65
+                                              (Sset _t'35
                                                 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                               (Ssequence
-                                                (Sset _t'66
+                                                (Sset _t'36
                                                   (Ederef
                                                     (Ebinop Oadd
                                                       (Evar _found (tarray tuchar 128))
@@ -1940,9 +1787,9 @@ Definition f_fec_blk_decode := {|
                                                                     Tnil))
                                                                    tint
                                                                    {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                                  ((Etempvar _t'65 (tptr (Tstruct __IO_FILE noattr))) ::
+                                                  ((Etempvar _t'35 (tptr (Tstruct __IO_FILE noattr))) ::
                                                    (Evar ___stringlit_18 (tarray tschar 4)) ::
-                                                   (Etempvar _t'66 tuchar) ::
+                                                   (Etempvar _t'36 tuchar) ::
                                                    nil))))
                                             Sskip))
                                         (Sset _i
@@ -1953,7 +1800,7 @@ Definition f_fec_blk_decode := {|
                                     (Ssequence
                                       (Sifthenelse (Econst_int (Int.repr 0) tint)
                                         (Ssequence
-                                          (Sset _t'64
+                                          (Sset _t'34
                                             (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                           (Scall None
                                             (Evar _fprintf (Tfunction
@@ -1963,7 +1810,7 @@ Definition f_fec_blk_decode := {|
                                                                  (tptr tschar)
                                                                  Tnil)) tint
                                                              {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                            ((Etempvar _t'64 (tptr (Tstruct __IO_FILE noattr))) ::
+                                            ((Etempvar _t'34 (tptr (Tstruct __IO_FILE noattr))) ::
                                              (Evar ___stringlit_19 (tarray tschar 9)) ::
                                              nil)))
                                         Sskip)
@@ -1983,10 +1830,10 @@ Definition f_fec_blk_decode := {|
                                                 Sbreak)
                                               (Sifthenelse (Econst_int (Int.repr 0) tint)
                                                 (Ssequence
-                                                  (Sset _t'62
+                                                  (Sset _t'32
                                                     (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                                   (Ssequence
-                                                    (Sset _t'63
+                                                    (Sset _t'33
                                                       (Ederef
                                                         (Ebinop Oadd
                                                           (Evar _row (tarray tuchar 128))
@@ -2002,9 +1849,9 @@ Definition f_fec_blk_decode := {|
                                                             (tptr tschar)
                                                             Tnil)) tint
                                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                                      ((Etempvar _t'62 (tptr (Tstruct __IO_FILE noattr))) ::
+                                                      ((Etempvar _t'32 (tptr (Tstruct __IO_FILE noattr))) ::
                                                        (Evar ___stringlit_18 (tarray tschar 4)) ::
-                                                       (Etempvar _t'63 tuchar) ::
+                                                       (Etempvar _t'33 tuchar) ::
                                                        nil))))
                                                 Sskip))
                                             (Sset _i
@@ -2016,7 +1863,7 @@ Definition f_fec_blk_decode := {|
                                         (Ssequence
                                           (Sifthenelse (Econst_int (Int.repr 0) tint)
                                             (Ssequence
-                                              (Sset _t'61
+                                              (Sset _t'31
                                                 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                               (Scall None
                                                 (Evar _fprintf (Tfunction
@@ -2027,13 +1874,13 @@ Definition f_fec_blk_decode := {|
                                                                     Tnil))
                                                                  tint
                                                                  {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                                ((Etempvar _t'61 (tptr (Tstruct __IO_FILE noattr))) ::
+                                                ((Etempvar _t'31 (tptr (Tstruct __IO_FILE noattr))) ::
                                                  (Evar ___stringlit_20 (tarray tschar 2)) ::
                                                  nil)))
                                             Sskip)
                                           (Sifthenelse (Econst_int (Int.repr 0) tint)
                                             (Ssequence
-                                              (Sset _t'60
+                                              (Sset _t'30
                                                 (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                               (Scall None
                                                 (Evar _fflush (Tfunction
@@ -2041,7 +1888,7 @@ Definition f_fec_blk_decode := {|
                                                                   (tptr (Tstruct __IO_FILE noattr))
                                                                   Tnil) tint
                                                                 cc_default))
-                                                ((Etempvar _t'60 (tptr (Tstruct __IO_FILE noattr))) ::
+                                                ((Etempvar _t'30 (tptr (Tstruct __IO_FILE noattr))) ::
                                                  nil)))
                                             Sskip))))))))
                             Sskip))
@@ -2056,7 +1903,7 @@ Definition f_fec_blk_decode := {|
                                   Sbreak)
                                 (Ssequence
                                   (Ssequence
-                                    (Sset _t'58
+                                    (Sset _t'28
                                       (Ederef
                                         (Ebinop Oadd
                                           (Evar _row (tarray tuchar 128))
@@ -2067,7 +1914,7 @@ Definition f_fec_blk_decode := {|
                                         (Ederef
                                           (Ebinop Oadd
                                             (Evar _fec_weights (tarray (tarray tuchar 255) 128))
-                                            (Etempvar _t'58 tuchar)
+                                            (Etempvar _t'28 tuchar)
                                             (tptr (tarray tuchar 255)))
                                           (tarray tuchar 255)) (tptr tuchar))))
                                   (Ssequence
@@ -2119,18 +1966,18 @@ Definition f_fec_blk_decode := {|
                                                     (tptr tuchar)) tuchar)
                                                 (Econst_int (Int.repr 0) tint)))
                                             (Ssequence
-                                              (Sset _t'56
+                                              (Sset _t'26
                                                 (Ederef
                                                   (Ebinop Oadd
                                                     (Evar _lost (tarray tuchar 128))
                                                     (Etempvar _i tuchar)
                                                     (tptr tuchar)) tuchar))
                                               (Ssequence
-                                                (Sset _t'57
+                                                (Sset _t'27
                                                   (Ederef
                                                     (Ebinop Oadd
                                                       (Etempvar _n (tptr tuchar))
-                                                      (Etempvar _t'56 tuchar)
+                                                      (Etempvar _t'26 tuchar)
                                                       (tptr tuchar)) tuchar))
                                                 (Sassign
                                                   (Ederef
@@ -2141,7 +1988,7 @@ Definition f_fec_blk_decode := {|
                                                         (tptr tuchar))
                                                       (Etempvar _xh tuchar)
                                                       (tptr tuchar)) tuchar)
-                                                  (Etempvar _t'57 tuchar))))))
+                                                  (Etempvar _t'27 tuchar))))))
                                         (Sset _i
                                           (Ecast
                                             (Ebinop Oadd (Etempvar _i tuchar)
@@ -2178,7 +2025,7 @@ Definition f_fec_blk_decode := {|
                               (Sifthenelse (Etempvar _t'6 tint)
                                 (Ssequence
                                   (Ssequence
-                                    (Sset _t'55
+                                    (Sset _t'25
                                       (Evar _stderr (tptr (Tstruct __IO_FILE noattr))))
                                     (Scall None
                                       (Evar _fprintf (Tfunction
@@ -2187,7 +2034,7 @@ Definition f_fec_blk_decode := {|
                                                          (Tcons (tptr tschar)
                                                            Tnil)) tint
                                                        {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
-                                      ((Etempvar _t'55 (tptr (Tstruct __IO_FILE noattr))) ::
+                                      ((Etempvar _t'25 (tptr (Tstruct __IO_FILE noattr))) ::
                                        (Evar ___stringlit_21 (tarray tschar 45)) ::
                                        (Etempvar _err tint) :: nil)))
                                   (Sreturn (Some (Etempvar _err tint))))
@@ -2207,7 +2054,7 @@ Definition f_fec_blk_decode := {|
                                       Sbreak)
                                     (Ssequence
                                       (Ssequence
-                                        (Sset _t'54
+                                        (Sset _t'24
                                           (Ederef
                                             (Ebinop Oadd
                                               (Evar _row (tarray tuchar 128))
@@ -2217,7 +2064,7 @@ Definition f_fec_blk_decode := {|
                                           (Ederef
                                             (Ebinop Oadd
                                               (Evar _fec_weights (tarray (tarray tuchar 255) 128))
-                                              (Etempvar _t'54 tuchar)
+                                              (Etempvar _t'24 tuchar)
                                               (tptr (tarray tuchar 255)))
                                             (tarray tuchar 255))))
                                       (Ssequence
@@ -2261,7 +2108,7 @@ Definition f_fec_blk_decode := {|
                                                           Sbreak)
                                                         (Ssequence
                                                           (Ssequence
-                                                            (Sset _t'53
+                                                            (Sset _t'23
                                                               (Ederef
                                                                 (Ebinop Oadd
                                                                   (Evar _found (tarray tuchar 128))
@@ -2270,11 +2117,11 @@ Definition f_fec_blk_decode := {|
                                                                 tuchar))
                                                             (Sset _z
                                                               (Ecast
-                                                                (Etempvar _t'53 tuchar)
+                                                                (Etempvar _t'23 tuchar)
                                                                 tuchar)))
                                                           (Ssequence
                                                             (Ssequence
-                                                              (Sset _t'52
+                                                              (Sset _t'22
                                                                 (Ederef
                                                                   (Ebinop Oadd
                                                                     (Etempvar _p (tptr tuchar))
@@ -2283,7 +2130,7 @@ Definition f_fec_blk_decode := {|
                                                                   tuchar))
                                                               (Sset _weight
                                                                 (Ecast
-                                                                  (Etempvar _t'52 tuchar)
+                                                                  (Etempvar _t'22 tuchar)
                                                                   tuchar)))
                                                             (Sifthenelse 
                                                               (Ebinop Olt
@@ -2291,7 +2138,7 @@ Definition f_fec_blk_decode := {|
                                                                 (Etempvar _k tint)
                                                                 tint)
                                                               (Ssequence
-                                                                (Sset _t'41
+                                                                (Sset _t'19
                                                                   (Ederef
                                                                     (Ebinop Oadd
                                                                     (Etempvar _plen (tptr tint))
@@ -2300,12 +2147,12 @@ Definition f_fec_blk_decode := {|
                                                                     tint))
                                                                 (Sifthenelse 
                                                                   (Ebinop Ogt
-                                                                    (Etempvar _t'41 tint)
+                                                                    (Etempvar _t'19 tint)
                                                                     (Etempvar _j tint)
                                                                     tint)
                                                                   (Ssequence
                                                                     (Ssequence
-                                                                    (Sset _t'50
+                                                                    (Sset _t'20
                                                                     (Ederef
                                                                     (Ebinop Oadd
                                                                     (Etempvar _pdata (tptr (tptr tuchar)))
@@ -2313,132 +2160,42 @@ Definition f_fec_blk_decode := {|
                                                                     (tptr (tptr tuchar)))
                                                                     (tptr tuchar)))
                                                                     (Ssequence
-                                                                    (Sset _t'51
+                                                                    (Sset _t'21
                                                                     (Ederef
                                                                     (Ebinop Oadd
-                                                                    (Etempvar _t'50 (tptr tuchar))
+                                                                    (Etempvar _t'20 (tptr tuchar))
                                                                     (Etempvar _j tint)
                                                                     (tptr tuchar))
                                                                     tuchar))
                                                                     (Sset _data
                                                                     (Ecast
-                                                                    (Etempvar _t'51 tuchar)
+                                                                    (Etempvar _t'21 tuchar)
                                                                     tuchar))))
                                                                     (Ssequence
-                                                                    (Sifthenelse (Etempvar _weight tuchar)
-                                                                    (Sset _t'7
-                                                                    (Ecast
-                                                                    (Etempvar _data tuchar)
-                                                                    tbool))
-                                                                    (Sset _t'7
-                                                                    (Econst_int (Int.repr 0) tint)))
-                                                                    (Sifthenelse (Etempvar _t'7 tint)
-                                                                    (Ssequence
-                                                                    (Sset _t'42
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _weight tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'43
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sifthenelse 
-                                                                    (Ebinop Ogt
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'42 tuchar)
-                                                                    (Etempvar _t'43 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (Ssequence
-                                                                    (Sset _t'47
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _weight tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'48
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'49
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Osub
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'47 tuchar)
-                                                                    (Etempvar _t'48 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
+                                                                    (Scall (Some _t'7)
+                                                                    (Evar _fec_gf_mult 
+                                                                    (Tfunction
+                                                                    (Tcons
+                                                                    tuchar
+                                                                    (Tcons
+                                                                    tuchar
+                                                                    Tnil))
+                                                                    tuchar
+                                                                    cc_default))
+                                                                    ((Etempvar _weight tuchar) ::
+                                                                    (Etempvar _data tuchar) ::
+                                                                    nil))
                                                                     (Sset _y
                                                                     (Ecast
                                                                     (Ebinop Oxor
                                                                     (Etempvar _y tuchar)
-                                                                    (Etempvar _t'49 tuchar)
+                                                                    (Etempvar _t'7 tuchar)
                                                                     tint)
-                                                                    tuchar)))))
-                                                                    (Ssequence
-                                                                    (Sset _t'44
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _weight tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'45
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'46
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'44 tuchar)
-                                                                    (Etempvar _t'45 tuchar)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _y
-                                                                    (Ecast
-                                                                    (Ebinop Oxor
-                                                                    (Etempvar _y tuchar)
-                                                                    (Etempvar _t'46 tuchar)
-                                                                    tint)
-                                                                    tuchar))))))))
-                                                                    Sskip)))
+                                                                    tuchar))))
                                                                   Sskip))
                                                               (Ssequence
                                                                 (Ssequence
-                                                                  (Sset _t'39
+                                                                  (Sset _t'17
                                                                     (Ederef
                                                                     (Ebinop Oadd
                                                                     (Etempvar _pparity (tptr (tptr tuchar)))
@@ -2452,128 +2209,38 @@ Definition f_fec_blk_decode := {|
                                                                     (tptr (tptr tuchar)))
                                                                     (tptr tuchar)))
                                                                   (Ssequence
-                                                                    (Sset _t'40
+                                                                    (Sset _t'18
                                                                     (Ederef
                                                                     (Ebinop Oadd
-                                                                    (Etempvar _t'39 (tptr tuchar))
+                                                                    (Etempvar _t'17 (tptr tuchar))
                                                                     (Etempvar _j tint)
                                                                     (tptr tuchar))
                                                                     tuchar))
                                                                     (Sset _data
                                                                     (Ecast
-                                                                    (Etempvar _t'40 tuchar)
+                                                                    (Etempvar _t'18 tuchar)
                                                                     tuchar))))
                                                                 (Ssequence
-                                                                  (Sifthenelse (Etempvar _weight tuchar)
-                                                                    (Sset _t'8
-                                                                    (Ecast
-                                                                    (Etempvar _data tuchar)
-                                                                    tbool))
-                                                                    (Sset _t'8
-                                                                    (Econst_int (Int.repr 0) tint)))
-                                                                  (Sifthenelse (Etempvar _t'8 tint)
-                                                                    (Ssequence
-                                                                    (Sset _t'31
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _weight tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'32
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sifthenelse 
-                                                                    (Ebinop Ogt
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'31 tuchar)
-                                                                    (Etempvar _t'32 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (Ssequence
-                                                                    (Sset _t'36
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _weight tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'37
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'38
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Osub
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'36 tuchar)
-                                                                    (Etempvar _t'37 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _y
+                                                                  (Scall (Some _t'8)
+                                                                    (Evar _fec_gf_mult 
+                                                                    (Tfunction
+                                                                    (Tcons
+                                                                    tuchar
+                                                                    (Tcons
+                                                                    tuchar
+                                                                    Tnil))
+                                                                    tuchar
+                                                                    cc_default))
+                                                                    ((Etempvar _weight tuchar) ::
+                                                                    (Etempvar _data tuchar) ::
+                                                                    nil))
+                                                                  (Sset _y
                                                                     (Ecast
                                                                     (Ebinop Oxor
                                                                     (Etempvar _y tuchar)
-                                                                    (Etempvar _t'38 tuchar)
-                                                                    tint)
-                                                                    tuchar)))))
-                                                                    (Ssequence
-                                                                    (Sset _t'33
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _weight tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'34
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _data tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'35
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'33 tuchar)
-                                                                    (Etempvar _t'34 tuchar)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _y
-                                                                    (Ecast
-                                                                    (Ebinop Oxor
-                                                                    (Etempvar _y tuchar)
-                                                                    (Etempvar _t'35 tuchar)
+                                                                    (Etempvar _t'8 tuchar)
                                                                     tint)
                                                                     tuchar))))))))
-                                                                    Sskip)))))))
                                                       (Sset _q
                                                         (Ecast
                                                           (Ebinop Oadd
@@ -2645,7 +2312,7 @@ Definition f_fec_blk_decode := {|
                                                   (tptr tuchar)))
                                               (Ssequence
                                                 (Ssequence
-                                                  (Sset _t'30
+                                                  (Sset _t'16
                                                     (Ederef
                                                       (Ebinop Oadd
                                                         (Evar _lost (tarray tuchar 128))
@@ -2659,7 +2326,7 @@ Definition f_fec_blk_decode := {|
                                                     (Ederef
                                                       (Ebinop Oadd
                                                         (Etempvar _pstat (tptr tschar))
-                                                        (Etempvar _t'30 tuchar)
+                                                        (Etempvar _t'16 tuchar)
                                                         (tptr tschar))
                                                       tschar)
                                                     (Econst_int (Int.repr 0) tint)))
@@ -2701,24 +2368,6 @@ Definition f_fec_blk_decode := {|
                                                                   (Ssequence
                                                                     (Ssequence
                                                                     (Ssequence
-                                                                    (Sset _t'28
-                                                                    (Ederef
-                                                                    (Etempvar _n (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sifthenelse (Etempvar _t'28 tuchar)
-                                                                    (Ssequence
-                                                                    (Sset _t'29
-                                                                    (Ederef
-                                                                    (Etempvar _r (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _t'9
-                                                                    (Ecast
-                                                                    (Etempvar _t'29 tuchar)
-                                                                    tbool)))
-                                                                    (Sset _t'9
-                                                                    (Econst_int (Int.repr 0) tint))))
-                                                                    (Sifthenelse (Etempvar _t'9 tint)
-                                                                    (Ssequence
                                                                     (Sset _t'14
                                                                     (Ederef
                                                                     (Etempvar _n (tptr tuchar))
@@ -2726,130 +2375,28 @@ Definition f_fec_blk_decode := {|
                                                                     (Ssequence
                                                                     (Sset _t'15
                                                                     (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'14 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'16
-                                                                    (Ederef
                                                                     (Etempvar _r (tptr tuchar))
                                                                     tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'17
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'16 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sifthenelse 
-                                                                    (Ebinop Ogt
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'15 tuchar)
-                                                                    (Etempvar _t'17 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (Ssequence
-                                                                    (Sset _t'23
-                                                                    (Ederef
-                                                                    (Etempvar _n (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'24
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'23 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'25
-                                                                    (Ederef
-                                                                    (Etempvar _r (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'26
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'25 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'27
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Osub
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'24 tuchar)
-                                                                    (Etempvar _t'26 tuchar)
-                                                                    tint)
-                                                                    (Ebinop Osub
-                                                                    (Econst_int (Int.repr 256) tint)
-                                                                    (Econst_int (Int.repr 1) tint)
-                                                                    tint)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
+                                                                    (Scall (Some _t'9)
+                                                                    (Evar _fec_gf_mult 
+                                                                    (Tfunction
+                                                                    (Tcons
+                                                                    tuchar
+                                                                    (Tcons
+                                                                    tuchar
+                                                                    Tnil))
+                                                                    tuchar
+                                                                    cc_default))
+                                                                    ((Etempvar _t'14 tuchar) ::
+                                                                    (Etempvar _t'15 tuchar) ::
+                                                                    nil))))
                                                                     (Sset _y
                                                                     (Ecast
                                                                     (Ebinop Oxor
                                                                     (Etempvar _y tuchar)
-                                                                    (Etempvar _t'27 tuchar)
+                                                                    (Etempvar _t'9 tuchar)
                                                                     tint)
-                                                                    tuchar)))))))
-                                                                    (Ssequence
-                                                                    (Sset _t'18
-                                                                    (Ederef
-                                                                    (Etempvar _n (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'19
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'18 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'20
-                                                                    (Ederef
-                                                                    (Etempvar _r (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'21
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_power (tarray tuchar 256))
-                                                                    (Etempvar _t'20 tuchar)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Ssequence
-                                                                    (Sset _t'22
-                                                                    (Ederef
-                                                                    (Ebinop Oadd
-                                                                    (Evar _fec_2_index (tarray tuchar 256))
-                                                                    (Ebinop Oadd
-                                                                    (Etempvar _t'19 tuchar)
-                                                                    (Etempvar _t'21 tuchar)
-                                                                    tint)
-                                                                    (tptr tuchar))
-                                                                    tuchar))
-                                                                    (Sset _y
-                                                                    (Ecast
-                                                                    (Ebinop Oxor
-                                                                    (Etempvar _y tuchar)
-                                                                    (Etempvar _t'22 tuchar)
-                                                                    tint)
-                                                                    tuchar))))))))))))
-                                                                    Sskip))
+                                                                    tuchar)))
                                                                     (Sset _r
                                                                     (Ebinop Osub
                                                                     (Etempvar _r (tptr tuchar))

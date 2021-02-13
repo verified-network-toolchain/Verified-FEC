@@ -21,6 +21,8 @@ Matrix/LinIndep.v
 Matrix/Vandermonde.v
 FEC/fec.v
 FEC/Common.v
+#can move earlier
+FEC/ReedSolomon.v
 Matrix/VandermondeList.v
 FEC/CommonVST.v
 FEC/Specs.v
