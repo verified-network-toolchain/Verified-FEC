@@ -1,9 +1,11 @@
 Require Import VST.floyd.proofauto.
 
 Require Import Common.
+Require Import CommonVST.
 Require Import VandermondeList.
 Require Import fec.
 Require Import Poly.
+Require Import List2D.
 
 Instance CompSpecs : compspecs.
 make_compspecs prog. Defined.
@@ -122,10 +124,6 @@ Definition rse_init_spec :=
     SEP (FIELD_TABLES gv;  data_at Ews (tint) (Vint (Int.zero)) (gv _trace);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
-Require Import VST.msl.iter_sepcon.
-Definition iter_sepcon_arrays := iter_sepcon (fun (x: (list Z * val)) => let (l, ptr) := x in 
-            data_at Ews (tarray tuchar (Zlength l)) (map Vint (map Int.repr l)) ptr).
-
 (*TODO: Does it matter that c is the max, or can it be any upper bound?*)
 (*Since the packets are an unsigned char **, this is represented in memory as an array of pointers to
   arrays of unsigned chars. For our purposes, we would like to represent the contents in Coq as a list (list Z),
@@ -142,24 +140,26 @@ Definition fec_blk_encode_spec :=
   WITH gv: globals, k : Z, h : Z, c : Z, pd: val, pl : val, ps: val, packets: list (list Z), parities : list (list Z),
         lengths : list Z, stats : list Z, packet_ptrs: list val, parity_ptrs: list val
   PRE [ tint, tint, tint, tptr (tptr tuchar), tptr (tint), tptr (tschar) ]
-    PROP (0 < k < fec_n - fec_max_h; 0 <= h <= fec_max_h; 0 < c <= fec_max_cols; Zlength packets = k;
-          Zlength packet_ptrs = k; Zlength parity_ptrs = h; Zlength parities = h;
+    PROP (0 < k < fec_n - fec_max_h; 0 <= h <= fec_max_h; 0 < c <= fec_max_cols; (*bounds for int inputs*)
+          Zlength packets = k; Zlength packet_ptrs = k; Zlength parity_ptrs = h; 
+          Zlength parities = h; Zlength lengths = k; Zlength stats = k; (*lengths for arrays*)
           Forall (fun x => Zlength x <= c) packets; Forall (fun x => Zlength x = c) parities;
-          Zlength lengths = k; Zlength stats = k; forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
+          Forall2D (fun z => 0 <= z <= Byte.max_unsigned) parities;
+          forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
     PARAMS (Vint (Int.repr k); Vint (Int.repr h); Vint (Int.repr c); pd; pl; ps)
     SEP (INDEX_TABLES gv; 
-         data_at Ews (tarray (tptr tuchar) k) (packet_ptrs ++ parity_ptrs) pd;
-         iter_sepcon_arrays (combine packets packet_ptrs);
-         iter_sepcon_arrays (combine parities parity_ptrs);
+         data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
+         iter_sepcon_arrays packet_ptrs packets;
+         iter_sepcon_arrays parity_ptrs parities;
          data_at Ews (tarray tint k) (map Vint (map Int.repr (lengths))) pl;
          data_at Ews (tarray tschar k) (list_repeat (Z.to_nat k) (Vint (Int.zero))) ps)
   POST [ tint ]
     PROP ()
     RETURN (Vint Int.zero)
     SEP (INDEX_TABLES gv;
-         data_at Ews (tarray (tptr tuchar) k) (packet_ptrs ++ parity_ptrs) pd;
-         iter_sepcon_arrays (combine packets packet_ptrs);
-         iter_sepcon_arrays (combine (norev_mx (encode_list_mx h k c packets)) parity_ptrs);
+         data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
+         iter_sepcon_arrays packet_ptrs packets;
+         iter_sepcon_arrays parity_ptrs (norev_mx (encode_list_mx h k c packets));
          data_at Ews (tarray tint k) (map Vint (map Int.repr (lengths))) pl;
          data_at Ews (tarray tschar k) (list_repeat (Z.to_nat k) (Vint (Int.zero))) ps).
           

@@ -8,6 +8,7 @@ Require Export PolyMod.
 Require Export PrimitiveFacts.
 Require Export PolyField.
 Require Export ListMatrix.
+Require Import List2D.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -478,7 +479,7 @@ Definition int_to_poly_mx (l: list (list Z)) : matrix F :=
    (map (fun x => exist (fun x => deg x < deg mod_poly) (poly_of_int x %~ mod_poly) (pmod_lt_deg _ _)) l')) l.
 
 Lemma int_to_poly_mx_spec: forall (l: list (list Z)),
-  Forall (fun l' => Forall (fun z => 0 <= z <= Byte.max_unsigned) l') l ->
+  Forall2D (fun z => 0 <= z <= Byte.max_unsigned) l ->
   forall i j,
   proj1_sig (Znth j (Znth i (int_to_poly_mx l))) = poly_of_int (Znth j (Znth i l)).
 Proof.
@@ -487,11 +488,7 @@ Proof.
   - rewrite Znth_map by auto. 
     assert (Hj: (0 <= j < Zlength (Znth i l) \/ ~ (0 <= j < Zlength (Znth i l)))) by lia. destruct Hj as [Hj | Hj].
     + rewrite Znth_map by auto. simpl. rewrite pmod_refl. reflexivity. apply mod_poly_PosPoly.
-      apply polys_deg_bounded. rewrite Forall_forall in Hall.
-      specialize (Hall (Znth i l)). assert (Hin: In (Znth i l) l) by (apply Znth_In; lia).
-      specialize (Hall Hin). rewrite Forall_forall in Hall. specialize (Hall (Znth j (Znth i l))).
-      assert (Hin': In (Znth j (Znth i l)) (Znth i l)) by (apply Znth_In; lia).
-      specialize (Hall Hin'). rep_lia.
+      apply polys_deg_bounded. rewrite Forall2D_Znth in Hall. destruct (Hall i j); auto. rep_lia.
     + rewrite Znth_outofbounds. simpl. rewrite Znth_outofbounds.
       symmetry. rewrite poly_of_int_zero. unfold Inhabitant_Z. lia. lia. list_solve.
   - rewrite !(Znth_outofbounds i). unfold Inhabitant_list. rewrite !Znth_nil. simpl. unfold default.

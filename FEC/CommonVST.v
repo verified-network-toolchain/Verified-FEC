@@ -1,4 +1,6 @@
 Require Import VST.floyd.proofauto.
+Require Import VST.msl.iter_sepcon.
+Require Import List2D.
 (*Functions for working with arrays and memory in VST that are generic*)
 
 (*These first two are not directly related to VST but are used in the later proofs*)
@@ -332,5 +334,88 @@ Proof.
       apply isptr_is_pointer_or_null; auto. list_solve. list_solve. auto.
       rewrite (Zlength_concat (n-1) m). lia. list_solve. inversion H0; auto.
 Qed.
+
+(** Working with Arrays of Pointers*)
+
+(*Represents the fact that there is a list of pointers (ptrs), and the contents of those pointers
+  are described by contents - in essence, a 2D array with possibly different lengths*)
+(*For now, only defined for tuchar, could extend to other int types*)
+Definition iter_sepcon_arrays (ptrs : list val) (contents: list (list Z)) := 
+  iter_sepcon (fun (x: (list Z * val)) => let (l, ptr) := x in 
+            data_at Ews (tarray tuchar (Zlength l)) (map Vint (map Int.repr l)) ptr) (combine contents ptrs).
+
+(*TODO: move*)
+Lemma combine_Zlength: forall {A B : Type} (l1: list A) (l2: list B),
+  Zlength l1 = Zlength l2 ->
+  Zlength (combine l1 l2) = Zlength l1.
+Proof.
+  intros A B l1 l2 Hlen. rewrite !Zlength_correct in *. rewrite combine_length. lia.
+Qed.
+
+Lemma combine_Znth: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} (l1 : list A) (l2: list B) i,
+  Zlength l1 = Zlength l2 ->
+  0 <= i < Zlength l1 ->
+  Znth i (combine l1 l2) = (Znth i l1, Znth i l2).
+Proof.
+  intros. rewrite <- !nth_Znth. apply combine_nth. rewrite <- !ZtoNat_Zlength; lia.
+  lia. lia. rewrite combine_Zlength; lia.
+Qed. 
+
+Lemma iter_sepcon_arrays_Znth: forall ptrs contents i,
+  Zlength ptrs = Zlength contents ->
+  0 <= i < Zlength contents ->
+  iter_sepcon_arrays ptrs contents |-- 
+    data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vint (map Int.repr (Znth i contents))) (Znth i ptrs) * TT.
+Proof.
+  intros ptrs contents i Hlen Hi. unfold iter_sepcon_arrays. 
+  sep_apply (iter_sepcon_in_true (fun x : list Z * val => let (l, ptr) := x in 
+    data_at Ews (tarray tuchar (Zlength l)) (map Vint (map Int.repr l)) ptr) (combine contents ptrs) 
+    (Znth i contents, Znth i ptrs)). 2: cancel.
+  rewrite In_Znth_iff. exists i. split. rewrite combine_Zlength; lia.
+  apply combine_Znth; lia.
+Qed.
+  
+(*not true - but weaker statement that Int.repr (Vint z) is between 0 and 256 is true*)
+(*
+Lemma iter_sepcon_arrays_bound: forall ptrs contents, 
+  Zlength ptrs = Zlength contents ->
+  iter_sepcon_arrays ptrs contents |-- !! (Forall2D (fun z => 0 <= z <= Byte.max_unsigned) contents).
+Proof.
+  intros ptrs contents Hlens. unfold iter_sepcon_arrays. rewrite Forall2D_Znth. Check @allp_prop_left.
+  eapply derives_trans. 2 : {
+  apply (@allp_prop_left _ _ Z
+    (fun i => forall j : Z,
+        0 <= i < Zlength contents ->
+        0 <= j < Zlength (Znth i contents) -> 0 <= Znth j (Znth i contents) <= Byte.max_unsigned)). }
+  apply allp_right. intros i.
+  eapply derives_trans. 2 : {  apply (@allp_prop_left _ _ Z
+    (fun j =>
+        0 <= i < Zlength contents ->
+        0 <= j < Zlength (Znth i contents) -> 0 <= Znth j (Znth i contents) <= Byte.max_unsigned)). }
+  apply allp_right. intros j. 
+  (*This is ugly but oh well*)
+  assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) by lia. destruct H as [Hi | Hi].
+  - assert (0 <= j < Zlength (Znth i contents) \/ ~ (0 <= j < Zlength (Znth i contents))) by lia. 
+    destruct H as [Hj | Hj].
+    + sep_apply (iter_sepcon_arrays_Znth _ _ _ Hlens Hi). (*Finally, entailer! gives us info*) entailer!.
+      rewrite Forall_forall in H1. simpl_reptype. 
+      assert (In (Vint (Int.repr (Znth j (Znth i contents)))) (map Vint (map Int.repr (Znth i contents)))). {
+      rewrite in_map_iff. exists  (Int.repr (Znth j (Znth i contents))). split. reflexivity.
+      rewrite in_map_iff. exists (Znth j (Znth i contents)). split. reflexivity. apply Znth_In; lia. }
+      apply H1 in H2. rewrite value_fits_eq in H2. simpl in H2. unfold tc_val' in H2. simpl in H2.
+
+
+
+
+ unfold tc_val in H2. simpl in H2. destruct H2. intro C; inversion C.
+      simpl.
+
+
+  simpl in H1.
+
+  - entailer!.
+
+*)
+
 
 End VSTFacts. 
