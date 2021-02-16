@@ -147,21 +147,24 @@ Definition fec_blk_encode_spec :=
           Forall2D (fun z => 0 <= z <= Byte.max_unsigned) parities;
           forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
     PARAMS (Vint (Int.repr k); Vint (Int.repr h); Vint (Int.repr c); pd; pl; ps)
-    SEP (INDEX_TABLES gv; 
+    GLOBALS (gv)
+    SEP (iter_sepcon_arrays parity_ptrs parities; (*since this is changing, it is helpful to have it first*)
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          iter_sepcon_arrays packet_ptrs packets;
-         iter_sepcon_arrays parity_ptrs parities;
          data_at Ews (tarray tint k) (map Vint (map Int.repr (lengths))) pl;
-         data_at Ews (tarray tschar k) (list_repeat (Z.to_nat k) (Vint (Int.zero))) ps)
+         data_at Ews (tarray tschar k) (list_repeat (Z.to_nat k) (Vint (Int.zero))) ps;
+         INDEX_TABLES gv; 
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
   POST [ tint ]
     PROP ()
     RETURN (Vint Int.zero)
-    SEP (INDEX_TABLES gv;
+    SEP (iter_sepcon_arrays parity_ptrs (norev_mx (encode_list_mx h k c packets));
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          iter_sepcon_arrays packet_ptrs packets;
-         iter_sepcon_arrays parity_ptrs (norev_mx (encode_list_mx h k c packets));
          data_at Ews (tarray tint k) (map Vint (map Int.repr (lengths))) pl;
-         data_at Ews (tarray tschar k) (list_repeat (Z.to_nat k) (Vint (Int.zero))) ps).
+         data_at Ews (tarray tschar k) (list_repeat (Z.to_nat k) (Vint (Int.zero))) ps;
+         INDEX_TABLES gv;
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
           
 Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
   fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].

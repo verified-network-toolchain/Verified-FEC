@@ -29,6 +29,56 @@ Proof.
   unfold typed_true in T; unfold typed_false in F; rewrite T in F; inversion F.
 Qed. 
 
+(** Facts about [combine]*)
+(*This function is in the standard library, but we need a few results about how functions like Znth, Zlength,
+  and sublist work with combine*)
+Lemma combine_Zlength: forall {A B : Type} (l1: list A) (l2: list B),
+  Zlength l1 = Zlength l2 ->
+  Zlength (combine l1 l2) = Zlength l1.
+Proof.
+  intros A B l1 l2 Hlen. rewrite !Zlength_correct in *. rewrite combine_length. lia.
+Qed.
+
+Lemma combine_Znth: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} (l1 : list A) (l2: list B) i,
+  Zlength l1 = Zlength l2 ->
+  0 <= i < Zlength l1 ->
+  Znth i (combine l1 l2) = (Znth i l1, Znth i l2).
+Proof.
+  intros. rewrite <- !nth_Znth. apply combine_nth. rewrite <- !ZtoNat_Zlength; lia.
+  lia. lia. rewrite combine_Zlength; lia.
+Qed. 
+
+Lemma combine_sublist: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} (lo hi : Z) (l1 : list A) (l2: list B),
+  Zlength l1 = Zlength l2 ->
+  0 <= lo <= hi ->
+  hi <= Zlength l1 ->
+  combine (sublist lo hi l1) (sublist lo hi l2) = sublist lo hi (combine l1 l2).
+Proof.
+  intros A B Hinh1 Hinh2 lo hi l1 l2 Hlen Hhilo Hhi.
+  assert (Hsublen: Zlength (combine (sublist lo hi l1) (sublist lo hi l2)) = hi - lo). {
+   rewrite combine_Zlength by (rewrite !Zlength_sublist; lia). list_solve. }
+  apply Znth_eq_ext. rewrite Hsublen. rewrite Zlength_sublist; try lia.
+  rewrite combine_Zlength; lia.
+  intros i Hi. rewrite Hsublen in Hi. rewrite combine_Znth by list_solve.
+  rewrite !Znth_sublist by lia. rewrite combine_Znth by lia. reflexivity.
+Qed.
+
+Lemma combine_app: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} (l1 l3: list A) (l2 l4: list B),
+  Zlength l1 = Zlength l2 ->
+  Zlength l3 = Zlength l4 ->
+  combine (l1 ++ l3) (l2 ++ l4) = combine l1 l2 ++ combine l3 l4.
+Proof.
+  intros A B Hin1 Hin2 l1 l3 l2 l4 Hlen1 Hlen3.
+  apply Znth_eq_ext.
+  - rewrite !combine_Zlength by list_solve. rewrite !Zlength_app. rewrite !combine_Zlength; list_solve.
+  - intros i Hilen. rewrite combine_Zlength in Hilen by list_solve. rewrite combine_Znth by list_solve.
+    assert (0 <= i < Zlength l1 \/ Zlength l1 <= i < Zlength l1 + Zlength l3) by list_solve.
+    destruct H as [Hfst | Hsnd].
+    + rewrite !Znth_app1; try lia. rewrite combine_Znth by lia. reflexivity.
+      rewrite combine_Zlength; lia.
+    + rewrite !Znth_app2; try lia. rewrite combine_Znth; try lia. all: rewrite combine_Zlength; try lia.
+      rewrite Hlen1. reflexivity.
+Qed.
 
 Section VSTFacts.
 
@@ -344,23 +394,6 @@ Definition iter_sepcon_arrays (ptrs : list val) (contents: list (list Z)) :=
   iter_sepcon (fun (x: (list Z * val)) => let (l, ptr) := x in 
             data_at Ews (tarray tuchar (Zlength l)) (map Vint (map Int.repr l)) ptr) (combine contents ptrs).
 
-(*TODO: move*)
-Lemma combine_Zlength: forall {A B : Type} (l1: list A) (l2: list B),
-  Zlength l1 = Zlength l2 ->
-  Zlength (combine l1 l2) = Zlength l1.
-Proof.
-  intros A B l1 l2 Hlen. rewrite !Zlength_correct in *. rewrite combine_length. lia.
-Qed.
-
-Lemma combine_Znth: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} (l1 : list A) (l2: list B) i,
-  Zlength l1 = Zlength l2 ->
-  0 <= i < Zlength l1 ->
-  Znth i (combine l1 l2) = (Znth i l1, Znth i l2).
-Proof.
-  intros. rewrite <- !nth_Znth. apply combine_nth. rewrite <- !ZtoNat_Zlength; lia.
-  lia. lia. rewrite combine_Zlength; lia.
-Qed. 
-
 Lemma iter_sepcon_arrays_Znth: forall ptrs contents i,
   Zlength ptrs = Zlength contents ->
   0 <= i < Zlength contents ->
@@ -374,9 +407,80 @@ Proof.
   rewrite In_Znth_iff. exists i. split. rewrite combine_Zlength; lia.
   apply combine_Znth; lia.
 Qed.
-  
-(*not true - but weaker statement that Int.repr (Vint z) is between 0 and 256 is true*)
+
+Lemma remove_lead_eq: forall {A: Type} (P: Prop) (x: A),
+  (x = x -> P) <-> P.
+Proof.
+  intros. tauto.
+Qed.
+
+(*We need a [local_facts] so that entailer! does not throw away iter_sepcon info*)
+Lemma iter_sepcon_arrays_local_facts: forall ptrs contents,
+  iter_sepcon_arrays ptrs contents |-- !! (Zlength ptrs = Zlength contents -> 
+        forall i, 0 <= i < Zlength contents ->
+         field_compatible (tarray tuchar (Zlength (Znth i contents))) [] (Znth i ptrs) /\
+         Forall (value_fits tuchar) (map Vint (map Int.repr (Znth i contents)))).
+Proof.
+  intros ptrs contents. assert (Zlength ptrs = Zlength contents \/ Zlength ptrs <> Zlength contents) by lia.
+  destruct H as [Heq | Hneq]. 2: entailer!. rewrite Heq. rewrite remove_lead_eq. eapply derives_trans. 2:
+  apply (@allp_prop_left _ _ Z (fun (i: Z) => 0 <= i < Zlength contents ->
+        field_compatible (tarray tuchar (Zlength (Znth i contents))) [] (Znth i ptrs) /\
+        Forall (value_fits tuchar) (map Vint (map Int.repr (Znth i contents))))).
+  apply allp_right. intros i.
+  (*This is not particularly elegant; is there a way to get an implication out directly?*)
+  assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) by lia.
+  destruct H as [Hlt | Hgt]. 2: entailer. (*why doesn't entailer! work?*)
+  sep_apply (iter_sepcon_arrays_Znth _ _ _ Heq Hlt).
+  assert (forall m P Q, P -> (m |-- !! Q) -> (m |-- !! (P -> Q))). { intros. sep_apply H. entailer!. }
+  apply H. assumption. entailer!.
+Qed.
+
+(*We would also like another, more general fact. For [iter_sepcon] that gives an mpred 
+  as well as [iter_sepcon_arrays]), we can remove
+  the nth element and keep the rest*)
+
+(*An easier definition than [delete_nth], since it uses Z and there are lots of lemmas/automation about sublist*)
+Definition remove_nth {A: Type} (n: Z) (l: list A): list A :=
+  sublist 0 n l ++ sublist (n+1) (Zlength l) l.
+
+Lemma iter_sepcon_remove_one: forall {B : Type} `{Inhabitant B} (p: B -> mpred) (l: list B) (n: Z),
+  0 <= n < Zlength l ->
+  iter_sepcon p l = ((p (Znth n l)) * iter_sepcon p (remove_nth n l))%logic.
+Proof.
+  intros B Hinhab p l n Hn. unfold remove_nth. rewrite <- (sublist_same 0 (Zlength l) l) at 1 by auto.
+  rewrite (sublist_split 0 n (Zlength l) l) by lia.
+  rewrite (sublist_split n (n+1) (Zlength l) l) by lia. rewrite !iter_sepcon_app.
+  rewrite sublist_len_1 by lia. simpl. apply pred_ext; cancel.
+Qed.
+
+Lemma combine_remove_nth: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} n (l1: list A) (l2: list B),
+  Zlength l1 = Zlength l2 ->
+  0 <= n < Zlength l1 ->
+  combine (remove_nth n l1) (remove_nth n l2) = remove_nth n (combine l1 l2).
+Proof.
+  intros A B Hinh1 Hinh2 n l1 l2 Hlens Hn.
+  unfold remove_nth. rewrite combine_app by list_solve. rewrite Hlens. rewrite !combine_sublist by lia.
+  rewrite combine_Zlength by lia. rewrite Hlens. reflexivity.
+Qed.
+
+Lemma iter_sepcon_arrays_remove_one: forall ptrs contents i,
+  Zlength ptrs = Zlength contents ->
+  0 <= i < Zlength contents ->
+  iter_sepcon_arrays ptrs contents = 
+    (data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vint (map Int.repr (Znth i contents))) (Znth i ptrs) *
+    iter_sepcon_arrays (remove_nth i ptrs) (remove_nth i contents))%logic.
+Proof.
+  intros ptrs contents i Hlens Hi. unfold iter_sepcon_arrays. rewrite (iter_sepcon_remove_one _ _ i).
+  rewrite combine_Znth by auto. f_equal. rewrite combine_remove_nth by lia. reflexivity.
+  rewrite combine_Zlength; lia.
+Qed.
+
+
+(*now, we add this to the hint database so we can actually use [iter_sepcon_arrays]*)
+
 (*
+(*not true - but weaker statement that Int.repr (Vint z) is between 0 and 256 is true*)
+
 Lemma iter_sepcon_arrays_bound: forall ptrs contents, 
   Zlength ptrs = Zlength contents ->
   iter_sepcon_arrays ptrs contents |-- !! (Forall2D (fun z => 0 <= z <= Byte.max_unsigned) contents).
@@ -394,7 +498,7 @@ Proof.
         0 <= j < Zlength (Znth i contents) -> 0 <= Znth j (Znth i contents) <= Byte.max_unsigned)). }
   apply allp_right. intros j. 
   (*This is ugly but oh well*)
-  assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) by lia. destruct H as [Hi | Hi].
+  assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) by lia. destruct H as [Hi | Hi]. 2: entailer. 2: entailer!.
   - assert (0 <= j < Zlength (Znth i contents) \/ ~ (0 <= j < Zlength (Znth i contents))) by lia. 
     destruct H as [Hj | Hj].
     + sep_apply (iter_sepcon_arrays_Znth _ _ _ Hlens Hi). (*Finally, entailer! gives us info*) entailer!.
@@ -418,4 +522,4 @@ Proof.
 *)
 
 
-End VSTFacts. 
+End VSTFacts.

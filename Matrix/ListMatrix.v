@@ -973,6 +973,12 @@ Qed.
 Definition dot_prod (mx1: matrix) (mx2: matrix) i j (bound : Z) : F :=
   foldl (fun acc k => acc + ((get mx1 i k) * (get mx2 k j))) 0 (Ziota 0 bound).
 
+Lemma dot_prod_zero: forall mx1 mx2 i j,
+  dot_prod mx1 mx2 i j 0%Z = 0.
+Proof.
+  by [].
+Qed.
+
 Lemma dot_prod_plus_1: forall mx1 mx2 i j bound,
   0 <= bound ->
   dot_prod mx1 mx2 i j (bound+1)%Z = (dot_prod mx1 mx2 i j bound) + (get mx1 i bound * get mx2 bound j).
