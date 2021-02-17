@@ -1088,9 +1088,17 @@ Qed.
 
 (** Submatrices*)
 
-(*Take the first a rows and b columns of a matrix (TODO: will need a more general notion for decoding)*)
+(*This is the submatrix we will need for the encoder - take the first a rows and last b columns of a matrix,
+  reversed.*)
+
 Definition submatrix (mx: matrix) a b :=
-  sublist 0 a (map (fun x => sublist 0 b x) mx).
+  sublist 0 a (map (fun x => rev (sublist ((Zlength x) - b) (Zlength x) x)) mx).
+
+Lemma rev_rev: forall {A: Type} (l: list A),
+  rev l = List.rev l.
+Proof.
+  move => A l. elim : l => [//|h t IH /=]. by rewrite rev_cons IH  -cats1.
+Qed.
 
 Lemma submatrix_wf: forall m n mx a b,
   wf_matrix mx m n ->
@@ -1103,7 +1111,7 @@ Proof.
   - rewrite Zlength_sublist; try lia. rewrite Zlength_map. lia.
   - lia.
   - move => x Hin. apply sublist_In in Hin. move: Hin. rewrite in_map_iff => [[x' [Hx' Hin]]].
-    subst. rewrite Zlength_sublist; try lia. rewrite Hin1. lia. by [].
+    subst. rewrite rev_rev Zlength_rev Zlength_sublist; try lia. by rewrite Hin1; try lia. 
 Qed.
 
 Lemma submatrix_spec: forall m n mx a b i j,
@@ -1112,26 +1120,31 @@ Lemma submatrix_spec: forall m n mx a b i j,
   0 <= j < b ->
   a <= m ->
   b <= n ->
-  get (submatrix mx a b) i j = get mx i j.
+  get (submatrix mx a b) i j = get mx i (n - j - 1).
 Proof.
   move => m n mx a b i j [Hm [Hn Hin]] Hi Hj Ha Hb. rewrite /submatrix /get.
-  rewrite Znth_sublist; try lia. rewrite Znth_map; try lia. rewrite Znth_sublist; try lia. list_solve.
+  rewrite Znth_sublist; try lia. rewrite Znth_map; try lia.
+  have ->: (i+0)%Z = i by lia.
+  have Hnth: Zlength (Znth i mx) = n. apply Hin. apply Znth_In; lia. rewrite Hnth.
+  have Hsub: Zlength (sublist (n - b) n (Znth i mx)) = b by list_solve. 
+  rewrite rev_rev Znth_rev; try lia. rewrite Hsub. rewrite Znth_sublist; try lia.
+  f_equal. lia.
 Qed.
 
-(*A bit of complication because of the ordinals, but this actually corresponds to mxsub*)
+(*A bit of complication because of the ordinals, i -> i and j -> n - j - 1*)
 Lemma submatrix_to_mx: forall m n mx a b (Ha: a <= m) (Hb: b <= n),
   wf_matrix mx m n ->
   matrix_to_mx a b (submatrix mx a b) = mxsub
     (fun (x: 'I_(Z.to_nat a)) => widen_ord (le_Z_N Ha) x)
-    (fun (x: 'I_(Z.to_nat b)) => widen_ord (le_Z_N Hb) x)
+    (fun (x: 'I_(Z.to_nat b)) => (rev_ord (widen_ord (le_Z_N Hb) x)))
     (matrix_to_mx m n mx).
 Proof.
   move => m n mx a b Ha Hb Hwf. rewrite -matrixP /eqrel => x y.
-  rewrite /mxsub !mxE /=. apply (submatrix_spec Hwf).
+  rewrite /mxsub !mxE /=. rewrite (submatrix_spec Hwf); try lia.
+  - f_equal. have Hyb: (y < Z.to_nat b)%N by []. apply (elimT ltP) in Hyb. 
+    have->: (Z.to_nat n - y.+1)%N = (Z.to_nat n - y.+1)%coq_nat by []. lia.
   - have Hxa: (x < Z.to_nat a)%N by []. apply (elimT ltP) in Hxa. lia.
   - have Hyb: (y < Z.to_nat b)%N by []. apply (elimT ltP) in Hyb. lia.
-  - by [].
-  - by [].
 Qed.
 
 End ListMx.

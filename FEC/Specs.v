@@ -145,6 +145,8 @@ Definition fec_blk_encode_spec :=
           Zlength parities = h; Zlength lengths = k; Zlength stats = k; (*lengths for arrays*)
           Forall (fun x => Zlength x <= c) packets; Forall (fun x => Zlength x = c) parities;
           Forall2D (fun z => 0 <= z <= Byte.max_unsigned) parities;
+          Forall2D (fun z => 0 <= z <= Byte.max_unsigned) packets; (*packets are stored in unsigned char pointer, so
+            this SHOULD be true - if not, when calling the function, need to do everything mod 256*)
           forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
     PARAMS (Vint (Int.repr k); Vint (Int.repr h); Vint (Int.repr c); pd; pl; ps)
     GLOBALS (gv)

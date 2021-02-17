@@ -3,6 +3,7 @@ Require Import VST.floyd.proofauto.
 Require Import Common.
 Require Import CommonVST.
 Require Import Poly.
+Require Import VandermondeList.
 
 (*Solves goals of form ?p <> zero*)
 Ltac solve_poly_zero :=
@@ -21,11 +22,13 @@ Ltac solve_poly_zero :=
 Ltac pose_poly_bounds :=
   (*inner/more general bounds*)
   try (lazymatch goal with
+   | [ |- context [ poly_to_int (f_to_poly ?p) ]] => unfold f_to_poly;
+      pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p))
    | [ |- context [ poly_to_int (proj1_sig ?p) ]] => 
       pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p))
-  | [ |- context [ poly_to_int (?p %~ mod_poly) ]] => 
+   | [ |- context [ poly_to_int (?p %~ mod_poly) ]] => 
       pose proof (modulus_poly_bound (p %~ mod_poly) (pmod_lt_deg mod_poly p))
-  | [ |- context [ poly_of_int ?n ]] => 
+   | [ |- context [ poly_of_int ?n ]] => 
       let N := fresh in
       assert (N: 0 <= n < fec_n) by rep_lia;
       pose proof (polys_deg_bounded n N);
@@ -104,6 +107,7 @@ Ltac rewrite_zero:=
   let N := fresh in
   assert (N: poly_of_int 0%Z = zero) by (rewrite poly_of_int_zero; lia); rewrite N in *; clear N.
 
+
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
   repeat(match goal with
@@ -116,6 +120,7 @@ Ltac solve_wf :=
   | [H: _ |- wf_matrix (F:=F) (gauss_all_steps_rows_partial (F:=F) _ _ _ ) _ _] => apply gauss_all_steps_rows_partial_wf
   | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ ) _ _] => apply all_lc_one_rows_partial_wf
   | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ ) _ _] => apply all_lc_one_rows_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf
   end; try lia); assumption.
 
 

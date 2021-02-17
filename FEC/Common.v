@@ -257,94 +257,139 @@ Instance F_inhab : Inhabitant (ssralg.GRing.Field.sort F) := inhabitant_F F.
   and as a single pointer, pointing to a location in memory of
   size m * n, such that the reversed rows appear one after another. We need to flatten a matrix
   into a single list to represent this in Coq*)
+(*We need this or else implict arguments are a nightmare*)
+Definition f_to_poly (x: ssralg.GRing.Field.sort F) : poly := proj1_sig x.
 
-Definition rev_mx (mx: matrix F) : list (list Z) :=
-  map (fun l => rev (map (fun q => poly_to_int (proj1_sig q)) l)) mx.
+(*Map a function over a 2D list, reversing each inner list*)
+Definition map_2d_rev {A B: Type} (f: A -> B) (l: list (list A)) : list (list B) :=
+  map (fun l' => rev (map f l')) l.
 
-Definition flatten_mx_aux (mx: matrix F) (base: list Z) : list Z :=
-  fold_right (fun l acc => rev (map (fun q => poly_to_int (proj1_sig q)) l) ++ acc) base  mx.
+(*Do the same but without reversing*)
+Definition map_2d {A B : Type} (f: A -> B) (l: list (list A)) : list (list B) :=
+  map (fun l' => map f l') l.
 
-Definition flatten_mx (mx: matrix F) : list Z :=
-  flatten_mx_aux mx nil.
+(*[Znth] and [Zlength] for 2D maps*)
 
-(*We don't always need to reverse, however*)
-Definition norev_mx (mx: matrix F) : list (list Z) :=
-  map (fun l => map (fun q => poly_to_int (proj1_sig q)) l) mx.
-
-(*TODO: consolidate definitions so we don't define 5 versions of almost the same thing*)
-
-Lemma rev_concat_flatten : forall (mx: matrix F),
-  concat (rev_mx mx) = flatten_mx mx.
+Lemma map_2d_Znth: forall {A B : Type} `{Inhabitant A} `{Inhabitant B} (f : A -> B) (l: list (list A)) i j,
+  0 <= i < Zlength l ->
+  0 <= j < Zlength (Znth i l) ->
+  Znth j (Znth i (map_2d f l)) = f (Znth j (Znth i l)).
 Proof.
-  intros mx. induction mx.
-  - reflexivity.
-  - simpl. f_equal. apply IHmx.
+  intros A B Hinh1 Hinh2 f l i j Hi Hj.
+  unfold map_2d. rewrite !Znth_map by lia. reflexivity.
 Qed.
 
-Definition map_int_val_2d (l: list (list Z)) : list (list val) :=
-  map (fun l' => map Vint (map Int.repr l')) l.
+Lemma map_2d_Zlength1: forall {A B : Type} (f : A -> B) (l: list (list A)),
+  Zlength (map_2d f l) = Zlength l.
+Proof.
+  intros. unfold map_2d. list_solve.
+Qed.
+
+Lemma map_2d_Zlength2:  forall {A B : Type} (f : A -> B) (l: list (list A)) i,
+  Zlength (Znth i (map_2d f l)) = Zlength (Znth i l).
+Proof.
+  intros A B f l i. assert (Hi: (0 <= i < Zlength l \/ ~ (0 <= i < Zlength l))) by lia. destruct Hi as [Hi | Hi].
+  - unfold map_2d. rewrite Znth_map by auto. list_solve.
+  - rewrite !Znth_outofbounds; [reflexivity | lia|]. rewrite map_2d_Zlength1. lia. 
+Qed.
+
+Lemma map_2d_app: forall {A B : Type} (f : A -> B) (l1 l2: list (list A)),
+  map_2d f (l1 ++ l2) = map_2d f l1 ++ map_2d f l2.
+Proof.
+  intros. unfold map_2d. apply map_app.
+Qed.
+
+(*The same lemmas for [map_2d_rev]*)
+
+Lemma map_2d_rev_Znth: forall {A B : Type} `{Inhabitant A} `{Inhabitant B} (f : A -> B) (l: list (list A)) i j,
+  0 <= i < Zlength l ->
+  0 <= j < Zlength (Znth i l) ->
+  Znth j (Znth i (map_2d_rev f l)) = f (Znth ((Zlength (Znth i l)) - j - 1) (Znth i l)).
+Proof.
+  intros A B Hinh1 Hinh2 f l i j Hi Hj.
+  unfold map_2d_rev. rewrite !Znth_map by lia. rewrite Znth_rev by list_solve. rewrite Zlength_map.
+  rewrite Znth_map by list_solve. reflexivity.
+Qed.
+
+Lemma map_2d_rev_Zlength1: forall {A B : Type} (f : A -> B) (l: list (list A)),
+  Zlength (map_2d_rev f l) = Zlength l.
+Proof.
+  intros. unfold map_2d_rev. list_solve.
+Qed.
+
+Lemma map_2d_rev_Zlength2:  forall {A B : Type} (f : A -> B) (l: list (list A)) i,
+  Zlength (Znth i (map_2d_rev f l)) = Zlength (Znth i l).
+Proof.
+  intros A B f l i. assert (Hi: (0 <= i < Zlength l \/ ~ (0 <= i < Zlength l))) by lia. destruct Hi as [Hi | Hi].
+  - unfold map_2d_rev. rewrite Znth_map by auto. rewrite Zlength_rev. list_solve.
+  - rewrite !Znth_outofbounds; [reflexivity | lia|]. rewrite map_2d_rev_Zlength1. lia.
+Qed.
+
+
+Lemma map_2d_rev_app: forall {A B : Type} (f : A -> B) (l1 l2: list (list A)),
+  map_2d_rev f (l1 ++ l2) = map_2d_rev f l1 ++ map_2d_rev f l2.
+Proof.
+  intros. unfold map_2d_rev. apply map_app.
+Qed.
+
+(*Now we define several transformation functions in terms of these functions*)
+
+Definition rev_mx : matrix F -> list (list Z) := 
+  map_2d_rev (fun q => poly_to_int (f_to_poly q)).
+
+Definition norev_mx : matrix F -> list (list Z) :=
+  map_2d (fun q => poly_to_int (f_to_poly q)).
+
+Definition flatten_mx (mx: matrix F) : list Z :=
+  concat (rev_mx mx).
+
+Definition map_int_val_2d : list (list Z) -> list (list val) :=
+  map_2d (fun x => Vint (Int.repr x)).
 
 Definition rev_mx_val (mx: matrix F) : list (list val) :=
   map_int_val_2d (rev_mx mx).
 
-(*Since matrices are not necessarily well formed*)
-Definition whole_Zlength (l: matrix F) :=
+(*Add up all lengths of inner lists - matrices not necessarily well-formed*)
+Definition whole_Zlength {A: Type} (l: list (list A)) :=
   fold_right (fun x acc => Zlength x + acc) 0%Z l.
 
-Lemma flatten_mx_Zlength: forall l,
-  Zlength (flatten_mx l) = whole_Zlength l.
+Lemma concat_Zlength: forall {A: Type} (l: list (list A)),
+  Zlength (concat l) = whole_Zlength l.
 Proof.
-  intros. induction l; simpl.
-  - list_solve.
-  - rewrite Zlength_app. rewrite Zlength_rev. rewrite Zlength_map. rewrite IHl. reflexivity.
+  intros. induction l; simpl; list_solve.
 Qed.
 
-Lemma whole_Zlength_app: forall l1 l2,
+Lemma whole_Zlength_app: forall {A: Type} (l1 l2 : list (list A)),
   whole_Zlength (l1 ++ l2) = whole_Zlength l1 + whole_Zlength l2.
 Proof.
-  intros. induction l1.
-  - simpl. lia.
-  - simpl. rewrite <- Z.add_assoc. f_equal. apply IHl1.
-Qed. 
-
-Lemma whole_Zlength_upd_Znth: forall mx i l,
-  Zlength l = Zlength (Znth i mx) ->
-  whole_Zlength (upd_Znth i mx l) = whole_Zlength mx.
-Proof.
-  intros mx i l Hlen.
-  assert ((0 > i \/ i >= Zlength mx) \/ (0 <= i < Zlength mx)) by lia. destruct H.
-  - rewrite upd_Znth_out_of_range; auto.
-  - rewrite upd_Znth_unfold; auto. rewrite !whole_Zlength_app. simpl.
-    assert (mx = (sublist 0 i mx) ++ (Znth i mx :: sublist (i+1) (Zlength mx) mx)). {
-    rewrite <- (sublist_same 0 (Zlength mx)) at 1; try reflexivity.
-    rewrite (sublist_split 0 i); try lia. 
-    rewrite (sublist_split i (i+1)); try lia. rewrite sublist_len_1; try lia. auto. } 
-    rewrite H0 at 4. rewrite !whole_Zlength_app. simpl. replace (Zlength (Znth i mx)) with (Zlength l).
-    f_equal. f_equal. rewrite Z.add_0_r. reflexivity. (*Why doesn't lia work*)
+  intros. induction l1; simpl; lia.
 Qed.
 
-Lemma whole_Zlength_nonneg: forall l,
-  0 <= whole_Zlength l.
+Lemma whole_Zlength_upd_Znth: forall {A: Type} (l: list (list A)) i (l': list A),
+  Zlength l' = Zlength (Znth i l) ->
+  whole_Zlength (upd_Znth i l l') = whole_Zlength l.
 Proof.
-  intros. induction l; simpl.
-  - lia.
-  - pose proof (Zlength_nonneg a). (*Why doesn't lia work?*)
-    apply Z.add_nonneg_nonneg; assumption.
+  intros A l i l' Hlen.
+  assert ((0 > i \/ i >= Zlength l) \/ (0 <= i < Zlength l)) by lia. destruct H as [Hout | Hin].
+  - rewrite upd_Znth_out_of_range; auto.
+  - rewrite upd_Znth_unfold; auto. rewrite !whole_Zlength_app. simpl.
+    assert (l = (sublist 0 i l) ++ (Znth i l :: sublist (i+1) (Zlength l) l)). { 
+    rewrite <- (sublist_same 0 (Zlength l)) at 1 by reflexivity.
+    rewrite (sublist_split 0 i) by lia.
+    rewrite (sublist_split i (i+1)) by lia.  rewrite sublist_len_1 by lia. auto. }
+    rewrite H at 4. rewrite !whole_Zlength_app. simpl. rewrite Hlen. lia.
 Qed. 
 
-Lemma flatten_mx_aux_Znth: forall (mx: matrix F) b i,
-  whole_Zlength mx <= i ->
-  Znth i (flatten_mx_aux mx b) = Znth (i - whole_Zlength mx) b.
+Lemma whole_Zlength_nonneg: forall {A: Type} (l: list (list A)),
+  0 <= whole_Zlength l.
 Proof.
-  intros mx b i Hi. unfold flatten_mx_aux. generalize dependent i. induction mx; intros i Hi; simpl.
-  - f_equal. lia.
-  - simpl in Hi.
-    assert (Hlen: Zlength (rev (map (fun q : {p : poly | deg p < deg mod_poly} => poly_to_int (proj1_sig q)) a)) =
-      Zlength a). rewrite Zlength_rev. list_solve. rewrite app_Znth2.
-    rewrite Hlen. rewrite IHmx. f_equal. rewrite Z.sub_add_distr. reflexivity. rewrite <- Z.le_add_le_sub_l.
-    assumption. rewrite Hlen. pose proof (whole_Zlength_nonneg mx). 
-    assert (forall z1 z2 z3, 0 <= z2 -> z1 + z2 <= z3 -> z1 <= z3). intros. lia.
-    assert (Zlength a <= i). eapply H0. apply H. assumption. lia.
+  intros. induction l; simpl; list_solve.
+Qed.
+
+Lemma whole_Zlength_map2d_rev: forall {A B: Type} (f: A -> B) (l: list (list A)),
+  whole_Zlength (map_2d_rev f l) = whole_Zlength l.
+Proof.
+  intros. induction l; simpl; auto. rewrite Zlength_rev. list_solve.
 Qed.
 
 Lemma whole_Zlength_wf_matrix: forall (mx: matrix F) m n,
@@ -354,9 +399,9 @@ Proof.
   intros mx m n Hwf. destruct Hwf as [Hlen [Hn Hin]]. generalize dependent m.
   induction mx; intros m Hlen.
   - list_solve.
-  - simpl. rewrite Zlength_cons in Hlen. assert ((Zlength mx) = m -1) by lia.
+  - simpl in *. rewrite Zlength_cons in Hlen. assert ((Zlength mx) = m -1) by lia.
     assert (whole_Zlength mx = (m-1) * n). apply IHmx. intros. apply Hin. right; assumption.
-    assumption. rewrite H0. rewrite Hin. lia. left; reflexivity.
+    assumption.  rewrite H0. rewrite Hin. lia. left; reflexivity.
 Qed.
 
 Lemma whole_Zlength_sublist: forall (mx: matrix F) m n lo hi,
@@ -371,12 +416,6 @@ Proof.
   intros. apply Hin. eapply sublist_In. apply H.
 Qed.
 
-Lemma flatten_mx_aux_app: forall mx mx' base,
-  flatten_mx_aux (mx ++ mx') base = flatten_mx_aux mx (flatten_mx_aux mx' base).
-Proof.
-  intros. unfold flatten_mx_aux. rewrite fold_right_app. reflexivity.
-Qed.
-
 (*The real result that we want: allows us to convert from the indexing used in the C code to
   our matrix functions*)
 Lemma flatten_mx_Znth: forall {m n} (mx: matrix F) i j,
@@ -389,20 +428,19 @@ Proof.
   assert (Hwf' := Hwf).
   destruct Hwf as [Hlen [Hn Hin]]. 
   assert (Hsplit : mx = sublist 0 i mx ++ sublist i (Zlength mx) mx). rewrite <- sublist_split; try lia.
-  rewrite sublist_same; reflexivity. rewrite Hsplit at 1.
-  rewrite flatten_mx_aux_app.
-  rewrite flatten_mx_aux_Znth. rewrite (whole_Zlength_sublist _ m n); try lia; try auto.
-  replace (i * n + n - 1 - j - (i - 0) * n)  with (n - 1 - j) by lia.
-  rewrite (sublist_split _ (i+1) _); try lia. rewrite sublist_len_1; try lia. simpl.
-  assert (Hlen1: (Zlength (map (fun q : {p : poly | deg p < deg mod_poly} => poly_to_int (proj1_sig q)) (Znth i mx)) = n)).
-  rewrite Zlength_map. apply Hin. apply Znth_In; lia.
-  assert (Hlen2 : Zlength (rev (map (fun q : {p : poly | deg p < deg mod_poly} => poly_to_int (proj1_sig q)) (Znth i mx))) = n). 
-  rewrite Zlength_rev. lia.
-  rewrite app_Znth1. 2: list_solve. 
-  rewrite Znth_rev. 2: list_solve. list_simplify. rewrite Hin. f_equal. f_equal.
-  replace ((n - (n - 1 - j) - 1)) with j by lia. reflexivity. all: try(apply Znth_In; lia).
-  rewrite (whole_Zlength_sublist _ m n); try lia. assumption.
-Qed.
+  rewrite sublist_same; reflexivity. rewrite Hsplit at 1. unfold rev_mx. rewrite map_2d_rev_app. rewrite concat_app.
+  assert (Hconlen: Zlength (concat
+          (map_2d_rev (fun q : ssralg.GRing.Field.sort F => poly_to_int (f_to_poly q)) (sublist 0 i mx))) = i * n). {
+    rewrite concat_Zlength. simpl. rewrite whole_Zlength_map2d_rev. rewrite (whole_Zlength_sublist _ m n); try lia.
+    assumption. }
+  rewrite Znth_app2 by lia. rewrite Hconlen. replace (i * n + n - 1 - j - i * n) with (n - 1 - j) by rep_lia.
+  rewrite (sublist_split _ (i+1) _) by lia. rewrite sublist_len_1 by lia. simpl.
+  assert (Hrevlen: Zlength (rev (map (fun q : qpoly mod_poly => poly_to_int (f_to_poly q)) (Znth i mx))) = n). {
+    rewrite Zlength_rev. rewrite Zlength_map. apply Hin. apply Znth_In; lia. } simpl in *.
+  rewrite Znth_app1 by lia. rewrite Zlength_rev in Hrevlen. rewrite Znth_rev by lia.
+  rewrite Zlength_map. rewrite Zlength_map in Hrevlen. rewrite Znth_map by lia.
+  rewrite Hrevlen. unfold f_to_poly. f_equal. f_equal. f_equal. lia.
+Qed. 
 
 (*Matrix accesses are within bounds*)
 Lemma matrix_bounds_within: forall m n i j,
@@ -431,6 +469,19 @@ Proof.
   rewrite Zmod_eq; lia.
 Qed.
 
+(*TODO: move probably*)
+Lemma upd_Znth_rev: forall {A: Type} (l: list A) (i: Z) (x: A),
+  upd_Znth i (rev l) x = rev (upd_Znth (Zlength l - i - 1) l x).
+Proof.
+  intros. assert (Inhabitant A). apply x. apply Znth_eq_ext. rewrite Zlength_rev. rewrite !Zlength_upd_Znth.
+  apply Zlength_rev. intros j Hj. rewrite Zlength_upd_Znth in Hj. rewrite Zlength_rev in Hj.
+  rewrite Znth_rev; rewrite Zlength_upd_Znth; try lia.
+  assert (i = j \/ i <> j) by lia. destruct H as [Heq | Hneq].
+  - subst. rewrite !upd_Znth_same; try lia. reflexivity. rewrite Zlength_rev. auto.
+  - rewrite Znth_upd_Znth_diff by lia. rewrite Znth_rev by auto.
+    rewrite Znth_upd_Znth_diff by lia. reflexivity.
+Qed.
+
 (*The analogue of [flatten_mx_Znth] for updating an entry in the matrix*)
 Lemma flatten_mx_set: forall {m n} (mx: matrix F) i j q,
   wf_matrix mx m n ->
@@ -438,13 +489,16 @@ Lemma flatten_mx_set: forall {m n} (mx: matrix F) i j q,
   0 <= j < n ->
   upd_Znth (i * n + n - 1 - j) (flatten_mx mx) (poly_to_int (proj1_sig q))  = flatten_mx (set mx i j q).
 Proof.
-  intros m n mx i j q Hwf Hi Hj.
+  intros m n mx i j q Hwf Hi Hj. (*easier to use [Znth_eq_ext] than similar proof as get*)
   apply Znth_eq_ext.
-  - rewrite Zlength_upd_Znth. unfold set. rewrite !flatten_mx_Zlength.
+  - rewrite Zlength_upd_Znth. unfold set. unfold flatten_mx. rewrite !concat_Zlength. 
+    unfold rev_mx. rewrite !whole_Zlength_map2d_rev. 
     rewrite whole_Zlength_upd_Znth. reflexivity. list_solve.
   - intros i' Hilen'.
-    rewrite Zlength_upd_Znth in Hilen'. rewrite flatten_mx_Zlength in Hilen'.
-    rewrite (whole_Zlength_wf_matrix _ _ _ Hwf) in Hilen'.
+    rewrite Zlength_upd_Znth in Hilen'. unfold flatten_mx in *.
+    assert (Hconlen: Zlength (concat (rev_mx mx)) = m * n). {
+      rewrite concat_Zlength. unfold rev_mx. rewrite whole_Zlength_map2d_rev.
+      apply (whole_Zlength_wf_matrix _ _ _ Hwf). }
     assert (Hwf' : wf_matrix (F:=F) (set (F:=F) mx i j q) m n). {
       unfold set. destruct Hwf as [Hlen [Hn Hin]]. unfold wf_matrix. split.
       list_solve. split; auto.
@@ -452,31 +506,25 @@ Proof.
       assert (z = i \/ z <> i) by lia. destruct H; subst. rewrite upd_Znth_same; try lia.
       rewrite Zlength_upd_Znth. apply Hin. apply Znth_In; auto.
       rewrite upd_Znth_diff; try lia. apply Hin. apply Znth_In; auto. list_solve. list_solve. }
-    assert (i' <> (i * n + n - 1 - j) \/ i' = (i * n + n - 1 - j)) by lia. destruct H.
-    + rewrite upd_Znth_diff; try lia.
-      all: try (rewrite flatten_mx_Zlength; rewrite (whole_Zlength_wf_matrix _ _ _ Hwf)); try lia.
-      unfold set.
+    assert (i' <> (i * n + n - 1 - j) \/ i' = (i * n + n - 1 - j)) by lia. destruct H as [Hneq | Heq].
+    + rewrite upd_Znth_diff; try lia; try nia. unfold set. rewrite Hconlen in Hilen'.
       assert (H0n : 0 < n) by lia.
       pose proof (find_indices_correct _ _ _ H0n Hilen') as [Hx [Hy Hi']].
-      rewrite Hi'. rewrite !(@flatten_mx_Znth m n); auto.
-      f_equal. f_equal. unfold get.
+      rewrite Hi'. pose proof (@flatten_mx_Znth m n). unfold flatten_mx in H.
+      rewrite !H; try lia; unfold set in Hwf'; auto. f_equal. f_equal. unfold get.
       assert (( (i' / n) = i) \/ ((i' / n) <> i)) by lia. destruct H0.
       * subst. rewrite upd_Znth_same. list_solve. destruct Hwf as [Hlen [Hn Hin]]. lia.
-      * destruct Hwf as [Hlen [Hn Hin]]. rewrite upd_Znth_diff; try lia. reflexivity.
-      * apply matrix_bounds_within; lia.
-    + rewrite H. rewrite upd_Znth_same. rewrite (@flatten_mx_Znth m n); try lia; auto.
-      unfold get. unfold set. destruct Hwf as [Hlen [Hn Hin]].
+      * destruct Hwf as [Hlen [Hn Hin]]. rewrite upd_Znth_diff by lia. reflexivity.
+    + rewrite Heq. rewrite upd_Znth_same by lia. pose proof  (@flatten_mx_Znth m n); unfold flatten_mx in H; 
+      rewrite H by (try lia; auto); clear H. unfold get. unfold set. destruct Hwf as [Hlen [Hn Hin]].
       repeat(rewrite upd_Znth_same; try lia). rewrite Hin. assumption. apply Znth_In; lia.
-      rewrite flatten_mx_Zlength. rewrite (whole_Zlength_wf_matrix _ _ _ Hwf). 
-      apply matrix_bounds_within; lia.
 Qed.
 
 (** Going from list (list Z) -> matrix F*)
 (* The reverse of the transformation in [Common] - to go from a matrix of ints (bounded correctly) to a matrix of qpolys.
   This is essentially "interpreting the input as elements of a finite field"*)
-Definition int_to_poly_mx (l: list (list Z)) : matrix F :=
-  map (fun l' =>
-   (map (fun x => exist (fun x => deg x < deg mod_poly) (poly_of_int x %~ mod_poly) (pmod_lt_deg _ _)) l')) l.
+Definition int_to_poly_mx : list (list Z) -> matrix F :=
+  map_2d (fun x => exist (fun x => deg x < deg mod_poly) (poly_of_int x %~ mod_poly) (pmod_lt_deg _ _)).
 
 Lemma int_to_poly_mx_spec: forall (l: list (list Z)),
   Forall2D (fun z => 0 <= z <= Byte.max_unsigned) l ->
@@ -485,26 +533,120 @@ Lemma int_to_poly_mx_spec: forall (l: list (list Z)),
 Proof.
   intros l Hall i j. unfold int_to_poly_mx.
   assert (Hi: (0 <= i < Zlength l \/ ~ (0 <= i < Zlength l))) by lia. destruct Hi as [Hi | Hi].
-  - rewrite Znth_map by auto. 
-    assert (Hj: (0 <= j < Zlength (Znth i l) \/ ~ (0 <= j < Zlength (Znth i l)))) by lia. destruct Hj as [Hj | Hj].
-    + rewrite Znth_map by auto. simpl. rewrite pmod_refl. reflexivity. apply mod_poly_PosPoly.
+  -  assert (Hj: (0 <= j < Zlength (Znth i l) \/ ~ (0 <= j < Zlength (Znth i l)))) by lia. destruct Hj as [Hj | Hj].
+    + rewrite map_2d_Znth by lia. simpl. rewrite pmod_refl. reflexivity. apply mod_poly_PosPoly.
       apply polys_deg_bounded. rewrite Forall2D_Znth in Hall. destruct (Hall i j); auto. rep_lia.
     + rewrite Znth_outofbounds. simpl. rewrite Znth_outofbounds.
-      symmetry. rewrite poly_of_int_zero. unfold Inhabitant_Z. lia. lia. list_solve.
+      symmetry. rewrite poly_of_int_zero. unfold Inhabitant_Z. lia. lia.
+      rewrite map_2d_Zlength2; lia.
   - rewrite !(Znth_outofbounds i). unfold Inhabitant_list. rewrite !Znth_nil. simpl. unfold default.
-    unfold Inhabitant_Z. symmetry. rewrite poly_of_int_zero. lia. lia. list_solve.
+    unfold Inhabitant_Z. symmetry. rewrite poly_of_int_zero. lia. lia. rewrite map_2d_Zlength1; lia.
 Qed.
+
+(*Length and Znth lemmas - so that we don't have to unfold definitions*)
+
+(*TODO: see what we need*)
 
 Lemma int_to_poly_mx_length1: forall l,
   Zlength (int_to_poly_mx l) = Zlength l.
 Proof.
-  intros. unfold int_to_poly_mx. list_solve.
+  intros. apply map_2d_Zlength1.
 Qed.
 
 Lemma int_to_poly_mx_length2: forall l i,
   Zlength (Znth i (int_to_poly_mx l)) = Zlength (Znth i l).
 Proof.
-  intros. assert (Hi: (0 <= i < Zlength l \/ ~ (0 <= i < Zlength l))) by lia. destruct Hi as [Hi | Hi].
-  - unfold int_to_poly_mx. rewrite Znth_map; list_solve.
-  - rewrite !Znth_outofbounds; [reflexivity | lia|]. rewrite int_to_poly_mx_length1. lia.
+  intros. apply map_2d_Zlength2.
 Qed.
+
+Lemma rev_mx_length1: forall l,
+  Zlength (rev_mx l) = Zlength l.
+Proof.
+  intros. apply map_2d_rev_Zlength1.
+Qed.
+
+Lemma rev_mx_length2: forall l i,
+  Zlength (Znth i (rev_mx l)) = Zlength (Znth i l).
+Proof.
+  intros. apply map_2d_rev_Zlength2.
+Qed.
+
+Lemma map_int_val_2d_length1: forall l,
+  Zlength (map_int_val_2d l) = Zlength l.
+Proof.
+  intros. apply map_2d_Zlength1.
+Qed.
+
+Lemma map_int_val_2d_length2: forall l i,
+  Zlength (Znth i (map_int_val_2d l)) = Zlength (Znth i l).
+Proof.
+  intros. apply map_2d_Zlength2.
+Qed.
+
+Lemma rev_mx_val_length1: forall l,
+  Zlength (rev_mx_val l) = Zlength l.
+Proof.
+  intros. unfold rev_mx_val. rewrite map_int_val_2d_length1. apply rev_mx_length1.
+Qed.
+
+Lemma rev_mx_val_length2: forall l i,
+  Zlength (Znth i (rev_mx_val l)) = Zlength (Znth i l).
+Proof.
+  intros. unfold rev_mx_val. rewrite map_int_val_2d_length2. apply rev_mx_length2.
+Qed.
+
+Lemma rev_mx_Znth: forall l i j,
+  0 <= i < Zlength l ->
+  0 <= j <  Zlength (Znth i l) ->
+  Znth j (Znth i (rev_mx l)) = poly_to_int (f_to_poly (Znth (Zlength (Znth i l) - j - 1) (Znth i l))).
+Proof.
+  intros. unfold rev_mx. rewrite map_2d_rev_Znth; auto.
+Qed.
+
+Lemma map_int_val_2d_Znth: forall l i j,
+   0 <= i < Zlength l ->
+   0 <= j < Zlength (Znth i l) ->
+   Znth j (Znth i (map_int_val_2d l)) = Vint (Int.repr (Znth j (Znth i l))).
+Proof.
+  intros. unfold map_int_val_2d. rewrite map_2d_Znth; auto.
+Qed.
+
+Lemma rev_mx_val_Znth: forall l i j,
+  0 <= i < Zlength l ->
+  0 <= j < Zlength (Znth i l) ->
+  Znth j (Znth i (rev_mx_val l)) = 
+    Vint (Int.repr (poly_to_int (f_to_poly (Znth (Zlength (Znth i l) - j - 1) (Znth i l))))). 
+Proof.
+  intros. unfold rev_mx_val. rewrite map_int_val_2d_Znth.
+  rewrite rev_mx_Znth by auto. reflexivity. rewrite rev_mx_length1; auto.
+  rewrite rev_mx_length2; auto.
+Qed.
+
+Lemma Znth_inhab_eq: forall {A: Type} (H1: Inhabitant A) (H2: Inhabitant A) (i: Z) (l: list A),
+  0 <= i < Zlength l ->
+  @Znth _ H1 i l = @Znth _ H2 i l.
+Proof.
+  intros. unfold Znth. destruct (zlt i 0). lia. apply nth_indep. rewrite <- ZtoNat_Zlength. lia.
+Qed. 
+
+Ltac simpl_map2d :=
+  simpl; repeat match goal with
+  | [ |- context [ Zlength (rev_mx ?l) ]] => rewrite rev_mx_length1
+  | [ |- context [ Zlength (Znth ?i (rev_mx ?l)) ]] => rewrite rev_mx_length2
+  | [ |- context [ Zlength (map_int_val_2d ?l) ]] => rewrite map_int_val_2d_length1
+  | [ |- context [ Zlength (Znth ?i (map_int_val_2d ?l)) ]] => rewrite map_int_val_2d_length2
+  | [ |- context [ Zlength (rev_mx_val ?l) ]] => rewrite rev_mx_val_length1
+  | [ |- context [ Zlength (Znth ?i (rev_mx_val ?l)) ]] => rewrite rev_mx_val_length2
+  | [ |- context [ Zlength (int_to_poly_mx ?l) ]] => rewrite int_to_poly_mx_length1
+  | [ |- context [ Zlength (Znth ?i (int_to_poly_mx ?l)) ]] => rewrite int_to_poly_mx_length2
+  | [ |- context [ Znth ?j (Znth ?i (rev_mx ?l)) ]] => 
+        rewrite rev_mx_Znth; [ | auto; try lia; try list_solve  | auto; try lia; try list_solve ]
+  | [ |- context [ Znth ?j (Znth ?i (map_int_val_2d ?l)) ]] => 
+        rewrite map_int_val_2d_Znth; [ | auto; try lia; try list_solve  | auto; try lia; try list_solve ]
+  | [ |- context [ Znth ?j (Znth ?i (rev_mx_val ?l)) ]] => 
+      (*Because implicit arguments get screwed up - TODO: do we need for other cases?*)
+      rewrite (Znth_inhab_eq _ Inhabitant_list i (rev_mx_val l)) ; 
+      [ rewrite rev_mx_val_Znth; try rep_lia | try rep_lia; simpl_map2d; try rep_lia; list_solve]
+  end.
+  
+

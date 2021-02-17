@@ -51,6 +51,11 @@ Qed.
 Definition weight_mx := (gauss_restrict_rows 
             (weight_mx_list fec_max_h  (fec_n - 1)) fec_max_h).
 
+Lemma weight_mx_wf: wf_matrix weight_mx (fec_max_h) (fec_n - 1).
+Proof.
+  unfold weight_mx. apply gauss_restrict_rows_wf. apply weight_matrix_wf; rep_lia.
+Qed.
+
 End WeightMx.
 
 Require Import ListMatrix.
@@ -68,7 +73,7 @@ Lemma encoder_spec : forall (h k c : Z) (packets: list (list Z)) (Hh: h <= fec_m
   0 <= c ->
   Zlength packets = k ->
   Forall (fun x => Zlength x <= c) packets ->
-  matrix_to_mx h c (encode_list_mx h k c packets) = encoder   (le_Z_N Hh) (le_Z_N Hk)
+  matrix_to_mx h c (encode_list_mx h k c packets) = encoder (le_Z_N Hh) (le_Z_N Hk)
     (matrix_to_mx fec_max_h (fec_n - 1) weight_mx) 
     (matrix_to_mx k c (extend_mx (int_to_poly_mx packets) c)).
 Proof.
@@ -79,9 +84,8 @@ Proof.
   by rewrite (@submatrix_to_mx _ (fec_max_h) (fec_n - 1) _ _ _ Hh Hk).
   apply (submatrix_wf Hwf); rep_lia.
   apply extend_mx_wf. by []. by rewrite int_to_poly_mx_length1. move: Hin.
-  rewrite !Forall_forall => Hin l. rewrite In_Znth_iff => [[x [Hxlen Hznth]]].
-  subst. rewrite int_to_poly_mx_length2. apply Hin. apply Znth_In; try lia.
-  by rewrite int_to_poly_mx_length1 in Hxlen.
+  rewrite !Forall_Znth => Hin j.
+  simpl_map2d. apply Hin.
 Qed.
 
 End Encoder.
