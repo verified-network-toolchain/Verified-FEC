@@ -4,6 +4,7 @@ Require Import Common.
 Require Import CommonVST.
 Require Import Poly.
 Require Import VandermondeList.
+Require Import List2D.
 
 (*Solves goals of form ?p <> zero*)
 Ltac solve_poly_zero :=
@@ -17,32 +18,36 @@ Ltac solve_poly_zero :=
   | [ H: ?p *~ ?q = zero |- _ ] => rewrite poly_mult_zero_iff in H; destruct H
   end.
 
-(*put information into the context about poly bounds from the goal (of the form 0 <= poly_to_int ?p < fec_n),
-  or degree info for [poly_to_int[*)
-Ltac pose_poly_bounds :=
-  (*inner/more general bounds*)
-  try (lazymatch goal with
-   | [ |- context [ poly_to_int (f_to_poly ?p) ]] => unfold f_to_poly;
-      pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p))
-   | [ |- context [ poly_to_int (proj1_sig ?p) ]] => 
-      pose proof (modulus_poly_bound (proj1_sig p) (@ssrfun.svalP _ (fun y => deg y < deg mod_poly) p))
-   | [ |- context [ poly_to_int (?p %~ mod_poly) ]] => 
-      pose proof (modulus_poly_bound (p %~ mod_poly) (pmod_lt_deg mod_poly p))
-   | [ |- context [ poly_of_int ?n ]] => 
-      let N := fresh in
-      assert (N: 0 <= n < fec_n) by rep_lia;
-      pose proof (polys_deg_bounded n N);
-      try(assert (poly_of_int n <> zero) by solve_poly_zero)
-  end);
-  (*more specific functions built from the smaller pieces*)
-  repeat(lazymatch goal with 
-  | [Hnz: ?p <> zero, Hdeg: deg ?p < deg mod_poly |- context [find_power mod_poly ?p]] =>
-      tryif (assert (0 < find_power mod_poly p <= fec_n - 1 ) by assumption) then fail else
-      let Hfp := fresh in
-      let Hfpbound := fresh in
-      pose proof (@find_power_spec mod_poly _ mod_poly_PrimPoly p Hnz Hdeg) as N;
-      destruct N as [Hfp Hfpbound]; rewrite field_size_fec_n in Hfpbound 
-  end).
+(*get fact that deg t < deg mod_poly in the context*)
+Ltac pose_poly_deg t H :=
+  lazymatch t with
+    | f_to_poly ?p => unfold f_to_poly in *; pose proof (@proj2_sig _ (fun y => deg y < deg mod_poly) p) as H; simpl in H
+    | proj1_sig ?p => pose proof (@proj2_sig _ (fun y => deg y < deg mod_poly) p) as H; simpl in H
+    | ?p %~ mod_poly => pose proof (pmod_lt_deg mod_poly p) as H
+    | poly_of_int ?n => let N := fresh in assert (N: 0 <= n < fec_n) by rep_lia;
+        pose proof (polys_deg_bounded _ N) as H; clear N  
+  end.
+
+(*Put info about [find_power mod_poly p] in the context, solves obligations automatically. H1 and H2 are the
+  names for the new info (find_power def and bounds)*)
+Ltac pose_power p H1 H2 :=
+  let H := fresh in 
+  let N1 := fresh in 
+  let N2 := fresh in
+  assert (N1 : p <> zero) by (try assumption; solve_poly_zero);
+  pose_poly_deg p N2;
+  let N := fresh in
+  pose proof (@find_power_spec mod_poly _ mod_poly_PrimPoly p N1 N2) as N;
+  destruct N as [H1  H2]; rewrite field_size_fec_n in H2.
+
+(*get fact that 0 <= t < fec_n*)
+Ltac pose_poly_bounds t :=
+  lazymatch t with
+    | poly_to_int ?p => let N := fresh in pose_poly_deg p N; let N1 := fresh in
+        pose proof (modulus_poly_bound p N) as N1; simpl in N1; unfold f_to_poly in *
+    | find_power mod_poly ?p => let N1 := fresh in let N2 := fresh in
+       pose_power p N1 N2
+  end.
 
 (*Solves goals with Int.unsigned (Int.repr _) and Zbits.Zzero_ext when the value is an integer, not a qpoly (ie,
   rep_lia can prove that z is small enough)*)
@@ -53,28 +58,37 @@ Ltac solve_repr_int :=
   |  [ |- context [ Zbits.Zzero_ext 8 ?x]] => rewrite zbits_small by rep_lia
   end; try rep_lia; auto.
 
-(*Solve goals that deal with poly bounds*)
+
 Ltac solve_poly_bounds :=
-  match goal with
-  | [ |- deg (poly_of_int ?n) < deg mod_poly] => apply polys_deg_bounded; rep_lia
+  lazymatch goal with
+  | [ |- deg ?p < deg mod_poly ] => let N := fresh in pose_poly_deg p N; apply N
   | [ H: deg ?p < deg mod_poly |- 0 <= poly_to_int ?p < ?n] => pose proof (modulus_poly_bound p H); rep_lia
-  | [ |- _ ] => simpl; try rep_lia; pose_poly_bounds; solve_repr_int; rep_lia
+  | [ |- ?a <= ?t <= ?b ] => simpl; try rep_lia; pose_poly_bounds t; simpl; solve_repr_int; rep_lia
+  | [ |- ?a <= ?t < ?b ] => simpl; try rep_lia; pose_poly_bounds t; simpl; solve_repr_int; rep_lia
+  | [ |- ?t < ?b ] => simpl; try rep_lia; pose_poly_bounds t; simpl; solve_repr_int; rep_lia
+  | [ |- ?t <= ?b ] => simpl; try rep_lia; pose_poly_bounds t; simpl; solve_repr_int; rep_lia
   end.
 
 (*Simplify expressions with [Int.unsigned (Int.repr (poly_to_int ?p))] and [Int.zero_ext 8 (poly_to_int ?p)],
   where p is a poly that is smaller than mod_poly*)
 Ltac simpl_repr :=
-  repeat match goal with
+  repeat lazymatch goal with
+   |  [ |- is_int ?i ?u ?x] => progress simpl
+   |  [ |- context [ Int.unsigned (Int.repr (poly_to_int ?x))]] =>
+        let N := fresh in
+        assert (N: Int.unsigned (Int.repr (poly_to_int x)) = poly_to_int x) by (subst;
+        rewrite unsigned_repr; [ reflexivity | solve_poly_bounds]); rewrite -> N; clear N
+   |  [ |- context [ Int.unsigned (Int.repr ?x)]] => (*want to handle [poly_to_int] first*)
+        let N := fresh in
+        assert (N: Int.unsigned (Int.repr x) = x) by (subst;
+        rewrite unsigned_repr; [ reflexivity | solve_poly_bounds]); rewrite -> N; clear N
   | [ |- context [ Zbits.Zzero_ext 8 ?x]] =>
        let N := fresh in
       assert (N: Zbits.Zzero_ext 8 x = x) by (subst; rewrite zbits_small; [reflexivity | solve_poly_bounds]);
       rewrite -> N; clear N
   |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
-  |  [ |-  context [ Int.unsigned (Int.repr ?x)]] =>
-        let N := fresh in
-        assert (N: Int.unsigned (Int.repr x) = x) by (subst;
-        rewrite unsigned_repr; [ reflexivity | solve_poly_bounds]); rewrite -> N; clear N
   end; auto; try rep_lia; try solve_poly_bounds.
+
 
 (*Simplify an integer expression with zeroes*)
 Ltac simplify_zeroes  :=
@@ -85,21 +99,13 @@ Ltac simplify_zeroes  :=
     | [ |- context [ ?z * 0%Z ] ] => rewrite Z.mul_0_r
   end.
 
-(*Put info about [find_power mod_poly p] in the context, solves obligations automatically. H1 and H2 are the
-  names for the new info (find_power def and bounds)*)
-Ltac pose_power p H1 H2 :=
-  let H := fresh in
-  assert (H: p = monomial (Z.to_nat (find_power mod_poly p)) %~ mod_poly /\ 0 < find_power mod_poly p <= fec_n - 1) by
-  (rewrite <- field_size_fec_n; pose_poly_bounds; apply (@find_power_spec mod_poly _ mod_poly_PrimPoly p); auto);
-  destruct H as [H1 H2].
-
-(*Similar, but for [poly_inv mod_poly p/*)
+(*Similar to [pose_power], but for [poly_inv mod_poly p/*)
 Ltac pose_inv p H1 H2 :=
   let P := fresh in
   assert (P : p %~ mod_poly <> zero) by (rewrite (@pmod_refl _ mod_poly_PosPoly); [ solve_poly_zero | solve_poly_bounds ]);
   let H := fresh in
   assert (H: ((p *~ poly_inv mod_poly p) %~ mod_poly = one) /\ deg (poly_inv mod_poly p) < deg mod_poly) by
-    (pose_poly_bounds; apply (poly_inv_spec _ (@f_irred _ _ mod_poly_PrimPoly) _ P));
+    (apply (poly_inv_spec _ (@f_irred _ _ mod_poly_PrimPoly) _ P));
   destruct H as [H1 H2].
 
 (*replace [poly_of_int 0%Z] with [zero] everywhere*)
@@ -123,7 +129,6 @@ Ltac solve_wf :=
   | [H: _ |- wf_matrix (F:=F) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf
   end; try lia); assumption.
 
-
 (*Solve goals relating to [offset_val], adding/subtracting pointers, showing offsets are equal, and
   relating offsets to array fields*)
 Ltac solve_offset :=
@@ -132,10 +137,30 @@ Ltac solve_offset :=
   | [ |- context [ sem_add_ptr_int ?a ?b ?c ?d ]] => rewrite sem_add_pi_ptr_special; auto; try rep_lia
   | [ |- context [ offset_val ?n (offset_val ?m ?p) ]] => rewrite offset_offset_val
   | [ |- offset_val ?n ?p = offset_val ?m ?p] => f_equal; rep_lia
+  (*deal with 1D array subscripts*)
   | [ |- context [ field_address (tarray ?t ?sz) [ArraySubsc ?n] ?p ]] => rewrite arr_field_address; 
         auto; try rep_lia; try nia
   | [ |- context [ field_address0 (tarray ?t ?sz) [ArraySubsc ?n] ?p ]] => rewrite arr_field_address0; 
-        auto; try rep_lia; try nia
+        auto; try rep_lia; try nia 
+  (*deal with 2D array subscripts*)
+  | [ H: field_compatible (Tarray (tarray ?t ?n1) ?m1 noattr) [] ?p |- context [
+          field_address (tarray (tarray ?t ?n2) ?m2) [ArraySubsc ?a; ArraySubsc ?b] ?p ]] =>
+     replace n1 with n2 in H by rep_lia;
+     replace m1 with m2 in H by rep_lia;
+     let N := fresh in
+     assert (N : field_compatible (tarray (tarray t n2) m2) [ArraySubsc a; ArraySubsc b] p) by 
+      (unfold field_compatible; simpl;
+       repeat split; try apply H; auto; rep_lia);
+     rewrite (field_compatible_field_address _ _ _ N)
+  | [ H: field_compatible (Tarray (tarray ?t ?n1) ?m1 noattr) [] ?p |- context [
+          field_address0 (tarray (tarray ?t ?n2) ?m2) [ArraySubsc ?a; ArraySubsc ?b] ?p ]] =>
+     replace n1 with n2 in H by rep_lia;
+     replace m1 with m2 in H by rep_lia;
+     let N := fresh in
+     assert (N : field_compatible (tarray (tarray t n2) m2) [ArraySubsc a; ArraySubsc b] p) by 
+      (unfold field_compatible; simpl;
+       repeat split; try apply H; auto; rep_lia);
+     rewrite (field_compatible0_field_address0 _ _ _ (field_compatible_field_compatible0 _ _ _ N))
   | [ H : ?n <= Byte.max_unsigned |- Int.min_signed <= ?k * ?n <= Int.max_signed ] => 
       assert (0 <= k * n <= Byte.max_unsigned * Byte.max_unsigned) by nia; rep_lia
   end).
@@ -199,3 +224,28 @@ Ltac pointer_to_offset_with p e :=
     assert_PROP (force_val (sem_add_ptr_int t s a1 a2) = offset_val n p) as N
     by (entailer!; solve_offset); rewrite N; clear N; rewrite Eq; clear Eq
   end.
+
+(*To fold and unfold abbreviations for LOCALx and SEPx*)
+Ltac rewrite_eqs :=
+  repeat match goal with
+    | [H : ?x = ?y |- context [ ?x ]] => rewrite H
+    end.
+
+
+(*We have lots of hypothesis of the form: Forall (fun x => Zlength x = c) l and want to prove something
+  about Zlength (Znth i l) where i is in bounds. This tactic does this.*)
+Ltac inner_length :=
+  lazymatch goal with
+    | [ H: Forall (fun x => Zlength x = ?c) ?l |- context [ Zlength (Znth ?i ?l)]] =>
+      rewrite Forall_Znth in H; rewrite H by rep_lia; try rep_lia
+    | [ H: Forall (fun x => Zlength x <= ?c) ?l |- context [ Zlength (Znth ?i ?l)]] =>
+      let N := fresh in
+      assert (N: 0 <= i < Zlength l) by lia;
+      rewrite Forall_Znth in H; specialize (H _ N); rep_lia
+    | [ H: Forall2D (fun x => ?a <= x <= ?c) ?l |- context [ (Znth ?j (Znth ?i ?l))]] =>
+      let N := fresh in
+      let N' := fresh in
+      assert (N: 0 <= i < Zlength l) by lia;
+      assert (N': 0 <= j < Zlength (Znth i l)) by lia;
+      rewrite Forall2D_Znth in H; specialize (H _ _ N N'); solve_repr_int; clear N; clear N'
+   end.

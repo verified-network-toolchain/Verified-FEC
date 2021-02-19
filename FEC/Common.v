@@ -166,6 +166,15 @@ Proof.
   intros n Hz. pose proof modulus_poly_monomial n. rewrite <- poly_to_int_zero_iff in Hz. lia.
 Qed.
 
+Lemma poly_add_mod_bound: forall (p1 p2: poly),
+  deg p1 < deg mod_poly ->
+  deg p2 < deg mod_poly ->
+  poly_add_mod mod_poly p1 p2 = p1 +~ p2.
+Proof.
+  intros. unfold poly_add_mod. rewrite pmod_refl. reflexivity.
+  apply mod_poly_PosPoly. pose proof (poly_add_deg_max p1 p2). lia.
+Qed.
+
 (** Definition of lookup tables *)
 
 (* i -> x^i % f in fec_2_index*)
@@ -595,6 +604,17 @@ Proof.
   intros. unfold rev_mx_val. rewrite map_int_val_2d_length2. apply rev_mx_length2.
 Qed.
 
+Lemma norev_mx_length1: forall l, Zlength (norev_mx l) = Zlength l.
+Proof.
+  unfold norev_mx. apply map_2d_Zlength1.
+Qed.
+
+Lemma norev_mx_length2: forall l i,
+  Zlength (Znth i (norev_mx l)) = Zlength (Znth i l).
+Proof.
+  unfold norev_mx. apply map_2d_Zlength2.
+Qed.
+
 Lemma rev_mx_Znth: forall l i j,
   0 <= i < Zlength l ->
   0 <= j <  Zlength (Znth i l) ->
@@ -622,6 +642,14 @@ Proof.
   rewrite rev_mx_length2; auto.
 Qed.
 
+Lemma norev_mx_Znth: forall l i j,
+  0 <= i < Zlength l ->
+  0 <= j <  Zlength (Znth i l) ->
+  Znth j (Znth i (norev_mx l)) = poly_to_int (f_to_poly (Znth j (Znth i l))).
+Proof.
+  intros. unfold norev_mx. rewrite map_2d_Znth; auto.
+Qed.
+
 Lemma Znth_inhab_eq: forall {A: Type} (H1: Inhabitant A) (H2: Inhabitant A) (i: Z) (l: list A),
   0 <= i < Zlength l ->
   @Znth _ H1 i l = @Znth _ H2 i l.
@@ -638,9 +666,13 @@ Ltac simpl_map2d :=
   | [ |- context [ Zlength (rev_mx_val ?l) ]] => rewrite rev_mx_val_length1
   | [ |- context [ Zlength (Znth ?i (rev_mx_val ?l)) ]] => rewrite rev_mx_val_length2
   | [ |- context [ Zlength (int_to_poly_mx ?l) ]] => rewrite int_to_poly_mx_length1
+  | [ |- context [ Zlength (norev_mx ?l) ]] => rewrite norev_mx_length1
+  | [ |- context [ Zlength (Znth ?i (norev_mx ?l)) ]] => rewrite norev_mx_length2
   | [ |- context [ Zlength (Znth ?i (int_to_poly_mx ?l)) ]] => rewrite int_to_poly_mx_length2
   | [ |- context [ Znth ?j (Znth ?i (rev_mx ?l)) ]] => 
         rewrite rev_mx_Znth; [ | auto; try lia; try list_solve  | auto; try lia; try list_solve ]
+  | [ |- context [ Znth ?j (Znth ?i (norev_mx ?l)) ]] => 
+        rewrite norev_mx_Znth; [ | auto; try lia; try list_solve  | auto; try lia; try list_solve ]
   | [ |- context [ Znth ?j (Znth ?i (map_int_val_2d ?l)) ]] => 
         rewrite map_int_val_2d_Znth; [ | auto; try lia; try list_solve  | auto; try lia; try list_solve ]
   | [ |- context [ Znth ?j (Znth ?i (rev_mx_val ?l)) ]] => 
@@ -648,5 +680,4 @@ Ltac simpl_map2d :=
       rewrite (Znth_inhab_eq _ Inhabitant_list i (rev_mx_val l)) ; 
       [ rewrite rev_mx_val_Znth; try rep_lia | try rep_lia; simpl_map2d; try rep_lia; list_solve]
   end.
-  
 

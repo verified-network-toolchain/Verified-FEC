@@ -45,35 +45,34 @@ Proof.
       destruct (Z.eq_dec g 0) as [? | Hg0]. contradiction. clear H0 H0'. deadvars!.
       unfold INDEX_TABLES. Intros.
       forward.
-      * entailer!. rewrite index_to_power_contents_Znth; try lia. solve_poly_bounds. 
+      * entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr.
       * forward.
-        -- entailer!. rewrite index_to_power_contents_Znth; try lia. solve_poly_bounds. 
+        -- entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr. 
         -- pose_power (poly_of_int f) Hfp Hfp_bound. pose_power (poly_of_int g) Hgp Hgp_bound.
           (*for i + j > fec_n - 1, get conditional in usable form*)
-           rewrite? index_to_power_contents_Znth; try lia. 
+           rewrite? index_to_power_contents_Znth by lia. 
            forward_if.
           ++ forward. (*overflow case*)
-             ** entailer!. rewrite index_to_power_contents_Znth; try lia. simpl. solve_poly_bounds.
+             ** entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr.
              ** forward. 
-                --- entailer!. rewrite index_to_power_contents_Znth; try lia. solve_poly_bounds. 
-                --- rewrite !index_to_power_contents_Znth; try lia.
-                    forward.
+                --- entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr.
+                --- rewrite !index_to_power_contents_Znth by lia. forward.
                   +++ entailer!.
-                  +++ entailer!. rewrite power_to_index_contents_Znth; try lia. solve_poly_bounds. rep_lia.
+                  +++ entailer!. rewrite power_to_index_contents_Znth by rep_lia. simpl_repr.
                   +++ forward. unfold INDEX_TABLES. entailer!. (*now, we prove that this actually computes the product for this case*)
-                      rewrite power_to_index_contents_Znth; try rep_lia. f_equal. f_equal. f_equal.
+                      rewrite power_to_index_contents_Znth by rep_lia. f_equal. f_equal. f_equal.
                       rewrite Hfp at 2. rewrite Hgp at 2. rewrite <- pmod_mult_distr; [| apply mod_poly_PosPoly].
                       rewrite (monomial_exp_law). rewrite (@monomial_add_field_size mod_poly _ mod_poly_PrimPoly).
                       f_equal. f_equal. pose proof field_size_fec_n. rep_lia.
           ++ (*other side of the if statement*) forward.
-            ** entailer!. rewrite index_to_power_contents_Znth; try lia. solve_poly_bounds. 
+            ** entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr. 
             ** forward. 
-                --- entailer!. rewrite index_to_power_contents_Znth; try lia. solve_poly_bounds. 
-                --- rewrite !index_to_power_contents_Znth; try lia. forward.
+                --- entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr. 
+                --- rewrite !index_to_power_contents_Znth by lia. forward.
                   +++ entailer!.
-                  +++ entailer!. rewrite power_to_index_contents_Znth; try lia. solve_poly_bounds. rep_lia. 
+                  +++ entailer!. rewrite power_to_index_contents_Znth by rep_lia. simpl_repr. 
                   +++ forward. entailer!. (*now the easier, but similar case*) 
-                      rewrite power_to_index_contents_Znth; try rep_lia. f_equal. f_equal. f_equal. 
+                      rewrite power_to_index_contents_Znth by rep_lia. f_equal. f_equal. f_equal. 
                       rewrite Z2Nat.inj_add by rep_lia.
                       rewrite <- monomial_exp_law. rewrite pmod_mult_distr; [| apply mod_poly_PosPoly].
                       rewrite <- Hfp. rewrite <- Hgp. reflexivity.
@@ -133,7 +132,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
         apply one_lt_deg; auto.
       * forward. 
         -- (*array access valid*)
-           entailer!. rewrite Znth_app1. 2: list_solve. rewrite power_to_index_contents_Znth. solve_poly_bounds. lia. 
+           entailer!. rewrite Znth_app1. 2: list_solve. rewrite power_to_index_contents_Znth. simpl_repr. lia. 
         -- (*body continue with shift, rewrite shift into polynomial mult*)
            forward. 
            (*TODO: The resulting if condition is very strange and needs a lot of work to get into a usable form*)
@@ -141,7 +140,8 @@ pose proof mod_poly_PosPoly as Hpospoly.
                      (Int.repr (poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly))))). {
            unfold Int.shl. rewrite !unsigned_repr; try rep_lia. 2: solve_poly_bounds. 
            rewrite Z.shiftl_mul_pow2 by lia. replace (2 ^ 1) with 2 by reflexivity. f_equal.
-           rewrite <- poly_of_int_to_int. 2: pose_poly_bounds; rep_lia. rewrite Z.mul_comm. rewrite poly_shiftl.
+           rewrite <- poly_of_int_to_int. 2: pose_poly_bounds (poly_to_int (monomial (Z.to_nat (i - 1)) %~ mod_poly)); rep_lia.
+           rewrite Z.mul_comm. rewrite poly_shiftl.
            rewrite poly_of_int_inv. reflexivity. apply modulus_poly_monomial. } rewrite Znth_app1 by solve_prop_length.
            assert (Hxbound: 0 <= 
               poly_to_int (x *~ (monomial (Z.to_nat (i - 1)) %~ mod_poly)) <= 1023). {
@@ -188,7 +188,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
                   rewrite pmod_same by auto. rewrite poly_add_0_r. rewrite <- (pmod_refl mod_poly x).
                   rewrite <- pmod_mult_distr by auto. rewrite <- monomial_expand. rewrite pmod_twice; auto.
                   f_equal. f_equal. lia. rewrite deg_x. rewrite mod_poly_deg_eq; lia.
-                  rewrite Z.lxor_nonneg. solve_poly_bounds. }
+                  rewrite Z.lxor_nonneg. split; intros; rep_lia.  }
                 unfold Int.xor. rewrite Hshl. rewrite !unsigned_repr by rep_lia. rewrite Hxor. simpl_repr.
                 rewrite upd_Znth_app2 by list_solve. 
                 replace ((i - Zlength (power_to_index_contents i))) with 0%Z by list_solve.
@@ -231,7 +231,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
         assert (Hbound: 0 <= poly_to_int (monomial (Z.to_nat i) %~ mod_poly) < fec_n) by solve_poly_bounds. 
         forward.
         -- entailer!. 
-        -- entailer!. rewrite Znth_app1 by solve_prop_length. rewrite power_to_index_contents_Znth by lia. solve_poly_bounds. 
+        -- entailer!. rewrite Znth_app1 by solve_prop_length. rewrite power_to_index_contents_Znth by lia. simpl_repr. 
         -- rewrite Znth_app1 by solve_prop_length. rewrite power_to_index_contents_Znth by lia.
            forward. forward. 
           (*now continue and show loop invariant preserved - this is a bit tricky because
@@ -297,14 +297,14 @@ pose proof mod_poly_PosPoly as Hpospoly.
        - solve_poly_bounds. } unfold INDEX_TABLES; Intros. 
       forward.
       * entailer!.
-      * entailer!. rewrite index_to_power_contents_Znth by rep_lia. solve_poly_bounds. 
+      * entailer!. rewrite index_to_power_contents_Znth by rep_lia. simpl_repr. 
       * rewrite index_to_power_contents_Znth by rep_lia. 
         assert (Hinvbound: 0 <=
             poly_to_int (monomial (Z.to_nat (255 - find_power mod_poly (poly_of_int i))) %~ mod_poly) <
             256) by solve_poly_bounds. 
         forward.
         -- entailer!.
-        -- entailer!. rewrite power_to_index_contents_Znth; solve_poly_bounds. 
+        -- entailer!. rewrite power_to_index_contents_Znth; simpl_repr.  
         -- rewrite power_to_index_contents_Znth by solve_poly_bounds.
            forward.
           ++ entailer!.
