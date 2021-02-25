@@ -22,19 +22,6 @@ Proof.
   intros m x Hxm. have Hcoqnat: (Z.to_nat x < Z.to_nat m)%coq_nat by apply Z2Nat.inj_lt; lia.
   by apply (introT ltP).
 Qed.
-(*may not need*)
-(*
-Lemma Z_ord_eq: forall {m} (r: Z) (x: 'I_(Z.to_nat m)) (Hr: 0 <= r < m),
-  Z.of_nat x = r <-> x == Ordinal (Z_nat_bound Hr).
-Proof.
-  move => m r x Hr. split => [Hxr | Hord].
-  - have Hord: nat_of_ord (Ordinal (Z_nat_bound Hr)) == Z.to_nat r by [].
-    have: nat_of_ord (Ordinal (Z_nat_bound Hr)) == Z.to_nat (Z.of_nat x). by rewrite Hxr. by rewrite Nat2Z.id eq_sym.
-  - have: x = Ordinal (Z_nat_bound Hr). by apply (elimT eqP). move ->.
-    have Hordr: nat_of_ord (Ordinal (Z_nat_bound Hr)) == Z.to_nat r by [].
-    have: Z.to_nat (Z.of_nat (Ordinal (Z_nat_bound Hr))) = Z.to_nat r. move : Hordr => /eqP Hordr.
-    by rewrite Nat2Z.id. rewrite Nat2Z.id. move ->. by lia.
-Qed.*)
 
 Lemma Z_ord_bound: forall {m} (x : 'I_(Z.to_nat m)),
   0 <= m ->
@@ -604,6 +591,7 @@ Proof.
   move => m n mx c b Hwf. apply mx_foldl_wf =>[|//]. by apply all_cols_one_fn_in_conds.
 Qed.
 
+End AllColsOne.
 
 Section AddRow.
 
@@ -801,15 +789,29 @@ End AllSteps.
 
 Section LCOne.
 
-Definition all_lc_one_rows_partial (mx: matrix) (bound : Z) :=
-  fold_left (fun acc x => scalar_mul_row acc x (get mx x x)^-1) (Ziota 0 bound) mx.
+Definition all_lc_one_rows_partial m n (mx: matrix) (bound : Z) :=
+  fold_left (fun acc x => scalar_mul_row m n acc x (get mx x x)^-1) (Ziota 0 bound) mx.
 
-Lemma all_lc_one_plus_one: forall mx b,
-  0 <= b ->
-  all_lc_one_rows_partial mx (b+1) = scalar_mul_row (all_lc_one_rows_partial mx b) b (get mx b b)^-1.
+Lemma all_lcP_one_fn_in_conds: forall m n mx,
+  wf_matrix mx m n ->
+  fn_in_conds m n (fun acc x => scalar_mul_row m n acc x (get mx x x)^-1).
 Proof.
-  move => mx b Hb. rewrite /all_lc_one_rows_partial Ziota_plus_1; try lia.
-  by rewrite fold_left_app /=.
+  move => m n mx Hwf. rewrite /fn_in_conds /fn_notin_conds. split; [split|].
+  - move => mx' i j r Hwf' Hi Hj Hir. rewrite scalar_mul_row_spec //.
+    by case : (Z.eq_dec i r); try lia.
+  - move => mx' i Hwf'. apply scalar_mul_row_partial_wf. apply (matrix_m_pos Hwf).
+    apply (matrix_n_pos Hwf).
+  - move => mx' h i j Hwf' Hi Hj Hih. rewrite !scalar_mul_row_spec //=.
+    case: (Z.eq_dec i i) => [Htriv {Htriv} /= | Hbad]; try lia.
+    by case: (Z.eq_dec i h); try lia.
+    apply scalar_mul_row_partial_wf. apply (matrix_m_pos Hwf). apply (matrix_n_pos Hwf).
+Qed.
+
+Lemma all_lc_one_plus_one: forall m n mx b,
+  0 <= b ->
+  all_lc_one_rows_partial m n mx (b+1) = scalar_mul_row m n (all_lc_one_rows_partial m n mx b) b (get mx b b)^-1.
+Proof.
+  move => m n mx b Hb. by apply foldl_ziota_plus_one.
 Qed.
 
 Lemma all_lc_one_outside: forall m n mx bound i j,
@@ -817,91 +819,59 @@ Lemma all_lc_one_outside: forall m n mx bound i j,
   0 <= bound <= i ->
   0 <= i < m ->
   0 <= j < n ->
-  get (all_lc_one_rows_partial mx bound) i j = get mx i j.
+  get (all_lc_one_rows_partial m n mx bound) i j = get mx i j.
 Proof.
-  move => m n mx b i j Hwf Hbi Hi Hj.
-  rewrite /all_lc_one_rows_partial.
-  have: ~In i (Ziota 0 b) by rewrite Zseq_In; lia.
-  have: forall x, In x (Ziota 0 b) -> 0 <= x < b by move => x; rewrite Zseq_In; lia.
-  remember mx as mx' eqn : Hmx. rewrite {1}Hmx {Hmx}. move : mx' Hwf.  
-  elim : (Ziota 0 b) => [//|h t IH mx' Hwf Hallin Hnotin /=].
-  have Hh: 0 <= h < m. have H: 0 <= h < b by apply Hallin; left. lia.
-  rewrite IH. rewrite (scalar_mul_row_spec _ Hwf) => [|//|//|//].
-  - case: (Z.eq_dec i h) => [Hih /= | Hneq /=]. subst. exfalso. apply Hnotin. by left. by [].
-  - apply scalar_mul_row_partial_wf => [|//|//]. move: Hwf => [Hlen [Hn Hin]].
-    rewrite Hin. lia. apply Znth_In; lia. 
-  - move => x Hinx. apply Hallin. by right.
-  - move => Hint. apply Hnotin. by right.
+  move => m n mx b i j Hwf Hb Hi Hj. 
+  by apply (foldl_ziota_outside (all_lcP_one_fn_in_conds Hwf)).
 Qed.
 
 (*There is a slight complication - we only go to m - 1 because the last row's leading coefficient is already 1. This
   optimization is present in the C code*)
 Lemma all_lc_one_rows_equiv: forall {m n} (mx: matrix) (Hmn: m <= n),
   wf_matrix mx m n ->
-  matrix_to_mx m n (all_lc_one_rows_partial mx (m-1)) = mk_identity (matrix_to_mx m n mx) (le_Z_N Hmn) (Z.to_nat m-1).
+  matrix_to_mx m n (all_lc_one_rows_partial m n mx (m-1)) = mk_identity (matrix_to_mx m n mx) (le_Z_N Hmn) (Z.to_nat m-1).
 Proof.
   move => m n mx Hmn Hwf. rewrite mk_identity_foldl /all_lc_one_rows_partial /mk_identity_l /Ziota /ord_enum.
-  have[H0m | H0m]: m = 0%Z \/ 0 < m. apply matrix_m_pos in Hwf. lia.
+  have->: ((Z.to_nat m - 1)%N = (Z.to_nat (m - 1))). have->: (Z.to_nat m - 1)%N = (Z.to_nat m - 1)%coq_nat by []. lia.
+  have Hm0: 0 <= m by apply (matrix_m_pos Hwf).
+  have [Hmeq | Hmpos]: (m = 0%Z \/ 1 <= m) by lia.
   - by subst. 
-  - have Hm1: (Z.to_nat (m-1)) = (Z.to_nat m - 1)%coq_nat by lia.
-    have HmN: Z.to_nat (m - 1) = (Z.to_nat m - 1)%N by []. rewrite {Hm1} -HmN {HmN}.
-    have ->: (Z.to_nat 0) = 0%N by lia. remember mx as mx' eqn : Hmx. rewrite {2}Hmx {3}Hmx. 
-    have Hwf' : wf_matrix mx m n by rewrite -Hmx. move : Hwf' Hwf.
-    have: forall n, n \in (iota 0 (Z.to_nat (m-1))) -> (n < Z.to_nat (m-1))%N. move => n'. by rewrite mem_iota. 
-    move : {Hmx} mx. elim : (iota 0 (Z.to_nat (m-1))) => [//|h t IH mx Hin Hwf Hwf'].
-    rewrite /=.
-    have Hm1: (Z.to_nat (m-1) < Z.to_nat m)%N. have Htemp: (Z.to_nat (m-1) < Z.to_nat m)%coq_nat by lia.
-    by apply (introT ltP).
-    have Hhm1: (h < Z.to_nat (m-1))%N. apply Hin. by rewrite in_cons eq_refl.
-    have Hhm: (h < Z.to_nat m)%N by apply (ltn_trans Hhm1 Hm1).
-    have Hhm': 0 <= Z.of_nat h < m. split. lia. have Hbound' : (h < Z.to_nat m)%coq_nat by apply (elimT ltP). lia.
-    rewrite insubT IH /=; try by [].
-    rewrite scalar_mul_row_equiv. rewrite {5}/matrix_to_mx mxE. f_equal. f_equal. apply (elimT eqP).
-    have: nat_of_ord (Z_to_ord Hhm') == Z.to_nat (Z.of_nat h) by []. by rewrite Nat2Z.id. by [].
-    move => n' Hnin. apply Hin. by rewrite in_cons Hnin orbT. apply scalar_mul_row_partial_wf; try lia.
-    move : Hwf => [Hlen [H0n Hinlen]]. rewrite Hinlen =>[//|]. apply Znth_In; lia. by [].
+  - apply foldl_ziota_to_mx; try by []; try lia.
+    + move => r Hr mx' Hmx'. rewrite scalar_mul_row_equiv //=. f_equal.
+      by rewrite /matrix_to_mx mxE /= !Z2Nat.id; try lia.
+    + by apply all_lcP_one_fn_in_conds.
 Qed.
 
 Lemma all_lc_one_rows_partial_wf: forall {m n} mx bound,
   0 <= bound <= m ->
   wf_matrix mx m n ->
-  wf_matrix (all_lc_one_rows_partial mx bound) m n.
+  wf_matrix (all_lc_one_rows_partial m n mx bound) m n.
 Proof.
-  move => m n mx bound Hb Hwf. rewrite /all_lc_one_rows_partial /Ziota.
-  have ->: (Z.to_nat 0) = 0%N by lia.
-  have: forall n, n \in (iota 0 (Z.to_nat bound)) -> (n < Z.to_nat bound)%N. move => n'. by rewrite mem_iota.
-  remember mx as mx' eqn : Hmx. move : Hwf. rewrite {3}Hmx {1}Hmx {Hmx}. move : mx.
-  elim: (iota 0 (Z.to_nat bound)) => [//| h t IH mx Hwf Hin /=].
-  have Hbound: (h < Z.to_nat bound)%N. apply Hin. by rewrite in_cons eq_refl. 
-  have Hhm : 0 <= Z.of_nat h < bound. split. lia. have {} Hbound : (h < Z.to_nat bound)%coq_nat by apply (elimT ltP).
-  lia. apply IH. apply scalar_mul_row_partial_wf; try lia.
-  move : Hwf => [Hlen [Hn0 Hinlen]]. rewrite Hinlen =>[//|]. apply Znth_In. list_solve. by []. 
-  move => n' Hinn'. apply Hin. by rewrite in_cons Hinn' orbT.
-Qed. 
+  move => m n mx b Hb Hwf. apply mx_foldl_wf =>[|//].  by apply all_lcP_one_fn_in_conds.
+Qed.
 
 End LCOne.
 
 Section GaussFull.
 
-Definition gauss_restrict_rows (mx: matrix) m :=
-  all_lc_one_rows_partial (gauss_all_steps_rows_partial mx m m) (m-1).
-
+Definition gauss_restrict_rows m n (mx: matrix) :=
+  all_lc_one_rows_partial m n (gauss_all_steps_rows_partial m n mx m) (m-1).
 
 Lemma gauss_restrict_rows_equiv: forall {m n} (mx: matrix) (Hmn: m <= n),
   wf_matrix mx m n ->
-  matrix_to_mx m n (gauss_restrict_rows mx m) = gaussian_elim_restrict (matrix_to_mx m n mx) (le_Z_N Hmn).
+  matrix_to_mx m n (gauss_restrict_rows m n mx) = gaussian_elim_restrict (matrix_to_mx m n mx) (le_Z_N Hmn).
 Proof.
   move => m n mx Hmn Hwf.
   have H0m: 0 <= m by apply (matrix_m_pos Hwf).
   rewrite /gauss_restrict_rows /gaussian_elim_restrict all_lc_one_rows_equiv.
-  rewrite gauss_all_steps_rows_equiv. rewrite -gauss_all_steps_restrict_both_dirs.
-  by rewrite subn1. by []. lia.
+  rewrite gauss_all_steps_rows_equiv //. rewrite -gauss_all_steps_restrict_both_dirs.
+  by rewrite subn1. lia.
   apply gauss_all_steps_rows_partial_wf =>[|//]. lia.
 Qed.
 
 Lemma gauss_restrict_rows_wf: forall {m n} (mx: matrix),
   wf_matrix mx m n ->
-  wf_matrix (gauss_restrict_rows mx m) m n.
+  wf_matrix (gauss_restrict_rows m n mx) m n.
 Proof.
   move => m n mx Hwf. have H0m: 0 <= m by apply (matrix_m_pos Hwf).
   have [H0meq | H0mlt]:  (0%Z = m \/ 0 < m) by lia.
@@ -943,7 +913,7 @@ Lemma gauss_all_steps_rows_partial_strong_inv: forall m n mx r,
   wf_matrix mx m n ->
   0 <= r < m ->
   strong_inv_list m n mx 0 ->
-  strong_inv_list m n (gauss_all_steps_rows_partial mx m r) r.
+  strong_inv_list m n (gauss_all_steps_rows_partial m n mx r) r.
 Proof.
   move => m n mx r Hwf Hrm. rewrite /strong_inv_list.
   case : (range_le_lt_dec 0 0 m) => [H0m | //].
@@ -961,7 +931,7 @@ Lemma gauss_all_steps_rows_partial_gauss_inv: forall m n mx r,
   wf_matrix mx m n ->
   0 <= r < m ->
   strong_inv_list m n mx 0 ->
-  gauss_invar (matrix_to_mx m n (gauss_all_steps_rows_partial mx m r)) (Z.to_nat r) (Z.to_nat r).
+  gauss_invar (matrix_to_mx m n (gauss_all_steps_rows_partial m n mx r)) (Z.to_nat r) (Z.to_nat r).
 Proof.
   move => m n mx r Hwf Hrm. rewrite /strong_inv_list. case : (range_le_lt_dec 0 0 m) => [H0m |//].
   case : (Z_le_lt_dec m n) => [Hmn Hstr | //].
@@ -974,7 +944,7 @@ Qed.
 Lemma gauss_all_steps_rows_partial_zeroes: forall m n mx r (Hr: 0 <= r < m) (Hmn : m <= n),
   wf_matrix mx m n ->
   strong_inv_list m n mx 0 ->
-  (forall (x: 'I_(Z.to_nat m)), (matrix_to_mx m n (gauss_all_steps_rows_partial mx m r)) x (widen_ord (le_Z_N Hmn)
+  (forall (x: 'I_(Z.to_nat m)), (matrix_to_mx m n (gauss_all_steps_rows_partial m n mx r)) x (widen_ord (le_Z_N Hmn)
    (Z_to_ord Hr)) != 0).
 Proof.
   move => m n mx r Hr Hmn Hwf Hstr x.
@@ -988,7 +958,7 @@ Lemma gauss_all_steps_columns_partial_zeroes: forall m n mx r (Hr: 0 <= r < m) (
   wf_matrix mx m n ->
   strong_inv_list m n mx 0 ->
   (forall (x: 'I_(Z.to_nat m)),
-  (matrix_to_mx m n (all_cols_one_partial (gauss_all_steps_rows_partial mx m r) r c) x (widen_ord (le_Z_N Hmn)
+  (matrix_to_mx m n (all_cols_one_partial m n (gauss_all_steps_rows_partial m n mx r) r c) x (widen_ord (le_Z_N Hmn)
    (Z_to_ord Hr))) != 0).
 Proof.
   move => m n mx r Hr Hmn c Hc Hwf Hstr x. rewrite all_cols_one_equiv_partial. lia.
@@ -996,7 +966,7 @@ Proof.
   have Hord: Z_to_ord Hrn = widen_ord (le_Z_N Hmn) (Z_to_ord Hr). apply (elimT eqP). by
   have : Z.to_nat r == Z.to_nat r by []. rewrite Hord.
   have Hz: forall x0 : 'I_(Z.to_nat m),
-    matrix_to_mx m n (gauss_all_steps_rows_partial mx m r) x0 (widen_ord (le_Z_N Hmn) (Z_to_ord Hr)) != 0.
+    matrix_to_mx m n (gauss_all_steps_rows_partial m n mx r) x0 (widen_ord (le_Z_N Hmn) (Z_to_ord Hr)) != 0.
   move => x'. by apply gauss_all_steps_rows_partial_zeroes.
   rewrite all_cols_one_noif_gen_zero. apply Hz. 2: apply Hz.
   apply pmap_sub_uniq. apply iota_uniq. by []. apply gauss_all_steps_rows_partial_wf. lia. by [].
@@ -1009,7 +979,7 @@ Lemma gauss_all_steps_columns_partial_zeroes_list: forall m n mx r c,
   m <= n ->
   wf_matrix mx m n ->
   strong_inv_list m n mx 0 ->
-  (forall x, 0 <= x < m -> get (all_cols_one_partial (gauss_all_steps_rows_partial mx m r) r c) x r <> 0).
+  (forall x, 0 <= x < m -> get (all_cols_one_partial m n (gauss_all_steps_rows_partial m n mx r) r c) x r <> 0).
 Proof.
   move => m n mx r c Hr Hc Hmn Hwf Hstr x Hx.
   pose proof (@gauss_all_steps_columns_partial_zeroes m n mx r Hr Hmn c Hc Hwf Hstr (Z_to_ord Hx)).
@@ -1021,38 +991,26 @@ Proof.
 Qed. 
 
 (** Matrix for Encoder*)
-(*Here, the matrix may be partial - ie, not all rows are filled in. So we need to extend with zeroes*)
-Definition extend_mx (l: list (list F)) (n : Z) : matrix :=
-  map (fun x => x ++ list_repeat (Z.to_nat (n - Zlength x)) 0%R) l.
+(*Here, the matrix may be partial - ie, not all rows are filled in. So we need to extend with zeroes, 
+up to an m x n matrix*)
+Definition extend_mx m n (l: list (list F)) : matrix :=
+  mk_matrix m n (fun i j => if (Z_lt_le_dec j (Zlength (Znth i l))) then get l i j else 0%R).
 
 Lemma extend_mx_wf: forall m n l,
   0 <= n ->
-  Zlength l = m ->
-  (Forall (fun x => (Zlength x <= n)%Z)) l ->
-  wf_matrix (extend_mx l n) m n.
+  0 <= m ->
+  wf_matrix (extend_mx m n l) m n.
 Proof.
-  move => m n l H0n Hlen. rewrite /wf_matrix Forall_forall => Hall. repeat split.
-  - by rewrite /extend_mx Zlength_map.
-  - by [].
-  - move => x. rewrite /extend_mx in_map_iff => [[l' [Hl' Hin]]]. subst.
-    move : Hall => /(_ l' Hin) => Hlen.
-    rewrite Zlength_app Zlength_list_repeat. apply Zplus_minus. by apply Zle_minus_le_0.
-Qed.
-
-Lemma extend_mx_spec: forall n l i j,
-  (Forall (fun x => (Zlength x <= n)%Z) l) ->
-  0 <= i < (Zlength l) ->
-  0 <= j < n ->
-  get (extend_mx l n) i j = if (Z_lt_le_dec j (Zlength (Znth i l))) then Znth j (Znth i l) else 0%R.
-Proof.
-  move => n l i j Hall Hi Hj. rewrite /extend_mx /get.
-  have Hznth: 0 <= Zlength (Znth i l) <= n. split. list_solve. move: Hall. 
-    rewrite Forall_forall => /(_ (Znth i l)) Hlen. apply Hlen. apply Znth_In; lia.
-  rewrite {Hall} Znth_map =>[|//].  
-  case : (Z_lt_le_dec j (Zlength (Znth i l))) => [Hjlen /= | Hjlen /=].
-  - by rewrite Znth_app1.
-  - rewrite Znth_app2; try lia. list_solve.
+  move => m n l Hm Hn. by apply mk_matrix_wf.
 Qed. 
+
+Lemma extend_mx_spec: forall m n l i j,
+  0 <= i < m ->
+  0 <= j < n ->
+  get (extend_mx m n l) i j = if (Z_lt_le_dec j (Zlength (Znth i l))) then Znth j (Znth i l) else 0%R.
+Proof.
+  move => m n l i j Hi Hj. by apply mk_matrix_get.
+Qed.
 
 (* We use the above to define matrix multiplication of ListMatrices, since we will be setting the entries
   manually. Using mathcomp summations in VST would be
@@ -1063,9 +1021,7 @@ Definition dot_prod (mx1: matrix) (mx2: matrix) i j (bound : Z) : F :=
 
 Lemma dot_prod_zero: forall mx1 mx2 i j,
   dot_prod mx1 mx2 i j 0%Z = 0.
-Proof.
-  by [].
-Qed.
+Proof. by []. Qed.
 
 Lemma dot_prod_plus_1: forall mx1 mx2 i j bound,
   0 <= bound ->
@@ -1129,37 +1085,26 @@ Lemma mulmx_dot_equiv: forall m n p mx1 mx2 mx3,
   matrix_to_mx m p mx3 = (matrix_to_mx m n mx1) *m (matrix_to_mx n p mx2).
 Proof.
   move => m n p mx1 mx2 mx3 Hwf1 Hwf2 Hwf3 Hall.
-  rewrite -matrixP /eqrel => x y.
-  rewrite mxE.
-  have Hxm: 0 <= Z.of_nat x < m. split; try lia. have Hxm: (x < Z.to_nat m)%N by [].
-    have {}Hxm : (x < Z.to_nat m)%coq_nat by apply (elimT ltP). lia.
-  have Hyp: 0 <= Z.of_nat y < p. split; try lia. have Hyp: (y < Z.to_nat p)%N by [].
-    have {}Hyp : (y < Z.to_nat p)%coq_nat by apply (elimT ltP). lia.
-  rewrite Hall =>[|//|//].
-  rewrite (dot_prod_mulmx Hxm Hyp Hwf1 Hwf2) /=. f_equal. 
-  have /eqP Hx: nat_of_ord (Z_to_ord Hxm) == x.
-    have: nat_of_ord (Z_to_ord Hxm) == (Z.to_nat (Z.of_nat x)) by []. by rewrite Nat2Z.id.
-  apply ord_inj. by rewrite Hx.
-  have /eqP Hy: nat_of_ord (Z_to_ord Hyp) == y.
-    have: nat_of_ord (Z_to_ord Hyp) == (Z.to_nat (Z.of_nat y)) by []. by rewrite Nat2Z.id.
-  apply ord_inj. by rewrite Hy.
+  rewrite -matrixP /eqrel => x y. rewrite mxE.
+  have Hxm: 0 <= Z.of_nat x < m. split; try lia. have /ltP Hxm: (x < Z.to_nat m)%N by []. lia.
+  have Hyp: 0 <= Z.of_nat y < p. split; try lia. have /ltP Hyp: (y < Z.to_nat p)%N by []. lia.
+  rewrite Hall // (dot_prod_mulmx Hxm Hyp Hwf1 Hwf2) /=. f_equal.
+  apply ord_inj. by rewrite /= Nat2Z.id.
+  apply ord_inj. by rewrite /= Nat2Z.id. 
 Qed.
 
 (*Finally, we give a definition with lists so we don't need to directly refer to any
  ssreflect functions in the VST proofs*)
 
 Definition list_matrix_multiply m n p mx1 mx2 : matrix :=
-  prop_list (fun (row : Z) => prop_list (fun col => dot_prod mx1 mx2 row col n) p) m.
+  mk_matrix m p (fun i j => dot_prod mx1 mx2 i j n).
 
 Lemma list_matrix_multiply_wf: forall m n p mx1 mx2,
   0 <= m ->
   0 <= p ->
   wf_matrix (list_matrix_multiply m n p mx1 mx2) m p.
 Proof.
-  move => m n p mx1 mx2 Hm Hp. rewrite /wf_matrix. repeat split.
-  rewrite /list_matrix_multiply. rewrite prop_list_length; lia. lia.
-  move => l. rewrite /list_matrix_multiply In_Znth_iff => [[i [Hilen Hznth]]].
-  subst. rewrite prop_list_Znth. rewrite prop_list_length; lia. rewrite prop_list_length in Hilen; lia.
+  move => m n p mx1 mx2 Hm Hp. by apply mk_matrix_wf.
 Qed.
 
 Lemma list_matrix_multiply_correct: forall m n p mx1 mx2 ,
@@ -1170,8 +1115,7 @@ Proof.
   move => m n p mx1 mx2 Hwf1 Hwf2.
   apply mulmx_dot_equiv =>[//|//||].
   apply list_matrix_multiply_wf. apply (matrix_m_pos Hwf1). apply (matrix_n_pos Hwf2).
-  move => i j Hi Hj. rewrite /get /list_matrix_multiply. rewrite prop_list_Znth =>[|//].
-  by rewrite prop_list_Znth.
+  move => i j Hi Hj. by rewrite mk_matrix_get. 
 Qed.
 
 (** Submatrices*)
@@ -1179,60 +1123,38 @@ Qed.
 (*This is the submatrix we will need for the encoder - take the first a rows and last b columns of a matrix,
   reversed.*)
 
-Definition submatrix (mx: matrix) a b :=
-  sublist 0 a (map (fun x => rev (sublist ((Zlength x) - b) (Zlength x) x)) mx).
+Definition submatrix n (mx: matrix) a b :=
+  mk_matrix a b (fun i j => get mx i (n - j - 1)).
 
-Lemma rev_rev: forall {A: Type} (l: list A),
-  rev l = List.rev l.
+Lemma submatrix_wf: forall n mx a b,
+  0 <= a ->
+  0 <= b ->
+  wf_matrix (submatrix n mx a b) a b.
 Proof.
-  move => A l. elim : l => [//|h t IH /=]. by rewrite rev_cons IH  -cats1.
+  move => n mx a b Ha Hb. by apply mk_matrix_wf.
 Qed.
 
-Lemma submatrix_wf: forall m n mx a b,
-  wf_matrix mx m n ->
-  0 <= a <= m ->
-  0 <= b <= n ->
-  wf_matrix (submatrix mx a b) a b.
-Proof.
-  move => m n mx a b [Hm1 [Hn1 Hin1]] Ha Hb.
-  rewrite /wf_matrix /submatrix. repeat split.
-  - rewrite Zlength_sublist; try lia. rewrite Zlength_map. lia.
-  - lia.
-  - move => x Hin. apply sublist_In in Hin. move: Hin. rewrite in_map_iff => [[x' [Hx' Hin]]].
-    subst. rewrite rev_rev Zlength_rev Zlength_sublist; try lia. by rewrite Hin1; try lia. 
-Qed.
-
-Lemma submatrix_spec: forall m n mx a b i j,
-  wf_matrix mx m n ->
+Lemma submatrix_spec: forall n mx a b i j,
   0 <= i < a ->
   0 <= j < b ->
-  a <= m ->
-  b <= n ->
-  get (submatrix mx a b) i j = get mx i (n - j - 1).
+  get (submatrix n mx a b) i j = get mx i (n - j - 1).
 Proof.
-  move => m n mx a b i j [Hm [Hn Hin]] Hi Hj Ha Hb. rewrite /submatrix /get.
-  rewrite Znth_sublist; try lia. rewrite Znth_map; try lia.
-  have ->: (i+0)%Z = i by lia.
-  have Hnth: Zlength (Znth i mx) = n. apply Hin. apply Znth_In; lia. rewrite Hnth.
-  have Hsub: Zlength (sublist (n - b) n (Znth i mx)) = b by list_solve. 
-  rewrite rev_rev Znth_rev; try lia. rewrite Hsub. rewrite Znth_sublist; try lia.
-  f_equal. lia.
-Qed.
+  move => n mx a b i j Hi Hj. by rewrite mk_matrix_get.
+Qed. 
 
 (*A bit of complication because of the ordinals, i -> i and j -> n - j - 1*)
 Lemma submatrix_to_mx: forall m n mx a b (Ha: a <= m) (Hb: b <= n),
   wf_matrix mx m n ->
-  matrix_to_mx a b (submatrix mx a b) = mxsub
+  0 <= a ->
+  0 <= b ->
+  matrix_to_mx a b (submatrix n mx a b) = mxsub
     (fun (x: 'I_(Z.to_nat a)) => widen_ord (le_Z_N Ha) x)
     (fun (x: 'I_(Z.to_nat b)) => (rev_ord (widen_ord (le_Z_N Hb) x)))
     (matrix_to_mx m n mx).
 Proof.
-  move => m n mx a b Ha Hb Hwf. rewrite -matrixP /eqrel => x y.
-  rewrite /mxsub !mxE /=. rewrite (submatrix_spec Hwf); try lia.
-  - f_equal. have Hyb: (y < Z.to_nat b)%N by []. apply (elimT ltP) in Hyb. 
-    have->: (Z.to_nat n - y.+1)%N = (Z.to_nat n - y.+1)%coq_nat by []. lia.
-  - have Hxa: (x < Z.to_nat a)%N by []. apply (elimT ltP) in Hxa. lia.
-  - have Hyb: (y < Z.to_nat b)%N by []. apply (elimT ltP) in Hyb. lia.
+  move => m n mx a b Ha Hb Hwf H0a H0b. apply mk_matrix_mx =>[//|//|].
+  move => x y Hx Hy. rewrite mxE /=.
+  have->: (Z.to_nat n - (Z.to_nat y).+1)%N = (Z.to_nat n - (Z.to_nat y).+1)%coq_nat by []. f_equal; lia.
 Qed.
 
 End ListMx.
