@@ -408,9 +408,8 @@ Proof.
   intros mx m n Hwf. destruct Hwf as [Hlen [Hn Hin]]. generalize dependent m.
   induction mx; intros m Hlen.
   - list_solve.
-  - simpl in *. rewrite Zlength_cons in Hlen. assert ((Zlength mx) = m -1) by lia.
-    assert (whole_Zlength mx = (m-1) * n). apply IHmx. intros. apply Hin. right; assumption.
-    assumption.  rewrite H0. rewrite Hin. lia. left; reflexivity.
+  - simpl in *. inversion Hin; subst. rewrite Zlength_cons. rewrite IHmx with(m:=Zlength mx); auto.
+    nia.
 Qed.
 
 Lemma whole_Zlength_sublist: forall (mx: matrix F) m n lo hi,
@@ -422,7 +421,7 @@ Proof.
   intros mx m n lo hi Hwf Hlo Hi. apply whole_Zlength_wf_matrix.
   destruct Hwf as [Hlen [Hn Hin]].
   unfold wf_matrix. split. list_solve. split. assumption.
-  intros. apply Hin. eapply sublist_In. apply H.
+  rewrite Forall_forall in *. intros.  apply Hin. eapply sublist_In. apply H.
 Qed.
 
 (*The real result that we want: allows us to convert from the indexing used in the C code to
@@ -445,7 +444,7 @@ Proof.
   rewrite Znth_app2 by lia. rewrite Hconlen. replace (i * n + n - 1 - j - i * n) with (n - 1 - j) by rep_lia.
   rewrite (sublist_split _ (i+1) _) by lia. rewrite sublist_len_1 by lia. simpl.
   assert (Hrevlen: Zlength (rev (map (fun q : qpoly mod_poly => poly_to_int (f_to_poly q)) (Znth i mx))) = n). {
-    rewrite Zlength_rev. rewrite Zlength_map. apply Hin. apply Znth_In; lia. } simpl in *.
+    rewrite Zlength_rev. rewrite Zlength_map. rewrite Forall_Znth in Hin. apply Hin; lia. } simpl in *.
   rewrite Znth_app1 by lia. rewrite Zlength_rev in Hrevlen. rewrite Znth_rev by lia.
   rewrite Zlength_map. rewrite Zlength_map in Hrevlen. rewrite Znth_map by lia.
   rewrite Hrevlen. unfold f_to_poly. f_equal. f_equal. f_equal. lia.
@@ -510,11 +509,10 @@ Proof.
       apply (whole_Zlength_wf_matrix _ _ _ Hwf). }
     assert (Hwf' : wf_matrix (F:=F) (set (F:=F) mx i j q) m n). {
       unfold set. destruct Hwf as [Hlen [Hn Hin]]. unfold wf_matrix. split.
-      list_solve. split; auto.
-      intros x' Hinx'. rewrite In_Znth_iff in Hinx'. destruct Hinx' as [z [Hzlen Hznth]].
-      assert (z = i \/ z <> i) by lia. destruct H; subst. rewrite upd_Znth_same; try lia.
-      rewrite Zlength_upd_Znth. apply Hin. apply Znth_In; auto.
-      rewrite upd_Znth_diff; try lia. apply Hin. apply Znth_In; auto. list_solve. list_solve. }
+      list_solve. split; auto. rewrite Forall_Znth in *.
+      intros z Hzlen. assert (z = i \/ z <> i) by lia. destruct H; subst. rewrite upd_Znth_same; try lia.
+      rewrite Zlength_upd_Znth. apply Hin. lia.
+      rewrite upd_Znth_diff; try lia; [| list_solve]. apply Hin. list_solve. }
     assert (i' <> (i * n + n - 1 - j) \/ i' = (i * n + n - 1 - j)) by lia. destruct H as [Hneq | Heq].
     + rewrite upd_Znth_diff; try lia; try nia. unfold set. rewrite Hconlen in Hilen'.
       assert (H0n : 0 < n) by lia.
@@ -526,7 +524,7 @@ Proof.
       * destruct Hwf as [Hlen [Hn Hin]]. rewrite upd_Znth_diff by lia. reflexivity.
     + rewrite Heq. rewrite upd_Znth_same by lia. pose proof  (@flatten_mx_Znth m n); unfold flatten_mx in H; 
       rewrite H by (try lia; auto); clear H. unfold get. unfold set. destruct Hwf as [Hlen [Hn Hin]].
-      repeat(rewrite upd_Znth_same; try lia). rewrite Hin. assumption. apply Znth_In; lia.
+      repeat(rewrite upd_Znth_same; try lia). rewrite Forall_Znth in Hin. rewrite Hin; lia.
 Qed.
 
 (** Going from list (list Z) -> matrix F*)

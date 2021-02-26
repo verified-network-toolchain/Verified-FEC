@@ -94,7 +94,8 @@ Proof.
     (*z is super annoying bc its unsigned but starts at -1*)
    forward_loop (EX (i:Z) (l: list (list Z)),
       PROP (0 <= i <= h; forall x y, 0 <= x < i -> 0 <= y < c -> Znth y (Znth x l) = 
-        poly_to_int (proj1_sig (dot_prod (submatrix weight_mx h k) (extend_mx (int_to_poly_mx packets) c) x y k));
+        poly_to_int (proj1_sig (dot_prod (submatrix (fec_n - 1) weight_mx h k)
+         (extend_mx k c (int_to_poly_mx packets)) x y k));
         Zlength l = h; Forall (fun l' => Zlength l' = c) l)
        (LOCALx (temp _i (Vint (Int.repr i)):: temp _z (Vint (Int.repr ((i - 1) mod 256))) :: LOCALS)
           (SEPx (iter_sepcon_arrays parity_ptrs l :: SEPS))))
@@ -160,15 +161,15 @@ Proof.
                forward_loop (EX (j : Z)(l: list (list Z)),
                 PROP (0 <= j <= c;  Zlength l = h; Forall (fun l' => Zlength l' = c) l;
                   forall x y, (0 <= x < i /\ 0 <= y < c) \/ (x = i /\ 0 <= y < j) -> Znth y (Znth x l) = 
-                  poly_to_int (proj1_sig (dot_prod (submatrix weight_mx h k) 
-                    (extend_mx (int_to_poly_mx packets) c) x y k)))
+                  poly_to_int (proj1_sig (dot_prod (submatrix (fec_n - 1) weight_mx h k) 
+                    (extend_mx k c (int_to_poly_mx packets)) x y k)))
                  (LOCALx (temp _j (Vint (Int.repr j)) :: LOCALS1)
                   (SEPx (iter_sepcon_arrays parity_ptrs l :: SEPS))))
                 break: ( EX (l: list (list Z)), 
                   PROP (Zlength l = h; Forall (fun l' => Zlength l' = c) l;
                         forall x y, (0 <= x <= i /\ 0 <= y < c) -> Znth y (Znth x l) = 
-                  poly_to_int (proj1_sig (dot_prod (submatrix weight_mx h k) 
-                    (extend_mx (int_to_poly_mx packets) c) x y k)))
+                  poly_to_int (proj1_sig (dot_prod (submatrix (fec_n - 1) weight_mx h k) 
+                    (extend_mx k c (int_to_poly_mx packets)) x y k)))
                  (LOCALx LOCALS1
                    (SEPx (iter_sepcon_arrays parity_ptrs l :: SEPS)))).
               { rewrite_eqs. forward. Exists 0%Z. Exists mx. rewrite_eqs. entailer!. intros x y [[Hx Hy] | [Hx Hy]].
@@ -195,16 +196,16 @@ Proof.
                       temp _p (field_address0 (tarray (tarray tuchar 255) 128) 
                               [ArraySubsc n; ArraySubsc i] (gv _fec_weights)) ::
                       temp _y (Vint (Int.repr (poly_to_int (proj1_sig
-                         (dot_prod (F:=F) (submatrix (F:=F) weight_mx h k)
-                         (extend_mx (F:=F) (int_to_poly_mx packets) c) i j n))))) :: LOCALS2)
+                         (dot_prod (F:=F) (submatrix (F:=F) (fec_n - 1) weight_mx h k)
+                         (extend_mx (F:=F) k c (int_to_poly_mx packets)) i j n))))) :: LOCALS2)
                     (SEPx (iter_sepcon_arrays parity_ptrs mx' :: SEPS))))
                   break:
                    (PROP ()
                    (LOCALx (temp _p (field_address0 (tarray (tarray tuchar 255) 128) 
                               [ArraySubsc k; ArraySubsc i] (gv _fec_weights)) ::
                       temp _y (Vint (Int.repr (poly_to_int (proj1_sig
-                         (dot_prod (F:=F) (submatrix (F:=F) weight_mx h k)
-                         (extend_mx (F:=F) (int_to_poly_mx packets) c) i j k))))) :: LOCALS2)
+                         (dot_prod (F:=F) (submatrix (F:=F) (fec_n - 1) weight_mx h k)
+                         (extend_mx (F:=F) k c (int_to_poly_mx packets)) i j k))))) :: LOCALS2)
                    (SEPx (iter_sepcon_arrays parity_ptrs mx' :: SEPS)))).
                   { rewrite_eqs; forward. Exists 0%Z. rewrite_eqs; entailer!. }
                   { Intros n. rewrite_eqs; forward_if.
@@ -220,8 +221,8 @@ Proof.
                           temp _p (field_address0 (tarray (tarray tuchar 255) 128) [ArraySubsc n; ArraySubsc i] 
                             (gv _fec_weights));
                           temp _y (Vint (Int.repr (poly_to_int (proj1_sig 
-                            (dot_prod (F:=F) (submatrix (F:=F) weight_mx h k)
-                            (extend_mx (F:=F) (int_to_poly_mx packets) c) i j (n + 1))))));
+                            (dot_prod (F:=F) (submatrix (F:=F) (fec_n - 1) weight_mx h k)
+                            (extend_mx (F:=F) k c (int_to_poly_mx packets)) i j (n + 1))))));
                           temp _j (Vint (Int.repr j)); temp _i (Vint (Int.repr i)); temp _z (Vint (Int.repr i));
                           temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd); 
                           gvars gv; temp _k (Vint (Int.repr k)); temp _h (Vint (Int.repr h)); 
@@ -256,8 +257,7 @@ Proof.
                                 [ArraySubsc n; ArraySubsc i] (gv _fec_weights)). { entailer!. solve_offset. }
                             pose proof (weight_mx_wf) as [Hwlen [Hnotneed Hinwlen]].
                             forward.
-                            { entailer!. simpl_map2d. simpl. simpl_repr. (*TODO: fix wf_matrix so [inner_length] works*)
-                              rewrite Hinwlen by (apply Znth_In; lia). lia. } 
+                            { entailer!. simpl_map2d. simpl_repr. inner_length. } 
                             { entailer!.  solve_offset. auto. }
                             { simpl_map2d.
                              (*For function, need data to b an Int.repr of something < 256*)
@@ -269,34 +269,29 @@ Proof.
                                 (Znth i weight_mx)))) as f.
                               remember (Znth j (Znth n packets)) as g.
                               assert (Hf: 0 <= f < fec_n). { rewrite Heqf. solve_poly_bounds. }
-                              assert (Hg: 0 <= g < fec_n). { subst. inner_length. }(* 
-                              assert (Hcond: 0 <= f < fec_n /\ 0 <= g < fec_n) by auto.*)
+                              assert (Hg: 0 <= g < fec_n). { subst. inner_length. }
                               (*TODO: why is this ridiculously slow?*)
                               forward_call (gv, f, g). 
                               { forward. entailer!.
                               (*finally, need to prove that the postcondition is satisfied*) 
                                 { unfold Int.xor. rewrite !unsigned_repr by simpl_repr. rewrite xor_poly_to_int.
-                                  rewrite dot_prod_plus_1 by lia. simpl.
-                                  rewrite (@submatrix_spec _ (fec_max_h) (fec_n - 1)); 
-                                    [ | apply weight_mx_wf | rep_lia | rep_lia | rep_lia | rep_lia].
-                                  rewrite extend_mx_spec; [ | | simpl_map2d; rep_lia | rep_lia].
-                                  - destruct (Z_lt_le_dec j (Zlength (Znth n (int_to_poly_mx packets)))); simpl. 
-                                    2 : { rewrite int_to_poly_mx_length2 in l; lia. }
-                                    unfold get. unfold poly_mult_mod.
-                                    rewrite <- poly_add_mod_bound; [| solve_poly_bounds | solve_poly_bounds]. 
-                                    f_equal. (*so I don't have to write out big term*)
-                                    match goal with | [|- Int.repr ?p = Int.zero_ext 8 (Int.repr ?q) ] => 
-                                      assert (Hinner: p = q) end. { 
-                                     f_equal. f_equal. rewrite int_to_poly_mx_spec; [ | assumption].
-                                     rewrite poly_of_int_inv. unfold f_to_poly.
-                                     repeat f_equal. (*TODO: once I fix ListMatrix*)
-                                     rewrite Hinwlen by (apply Znth_In; lia). reflexivity. } 
-                                    rewrite Hinner. unfold poly_add_mod. simpl_repr.
-                                  - rewrite Forall_Znth. simpl_map2d. intros x' Hx'. simpl_map2d. inner_length.
+                                  rewrite dot_prod_plus_1 by lia. simpl. rewrite submatrix_spec by rep_lia.
+                                  rewrite extend_mx_spec by rep_lia.
+                                  destruct (Z_lt_le_dec j (Zlength (Znth n (int_to_poly_mx packets)))); simpl. 
+                                  2 : { rewrite int_to_poly_mx_length2 in l; lia. }
+                                  unfold get. unfold poly_mult_mod.
+                                  rewrite <- poly_add_mod_bound; [| solve_poly_bounds | solve_poly_bounds]. 
+                                  f_equal. (*so I don't have to write out big term*)
+                                  match goal with | [|- Int.repr ?p = Int.zero_ext 8 (Int.repr ?q) ] => 
+                                    assert (Hinner: p = q) end. { 
+                                   f_equal. f_equal. rewrite int_to_poly_mx_spec; [ | assumption].
+                                   rewrite poly_of_int_inv. unfold f_to_poly.
+                                   repeat f_equal. inner_length. } 
+                                  rewrite Hinner. unfold poly_add_mod. simpl_repr.
                                 }
                                 { rewrite <- iter_sepcon_arrays_remove_one. cancel. lia. lia. }
                               }
-                              { (*TODO: again, fix*) rewrite Hinwlen by (apply Znth_In; lia). lia. }
+                              { inner_length. } 
                             }
                           }
                         }
@@ -305,17 +300,16 @@ Proof.
                         forward. entailer!.
                         (*this time, the proof of the invariant is much simpler*)
                         rewrite dot_prod_plus_1 by lia. 
-                        rewrite extend_mx_spec; [ | | simpl_map2d; rep_lia | rep_lia].
-                        - destruct (Z_lt_le_dec j (Zlength (Znth n (int_to_poly_mx packets)))); simpl.
-                          rewrite int_to_poly_mx_length2 in l. 
-                          assert (Zlength (Znth n packets) <= c) by inner_length. 
-                          rewrite Int.signed_repr in H25; rep_lia. clear l. 
-                          unfold poly_mult_mod. rewrite poly_mult_0_r. 
-                          pose proof mod_poly_PosPoly as M.
-                          rewrite pmod_refl; [ | apply M | apply zero_lt_deg; apply M].
-                          unfold poly_add_mod. rewrite poly_add_0_r.
-                          rewrite pmod_refl; [ | apply M | solve_poly_bounds]. reflexivity.
-                        - rewrite Forall_Znth. simpl_map2d. intros x' Hx'. simpl_map2d. inner_length.
+                        rewrite extend_mx_spec by rep_lia.
+                        destruct (Z_lt_le_dec j (Zlength (Znth n (int_to_poly_mx packets)))); simpl.
+                        rewrite int_to_poly_mx_length2 in l. 
+                        assert (Zlength (Znth n packets) <= c) by inner_length. 
+                        rewrite Int.signed_repr in H25; rep_lia. clear l. 
+                        unfold poly_mult_mod. rewrite poly_mult_0_r. 
+                        pose proof mod_poly_PosPoly as M.
+                        rewrite pmod_refl; [ | apply M | apply zero_lt_deg; apply M].
+                        unfold poly_add_mod. rewrite poly_add_0_r.
+                        rewrite pmod_refl; [ | apply M | solve_poly_bounds]. reflexivity.
                       }
                       { (*increment ptr p*) forward.
                         { entailer!. solve_offset. auto. } 
@@ -348,8 +342,8 @@ Proof.
                       { inner_length. entailer!. }
                       { (*end of j loop*) forward. Exists (j+1)%Z. simpl_repr.
                         Exists (upd_Znth i mx' (upd_Znth j (Znth i mx') (poly_to_int (proj1_sig
-                          (dot_prod (F:=F) (submatrix (F:=F) weight_mx h k)
-                          (extend_mx (F:=F) (int_to_poly_mx packets) c) i j k))))). 
+                          (dot_prod (F:=F) (submatrix (F:=F) (fec_n - 1) weight_mx h k)
+                          (extend_mx (F:=F) k c (int_to_poly_mx packets)) i j k))))). 
                         rewrite_eqs. entailer!.
                         { (*invariant preservation*) rewrite Zlength_upd_Znth. repeat split; [lia | |].
                           - rewrite Forall_Znth. rewrite Zlength_upd_Znth. intros i' Hi'. 
@@ -366,15 +360,15 @@ Proof.
                         }
                         { (*need to get the iter_sepcon back together*)
                           remember (upd_Znth i mx' (upd_Znth j (Znth i mx') (poly_to_int
-                            (proj1_sig (dot_prod (F:=F) (submatrix (F:=F) weight_mx (Zlength parity_ptrs) 
-                            (Zlength packets))  (extend_mx (F:=F) (int_to_poly_mx packets) c) i j  
+                            (proj1_sig (dot_prod (F:=F) (submatrix (F:=F) (fec_n - 1) weight_mx (Zlength parity_ptrs) 
+                            (Zlength packets))  (extend_mx (F:=F) (Zlength packets) c (int_to_poly_mx packets)) i j  
                             (Zlength packets)))))) as mx''.
                           assert (Hlens: Zlength parity_ptrs = Zlength mx'') by (subst; list_solve). 
                           assert (Hith: 0 <= i < Zlength mx'') by list_solve. 
                           rewrite (iter_sepcon_arrays_remove_one _ _ _ Hlens Hith).
                           entailer!.
                           rewrite remove_upd_Znth. rewrite upd_Znth_same by lia. rewrite Zlength_upd_Znth.
-                            rewrite !upd_Znth_map by lia. cancel. lia.
+                          rewrite !upd_Znth_map by lia. cancel. lia.
                         }
                       }
                     }
@@ -396,17 +390,17 @@ Proof.
       { (*end of outer loop*) forward. rewrite_eqs. entailer!.
         assert (Hmx: mx = (norev_mx (encode_list_mx (Zlength parity_ptrs) (Zlength packets) c packets))). {
           (*To prove that these are the same, we need to compare the elements pointwise*)
-          pose proof (@list_matrix_multiply_wf _ (Zlength parity_ptrs) (Zlength packets) c (submatrix (F:=F) weight_mx (Zlength parity_ptrs) (Zlength packets))
-            (extend_mx (F:=F) (int_to_poly_mx packets) c)) as Hwf. 
+          pose proof (@list_matrix_multiply_wf _ (Zlength parity_ptrs) (Zlength packets) c (submatrix (F:=F)
+            (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packets))
+            (extend_mx (F:=F) (Zlength packets) c (int_to_poly_mx packets))) as Hwf. 
           assert (Hplen: 0 <= Zlength parity_ptrs) by lia. assert (Hc: 0 <= c) by lia. 
           specialize (Hwf Hplen Hc). clear Hplen Hc. assert (Hwf' := Hwf). 
-          destruct Hwf' as [Hmulen [Hother Hmulin]]. clear Hother.
-          apply Znth_eq_ext. rewrite norev_mx_length1. unfold encode_list_mx. lia. 
-          intros x Hx. apply Znth_eq_ext. inner_length. rewrite norev_mx_length2. unfold encode_list_mx.
-          rewrite Hmulin. (*TODO: another place to change*) reflexivity. apply Znth_In; lia.
-          intros y Hy.  assert (Zlength (Znth x mx) = c). (*TODO: another*) rewrite Forall_Znth in H16. apply H16; lia.
-          rewrite norev_mx_Znth; (unfold encode_list_mx ; try lia). 2: rewrite Hmulin; [ lia | apply Znth_In; lia].
-          rewrite H14 by lia. unfold list_matrix_multiply. rewrite !prop_list_Znth by lia. reflexivity. }
+          destruct Hwf' as [Hmulen [Hother Hmulin]]. clear Hother. 
+          apply Znth_eq_ext. simpl_map2d. unfold encode_list_mx. lia. 
+          intros x Hx. apply Znth_eq_ext. inner_length. simpl_map2d. unfold encode_list_mx. inner_length.
+          intros y Hy.  assert (Zlength (Znth x mx) = c) by inner_length.
+          rewrite norev_mx_Znth; (unfold encode_list_mx ; try lia); [| inner_length].
+          rewrite H14 by lia. unfold list_matrix_multiply. unfold mk_matrix. rewrite !prop_list_Znth by lia. reflexivity. }
         rewrite Hmx. cancel.
       }
     }

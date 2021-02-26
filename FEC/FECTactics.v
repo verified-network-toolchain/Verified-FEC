@@ -117,15 +117,14 @@ Ltac rewrite_zero:=
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
   repeat(match goal with
-  | [H: _ |- wf_matrix (F:=F) (scalar_mul_row_partial (F:=F) _ _ _ _) _ _] => apply scalar_mul_row_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (scalar_mul_row (F:=F) _ _ _) _ _ ] => apply scalar_mul_row_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (all_cols_one_partial (F:=F) _ _ _) _ _ ] => apply all_cols_one_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (add_multiple_partial (F:=F) _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (add_multiple (F:=F) _ _ _ _ ) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (sub_all_rows_partial (F:=F) _ _ _ ) _ _] => apply sub_all_rows_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (gauss_all_steps_rows_partial (F:=F) _ _ _ ) _ _] => apply gauss_all_steps_rows_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ ) _ _] => apply all_lc_one_rows_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ ) _ _] => apply all_lc_one_rows_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (scalar_mul_row_partial (F:=F) _ _ _ _ _ _) _ _] => apply scalar_mul_row_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (scalar_mul_row (F:=F) _ _ _ _ _) _ _ ] => apply scalar_mul_row_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (all_cols_one_partial (F:=F) _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (add_multiple_partial (F:=F) _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (add_multiple (F:=F) _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (sub_all_rows_partial (F:=F) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (gauss_all_steps_rows_partial (F:=F) _ _ _ _) _ _] => apply gauss_all_steps_rows_partial_wf
+  | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ _ _) _ _] => apply all_lc_one_rows_partial_wf
   | [H: _ |- wf_matrix (F:=F) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf
   end; try lia); assumption.
 

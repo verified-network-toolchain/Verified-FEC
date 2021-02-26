@@ -56,7 +56,7 @@ Definition fec_matrix_transform_spec :=
     RETURN (Vint (Int.repr 0))
     SEP(FIELD_TABLES gv;
         data_at Ews (tarray tuchar (m * n)) 
-          (map Vint (map Int.repr (flatten_mx (gauss_restrict_rows mx m)))) s).
+          (map Vint (map Int.repr (flatten_mx (gauss_restrict_rows m n mx)))) s).
 
 Definition fec_gf_mult_spec :=
   DECLARE _fec_gf_mult
