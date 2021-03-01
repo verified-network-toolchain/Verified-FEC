@@ -10,6 +10,10 @@ Set Bullet Behavior "Strict Subproofs".
 
 Ltac eq_subst H := move : H => /eqP H; subst.
 
+(*Used only for other tactics*)
+Ltac case_view E P H :=
+  destruct E eqn : H; [ apply (elimT P) in H | apply (elimF P) in H].
+
 (** Lemmas about Nats*)
 
 Lemma ltn_total: forall (n1 n2: nat),

@@ -10,6 +10,178 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
+(*TODO: maybe move to CommonSSR*)
+Section RemNth.
+
+(*Remove the (n+1)st position from a list*)
+Definition rem_nth {A: eqType} (l: seq A) (n: nat) :=
+  take n l ++ (drop (n.+1) l).
+
+Lemma rem_nth_outside: forall {A: eqType} (l: list A) n,
+  size l <= n ->
+  rem_nth l n = l.
+Proof.
+  move => A l n Hsz. rewrite /rem_nth. rewrite take_oversize =>[//|//].
+  rewrite drop_oversize. by rewrite cats0. by apply (leq_trans Hsz).
+Qed.
+
+Lemma rem_nth_size: forall {A: eqType} (l: list A) n,
+  n < size l ->
+  size (rem_nth l n) = (size l).-1.
+Proof.
+  move => A l n Hsz. rewrite /rem_nth size_cat size_take Hsz size_drop.
+  have Halt: (n + (size l - n.+1).+1)%nat = size l. rewrite subnSK =>[|//].
+  rewrite subnKC. by []. by rewrite ltnW. rewrite -{2}Halt.
+  by rewrite -(addn1 (size l - n.+1)) addnA addn1 -pred_Sn.
+Qed.
+
+Lemma rem_nth_nth: forall {A: eqType} (l: list A) n (y: A) (i: nat),
+  nth y (rem_nth l n) i = if i < n then nth y l i else nth y l (i.+1).
+Proof.
+  move => A l n y i. rewrite /rem_nth nth_cat. rewrite size_take.
+  case Hnbounds: (n < size l).
+  - case Hin: (i < n).
+    + by rewrite nth_take.
+    + rewrite nth_drop. rewrite -addn1 addnC addnA subnK. by rewrite addn1.
+      by rewrite leqNgt Hin.
+  - have {Hnbounds} Hnsz: size l <= n by rewrite leqNgt Hnbounds. case Hil: (i < size l).
+    + have Hin: i < n by apply (ltn_leq_trans Hil Hnsz). rewrite Hin. by rewrite nth_take.
+    + have {Hil} Hisz: size l <= i by rewrite leqNgt Hil. rewrite nth_drop. rewrite nth_default.
+      case Hin: (i < n). by rewrite nth_default. rewrite nth_default. by [].
+      by apply (leq_trans Hisz).
+      apply (leq_trans Hnsz). have Hge0: (0 <= i - size l)%nat. {
+      rewrite leq_eqVlt in Hisz.
+      rewrite leq_eqVlt. move : Hisz => /orP[Hisz | Hisz].
+      * by rewrite eq_sym subn_eq0 leq_eqVlt eq_sym Hisz.
+      * by rewrite subn_gt0 Hisz orbT. }
+      rewrite -{1}(addn0 n). by apply leq_add.
+Qed.
+
+Lemma drop_split: forall {A: eqType} (l: seq A) (n: nat) y,
+  n < size l ->
+  drop n l = nth y l n :: drop (n.+1) l.
+Proof.
+  move => A l n y Hnsz. rewrite -addn1 addnC -drop_drop.
+  remember (drop n l) as d. move : Heqd; case d.
+  move => Hdrop. have: (size (drop n l) = (size l - n)%nat) by rewrite size_drop. rewrite -Hdrop /=.
+  have Hszpos: (0 < size l - n) by rewrite subn_gt0 Hnsz. move => Hz. rewrite Hz in Hszpos.
+  by rewrite ltnn in Hszpos.
+  move => h t Hdrop. rewrite /=. rewrite drop0 Hdrop.
+  have: nth y (drop n l) 0 = h by rewrite -Hdrop /=. rewrite nth_drop addn0. by move->.
+Qed. 
+
+
+Lemma rem_nth_subseq: forall {A: eqType} (l: seq A) (n: nat) (y: A),
+  subseq (rem_nth l n) l.
+Proof.
+  move => A l n y.
+  have /orP[Hnin | Hnout] : (n < size l) || (size l <= n) by apply ltn_leq_total. 
+  - rewrite /rem_nth. have: l = take n l ++ drop n l by rewrite cat_take_drop.
+    rewrite (drop_split y Hnin). move => Hl. rewrite {3}Hl. 
+    rewrite subseq_cat2l. apply subseq_cons.
+  - rewrite rem_nth_outside. apply subseq_refl. by [].
+Qed. 
+
+Lemma rem_nth_uniq: forall {A: eqType} (l: seq A) (n: nat) (y: A),
+  uniq l ->
+  uniq (rem_nth l n).
+Proof.
+  move => A l n y Huniq.
+  by apply (subseq_uniq (rem_nth_subseq l n y)).
+Qed.
+
+Lemma subseq_rem': forall {A: eqType} (l1 l2: seq A) (y: A),
+  subseq l1 l2 ->
+  uniq l2 ->
+  y \notin l1 ->
+  y \in l2 ->
+  subseq l1 (rem y l2).
+Proof.
+  move => A l1 l2 y. move: l1. elim : l2 => [l1 Hsub Hun Hy Hyin //= | /= h t IH l1].
+  case : l1 => [//= Ht Hun Ht' Hy /= | h1 t1 /=]. apply sub0seq. 
+  case Hhh: (h1 == h).
+  - eq_subst Hhh. move => Hsub /andP[Hnotin Hun] Hynot Hyin.
+    case Hhy: (h == y). eq_subst Hhy. move: Hynot. by rewrite in_cons Bool.negb_orb eq_refl.
+    rewrite /= eq_refl. apply IH. by []. by []. move: Hynot. by rewrite in_cons eq_sym Hhy.
+    move: Hyin. by rewrite in_cons eq_sym Hhy.
+  - move => Hsub /andP[Hnotin Hun] Hynot Hyin.  case Hhy: (h == y). eq_subst Hhy. by [].
+    rewrite /= Hhh. apply IH. by []. by []. by []. move: Hyin. by rewrite in_cons eq_sym Hhy.
+Qed. 
+
+Lemma rem_nth_rem: forall {A: eqType} (l: seq A) (n: nat) (y: A) (x: A),
+  uniq l ->
+  n < size l ->
+  nth x l n = y ->
+  rem_nth l n = rem y l.
+Proof.
+  move => A l n y x Hun Hsz Hnth.
+  rewrite remE /rem_nth. subst. by rewrite !index_uniq.
+Qed. 
+
+(*Put these together*)
+Lemma rem_nth_subseq': forall {A: eqType} (l1 l2: seq A) (n : nat)(y: A),
+  subseq l1 l2 ->
+  uniq l2 ->
+  nth y l2 n \notin l1 ->
+  subseq l1 (rem_nth l2 n).
+Proof.
+  move => A l1 l2 n y Hsub Hun Hnotin.
+  have /orP[Hnin | Hnout] : (n < size l2) || (size l2 <= n) by apply ltn_leq_total.
+  - rewrite (@rem_nth_rem _ _ _ (nth y l2 n) y Hun Hnin). apply subseq_rem'; try by [].
+    by apply mem_nth. by [].
+  - by rewrite rem_nth_outside.
+Qed.
+    
+
+
+(*
+
+Lemma rem_nth_subseq': forall {A: eqType} (l1 l2: seq A) (n : nat)(y: A),
+  subseq l1 l2 ->
+  uniq l2 ->
+  nth y l2 n \notin l1 ->
+  subseq l1 (rem_nth l2 n).
+Proof.
+  move => A l1 l2 n y Hsub Hun Hnth.
+  apply (introT (subseq_uniqP (rem_nth_uniq n y Hun))).
+  apply (elimT (subseq_uniqP Hun)) in Hsub. rewrite {1}Hsub.
+  Search filter mem. move : Hnth Hun . rewrite {Hsub}. move: l2. elim : l1 => [//= l2 Hnotin Hun | /= h t IH l2 Hnotin Hun ].
+  - Search filter mem.
+ => l1.
+
+eq_in_filter
+
+  Search map.
+  Search ([ seq _ <- _ | mem (?l1) _]).
+  assert ([seq x <- l2 | mem l1 x] = 
+  
+  rewrite /=.
+  f_equal.
+    rewrite mem_map.
+
+
+
+ rewrite -map_comp.
+  rewrite map_map.
+  rewrite /=.
+  apply /(subseq_uniqP Hun).
+  have /orP[Hnin | Hnout] : (n < size l2) || (size l2 <= n) by apply ltn_leq_total. 
+  - move: Hsub. rewrite /rem_nth. have: l2 = take n l2 ++ drop n l2 by rewrite cat_take_drop.
+    rewrite (drop_split y Hnin). move => Hl. rewrite {1}Hl. Search subseq.
+    pose proof subseq_rem. Search homomorphism_2. simpl in H.
+    rewrite subseq_cat2l. apply subseq_cons.
+  - rewrite rem_nth_outside. apply subseq_refl. by [].
+Qed. 
+  
+  
+
+
+subseq rows (rem_nth all_rows j)
+
+*)
+End RemNth.
+
+
 Section GenericVandermonde.
 
 Variable F : fieldType.
@@ -57,6 +229,352 @@ Proof.
   rewrite Heqp coef_poly. have Hxn: x < n by []. rewrite Hxn Heqc' insubT /=.
   have->: Ordinal Hxn = x. (apply (elimT eqP)). by have: x == x by rewrite eq_refl. by [].
 Qed.
+
+Definition fn_to_list {A} (n: nat) (f: 'I_n -> A) : list A :=
+  map f (ord_enum n).
+
+Lemma fn_to_list_nth: forall {A} (n: nat) (f: 'I_n -> A) (i: 'I_n) (x: A),
+  nth x (fn_to_list f) i = f i.
+Proof.
+  move => A n f i x. rewrite /fn_to_list. rewrite (nth_map i). by rewrite nth_ord_enum.
+  by rewrite size_ord_enum.
+Qed.
+
+Lemma fn_to_list_size: forall {A} (n: nat) (f: 'I_n -> A),
+  size (fn_to_list f) = n.
+Proof.
+  move => A n f. by rewrite size_map size_ord_enum.
+Qed.
+
+Lemma fn_to_list_uniq: forall {A:eqType} (n: nat) (f: 'I_n -> A),
+  injective f ->
+  uniq (fn_to_list f).
+Proof.
+  move => A n f Hinj. rewrite map_inj_uniq //. apply ord_enum_uniq.
+Qed.
+
+(*If we select some of the columns (cols), this list is unique, and the original list was unique, this is
+  injective*)
+Lemma sublist_cols_uniq: forall m n (l: list F) (cols: list 'I_n) (y: 'I_n),
+  uniq l ->
+  uniq cols ->
+  size l = n ->
+  size cols = m ->
+  injective (fun (x: 'I_m) => nth 0 l (nth y cols x)).
+Proof.
+  move => m n l cols y Hunl Hunc Hsz Hm i j /eqP Heq. subst. rewrite nth_uniq in Heq; try by [].
+  have {}Heq: nth y cols i == nth y cols j by []. (*get rid of nat_of_ord*)
+  rewrite (@nth_uniq _ y cols i j) in Heq; try by []. by apply /eqP.
+Qed.
+
+(*A corollary: If we have a vandermonde matrix with m rows and n columns, m <= n and unique elements, then
+  if we take any m columns, that submatrix is invertible*)
+Lemma vandermonde_cols_unitmx: forall m n l (cols: list 'I_n) (y: 'I_n),
+  uniq l ->
+  uniq cols ->
+  n = size l ->
+  m = size cols ->
+  m <= n ->
+  colsub (fun (x: 'I_m) => (nth y cols x))  (vandermonde m n l) \in unitmx.
+Proof.
+  move => m n l cols y Hunl Hunc Hszl Hszc Hmn.
+  have->: colsub (fun x : 'I_m => nth y cols x) (vandermonde m n l) = 
+    vandermonde m m (fn_to_list (fun (x : 'I_m) => nth 0 l (nth y cols x))). {
+    rewrite -matrixP => i j /=. by rewrite !mxE /= fn_to_list_nth. }
+  apply vandermonde_unitmx.
+  - apply fn_to_list_uniq. by apply sublist_cols_uniq.
+  - by rewrite fn_to_list_size.
+Qed.
+
+(*From the above, we can take any m columns after gaussian elimination and the result is still invertible*)
+Lemma vandermonde_gauss_cols_unitmx: forall m n l (cols: list 'I_n) (y: 'I_n),
+  uniq l ->
+  uniq cols ->
+  n = size l ->
+  m = size cols ->
+  m <= n ->
+  colsub (fun (x: 'I_m) => (nth y cols x)) (gaussian_elim (vandermonde m n l)) \in unitmx.
+Proof.
+  move => m n l cols y Hunl Hunc Hszl Hszc Hmn.
+  have Hre: row_equivalent (vandermonde m n l) (gaussian_elim (vandermonde m n l)) by apply gaussian_elim_row_equiv.
+  rewrite (@row_equivalent_unitmx_iff _ _ _ (colsub (fun x : 'I_m => nth y cols x) (vandermonde m n l))).
+  by apply vandermonde_cols_unitmx.
+  apply colsub_row_equivalent. by apply row_equivalent_sym.
+Qed.
+
+(** Proving Strong Invertibility for the Weight Matrix (Row-reduced Vandermonde matrix)*)
+(*The weight matrix is formed by row-reducing the [vandermonde_powers] matrix. Then we take some
+  (dynamically chosen) z columns and z rows to invert. So we need to prove a much more general claim: for 
+  an m X n [vandermonde_powers] matrix with m <= n, if we take z rows and z columns (z <= m) from among the
+  last (n-m) columns, then the resulting submatrix is invertible. We will do this in several pieces*)
+Section RowRedVandermonde.
+
+(*TODO: could do this for general field although its not needed*)
+(*Allows us to specify a submatrix by a list of rows and columns (we will need uniqueness and some additional
+  length properties to use this*)
+Definition submx_rows_cols {m n} z (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols: list 'I_n) (xm : 'I_m) (xn: 'I_n) :=
+  mxsub (fun (x: 'I_z) => nth xm rows x) (fun (x: 'I_z) => nth xn cols x) A.
+
+(*To prove the invertibility of this submatrix, we will need to expand this to cover more columns. First we need
+  to get a list of the rows that are not included in [rows]. This is more annoying than it seems*)
+
+Fixpoint nat_comp (n: nat) (l: list nat) : list nat :=
+  match n with
+  | O => nil
+  | n.+1 => if n \in l then nat_comp n l else (n :: nat_comp n l) 
+  end.
+(*
+Fixpoint nat_comp (n: nat) (l: list nat) : list nat :=
+  match n with
+  | O => if 0%nat \in l then nil else 0%nat :: nil
+  | n.+1 => if (n.+1) \in l then (n.+1 :: nat_comp n l) else nat_comp n l
+  end.*)
+
+Lemma nat_comp_bound: forall n l i,
+  i \in (nat_comp n l) -> i < n.
+Proof.
+  move => n. elim : n => [l i Hin /= | /= n IH l i].
+  - by rewrite ltn0.
+  -  case Hnin : (n \in l).
+    + move => Hin. apply IH in Hin. apply (ltn_trans Hin (ltnSn _)).
+    + rewrite in_cons; move /orP => [Hin | Hrest].
+      * eq_subst Hin. apply ltnSn.
+      * apply IH in Hrest. apply (ltn_trans Hrest (ltnSn _)).
+Qed.
+
+Lemma in_nat_comp: forall n l i,
+  i < n ->
+  i \in (nat_comp n l) = (i \notin l).
+Proof.
+  move => n. elim : n => [l i Hi /= | n IH l i Hi /=].
+  - by rewrite ltn0 in Hi.
+  - have /orP Hlt: (i == n) || (i < n). rewrite ltnS in Hi. by rewrite -leq_eqVlt.
+    case : Hlt => [Heq | Hlt].
+    + eq_subst Heq. case Hin: (n \in l).
+      * case Hincomp: (n \in nat_comp n l).
+        -- apply nat_comp_bound in Hincomp. by rewrite ltnn in Hincomp.
+        -- by [].
+      * by rewrite in_cons eq_refl orTb.
+    + case Hnin: (n \in l).
+      * by apply IH.
+      * rewrite in_cons. have->: (i == n = false) by apply ltn_eqF. rewrite orFb.
+        by apply IH.
+Qed.
+
+Lemma in_nat_comp': forall n l i,
+  i \in (nat_comp n l) = (i < n) && (i \notin l).
+Proof.
+  move => n l i. case Hincom: (i \in nat_comp n l).
+  - have Hin : i < n by apply (nat_comp_bound Hincom).
+    by rewrite Hin andTb -(in_nat_comp l Hin).
+  - case Hin : (i < n).
+    + rewrite in_nat_comp in Hincom =>[|//]. by rewrite Hincom.
+    + by [].
+Qed.
+
+Lemma nat_comp_uniq: forall n l,
+  uniq (nat_comp n l).
+Proof.
+  move => n. elim : n => [l //= | n IH l /=].
+  case Hn : (n \in l).
+  - apply IH.
+  - rewrite /=. case Hcon: (n\in nat_comp n l).
+    + apply nat_comp_bound in Hcon. by rewrite ltnn in Hcon.
+    + by rewrite IH.
+Qed. 
+
+(*Now, we need to wrap this in Ordinals*)
+Definition ord_comp {n: nat} (l: list 'I_n) : list 'I_n :=
+  pmap insub (nat_comp n (map (@nat_of_ord n) l)).
+
+Lemma in_ord_comp: forall n (l: list 'I_n) (i: 'I_n),
+  (i \in (ord_comp l)) = (i \notin l).
+Proof.
+  move => n l i. rewrite /ord_comp mem_pmap_sub /= in_nat_comp'.
+  have Hin: i < n by []. rewrite Hin andTb. rewrite mem_map //. apply ord_inj.
+Qed.
+
+(*Now we can define the expanded submatrix, it includes all rows and the same columns + the 
+  columns corresponding to the missing rows*)
+Definition submx_expand {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols : list 'I_n) 
+  (xm : 'I_m) (xn: 'I_n) :=
+  submx_rows_cols m A (ord_enum m) (cols ++ (map (widen_ord Hmn) (ord_comp rows))) xm xn.
+
+(*TODO: move - this is *)
+(*
+Search sub_mem size.
+Check mem_subseq.
+Print subset.
+
+Lemma in_subseq: forall {A: eqType} (s1 s2: seq A),
+  uniq s1 ->
+  uniq s2 ->
+  (forall x, x \in s1 -> x \in s2) ->
+  subseq s1 s2.
+Proof. Print subseq.
+  move => A s1 s2. move : s1. elim: s2 => [//= s1 | h t IH s1 /=].
+  - case : s1. by []. move => h t HUn1 Hun2 Hin. have: h \in [::]. apply Hin. by rewrite in_cons eq_refl orTb.
+    by [].
+  - case : s1. by []. 
+    move => h1 t1 Hun1 Hun2 Hin. rewrite cons_uniq in Hun1. apply (elimT andP) in Hun. case : Hun => [Hht Hunt]. 
+    case Hhh: (h1 == h).
+    + eq_subst Hhh. apply IH. by []. move => x Hint. have: x \in h :: t. apply Hin. by rewrite in_cons Hint orbT.
+      rewrite in_cons. case Hxh: (x == h).
+      * eq_subst Hxh. by rewrite Hint in Hht.
+      * by [].
+    + apply IH. rewrite cons_uniq. by rewrite Hht Hunt. move => x Hinx.
+      case Hxh: (x == h1).
+      * eq_subst Hxh. apply Hin in Hinx. rewrite in_cons in Hinx. by rewrite Hhh in Hinx.
+      * 
+
+
+
+        by [].
+      rewrite in_cons in Hinx. rewrite /=.
+
+
+
+ rewrite /=. 
+
+  Search subseq size. case : (
+
+ move => /(_ h). by [].
+
+ rewrite /=. case : s1.
+
+
+ move => 
+
+
+ apply mem_subseq. in Hsub. apply Hsub.
+Qed.
+
+Lemma subseq_in: forall {A: eqType} (s1 s2: seq A),
+  subseq s1 s2 -> forall x, x \in s1 -> x \in s2.
+Proof.
+  move => A s1 s2 Hsub. apply mem_subseq in Hsub. apply Hsub.
+Qed.
+*)
+
+(*TODO: move*)
+Lemma rem_in_neq: forall {A: eqType} (l : seq A) (y: A) (x: A),
+  x != y ->
+  (x \in (rem y l)) = (x \in l).
+Proof.
+  move => A l y x Hxy. elim : l => [//= | h t IH /=].
+  case Hhy: (h == y).
+  - eq_subst Hhy. rewrite in_cons. have->: (x == y = false). move : Hxy. by case (x == y).
+    by [].
+  - rewrite !in_cons. by rewrite IH.
+Qed. 
+(*Proof idea: we will show that the [submx_rows_cols] we care about is invertible iff the corresponding [submx_expand]
+  is, where the larger matrix is formed from adding the columns corresponding to the rows missing. Because the LHS
+  of the matrix is the identity, we can use the cofactor formula for determinants to peel off each of these columns,
+  preserving invertibility. Finally, the larger matrix is invertible due to [vandermonde_gauss_cols_unitmx]*)
+Lemma added_rows_unitmx_iff: forall {m n} (Hmn: m <= n)  (xm: 'I_m) (xn: 'I_n) (l: seq F) (rows: seq 'I_m) (cols: seq 'I_n)
+  (added_cols: seq 'I_n) (all_rows: seq 'I_m) z k,
+  uniq l ->
+  n = size l ->
+  (forall x, x \in cols -> m <= x) -> (*only consider submatrices in last n - m columns, clearly not true otherwise*)
+  uniq rows ->
+  size cols = size rows ->
+  size cols = z ->
+  (forall x, x \in added_cols -> x < m) ->
+  uniq (added_cols ++ cols) ->
+  size (added_cols ++ cols) = k ->
+  uniq (all_rows) ->
+  subseq rows all_rows ->
+  size (added_cols ++ cols) = size all_rows ->
+  (forall x, (widen_ord Hmn x) \in added_cols = (x \in all_rows) && (x \notin rows)) -> (*we add the same rows and columns*) 
+  (submx_rows_cols z (gaussian_elim (vandermonde m n l)) rows cols xm xn \in unitmx) = 
+  (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (added_cols ++ cols) xm xn \in unitmx).
+Proof.
+  move => m n Hmn xm xn l rows cols added_cols all_rows z k Hunl Hszl Hinc Hunr Hszcr Hszc. 
+  rewrite !unitmxE !GRing.unitfE. (*work with determinants for cofactors*)
+  move : k all_rows.  (*need these to be generalized for induction*) 
+  elim : added_cols => [/= k all_rows Hinadd Hunc Hszadd Hunall Hsubs Hszall Hrowcol /= | 
+    /= h t IH k all_rows Hinadd Hunadd Hszadd Hunall Hsubs Hszaddall Hrowcol].
+  - have->: rows = all_rows. apply size_subseq_leqif in Hsubs; move: Hsubs. rewrite /leqif -Hszcr Hszall eq_refl; 
+    move  => [Htriv Hrows]. apply /eqP. by rewrite -Hrows. by subst.
+  - (*expand determinant along cofactor*)
+    have Hk: 0 < k. move: Hszadd <-. apply ltn0Sn.
+    rewrite ( expand_det_col (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn)
+      (Ordinal Hk)). 
+    (*now, need to show that all but 1 entry in the sum is 0*)
+    have Hhm: h < m. apply Hinadd. by rewrite in_cons eq_refl.
+     have Hvan: (colsub (widen_ord Hmn) (vandermonde m n l) \in unitmx). {
+        have->: colsub (widen_ord Hmn) (vandermonde m n l) = vandermonde m m (take m l). {
+          rewrite -matrixP => x y. rewrite !mxE. by rewrite nth_take. }
+        apply vandermonde_unitmx. by apply take_uniq. rewrite size_takel //. by subst. }
+    have Hinner: forall i, submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) = 
+      if (nat_of_ord (nth xm all_rows i) == nat_of_ord h) then 1 else 0. {
+      move => i. rewrite mxE /=. 
+      by apply (gaussian_elim_identity_val Hvan). }
+    (*work with the summation - can we do this nicely at all?*)
+    have->: (\sum_i
+      submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) *
+      cofactor (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn) i
+        (Ordinal Hk)) =
+    (\sum_i
+      if nat_of_ord (nth xm all_rows (nat_of_ord i)) == (nat_of_ord h) then 
+      submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) *
+      cofactor (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn) i
+      (Ordinal Hk) else 0). {
+      apply eq_big. by []. move => i H{H}. rewrite Hinner. 
+        case Hih : (nat_of_ord (nth xm all_rows (nat_of_ord i)) == (nat_of_ord h)). by [].
+        by rewrite GRing.mul0r. }
+    rewrite {Hinner}.
+    have Hallsz: size all_rows = k by subst.
+    have Hhin: (Ordinal Hhm \in all_rows) && (Ordinal Hhm \notin rows). move : Hrowcol => /(_ (Ordinal Hhm)) /=.
+      have->: widen_ord Hmn (Ordinal Hhm) = h by apply ord_inj. rewrite in_cons eq_refl orTb.
+      move => Hhinfo. by symmetry in Hhinfo. apply (elimT andP) in Hhin. case : Hhin => [Hhall Hhrow].
+    have [j Hj]: (exists (j: 'I_k), nat_of_ord (nth xm all_rows j) == nat_of_ord h).  {
+      have Hj: (index (Ordinal Hhm) all_rows) < k. by rewrite -Hallsz index_mem.
+      exists (Ordinal Hj). by rewrite nth_index. }
+    (*Now we separate j from the rest of the sum, which is 0*)
+    rewrite (@sum_remove_one _ _  _ _ j) // Hj. rewrite big1.
+    2 : { move => i /andP[Htriv Hij]. case Hih: (nat_of_ord (nth xm all_rows i) == (nat_of_ord h)).
+      - have Hijeq: i == j. apply /eqP. apply ord_inj. apply /eqP. rewrite -(@nth_uniq _ xm all_rows) //.
+        apply /eqP. apply ord_inj. eq_subst Hj. rewrite Hj. by apply /eqP. by rewrite Hallsz.
+        by rewrite Hallsz.
+        by rewrite Hijeq in Hij.
+      - by []. }
+    rewrite GRing.add0r mxE /= (gaussian_elim_identity_val Hvan) // Hj GRing.mul1r {Hvan} /cofactor.
+    (*So now, we just need to prove that the determinant is zero when the determinant of the new submatrix is.
+      This is the matrix that we will use in the IH, but there's a decent amount to do to prove the preconditions*)
+    rewrite GRing.Theory.mulf_eq0 negb_or GRing.signr_eq0 /=.
+    (*Have to prove this new matrix equivalent to the one we need for the IH*)
+    have ->:(row' j
+         (col' (Ordinal Hk)
+            (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn))) =
+      (submx_rows_cols k.-1 (gaussian_elim (vandermonde m n l)) (rem_nth all_rows j) (t ++ cols) xm xn). {
+      rewrite -matrixP => x y. rewrite !mxE /=. f_equal. rewrite rem_nth_nth /bump.
+      case Hxj : (x < j). rewrite ltnNge in Hxj. case Hjx: (j <= x); try by []. by rewrite Hjx in Hxj.
+      rewrite ltnNge in Hxj. apply negbFE in Hxj. by rewrite Hxj. }
+    (*Now, we will apply the IH and deal with the many goals we have*)
+    apply IH.
+    + move => x Hinx. apply Hinadd. by rewrite in_cons Hinx orbT.
+    + apply (elimT andP) in Hunadd. apply Hunadd.
+    + apply /eqP. rewrite -eqSS Hszadd. apply /eqP. eapply Lt.S_pred. apply /ltP. apply Hk.
+    + by apply rem_nth_uniq.
+    + apply rem_nth_subseq' with (y:=xm); try by [].
+      have->: nth xm all_rows j = Ordinal Hhm.  apply ord_inj. by eq_subst Hj. by [].
+    + rewrite rem_nth_size. subst. by rewrite Hallsz -pred_Sn. by rewrite Hallsz.
+    + move => x. rewrite (@rem_nth_rem _ _ j (Ordinal Hhm) xm) //=. 2: by rewrite Hallsz.
+      2: by ( apply ord_inj; apply (elimT eqP) in Hj; rewrite Hj). 
+      case Hxh: (x == Ordinal Hhm).
+      * eq_subst Hxh. rewrite Hhrow andbT. 
+        have->: (widen_ord Hmn (Ordinal Hhm) \in t)  = false. apply (elimT andP) in Hunadd.
+        case : Hunadd => [Hnotin Hunt]. move: Hnotin. rewrite mem_cat negb_or => /andP [Hnotht Hnotcol].
+        have->: (widen_ord Hmn (Ordinal Hhm) = h) by apply ord_inj. move: Hnotht; by  case : (h \in t).
+        by rewrite mem_rem_uniqF.
+      * move : Hrowcol => /(_ x). rewrite in_cons. have->: (widen_ord Hmn x == h) = false.
+        case Hxh': (widen_ord Hmn x == h). eq_subst Hxh'. have Hxm: (x == Ordinal Hhm). apply /eqP. by apply ord_inj.
+        by rewrite Hxm in Hxh. by []. rewrite /=. move ->. rewrite rem_in_neq //. move : Hxh; by case : (x == Ordinal Hhm).
+Qed.
+
+(*The hard part is done, just need 1 or 2 small corollaries until we have the result we need*)
+
 
 End GenericVandermonde.
 
@@ -171,83 +689,6 @@ Proof.
 Qed.
 
 (*Now we deal with the matrices more directly*)
-
-(*Remove the (n+1)st position from a list*)
-Definition rem_nth {A: eqType} (l: seq A) (n: nat) :=
-  take n l ++ (drop (n.+1) l).
-
-Lemma rem_nth_outside: forall {A: eqType} (l: list A) n,
-  size l <= n ->
-  rem_nth l n = l.
-Proof.
-  move => A l n Hsz. rewrite /rem_nth. rewrite take_oversize =>[//|//].
-  rewrite drop_oversize. by rewrite cats0. by apply (leq_trans Hsz).
-Qed.
-
-Lemma rem_nth_size: forall {A: eqType} (l: list A) n,
-  n < size l ->
-  size (rem_nth l n) = (size l).-1.
-Proof.
-  move => A l n Hsz. rewrite /rem_nth size_cat size_take Hsz size_drop.
-  have Halt: (n + (size l - n.+1).+1)%nat = size l. rewrite subnSK =>[|//].
-  rewrite subnKC. by []. by rewrite ltnW. rewrite -{2}Halt.
-  by rewrite -(addn1 (size l - n.+1)) addnA addn1 -pred_Sn.
-Qed.
-
-Lemma rem_nth_nth: forall {A: eqType} (l: list A) n (y: A) (i: nat),
-  nth y (rem_nth l n) i = if i < n then nth y l i else nth y l (i.+1).
-Proof.
-  move => A l n y i. rewrite /rem_nth nth_cat. rewrite size_take.
-  case Hnbounds: (n < size l).
-  - case Hin: (i < n).
-    + by rewrite nth_take.
-    + rewrite nth_drop. rewrite -addn1 addnC addnA subnK. by rewrite addn1.
-      by rewrite leqNgt Hin.
-  - have {Hnbounds} Hnsz: size l <= n by rewrite leqNgt Hnbounds. case Hil: (i < size l).
-    + have Hin: i < n by apply (ltn_leq_trans Hil Hnsz). rewrite Hin. by rewrite nth_take.
-    + have {Hil} Hisz: size l <= i by rewrite leqNgt Hil. rewrite nth_drop. rewrite nth_default.
-      case Hin: (i < n). by rewrite nth_default. rewrite nth_default. by [].
-      by apply (leq_trans Hisz).
-      apply (leq_trans Hnsz). have Hge0: (0 <= i - size l)%nat. {
-      rewrite leq_eqVlt in Hisz.
-      rewrite leq_eqVlt. move : Hisz => /orP[Hisz | Hisz].
-      * by rewrite eq_sym subn_eq0 leq_eqVlt eq_sym Hisz.
-      * by rewrite subn_gt0 Hisz orbT. }
-      rewrite -{1}(addn0 n). by apply leq_add.
-Qed.
-
-Lemma drop_split: forall {A: eqType} (l: seq A) (n: nat) y,
-  n < size l ->
-  drop n l = nth y l n :: drop (n.+1) l.
-Proof.
-  move => A l n y Hnsz. rewrite -addn1 addnC -drop_drop.
-  remember (drop n l) as d. move : Heqd; case d.
-  move => Hdrop. have: (size (drop n l) = (size l - n)%nat) by rewrite size_drop. rewrite -Hdrop /=.
-  have Hszpos: (0 < size l - n) by rewrite subn_gt0 Hnsz. move => Hz. rewrite Hz in Hszpos.
-  by rewrite ltnn in Hszpos.
-  move => h t Hdrop. rewrite /=. rewrite drop0 Hdrop.
-  have: nth y (drop n l) 0 = h by rewrite -Hdrop /=. rewrite nth_drop addn0. by move->.
-Qed. 
-
-
-Lemma rem_nth_subseq: forall {A: eqType} (l: seq A) (n: nat) (y: A),
-  subseq (rem_nth l n) l.
-Proof.
-  move => A l n y.
-  have /orP[Hnin | Hnout] : (n < size l) || (size l <= n) by apply ltn_leq_total. 
-  - rewrite /rem_nth. have: l = take n l ++ drop n l by rewrite cat_take_drop.
-    rewrite (drop_split y Hnin). move => Hl. rewrite {3}Hl. 
-    rewrite subseq_cat2l. apply subseq_cons.
-  - rewrite rem_nth_outside. apply subseq_refl. by [].
-Qed. 
-
-Lemma rem_nth_uniq: forall {A: eqType} (l: seq A) (n: nat) (y: A),
-  uniq l ->
-  uniq (rem_nth l n).
-Proof.
-  move => A l n y Huniq.
-  by apply (subseq_uniq (rem_nth_subseq l n y)).
-Qed.
 
 Lemma vandermonde_remove_col_list: forall m n (Hmn: m <= n) l (r:'I_m) (j: nat),
   submx_remove_col (@vandermonde F m n l) Hmn r j = vandermonde r r (rem_nth (take (r.+1) l) j).
@@ -431,5 +872,18 @@ Proof.
   - by apply vandermonde_remove_col_unitmx.
   - by apply vandermonde_add_row_unitmx.
 Qed.
+
+
+
+(*When one [submx_rows_cols] is a submatrix of another:*)
+(*TODO: don't need this*)
+(*Definition submx_rows_cols_submx {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)) (r1 r2 : list 'I_m) (c1 c2 : list 'I_n) :=
+   subseq r1 r2 && subseq c1 c2.
+*)
+
+
+
+
+
 
 End PrimitiveVandermonde.

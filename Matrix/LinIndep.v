@@ -257,7 +257,9 @@ Proof.
 Qed.
 
 (*Results about row echelon form.*)
-(*These are pretty simple applications of results proved in Gaussian.v already*)
+(*These are pretty simple applications of results proved in Gaussian.v already. We can't directly use
+  results from gaussian because we want specific results for n x n matrices, including those
+  that are not necessarily invertible. TODO: maybe generalize to submatrices in Gaussian and combine*)
 
 (*For an n x n matrix in row echelon form, it is either a diagonal matrix with all nonzero entries along the
   diagonal or it has a row of zeroes*)
@@ -314,14 +316,6 @@ Proof.
     apply row_zero_not_unitmx in Hzero. by rewrite Hginv in Hzero.
   - rewrite (row_equivalent_unitmx_iff (gaussian_elim_row_equiv A)). move->. apply unitmx1.
 Qed. 
-
-Lemma unitmx_iff_row_equiv_identity: forall {n} (A: 'M[F]_n),
-  A \in unitmx <-> row_equivalent A 1%:M.
-Proof.
-  move => n A. split.
-  - move => Hinv. apply unitmx_iff_gauss_id in Hinv. rewrite -Hinv. apply gaussian_elim_row_equiv.
-  - move => Hre. apply row_equivalent_unitmx_iff in Hre. rewrite Hre. apply unitmx1.
-Qed.
 
 Lemma unitmx_iff_lin_indep_rows: forall {n} (A: 'M[F]_n),
   A \in unitmx <-> rows_lin_indep A.

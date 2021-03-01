@@ -180,8 +180,6 @@ Qed.
 End GenMx.
 
 (*So we don't have to repeat this every time. This is quite annoying with ssreflect for some reason*)
-Ltac case_view E P H :=
-  destruct E eqn : H; [ apply (elimT P) in H | apply (elimF P) in H].
 
 Ltac case_eqb x y H :=
   case_view (x =? y) (Z.eqb_spec x y) H.
