@@ -132,53 +132,6 @@ Proof.
   - by rewrite rem_nth_outside.
 Qed.
     
-
-
-(*
-
-Lemma rem_nth_subseq': forall {A: eqType} (l1 l2: seq A) (n : nat)(y: A),
-  subseq l1 l2 ->
-  uniq l2 ->
-  nth y l2 n \notin l1 ->
-  subseq l1 (rem_nth l2 n).
-Proof.
-  move => A l1 l2 n y Hsub Hun Hnth.
-  apply (introT (subseq_uniqP (rem_nth_uniq n y Hun))).
-  apply (elimT (subseq_uniqP Hun)) in Hsub. rewrite {1}Hsub.
-  Search filter mem. move : Hnth Hun . rewrite {Hsub}. move: l2. elim : l1 => [//= l2 Hnotin Hun | /= h t IH l2 Hnotin Hun ].
-  - Search filter mem.
- => l1.
-
-eq_in_filter
-
-  Search map.
-  Search ([ seq _ <- _ | mem (?l1) _]).
-  assert ([seq x <- l2 | mem l1 x] = 
-  
-  rewrite /=.
-  f_equal.
-    rewrite mem_map.
-
-
-
- rewrite -map_comp.
-  rewrite map_map.
-  rewrite /=.
-  apply /(subseq_uniqP Hun).
-  have /orP[Hnin | Hnout] : (n < size l2) || (size l2 <= n) by apply ltn_leq_total. 
-  - move: Hsub. rewrite /rem_nth. have: l2 = take n l2 ++ drop n l2 by rewrite cat_take_drop.
-    rewrite (drop_split y Hnin). move => Hl. rewrite {1}Hl. Search subseq.
-    pose proof subseq_rem. Search homomorphism_2. simpl in H.
-    rewrite subseq_cat2l. apply subseq_cons.
-  - rewrite rem_nth_outside. apply subseq_refl. by [].
-Qed. 
-  
-  
-
-
-subseq rows (rem_nth all_rows j)
-
-*)
 End RemNth.
 
 
@@ -229,6 +182,9 @@ Proof.
   rewrite Heqp coef_poly. have Hxn: x < n by []. rewrite Hxn Heqc' insubT /=.
   have->: Ordinal Hxn = x. (apply (elimT eqP)). by have: x == x by rewrite eq_refl. by [].
 Qed.
+
+(*Now we want to use submatrices defined by lists of rows and columns. So we need to convert
+  a function to a list and vice versa*)
 
 Definition fn_to_list {A} (n: nat) (f: 'I_n -> A) : list A :=
   map f (ord_enum n).
@@ -302,33 +258,29 @@ Proof.
   apply colsub_row_equivalent. by apply row_equivalent_sym.
 Qed.
 
+
+
 (** Proving Strong Invertibility for the Weight Matrix (Row-reduced Vandermonde matrix)*)
 (*The weight matrix is formed by row-reducing the [vandermonde_powers] matrix. Then we take some
   (dynamically chosen) z columns and z rows to invert. So we need to prove a much more general claim: for 
-  an m X n [vandermonde_powers] matrix with m <= n, if we take z rows and z columns (z <= m) from among the
+  an m X n row-reduced Vandermonde matrix with m <= n, if we take z rows and z columns (z <= m) from among the
   last (n-m) columns, then the resulting submatrix is invertible. We will do this in several pieces*)
 Section RowRedVandermonde.
 
-(*TODO: could do this for general field although its not needed*)
 (*Allows us to specify a submatrix by a list of rows and columns (we will need uniqueness and some additional
   length properties to use this*)
 Definition submx_rows_cols {m n} z (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols: list 'I_n) (xm : 'I_m) (xn: 'I_n) :=
   mxsub (fun (x: 'I_z) => nth xm rows x) (fun (x: 'I_z) => nth xn cols x) A.
 
 (*To prove the invertibility of this submatrix, we will need to expand this to cover more columns. First we need
-  to get a list of the rows that are not included in [rows]. This is more annoying than it seems*)
+  to get a list of the rows that are not included in [rows].*)
 
+(*The complement of a nat list, up to bound n*)
 Fixpoint nat_comp (n: nat) (l: list nat) : list nat :=
   match n with
   | O => nil
   | n.+1 => if n \in l then nat_comp n l else (n :: nat_comp n l) 
   end.
-(*
-Fixpoint nat_comp (n: nat) (l: list nat) : list nat :=
-  match n with
-  | O => if 0%nat \in l then nil else 0%nat :: nil
-  | n.+1 => if (n.+1) \in l then (n.+1 :: nat_comp n l) else nat_comp n l
-  end.*)
 
 Lemma nat_comp_bound: forall n l i,
   i \in (nat_comp n l) -> i < n.
@@ -394,67 +346,21 @@ Proof.
   have Hin: i < n by []. rewrite Hin andTb. rewrite mem_map //. apply ord_inj.
 Qed.
 
-(*Now we can define the expanded submatrix, it includes all rows and the same columns + the 
-  columns corresponding to the missing rows*)
-Definition submx_expand {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols : list 'I_n) 
-  (xm : 'I_m) (xn: 'I_n) :=
-  submx_rows_cols m A (ord_enum m) (cols ++ (map (widen_ord Hmn) (ord_comp rows))) xm xn.
-
-(*TODO: move - this is *)
-(*
-Search sub_mem size.
-Check mem_subseq.
-Print subset.
-
-Lemma in_subseq: forall {A: eqType} (s1 s2: seq A),
-  uniq s1 ->
-  uniq s2 ->
-  (forall x, x \in s1 -> x \in s2) ->
-  subseq s1 s2.
-Proof. Print subseq.
-  move => A s1 s2. move : s1. elim: s2 => [//= s1 | h t IH s1 /=].
-  - case : s1. by []. move => h t HUn1 Hun2 Hin. have: h \in [::]. apply Hin. by rewrite in_cons eq_refl orTb.
-    by [].
-  - case : s1. by []. 
-    move => h1 t1 Hun1 Hun2 Hin. rewrite cons_uniq in Hun1. apply (elimT andP) in Hun. case : Hun => [Hht Hunt]. 
-    case Hhh: (h1 == h).
-    + eq_subst Hhh. apply IH. by []. move => x Hint. have: x \in h :: t. apply Hin. by rewrite in_cons Hint orbT.
-      rewrite in_cons. case Hxh: (x == h).
-      * eq_subst Hxh. by rewrite Hint in Hht.
-      * by [].
-    + apply IH. rewrite cons_uniq. by rewrite Hht Hunt. move => x Hinx.
-      case Hxh: (x == h1).
-      * eq_subst Hxh. apply Hin in Hinx. rewrite in_cons in Hinx. by rewrite Hhh in Hinx.
-      * 
-
-
-
-        by [].
-      rewrite in_cons in Hinx. rewrite /=.
-
-
-
- rewrite /=. 
-
-  Search subseq size. case : (
-
- move => /(_ h). by [].
-
- rewrite /=. case : s1.
-
-
- move => 
-
-
- apply mem_subseq. in Hsub. apply Hsub.
-Qed.
-
-Lemma subseq_in: forall {A: eqType} (s1 s2: seq A),
-  subseq s1 s2 -> forall x, x \in s1 -> x \in s2.
+Lemma uniq_ord_comp: forall n (l: seq 'I_n),
+  uniq (ord_comp l).
 Proof.
-  move => A s1 s2 Hsub. apply mem_subseq in Hsub. apply Hsub.
+  move => n l. rewrite /ord_comp. apply pmap_sub_uniq. apply nat_comp_uniq.
 Qed.
-*)
+
+Lemma uniq_ord_comp_cat: forall n (l: seq 'I_n),
+  uniq l ->
+  uniq (l ++ ord_comp l).
+Proof.
+  move => n l. rewrite cat_uniq /=. move ->. rewrite uniq_ord_comp andbT /=. 
+  apply /hasP. move => [x Hxin Hmem].
+  have Hxin': x \in l by [].
+  rewrite in_ord_comp in Hxin. by rewrite Hxin' in Hxin.
+Qed.
 
 (*TODO: move*)
 Lemma rem_in_neq: forall {A: eqType} (l : seq A) (y: A) (x: A),
@@ -467,10 +373,15 @@ Proof.
     by [].
   - rewrite !in_cons. by rewrite IH.
 Qed. 
-(*Proof idea: we will show that the [submx_rows_cols] we care about is invertible iff the corresponding [submx_expand]
-  is, where the larger matrix is formed from adding the columns corresponding to the rows missing. Because the LHS
-  of the matrix is the identity, we can use the cofactor formula for determinants to peel off each of these columns,
-  preserving invertibility. Finally, the larger matrix is invertible due to [vandermonde_gauss_cols_unitmx]*)
+
+(*The first main piece:
+  Proof idea: we will show that the [submx_rows_cols] we care about is invertible iff an expanded submatrix
+  which includes additional rows and columns is invertible. This expanded submatrix adds (some of) the missing rows
+  and the corresponding column. Because the underlying mx is row-reduced, for each column i that we add, there is
+  a 1 at position i and 0 at all other places. Thus, we can "peel off" these lists by using the cofactor
+  expansion for determinants, and our original submatrix is still included. We prove this general claim
+  by induction on the list of additional columns. (the base case is essentially trivial)
+  We need a lot of preconditions to make sure all of the pieces relate to each other.*)
 Lemma added_rows_unitmx_iff: forall {m n} (Hmn: m <= n)  (xm: 'I_m) (xn: 'I_n) (l: seq F) (rows: seq 'I_m) (cols: seq 'I_n)
   (added_cols: seq 'I_n) (all_rows: seq 'I_m) z k,
   uniq l ->
@@ -573,10 +484,187 @@ Proof.
         by rewrite Hxm in Hxh. by []. rewrite /=. move ->. rewrite rem_in_neq //. move : Hxh; by case : (x == Ordinal Hhm).
 Qed.
 
-(*The hard part is done, just need 1 or 2 small corollaries until we have the result we need*)
+(*The only remaining piece is that we required that the [rows] list is a subseq of the [all_rows] (we needed this
+  for the base case). We will want our [all_rows] to be [ord_enum m], so this is only true if [rows] was sorted.
+  So we need to prove that the invertibility of a submatrix defined by a list of rows is preserved
+  if we permute the row list. This follows from row equivalence, but requires a good amount of work to show*)
 
+Lemma perm_eq_in: forall {A: eqType} (l1 l2 : seq A) x,
+  perm_eq (x :: l1) l2 ->
+  exists s1 s2, l2 = s1 ++ x :: s2 /\ perm_eq l1 (s1 ++ s2) .
+Proof.
+  move => A l1 l2 x. rewrite perm_sym => /perm_consP [i [u [Hhu Hperm]]].
+  rewrite /rot in Hhu. 
+  have /orP[Hnin | Hnout] : (i < size l2) || (size l2 <= i) by apply ltn_leq_total.
+  - move: Hhu. rewrite (drop_nth x) //=; move => [Hhd Htl].
+    exists (take i l2). exists (drop (i.+1) l2). split.
+    by rewrite -Hhd -(drop_nth) // cat_take_drop. subst. eapply perm_trans.
+    rewrite perm_sym. apply Hperm. by rewrite perm_catC perm_refl.
+  - move: Hhu. rewrite drop_oversize //= take_oversize //=.
+    move->. exists nil. exists u. rewrite /=. split. by []. by rewrite perm_sym.
+Qed. 
+
+(*This is a stronger claim than we originally needed - for the IH, we need to add the extra [p] list. This lemma
+  is quite annoying to prove because of all the appends and casework*)
+Lemma permute_rows_row_equiv: forall {m n} (A: 'M[F]_(m, n)) z (r1 r2 p: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
+  perm_eq r1 r2 ->
+  z = size (p ++ r1) ->
+  z = size(p ++ r2) ->
+  row_equivalent (submx_rows_cols z A (p ++ r1) cols xm xn) (submx_rows_cols z A (p ++ r2) cols xm xn).
+Proof.
+  move => m n A z r1 r2 p cols xm xn. move: r2 p. elim: r1 => [r2 p /= | /= h t IH r2 p Hperm Hsz1 Hsz2].
+  - rewrite perm_sym. move => /perm_nilP Hperm. subst. constructor.
+  - apply perm_eq_in in Hperm. move: Hperm => [s1 [s2 [Hr2 Hperm]]].
+    have->:p ++ h :: t = (p ++ h :: nil) ++ t by rewrite -catA.
+    (*now, depends on if s1 = nil (in which case this is easy, or not, in which case we need to swap h and h1)*)
+    move: Hr2 Hperm; case : s1 =>[//= Hr1 Hperm | //= h1 t1 Hr1 Hperm].
+    + subst. have->:p ++ h :: s2 = (p ++ h :: nil) ++ s2 by rewrite -catA.
+      apply (IH  s2 (p ++ h :: nil)). by []. all: by rewrite -catA /=.
+    + rewrite Hr1. apply (@row_equivalent_trans _ _ _ _ (submx_rows_cols z A (p ++ h :: t1 ++ h1 :: s2) cols xm xn)).
+      * have->:(p ++ h :: t1 ++ h1 :: s2) = (p ++ h :: nil) ++ (t1 ++ h1 :: s2) by rewrite -catA.
+        apply IH. rewrite (perm_trans Hperm) //. by rewrite perm_sym perm_catC /= perm_cons perm_catC perm_refl.
+        all:  rewrite -catA //=. subst. rewrite Hsz2 !size_cat /=.
+        apply /eqP. by rewrite eqn_add2l !size_cat /=.
+      * (*this is RE because this swap is actually a row swap*)
+        have Hih1: (size p) < z. subst. rewrite size_cat /= -ltn_subLR. by rewrite subnn ltn0Sn.
+        by rewrite leqnn.
+        have Hih: (size (p ++ h1 :: t1)) < z. subst. rewrite Hsz2. rewrite !size_cat /= ltn_add2l
+          -add1n -(add1n (size (t1 ++ h :: s2))) !leq_add2l size_cat -ltn_subLR.
+          by rewrite subnn /= ltn0Sn. by rewrite leqnn.
+        (*need these two so we can create Ordinals of type 'I_z*)
+        have->: (submx_rows_cols z A (p ++ h1 :: t1 ++ h :: s2) cols xm xn) = 
+          xrow (Ordinal Hih) (Ordinal Hih1) (submx_rows_cols z A (p ++ h :: t1 ++ h1 :: s2) cols xm xn). {
+          rewrite -matrixP => x y. rewrite xrow_val !mxE.
+          have Hih': nat_of_ord (Ordinal Hih) = size (p ++ h1 :: t1) by [].
+          have Hih1': nat_of_ord (Ordinal Hih1) = size p by [].
+          (*To reduce duplication*)
+         have Hnth: forall v v' v'', 
+            (nth xm (p ++ v :: t1 ++ v' :: s2) (size (p ++ v'' :: t1))) = v'. { 
+           move => v' v'' v'''. rewrite nth_cat. have->:size (p ++ v''' :: t1) < size p = false.
+           apply leq_gtF. rewrite size_cat /= -leq_subLR subnn leqW //.
+           rewrite size_cat -addnBAC. 2: by rewrite leqnn.
+           by rewrite subnn add0n /= nth_cat ltnn subnn /=. }
+           case Hxh : (x == Ordinal Hih).
+         - eq_subst Hxh. by rewrite Hih' Hih1' Hnth !nth_cat ltnn subnn.
+         - case Hxh1: (x == Ordinal Hih1).
+           + eq_subst Hxh1. by rewrite Hih1' Hih' Hnth !nth_cat ltnn subnn.
+           + (*Now need to show these are equivalent at all other locations - this is annoying*)
+             rewrite !nth_cat. case Hxp: (x < size p) =>[//|/=]. 
+             have->: (h1 :: t1 ++ h :: s2) = (h1:: t1) ++ (h :: s2) by [].
+             have->: (h :: t1 ++ h1 :: s2) = (h :: t1) ++ (h1 :: s2) by [].
+             rewrite !nth_cat /=.
+             have Hpos: 0 < x - size p. rewrite subn_gt0. move: Hxp. 
+               rewrite ltnNge Bool.negb_false_iff leq_eqVlt => /orP[Hpxeq | Hpxlt].
+               (*contradiction, x = Ordinal Hih*)
+               have Hxord: x == Ordinal Hih1. eq_subst Hpxeq. apply /eqP. by apply ord_inj.
+               by rewrite Hxord in Hxh1. by [].
+            case Hxt1: (x - size p < (size t1).+1).
+             * by rewrite -(prednK Hpos) /=.
+             * have Hpos': 0 < (x - size p - (size t1).+1).  move: Hxt1.
+               rewrite ltnNge Bool.negb_false_iff leq_eqVlt => /orP[Hpxeq | Hpxlt].
+               have Hord: nat_of_ord x == (size p + (size t1).+1)%N.
+               rewrite -(@subnK (size p) x). 2: apply ltnW; by rewrite -subn_gt0.
+               apply (elimT eqP) in Hpxeq. rewrite Hpxeq addnABC. rewrite (addnC (size p - size p)%N).
+               rewrite subnn addn0 subnK //. by rewrite leqNgt Hxp. by rewrite leqnn. by rewrite leqNgt Hxp.
+               have Hxord: x == Ordinal Hih. apply /eqP. apply ord_inj. eq_subst Hord. rewrite Hord.
+               rewrite Hih'. by rewrite size_cat /=.
+               by rewrite Hxord in Hxh. 
+               by rewrite subn_gt0. 
+               by rewrite -(prednK Hpos') /=. }
+        apply ero_row_equiv. constructor.
+Qed.
+
+(*The easy corollary of above. This is what we wanted*)
+(*TODO: see if we can use this instead of proving the reverse rows stuff*)
+Lemma perm_eq_row_equiv: forall {m n} (A: 'M[F]_(m, n)) z (r1 r2: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
+  perm_eq r1 r2 ->
+  z = size r1 ->
+  z = size r2 ->
+  row_equivalent (submx_rows_cols z A r1 cols xm xn) (submx_rows_cols z A r2 cols xm xn).
+Proof.
+  move => m n A z r1 r2 cols xm xn Hperm Hsz1 Hsz2.
+  rewrite -(cat0s r1) -(cat0s r2). by apply permute_rows_row_equiv.
+Qed.
+
+(*Now, we need to know that if we take a list l of 'I_n's and take l ++ (ord_comp rows),
+  this is a permutation of ord_enum m*)
+Lemma ord_comp_app_perm: forall {n: nat} (l: seq 'I_n),
+  uniq l ->
+  perm_eq (l ++ (ord_comp l)) (ord_enum n).
+Proof.
+  move => n l Hun. apply uniq_perm.
+  - by apply uniq_ord_comp_cat.
+  - apply ord_enum_uniq.
+  - move => x. rewrite mem_cat. rewrite mem_ord_enum.
+    case Hx: (x \in ord_comp l). by rewrite orbT. rewrite orbF.
+    rewrite in_ord_comp in Hx. move : Hx. by case : (x \in l).
+Qed.
+
+Lemma ord_comp_cat_size: forall n (l: seq 'I_n),
+  uniq l ->
+  size (l ++ ord_comp l) = n.
+Proof.
+  move => n l Hun. by rewrite (perm_size (ord_comp_app_perm Hun)) size_ord_enum.
+Qed.
+
+(*The result we want - any submatrix of a RR Vandermonde mx made of z unique rows and
+   z unique columns from the last (n - m) columns is invertible.
+  To prove this, we use [added_rows_unitmx_iff] and add all missing rows and the corresponding
+  columns. This gives us a submatrix that is actually just m columns of the RR Vandermonde mx, which
+  we know is invertible from [vandermonde_gauss_cols_unitmx]*)
+Lemma any_submx_unitmx: forall {m n} (Hmn: m <= n) (Hm: 0 < m) z (l: list F) (rows: list 'I_m) (cols: list 'I_n),
+  uniq l ->
+  size l = n ->
+  uniq rows ->
+  uniq cols ->
+  size rows = size cols ->
+  size rows = z ->
+  (forall x, x \in cols -> m <= x) ->
+  (submx_rows_cols z (gaussian_elim (vandermonde m n l)) rows cols (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)) \in unitmx).
+Proof.
+  move => m n Hmn Hm z l rows cols Hunl Hszl Hunr Hunc Hszrc Hz Hinc.
+  (*Need this in multiple places*)
+  have Hunc':  uniq ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols). {
+    rewrite cat_uniq Hunc map_inj_uniq //=. rewrite uniq_ord_comp andbT /=.
+    apply /hasP. move => [x Hxin Hmem]. 
+    have Hxin': x \in [seq widen_ord Hmn i | i <- ord_comp rows] by [].
+    apply (elimT mapP) in Hxin'. move: Hxin' => [y Hyin Hxy]. subst.
+    apply Hinc in Hxin. have Hym: y < m by [].
+    have Hy: nat_of_ord (widen_ord Hmn y) = nat_of_ord y by []. rewrite Hy in Hxin.
+    rewrite ltnNge in Hym. by rewrite Hxin in Hym.
+    move => x y Hxy. eapply widen_ord_inj. apply Hxy. }
+  rewrite (@added_rows_unitmx_iff _ _ _ _ _ _ _ _ (map (widen_ord Hmn) (ord_comp rows)) (rows ++ (ord_comp rows)) _ m) //=.
+  - (*We need to 1. replace rows by (ord_enum m), which is a permutations, then 2. prove equivalent to
+      a colmx that is therefore invertible*)
+    rewrite (@row_equivalent_unitmx_iff _ _ _ (submx_rows_cols m (gaussian_elim (vandermonde m n l)) (ord_enum m)
+    ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols) (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)))).
+    2: { apply perm_eq_row_equiv. by apply ord_comp_app_perm. by rewrite ord_comp_cat_size. by rewrite size_ord_enum. }
+    have->: submx_rows_cols m (gaussian_elim (vandermonde m n l)) (ord_enum m)
+      ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols) (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)) =
+      colsub (fun (x: 'I_m) => (nth (widen_ord Hmn (Ordinal Hm)) 
+        ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols) x))
+         (gaussian_elim (vandermonde m n l)). {
+      rewrite -matrixP => x y. by rewrite !mxE nth_ord_enum. }
+    (*Now we can simply WTS that these m columns of the vandermonde mx are invertible, which we proved before*)
+    apply vandermonde_gauss_cols_unitmx; try by [].
+    rewrite size_cat size_map -Hszrc addnC -size_cat. by rewrite ord_comp_cat_size.
+  - by subst.
+  - move => x Hinx. apply (elimT mapP) in Hinx. move: Hinx => [y Hyin Hxy]. subst.
+    have->: nat_of_ord (widen_ord Hmn y) = y by []. by [].
+  - rewrite size_cat size_map -Hszrc addnC -size_cat. by rewrite ord_comp_cat_size.
+  - by apply uniq_ord_comp_cat.
+  - by rewrite prefix_subseq.
+  - by rewrite !size_cat size_map Hszrc addnC.
+  - move => x. rewrite mem_map. rewrite mem_cat !in_ord_comp.
+    by case Hx: (x \in rows). move => i j Hw. apply (widen_ord_inj Hw).
+Qed.
+
+End RowRedVandermonde.
 
 End GenericVandermonde.
+
+(** Results about the Weight Matrix*)
+
 
 Require Import PolyField.
 Require Import Poly.
