@@ -256,75 +256,21 @@ Proof.
   apply sum_if. } by [].
 Qed.
 
-(*Results about row echelon form.*)
-(*These are pretty simple applications of results proved in Gaussian.v already. We can't directly use
-  results from gaussian because we want specific results for n x n matrices, including those
-  that are not necessarily invertible. TODO: maybe generalize to submatrices in Gaussian and combine*)
+(** Invertible Matrices (part 2) *)
 
-(*For an n x n matrix in row echelon form, it is either a diagonal matrix with all nonzero entries along the
-  diagonal or it has a row of zeroes*)
-Lemma row_echelon_diag_or_zeroes: forall {n} (A: 'M[F]_n),
-  row_echelon A ->
-  (forall (x y: 'I_n), (A x y == 0) = (x != y)) \/ (exists (r: 'I_n), forall (c: 'I_n), A r c = 0).
-Proof.
-  move => n A [[b [Hb Hzeroes]] [Hinc Hcols]].
-  rewrite leq_eqVlt in Hb. move : Hb => /orP[/eqP Hb | Hbn].
-  - subst. have Hinv: gauss_invar A n n. {
-    rewrite /gauss_invar. repeat(split).
-    + move => r' Hrn'. case Hlc: (lead_coef A r') =>[col |].
-      * by exists col. 
-      * have Hnr': (n <= r'). rewrite -Hzeroes. by apply (introT eqP).
-        rewrite ltnNge in Hrn'. by rewrite Hnr' in Hrn'.
-    + move => r1 r2 c1 c2 Hr12 Hr2n. by apply Hinc.
-    + move => r' c' Hcn'. by apply Hcols.
-    + move => r' c' Hnr'. have Hlt: r' < n by []. rewrite ltnNge in Hlt. by rewrite Hnr' in Hlt. }
-    left. move => x y. have Hxn: (x < n) by []. have Hyn: (y < n) by [].
-    apply (gauss_invar_square_id (leqnn n) (leqnn n) Hinv Hxn Hyn).
-  - right. exists (Ordinal Hbn). rewrite -lead_coef_none_iff. apply (elimT eqP). by rewrite Hzeroes.
-Qed.
-
-(*Therefore, an n x n matrix in reduced row echelon form is either the identity or has a row of zeroes*)
-Lemma red_row_echelon_id_or_zeroes: forall {n} (A: 'M[F]_n),
-  red_row_echelon A ->
-  (A = (1%:M)) \/ (exists (r: 'I_n), forall (c: 'I_n), A r c = 0).
-Proof.
-  move => n A [Hre Hlc].
-  apply row_echelon_diag_or_zeroes in Hre. case: Hre => [Hdiag | Hzeroes].
-  - left. rewrite -matrixP /eqrel => x y; rewrite id_A.
-    have Hlcs: forall (r: 'I_n), lead_coef A r = Some r. { move => r. rewrite lead_coef_some_iff.
-    split. by rewrite Hdiag eq_refl. move => x' Hxr'. apply (elimT eqP). rewrite Hdiag.
-    move: Hxr'. rewrite ltn_neqAle => /andP [Hxr H{H}]. by rewrite eq_sym. }
-    case Hxy : (x == y).
-    + eq_subst Hxy. apply Hlc. apply Hlcs.
-    + apply (elimT eqP). by rewrite Hdiag Hxy.
-  - by right.
-Qed.
-
-(** Invertible Matrices *)
-
-(*We give 2 necessary and sufficient conditions for invertibility:
-  that A is row equivalent to the identity and that A has linearly independent rows*)
-
-Lemma unitmx_iff_gauss_id: forall {n} (A: 'M[F]_n),
-  A \in unitmx <-> gaussian_elim A = 1%:M.
-Proof.
-  move => n A. split.
-  - move => Hinv.
-    have Hred: red_row_echelon (gaussian_elim A) by apply gaussian_elim_rref.
-    apply red_row_echelon_id_or_zeroes in Hred. case: Hred => [// | [r Hzero]].
-    have Hginv: (gaussian_elim A) \in unitmx by rewrite -(row_equivalent_unitmx_iff (gaussian_elim_row_equiv A)).
-    apply row_zero_not_unitmx in Hzero. by rewrite Hginv in Hzero.
-  - rewrite (row_equivalent_unitmx_iff (gaussian_elim_row_equiv A)). move->. apply unitmx1.
-Qed. 
+(* We prove in [Gaussian.v] that invertibility is equivalent to [gaussian_elim A == I]. Here we give
+  another equivalent condition - that the rows of A are linearly independent*)
 
 Lemma unitmx_iff_lin_indep_rows: forall {n} (A: 'M[F]_n),
   A \in unitmx <-> rows_lin_indep A.
 Proof.
   move => n A. rewrite gauss_elim_lin_indep unitmx_iff_gauss_id. split.
-  - move ->. apply identity_lin_indep.
+  - move /eqP ->. apply identity_lin_indep.
   - move => Hre. have Hred: red_row_echelon (gaussian_elim A) by apply gaussian_elim_rref.
-    apply red_row_echelon_id_or_zeroes in Hred. case: Hred => [// | [r Hzero]].
-    by apply row_zero_not_lin_indep in Hzero.
+    apply (rref_colsub_cases (leqnn n)) in Hred. case: Hred => [//= <- | [r Hzero]].
+    apply /eqP. symmetry. apply colsub_square_mx. 
+    have Hrenot: ~ (rows_lin_indep (gaussian_elim A)).
+    apply (@row_zero_not_lin_indep _ _  _ r). move => c. by apply Hzero. by [].
 Qed. 
 
 End LinIndep.

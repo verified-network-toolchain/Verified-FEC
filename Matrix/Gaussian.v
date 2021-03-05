@@ -1990,64 +1990,83 @@ Proof.
   by have<-: (widen_ord Hmn (Ordinal Hxm)) = x by apply ord_inj.
 Qed.
 
-(*This is a bit more complicated because of all the ordinals.
-  It is simpler to redo some of the proofs from the last few lemmas rather than
-  showing that the submatrix is also in rref*)
-Lemma rref_colsub_invertible: forall {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)),
-  (colsub (widen_ord Hmn) A) \in unitmx ->
+(*For any matrix in row reduced echelon form, either the first m x m submatrix is the identity
+  or there is a row where the first m values are 0*)
+Lemma rref_colsub_cases: forall {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)),
   red_row_echelon A ->
-  colsub (widen_ord Hmn) A = 1%:M.
+  colsub (widen_ord Hmn) A = 1%:M \/ (exists (r: 'I_m), forall (c: 'I_n), c < m -> A r c = 0).
 Proof.
-  move => m n Hmn A Hun [[[b [Hb Hzeroes]] [Hinc Hcols]] Hlc].
-  rewrite leq_eqVlt in Hb. move : Hb => /orP[/eqP Hb | Hbn].
-  - subst. have Hinv: gauss_invar (colsub (widen_ord Hmn) A) m m. {
-    rewrite /gauss_invar. repeat(split).
-    + move => r' Hrn'. case Hlc': (lead_coef A r') =>[col |].
-      * have Hcol: col < m. { (*know col < n else we have row of zeroes*)
-          have: (col < m) || (m <= col) by apply ltn_leq_total. move => /orP[// | Hgeq]. 
-          move : Hlc'. rewrite lead_coef_some_iff; move => [Harc Hallz].
-          have: colsub (widen_ord Hmn) A \notin unitmx. 
-          apply (@row_zero_not_unitmx _ _ r'). move => c. rewrite mxE. apply Hallz.
-          rewrite /=. have Hcm: c < m by []. apply (ltn_leq_trans Hcm Hgeq).
-          by rewrite Hun. }
-        exists (Ordinal Hcol). split. move: Hlc'. 
-        rewrite !lead_coef_some_iff; move => [Harc Hallz]. split. rewrite mxE /=.
-        by have->: (widen_ord Hmn (Ordinal Hcol)) = col by apply ord_inj.
-        move => x Hx. rewrite mxE. by apply Hallz. by [].
-      * apply (introT eqP) in Hlc'. rewrite Hzeroes in Hlc'. rewrite ltnNge in Hrn'.
-        by rewrite Hlc' in Hrn'.
-    + move => r1 r2 c1 c2 Hr12 Hr2m Hlc1 Hlc2. apply (Hinc r1 r2 (widen_ord Hmn c1) (widen_ord Hmn c2) Hr12);
-      by apply lead_coef_colsub.
-    + move => r' c' Hcm Hlc' x Hxr. rewrite mxE. apply (Hcols r').
-      by apply lead_coef_colsub. by [].
-    + move => r' c' Hmr Hcm. have Hrm: r' < m by []. rewrite ltnNge in Hrm.
-      by rewrite Hmr in Hrm. } 
-    have Hlcs: (forall (r': 'I_m), lead_coef (colsub (widen_ord Hmn) A) r' = Some r').
-      move => r'.  rewrite (gauss_invar_square_lc (leqnn m) (leqnn m) Hinv). f_equal.
-      by apply ord_inj. by [].
-    rewrite -matrixP => x y. rewrite mxE id_A.
-    case Hxy : (x == y).
-    + eq_subst Hxy. move : Hlcs => /(_ y) Hlcs.
-      apply Hlc. by apply lead_coef_colsub.
-    + move: Hlcs => /(_ y) Hlcs. apply (Hcols y). by apply lead_coef_colsub. by rewrite Hxy.
-  -  have: colsub (widen_ord Hmn) A \notin unitmx. (*other case have row of zeroes at b - contradict unitmx*)
-     apply (@row_zero_not_unitmx _ _ (Ordinal Hbn)). move => c. rewrite mxE.
-     have: lead_coef A (Ordinal Hbn) = None. apply /eqP. by rewrite Hzeroes /= leqnn.
-     rewrite lead_coef_none_iff. by move ->. by rewrite Hun.
+  move => m n Hmn A [[[b [Hb Hzeroes]] [Hinc Hcols]] Hlc].
+  have: 0 <= m by []. rewrite leq_eqVlt => /orP[/eqP Hm0 | Hmgt].
+  - subst. left. apply matrix_zero_rows.
+  - case Hlcm: (lead_coef A (pred_ord Hmgt)) =>[c|]. (*case on leading coefficient of last row*)
+    + case : (orP (ltn_leq_total c m)) => [Hin | Hout]; last first.
+      * right. exists (pred_ord Hmgt). move => c' Hc'. move: Hlcm. rewrite lead_coef_some_iff => [[Hc Hall]].
+        apply Hall. apply (ltn_leq_trans Hc' Hout).
+      * (*the hard case: WTS that the LHS is the identity matrix*)
+        have Hinv: gauss_invar (colsub (widen_ord Hmn) A) m m. {
+        rewrite /gauss_invar. repeat(split).
+        - move => r' Hrn'. have : r' <= m.-1 by rewrite -ltn_pred.
+          rewrite leq_eqVlt => /orP[/eqP Hrm | Hrm].
+          + exists (Ordinal Hin). split. move: Hlcm. rewrite !lead_coef_some_iff => [[Hrc Hall]].
+            have Hr': r' = (pred_ord Hmgt) by apply ord_inj.
+            have Hc: (widen_ord Hmn (Ordinal Hin)) = c by apply ord_inj.
+            split. by rewrite mxE Hr' Hc. move => x Hx. rewrite mxE Hr'. by apply Hall. by [].
+          + case Hlc': (lead_coef A r') =>[col |].
+            * have Hcol: col < m. have Hcol: col < c. have Hr' : (r' < pred_ord Hmgt) by [].
+              apply (Hinc _ _ _ _ Hr' Hlc' Hlcm). by apply (ltn_trans Hcol).
+              exists (Ordinal Hcol). split; try by [].
+              move: Hlc'. rewrite !lead_coef_some_iff => [[Hrc Hall]]. split.
+              rewrite mxE. by have->: (widen_ord Hmn (Ordinal Hcol)) = col by apply ord_inj.
+              move => x Hx. rewrite mxE. by apply Hall.
+            * have Hbr: b <= r'. rewrite -(Hzeroes r'). by apply /eqP.
+              have Hrb1: b <= (pred_ord Hmgt). apply ltnW. by apply (leq_ltn_trans Hbr).
+              rewrite -Hzeroes in Hrb1. by rewrite Hlcm in Hrb1.
+        - move => r1 r2 c1 c2 Hr12 Hr2m Hlc1 Hlc2. apply lead_coef_colsub in Hlc1.
+          apply lead_coef_colsub in Hlc2. apply (Hinc _ _ _ _ Hr12 Hlc1 Hlc2).
+        - move => r' c' Hc' Hlcw x Hxr. rewrite mxE. apply (Hcols r'). by apply lead_coef_colsub.
+          by [].
+        - move => r' c' Hr'. rewrite leqNgt in Hr'. have Hr'': r' < m by []. by rewrite Hr'' in Hr'. }
+        have Hlcs: (forall (r': 'I_m), lead_coef (colsub (widen_ord Hmn) A) r' = Some r').
+          move => r'.  rewrite (gauss_invar_square_lc (leqnn m) (leqnn m) Hinv). f_equal.
+          by apply ord_inj. by []. left.
+        rewrite -matrixP => x y. rewrite mxE id_A.
+        case Hxy : (x == y).
+        -- eq_subst Hxy. move : Hlcs => /(_ y) Hlcs.
+          apply Hlc. by apply lead_coef_colsub.
+        -- move: Hlcs => /(_ y) Hlcs. apply (Hcols y). by apply lead_coef_colsub. by rewrite Hxy.
+    + right. move: Hlcm; rewrite lead_coef_none_iff => Hzero. exists (pred_ord Hmgt). move => c Hc. apply Hzero.
 Qed.
 
-(*The result we wanted: The first m x m submatrix is invertible exactly when the first m x m submatrix
+(*A few corollaries of this, first, the first m columns of a rref matrix are the identity iff the first m
+  columns are invertible*)
+Lemma rref_colsub_id: forall {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)),
+  red_row_echelon A ->
+  colsub (widen_ord Hmn) A \in unitmx = (colsub (widen_ord Hmn) A == 1%:M).
+Proof.
+  move => m n Hmn A Hred. apply (rref_colsub_cases Hmn) in Hred. case : Hred.
+  - move ->. by rewrite unitmx1 eq_refl.
+  - move => [r Hzero]. 
+    have Hinv: (colsub (widen_ord Hmn) A \notin unitmx). { apply (row_zero_not_unitmx (r:=r)).
+      move => c. rewrite mxE. apply Hzero. by have: c < m by []. }
+    rewrite (negbTE Hinv). 
+    case Hid: (colsub (widen_ord Hmn) A == 1%:M).
+    + apply (elimT eqP) in Hid. have : colsub (widen_ord Hmn) A r r = 1%:M r r by rewrite Hid.
+      rewrite id_A mxE eq_refl Hzero. move => /eqP H01. rewrite eq_sym in H01. by rewrite GRing.oner_eq0 in H01.
+      by have : r < m by [].
+    + by [].
+Qed.
+
+(*We can extend this to gaussian elimination*)
+(*The first m x m submatrix is invertible exactly when the first m x m submatrix
   of the gaussian elimination result is the identity*)
 Lemma gaussian_elim_identity: forall {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)),
-  (colsub (widen_ord Hmn) A) \in unitmx <->
-   colsub (widen_ord Hmn) (gaussian_elim A) = 1%:M.
+  (colsub (widen_ord Hmn) A) \in unitmx =
+   (colsub (widen_ord Hmn) (gaussian_elim A) == 1%:M).
 Proof.
-  move => m n Hmn A. split.
-  - move =>  Hcol. apply rref_colsub_invertible. erewrite row_equivalent_unitmx_iff.
-    2: apply colsub_row_equivalent. apply Hcol. apply row_equivalent_sym. apply gaussian_elim_row_equiv.
-    apply gaussian_elim_rref.
-  - move => Hcol. rewrite (@row_equivalent_unitmx_iff _ _ (colsub (widen_ord Hmn) (gaussian_elim A))).
-    by rewrite Hcol unitmx1. apply colsub_row_equivalent. apply gaussian_elim_row_equiv.
+  move => m n Hmn A.
+  erewrite (row_equivalent_unitmx_iff); last first. apply colsub_row_equivalent. apply gaussian_elim_row_equiv.
+  apply rref_colsub_id. apply gaussian_elim_rref.
 Qed.
 
 (*Another version that is easier to use for some things*)
@@ -2055,38 +2074,25 @@ Lemma gaussian_elim_identity_val: forall {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)),
   (colsub (widen_ord Hmn) A) \in unitmx ->
   forall (r : 'I_m) (c : 'I_n), c < m -> gaussian_elim A r c = if nat_of_ord r == nat_of_ord c then 1 else 0.
 Proof.
-  move => m n Hmn A. rewrite gaussian_elim_identity. move => Hid r c Hcm.
+  move => m n Hmn A. rewrite gaussian_elim_identity. move => /eqP Hid r c Hcm.
   have: colsub (widen_ord Hmn) (gaussian_elim A) r (Ordinal Hcm) = if (nat_of_ord r == nat_of_ord c) then 1 else 0
   by rewrite Hid id_A. rewrite mxE /=. have->: (widen_ord Hmn (Ordinal Hcm)) = c by apply ord_inj.
   by [].
 Qed. 
 
-
-(*We can give a more direct result for square matrices (which we need in [LinIndep]*)
-
+(*For the special case of n x n matrices, A \in unitmx exactly when gaussian_elim A = 1*)
 Lemma colsub_square_mx: forall {m} (A: 'M[F]_m),
   colsub (widen_ord (leqnn m)) A = A.
 Proof.
   move => m A. rewrite -matrixP => i j. rewrite mxE /=.
   f_equal. by apply ord_inj.
-Qed.  
-
-(*We give 2 alternate conditions for invertibility*)
-
-Lemma unitmx_iff_gauss_id: forall {n} (A: 'M[F]_n),
-  A \in unitmx <-> gaussian_elim A = 1%:M.
-Proof.
-  move => n A.  split.
-  - rewrite -{1}(colsub_square_mx A) -(colsub_square_mx (gaussian_elim A)). apply gaussian_elim_identity.
-  - rewrite (row_equivalent_unitmx_iff (gaussian_elim_row_equiv A)). move->. apply unitmx1.
 Qed.
 
-Lemma unitmx_iff_row_equiv_identity: forall {n} (A: 'M[F]_n),
-  A \in unitmx <-> row_equivalent A 1%:M.
+Lemma unitmx_iff_gauss_id: forall {n} (A: 'M[F]_n),
+  A \in unitmx = (gaussian_elim A == 1%:M).
 Proof.
-  move => n A. split.
-  - move => Hinv. apply unitmx_iff_gauss_id in Hinv. rewrite -Hinv. apply gaussian_elim_row_equiv.
-  - move => Hre. apply row_equivalent_unitmx_iff in Hre. rewrite Hre. apply unitmx1.
+  move => n A. rewrite -{1}(colsub_square_mx A) -(colsub_square_mx (gaussian_elim A)).
+  apply gaussian_elim_identity.
 Qed.
 
 End Gauss.
