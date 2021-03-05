@@ -1,4 +1,4 @@
-  Require Import VST.floyd.proofauto.
+Require Import VST.floyd.proofauto.
 
 Require Import Common.
 Require Import CommonVST.
@@ -30,19 +30,14 @@ Proof.
     LOCAL (temp _t'1 (Vint (Int.repr (if Z.eq_dec f 0%Z then 0%Z else if Z.eq_dec g 0%Z then 0%Z else 1%Z)));
      temp _a (Vint (Int.repr f)); temp _b (Vint (Int.repr g)); gvars gv)
     SEP (INDEX_TABLES gv)).
-  - forward. entailer!. f_equal.  
-    if_tac. subst. contradiction. if_tac. subst.
-    assert (Htriv: Int.eq (Int.repr 0) Int.zero = true).
-    apply (reflect_iff _ _ (Int_eq_reflect (Int.repr 0) Int.zero)). reflexivity.
-    rewrite Htriv. reflexivity.
-    assert (Hnon: Int.eq (Int.repr g) Int.zero = false).
-    apply (ssrbool.introF (Int_eq_reflect (Int.repr g) Int.zero)). intro Hz.
-    apply repr_inj_unsigned in Hz; rep_lia. rewrite Hnon. reflexivity.
+  - forward. entailer!. f_equal. repeat(if_tac; subst; try contradiction; try reflexivity).
+    rewrite (ssrbool.introF (Int_eq_reflect (Int.repr g) Int.zero)); auto. 
+    intro Hg. apply repr_inj_unsigned in Hg; rep_lia.
   - forward. entailer!. if_tac. reflexivity. 
-    apply repr_inj_unsigned in H0; rep_lia.
+    apply repr_inj_unsigned in H1; rep_lia.
   - forward_if.
     + destruct H as [Hf Hg]. destruct (Z.eq_dec f 0) as [? | Hf0]. contradiction.
-      destruct (Z.eq_dec g 0) as [? | Hg0]. contradiction. clear H0 H0'. deadvars!.
+      destruct (Z.eq_dec g 0) as [? | Hg0]. contradiction. clear H1 H1'. deadvars!.
       unfold INDEX_TABLES. Intros.
       forward.
       * entailer!. rewrite index_to_power_contents_Znth by lia. simpl_repr.
@@ -80,7 +75,7 @@ Proof.
       * forward. entailer!. rewrite_zero. rewrite poly_mult_0_l. rewrite pmod_zero; auto. apply mod_poly_PosPoly.
       * if_tac; subst.
         -- forward. entailer!. rewrite_zero. rewrite poly_mult_0_r. rewrite pmod_zero; auto. apply mod_poly_PosPoly.
-        -- inversion H0.
+        -- inversion H1.
 Qed. 
 
 (** Verification of [fec_generate_math_tables]*)
@@ -99,9 +94,8 @@ pose proof mod_poly_PosPoly as Hpospoly.
   this way, when we finish, all elements are present
   0 is an annoying special case. - 0th index is not used, so find_power[0] = 0*) 
   forward_loop (EX (i : Z) (l: list Z),
-    PROP (0 <= i <= fec_n /\ (forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i ->
-          Znth z l = find_power mod_poly (poly_of_int z)) /\
-      Znth 0 l = 0%Z)
+    PROP (0 <= i <= fec_n; forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i ->
+          Znth z l = find_power mod_poly (poly_of_int z); Znth 0 l = 0%Z)
     LOCAL (temp _i (Vint (Int.repr i)); temp _mod (Vint (Int.repr modulus)); gvars gv)
     SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents i ++ map Vint (map Int.repr (list_repeat
       (Z.to_nat (fec_n - i)) 0%Z))) (gv _fec_2_index);
@@ -113,12 +107,12 @@ pose proof mod_poly_PosPoly as Hpospoly.
           data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr (list_repeat (Z.to_nat fec_n) 0%Z)))
      (gv _fec_invefec))).
   - forward. Exists 0%Z. Exists ((list_repeat (Z.to_nat fec_n) 0%Z)). entailer!.
-    rewrite Znth_list_repeat_inrange; rep_lia. simpl. cancel.
+    rewrite Znth_list_repeat_inrange; rep_lia. simpl. rewrite !map_list_repeat. cancel.
   - Intros i. Intros l.
     forward_if.
     + (*Loop body*)  forward_if 
-      (PROP (0 <= i <= fec_n /\ (forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i -> 
-          Znth z l = find_power mod_poly (poly_of_int z)) /\ Znth 0 l = 0%Z)
+      (PROP (0 <= i <= fec_n; forall z, 0 < z < fec_n -> 0 < find_power mod_poly (poly_of_int z) < i -> 
+          Znth z l = find_power mod_poly (poly_of_int z); Znth 0 l = 0%Z)
       LOCAL (temp _mod (Vint (Int.repr modulus)); temp _i (Vint (Int.repr i)); gvars gv)
       SEP (data_at Ews (tarray tuchar fec_n) (power_to_index_contents (i + 1) ++ 
               map Vint (map Int.repr (list_repeat ((Z.to_nat fec_n) - Z.to_nat (i + 1))%nat 0%Z))) (gv _fec_2_index);
@@ -132,7 +126,7 @@ pose proof mod_poly_PosPoly as Hpospoly.
         apply one_lt_deg; auto.
       * forward. 
         -- (*array access valid*)
-           entailer!. rewrite Znth_app1. 2: list_solve. rewrite power_to_index_contents_Znth. simpl_repr. lia. 
+           entailer!. rewrite Znth_app1;[| list_solve]. rewrite power_to_index_contents_Znth. simpl_repr. lia. 
         -- (*body continue with shift, rewrite shift into polynomial mult*)
            forward. 
            (*TODO: The resulting if condition is very strange and needs a lot of work to get into a usable form*)
@@ -283,10 +277,9 @@ pose proof mod_poly_PosPoly as Hpospoly.
     assert (Hmodnotx : mod_poly <> x) by (apply (@Hnotx _ _ mod_poly_PrimPoly)).
     clear Hpospoly.
     forward_for_simple_bound 256%Z (EX (i : Z) (l: list Z),
-    PROP (0 <= i <= fec_n  /\ Znth 0 l = 0%Z /\ (forall z, 0 < z < fec_n -> 
+    PROP (0 <= i <= fec_n; Znth 0 l = 0%Z; forall z, 0 < z < fec_n -> 
           0 <= poly_to_int (poly_inv mod_poly (poly_of_int z)) < i ->
-          Znth z l = poly_to_int (poly_inv mod_poly (poly_of_int z))
-      ))
+          Znth z l = poly_to_int (poly_inv mod_poly (poly_of_int z)))
     LOCAL (temp _mod (Vint (Int.repr modulus));  gvars gv)
     SEP (INDEX_TABLES gv;
          data_at Ews (tarray tuchar fec_n) (map Vint (map Int.repr l)) (gv _fec_invefec ))).

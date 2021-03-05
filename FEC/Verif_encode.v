@@ -42,7 +42,7 @@ Qed.
 
 (*TODO: see if this should be global or not*)
 Section Encoder.
-Hint Resolve iter_sepcon_arrays_local_facts : saturate_local.
+(*Hint Resolve iter_sepcon_arrays_local_facts : saturate_local.*)
 
 Lemma body_fec_blk_encode : semax_body Vprog Gprog f_fec_blk_encode fec_blk_encode_spec.
 Proof.
@@ -79,7 +79,7 @@ Proof.
       { forward_if True.
         { contradiction. }
         { forward. entailer!. }
-        { rewrite Znth_list_repeat_inrange in H15 by lia. inversion H15. }
+        { rewrite Znth_list_repeat_inrange in H13 by lia. inversion H13. }
       }
       { forward. Exists (i+1)%Z. rewrite_eqs. entailer!. solve_repr_int. }
     }
@@ -89,10 +89,10 @@ Proof.
     forward. entailer!.
     (*outer loop - go through all rows selected by weight matrix*)
     rewrite <- HeqLOCALS. rewrite <- HeqSEPS. clear HeqLOCALS1 LOCALS1. clear HeqSEPS1 SEPS1.
-   (*Loop invariant: each time, up to the ith row of the resulting matrix is correct (ie, each position
+    (*Loop invariant: each time, up to the ith row of the resulting matrix is correct (ie, each position
      is the dot product of the correct row from the weight mx and column from the packet matrix)*)
     (*z is super annoying bc its unsigned but starts at -1*)
-   forward_loop (EX (i:Z) (l: list (list Z)),
+    forward_loop (EX (i:Z) (l: list (list Z)),
       PROP (0 <= i <= h; forall x y, 0 <= x < i -> 0 <= y < c -> Znth y (Znth x l) = 
         poly_to_int (proj1_sig (dot_prod (submatrix (fec_n - 1) weight_mx h k)
          (extend_mx k c (int_to_poly_mx packets)) x y k));
@@ -137,12 +137,12 @@ Proof.
           { entailer!. solve_offset. }
           { forward_if False. (*If condition is true due to assumption*)
             { apply (denote_tc_test_eq_split _ (Znth i parity_ptrs) (Vlong (Int64.zero))).
-              { sep_apply (data_at_memory_block). sep_apply (memory_block_valid_ptr). auto. simpl.
+              { sep_apply data_at_memory_block. sep_apply memory_block_valid_ptr. auto. simpl.
                 inner_length. entailer!. 
               }
               { apply valid_pointer_zero64; auto. (*relies on 64 bit*) }
             }
-            { forward. entailer!. rewrite H19 in H23. apply (field_compatible_nullval _ _ _ _ H23). }
+            { forward. entailer!. rewrite H17 in H21. apply (field_compatible_nullval _ _ _ _ H21). }
             { forward. rewrite_eqs; entailer!. rewrite (iter_sepcon_arrays_remove_one _ _ _ Hlens Hith). entailer!. }
             { rewrite_eqs; entailer!. }
           }
@@ -173,7 +173,7 @@ Proof.
                  (LOCALx LOCALS1
                    (SEPx (iter_sepcon_arrays parity_ptrs l :: SEPS)))).
               { rewrite_eqs. forward. Exists 0%Z. Exists mx. rewrite_eqs. entailer!. intros x y [[Hx Hy] | [Hx Hy]].
-                 apply H14; auto. lia. }
+                 apply H12; auto. lia. }
               { Intros j. Intros mx'. rewrite_eqs. forward_if.
                 { (*body of j- loop*) forward.
                   assert_PROP (force_val (sem_add_ptr_int (tarray tuchar 255) Signed (gv _fec_weights)
@@ -209,7 +209,8 @@ Proof.
                    (SEPx (iter_sepcon_arrays parity_ptrs mx' :: SEPS)))).
                   { rewrite_eqs; forward. Exists 0%Z. rewrite_eqs; entailer!. }
                   { Intros n. rewrite_eqs; forward_if.
-                    { (*body of innermost loop*) forward. rewrite H12.
+                    { assert_PROP (Zlength lengths = k) as Hlengths. { entailer!. list_solve. } 
+                      (*body of innermost loop*) forward. rewrite H10.
                       (*we have 2 cases: either we are in bounds, so we do usual multiplication, or
                         we are out of bounds, so we are implicitly extending the matrix with zeroes (which of course
                         does not affect the sum). We need to handle each case separately. The important thing
@@ -241,7 +242,7 @@ Proof.
                         sep_apply (iter_sepcon_arrays_remove_one _ _ _ Hlens Hjbound). Intros. 
                         forward.
                         { rewrite Znth_app1 by list_solve. entailer!. }
-                        { assert (Hjlen: 0 <= j < Zlength (Znth n packets)). { rewrite Int.signed_repr in H25. lia.
+                        { assert (Hjlen: 0 <= j < Zlength (Znth n packets)). { rewrite Int.signed_repr in H23. lia.
                             inner_length. }
                           assert_PROP (force_val (sem_add_ptr_int tuchar Signed (Znth n (packet_ptrs ++ parity_ptrs)) 
                             (Vint (Int.repr j))) =
@@ -263,7 +264,7 @@ Proof.
                              (*For function, need data to b an Int.repr of something < 256*)
                               assert (Hdata: (Vint (Int.zero_ext 8 (Int.repr (Znth j (Znth n packets))))) = 
                                Vint (Int.repr ((Znth j (Znth n packets))))). {
-                              rewrite Forall2D_Znth in H11. specialize (H11 n j Hjbound Hjlen). solve_repr_int. }
+                              rewrite Forall2D_Znth in H9. specialize (H9 n j Hjbound Hjlen). solve_repr_int. }
                               rewrite Hdata.
                               remember (poly_to_int (f_to_poly (Znth (Zlength (Znth i weight_mx) - n - 1) 
                                 (Znth i weight_mx)))) as f.
@@ -304,7 +305,7 @@ Proof.
                         destruct (Z_lt_le_dec j (Zlength (Znth n (int_to_poly_mx packets)))); simpl.
                         rewrite int_to_poly_mx_length2 in l. 
                         assert (Zlength (Znth n packets) <= c) by inner_length. 
-                        rewrite Int.signed_repr in H25; rep_lia. clear l. 
+                        rewrite Int.signed_repr in H23; rep_lia. clear l. 
                         unfold poly_mult_mod. rewrite poly_mult_0_r. 
                         pose proof mod_poly_PosPoly as M.
                         rewrite pmod_refl; [ | apply M | apply zero_lt_deg; apply M].
@@ -351,11 +352,11 @@ Proof.
                             + subst. rewrite upd_Znth_same by auto. rewrite Zlength_upd_Znth. inner_length.
                             + rewrite upd_Znth_diff by auto. inner_length.
                           - intros x y [[Hx Hy] | [Hx Hy]].
-                            + rewrite upd_Znth_diff by lia. apply H21; lia.
+                            + rewrite upd_Znth_diff by lia. apply H19; lia.
                             + subst. rewrite upd_Znth_same by auto.
                               assert (Zlength (Znth i mx') = c) by inner_length. 
                               assert (Hyj : 0 <= y < j \/ y = j) by lia. destruct Hyj as [Hbef | Hnow].
-                              * rewrite upd_Znth_diff by lia. apply H21; lia.
+                              * rewrite upd_Znth_diff by lia. apply H19; lia.
                               * subst. rewrite upd_Znth_same by lia. reflexivity.
                         }
                         { (*need to get the iter_sepcon back together*)
@@ -376,11 +377,11 @@ Proof.
                 }
                 { forward. (*end of j loop - postcondition*) Exists mx'.
                   replace j with c by lia. rewrite_eqs. entailer!. intros x Hx y Hy.
-                  apply H21; lia.
+                  apply H19; lia.
                 }
               }
               { Intros mx'. rewrite_eqs. forward. Exists (i+1). Exists mx'. (*invariant for i loop*)
-                rewrite_eqs; entailer!. split. intros x y Hx Hy. apply H20; lia.
+                rewrite_eqs; entailer!. split. intros x y Hx Hy. apply H18; lia.
                 rewrite Z.mod_small by rep_lia. split; repeat f_equal; try rep_lia. solve_repr_int.
               }
             }
@@ -400,7 +401,7 @@ Proof.
           intros x Hx. apply Znth_eq_ext. inner_length. simpl_map2d. unfold encode_list_mx. inner_length.
           intros y Hy.  assert (Zlength (Znth x mx) = c) by inner_length.
           rewrite norev_mx_Znth; (unfold encode_list_mx ; try lia); [| inner_length].
-          rewrite H14 by lia. unfold list_matrix_multiply. unfold mk_matrix. rewrite !prop_list_Znth by lia. reflexivity. }
+          rewrite H12 by lia. unfold list_matrix_multiply. unfold mk_matrix. rewrite !prop_list_Znth by lia. reflexivity. }
         rewrite Hmx. cancel.
       }
     }
