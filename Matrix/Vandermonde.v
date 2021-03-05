@@ -586,6 +586,41 @@ Proof.
   rewrite -(cat0s r1) -(cat0s r2). by apply permute_rows_row_equiv.
 Qed.
 
+(*As a corollary (that we will need later), we show that if we flip the rows of an n x n matrix, this does not change
+  invertibility*)
+Definition flip_rows {m n} (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
+  \matrix_(i < m, j < n) A (rev_ord i) j.
+
+Lemma submx_rows_cols_whole: forall n (A: 'M[F]_n) (xn: 'I_n),
+  A = submx_rows_cols n A (ord_enum n) (ord_enum n) xn xn.
+Proof.
+  move => n A xn. rewrite -matrixP => x y. by rewrite mxE !nth_ord_enum.
+Qed.
+
+(*This is true in general, but we only need it for square matrices*)
+Lemma flip_rows_row_equiv: forall {n} (A: 'M[F]_n),
+  row_equivalent A (flip_rows A).
+Proof.
+  move => n A. have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP H0 | Hpos].
+  - subst. rewrite {1}(matrix_zero_rows A (flip_rows A)). constructor.
+  - rewrite {1}(submx_rows_cols_whole A (pred_ord Hpos)).
+    have->: flip_rows A = submx_rows_cols n A (rev (ord_enum n)) (ord_enum n) (pred_ord Hpos) (pred_ord Hpos). {
+      rewrite -matrixP => x y. have Hsz: size (ord_enum n) = n by rewrite size_ord_enum.
+      rewrite !mxE nth_rev; rewrite Hsz. have Hsub: n - x.+1 < n by apply rev_ord_proof. 
+      have->: (n - x.+1)%nat = nat_of_ord (Ordinal Hsub) by []. rewrite !nth_ord_enum. f_equal.
+      by apply ord_inj. by []. }
+    apply perm_eq_row_equiv.
+    + by rewrite perm_sym perm_rev.
+    + by rewrite size_ord_enum.
+    + by rewrite size_rev size_ord_enum.
+Qed.
+
+Lemma flip_rows_unitmx: forall {n} (A: 'M[F]_n),
+  A \in unitmx = (flip_rows A \in unitmx).
+Proof.
+  move => n A. apply (row_equivalent_unitmx_iff (flip_rows_row_equiv A)).
+Qed.
+
 (*Now, we need to know that if we take a list l of 'I_n's and take l ++ (ord_comp rows),
   this is a permutation of ord_enum m*)
 Lemma ord_comp_app_perm: forall {n: nat} (l: seq 'I_n),
@@ -821,6 +856,7 @@ Qed.
   invertibility, p is also invertible. *)
 
 
+
 Definition scalar_mult_last_inv {m n} (Hn: 0 < n) (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
   foldr (fun (r: 'I_m) acc => sc_mul acc (A r (pred_ord Hn))^-1 r) A (ord_enum m).
 
@@ -898,8 +934,7 @@ Proof.
   have Hxn: x < n. have Hxr: x < r.+1 by []. rewrite ltnS in Hxr.
     have Hrm: r < m by []. have Hxm: x < m by apply (leq_ltn_trans Hxr Hrm).
     by apply (ltn_leq_trans Hxm Hmn).
-  have Hx: (r - (r.+1 - x - 1))%nat = x.
-    rewrite -subnDA addnC subnDA subn1 -pred_Sn. apply subKn. by rewrite -ltnS.
+  have Hx: (r - (r.+1 - x.+1))%nat = x by rewrite subSS subKn // -ltnS. 
   have: y < r.+1 by []. rewrite ltnS leq_eqVlt => /orP[/eqP Hyr | Hyr].
   - rewrite Hyr ltnn. rewrite nth_cat.
     rewrite size_map size_iota ltnn subnn /=. by rewrite Hx -GRing.exprM.
@@ -927,7 +962,7 @@ Proof.
   apply GRing.invr_neq0. apply qx_not_zero. by []. by rewrite size_iota.
   have Hrm: r < m by []. by apply (ltn_leq_trans Hrm). }
   apply row_equivalent_unitmx_iff in Hinv. rewrite Hinv {Hinv}.
-  rewrite -unitmx_tr flip_rows_unitmx_iff vandermonde_powers_add_row_list =>[|//].
+  rewrite -unitmx_tr flip_rows_unitmx vandermonde_powers_add_row_list =>[|//].
   apply vandermonde_unitmx.
   - rewrite cats1 rcons_uniq.
     have->: (qx ^+ j \notin [seq (@GRing.exp F qx i) | i <- iota 0 r]). {
@@ -960,18 +995,5 @@ Proof.
   - by apply vandermonde_remove_col_unitmx.
   - by apply vandermonde_add_row_unitmx.
 Qed.
-
-
-
-(*When one [submx_rows_cols] is a submatrix of another:*)
-(*TODO: don't need this*)
-(*Definition submx_rows_cols_submx {m n} (Hmn: m <= n) (A: 'M[F]_(m, n)) (r1 r2 : list 'I_m) (c1 c2 : list 'I_n) :=
-   subseq r1 r2 && subseq c1 c2.
-*)
-
-
-
-
-
 
 End PrimitiveVandermonde.
