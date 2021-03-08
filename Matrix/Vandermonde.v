@@ -269,8 +269,21 @@ Section RowRedVandermonde.
 
 (*Allows us to specify a submatrix by a list of rows and columns (we will need uniqueness and some additional
   length properties to use this*)
-Definition submx_rows_cols {m n} z (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols: list 'I_n) (xm : 'I_m) (xn: 'I_n) :=
-  mxsub (fun (x: 'I_z) => nth xm rows x) (fun (x: 'I_z) => nth xn cols x) A.
+Definition submx_rows_cols {m n : nat} (m' n': nat) (A: 'M[F]_(m, n)) (rows: seq 'I_m) (cols: seq 'I_n)
+  (xm: 'I_m) (xn : 'I_n) := mxsub (fun (x : 'I_m') => nth xm rows x) (fun x : 'I_n' => nth xn cols x) A.
+(*Definition submx_rows_cols {m n} z (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols: list 'I_n) (xm : 'I_m) (xn: 'I_n) :=
+  mxsub (fun (x: 'I_z) => nth xm rows x) (fun (x: 'I_z) => nth xn cols x) A.*)
+(*The default doesn't matter as long as our lists are long enough*)
+Lemma submx_rows_cols_default: forall m n m' n' (A: 'M[F]_(m, n)) rows cols xm xn xm' xn',
+  m' <= size rows ->
+  n' <= size cols ->
+  submx_rows_cols m' n' A rows cols xm xn = submx_rows_cols m' n' A rows cols xm' xn'.
+Proof.
+  move => m n m' n' A rows cols xm xn xm' xn' Hm' Hn'. rewrite -matrixP => x y. rewrite !mxE.
+  f_equal; apply set_nth_default. 
+  have Hx: x < m' by []. by apply (ltn_leq_trans Hx).
+  have Hy: y < n' by []. by apply (ltn_leq_trans Hy).
+Qed.
 
 (*To prove the invertibility of this submatrix, we will need to expand this to cover more columns. First we need
   to get a list of the rows that are not included in [rows].*)
@@ -397,8 +410,8 @@ Lemma added_rows_unitmx_iff: forall {m n} (Hmn: m <= n)  (xm: 'I_m) (xn: 'I_n) (
   subseq rows all_rows ->
   size (added_cols ++ cols) = size all_rows ->
   (forall x, (widen_ord Hmn x) \in added_cols = (x \in all_rows) && (x \notin rows)) -> (*we add the same rows and columns*) 
-  (submx_rows_cols z (gaussian_elim (vandermonde m n l)) rows cols xm xn \in unitmx) = 
-  (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (added_cols ++ cols) xm xn \in unitmx).
+  (submx_rows_cols z z (gaussian_elim (vandermonde m n l)) rows cols xm xn \in unitmx) = 
+  (submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (added_cols ++ cols) xm xn \in unitmx).
 Proof.
   move => m n Hmn xm xn l rows cols added_cols all_rows z k Hunl Hszl Hinc Hunr Hszcr Hszc. 
   rewrite !unitmxE !GRing.unitfE. (*work with determinants for cofactors*)
@@ -409,7 +422,7 @@ Proof.
     move  => [Htriv Hrows]. apply /eqP. by rewrite -Hrows. by subst.
   - (*expand determinant along cofactor*)
     have Hk: 0 < k. move: Hszadd <-. apply ltn0Sn.
-    rewrite ( expand_det_col (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn)
+    rewrite ( expand_det_col (submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn)
       (Ordinal Hk)). 
     (*now, need to show that all but 1 entry in the sum is 0*)
     have Hhm: h < m. apply Hinadd. by rewrite in_cons eq_refl.
@@ -417,19 +430,19 @@ Proof.
         have->: colsub (widen_ord Hmn) (vandermonde m n l) = vandermonde m m (take m l). {
           rewrite -matrixP => x y. rewrite !mxE. by rewrite nth_take. }
         apply vandermonde_unitmx. by apply take_uniq. rewrite size_takel //. by subst. }
-    have Hinner: forall i, submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) = 
+    have Hinner: forall i, submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) = 
       if (nat_of_ord (nth xm all_rows i) == nat_of_ord h) then 1 else 0. {
       move => i. rewrite mxE /=. 
       by apply (gaussian_elim_identity_val Hvan). }
     (*work with the summation - can we do this nicely at all?*)
     have->: (\sum_i
-      submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) *
-      cofactor (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn) i
+      submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) *
+      cofactor (submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn) i
         (Ordinal Hk)) =
     (\sum_i
       if nat_of_ord (nth xm all_rows (nat_of_ord i)) == (nat_of_ord h) then 
-      submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) *
-      cofactor (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn) i
+      submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn i (Ordinal Hk) *
+      cofactor (submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn) i
       (Ordinal Hk) else 0). {
       apply eq_big. by []. move => i H{H}. rewrite Hinner. 
         case Hih : (nat_of_ord (nth xm all_rows (nat_of_ord i)) == (nat_of_ord h)). by [].
@@ -457,8 +470,8 @@ Proof.
     (*Have to prove this new matrix equivalent to the one we need for the IH*)
     have ->:(row' j
          (col' (Ordinal Hk)
-            (submx_rows_cols k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn))) =
-      (submx_rows_cols k.-1 (gaussian_elim (vandermonde m n l)) (rem_nth all_rows j) (t ++ cols) xm xn). {
+            (submx_rows_cols k k (gaussian_elim (vandermonde m n l)) all_rows (h :: t ++ cols) xm xn))) =
+      (submx_rows_cols k.-1 k.-1 (gaussian_elim (vandermonde m n l)) (rem_nth all_rows j) (t ++ cols) xm xn). {
       rewrite -matrixP => x y. rewrite !mxE /=. f_equal. rewrite rem_nth_nth /bump.
       case Hxj : (x < j). rewrite ltnNge in Hxj. case Hjx: (j <= x); try by []. by rewrite Hjx in Hxj.
       rewrite ltnNge in Hxj. apply negbFE in Hxj. by rewrite Hxj. }
@@ -506,13 +519,13 @@ Qed.
 
 (*This is a stronger claim than we originally needed - for the IH, we need to add the extra [p] list. This lemma
   is quite annoying to prove because of all the appends and casework*)
-Lemma permute_rows_row_equiv: forall {m n} (A: 'M[F]_(m, n)) z (r1 r2 p: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
+Lemma permute_rows_row_equiv: forall {m n} (A: 'M[F]_(m, n)) m' n' (r1 r2 p: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
   perm_eq r1 r2 ->
-  z = size (p ++ r1) ->
-  z = size(p ++ r2) ->
-  row_equivalent (submx_rows_cols z A (p ++ r1) cols xm xn) (submx_rows_cols z A (p ++ r2) cols xm xn).
+  m' = size (p ++ r1) ->
+  m' = size(p ++ r2) ->
+  row_equivalent (submx_rows_cols m' n' A (p ++ r1) cols xm xn) (submx_rows_cols m' n' A (p ++ r2) cols xm xn).
 Proof.
-  move => m n A z r1 r2 p cols xm xn. move: r2 p. elim: r1 => [r2 p /= | /= h t IH r2 p Hperm Hsz1 Hsz2].
+  move => m n A m' n' r1 r2 p cols xm xn. move: r2 p. elim: r1 => [r2 p /= | /= h t IH r2 p Hperm Hsz1 Hsz2].
   - rewrite perm_sym. move => /perm_nilP Hperm. subst. constructor.
   - apply perm_eq_in in Hperm. move: Hperm => [s1 [s2 [Hr2 Hperm]]].
     have->:p ++ h :: t = (p ++ h :: nil) ++ t by rewrite -catA.
@@ -520,20 +533,20 @@ Proof.
     move: Hr2 Hperm; case : s1 =>[//= Hr1 Hperm | //= h1 t1 Hr1 Hperm].
     + subst. have->:p ++ h :: s2 = (p ++ h :: nil) ++ s2 by rewrite -catA.
       apply (IH  s2 (p ++ h :: nil)). by []. all: by rewrite -catA /=.
-    + rewrite Hr1. apply (@row_equivalent_trans _ _ _ _ (submx_rows_cols z A (p ++ h :: t1 ++ h1 :: s2) cols xm xn)).
+    + rewrite Hr1. apply (@row_equivalent_trans _ _ _ _ (submx_rows_cols m' n' A (p ++ h :: t1 ++ h1 :: s2) cols xm xn)).
       * have->:(p ++ h :: t1 ++ h1 :: s2) = (p ++ h :: nil) ++ (t1 ++ h1 :: s2) by rewrite -catA.
         apply IH. rewrite (perm_trans Hperm) //. by rewrite perm_sym perm_catC /= perm_cons perm_catC perm_refl.
         all:  rewrite -catA //=. subst. rewrite Hsz2 !size_cat /=.
         apply /eqP. by rewrite eqn_add2l !size_cat /=.
       * (*this is RE because this swap is actually a row swap*)
-        have Hih1: (size p) < z. subst. rewrite size_cat /= -ltn_subLR. by rewrite subnn ltn0Sn.
+        have Hih1: (size p) < m'. subst. rewrite size_cat /= -ltn_subLR. by rewrite subnn ltn0Sn.
         by rewrite leqnn.
-        have Hih: (size (p ++ h1 :: t1)) < z. subst. rewrite Hsz2. rewrite !size_cat /= ltn_add2l
+        have Hih: (size (p ++ h1 :: t1)) < m'. subst. rewrite Hsz2. rewrite !size_cat /= ltn_add2l
           -add1n -(add1n (size (t1 ++ h :: s2))) !leq_add2l size_cat -ltn_subLR.
           by rewrite subnn /= ltn0Sn. by rewrite leqnn.
         (*need these two so we can create Ordinals of type 'I_z*)
-        have->: (submx_rows_cols z A (p ++ h1 :: t1 ++ h :: s2) cols xm xn) = 
-          xrow (Ordinal Hih) (Ordinal Hih1) (submx_rows_cols z A (p ++ h :: t1 ++ h1 :: s2) cols xm xn). {
+        have->: (submx_rows_cols m' n' A (p ++ h1 :: t1 ++ h :: s2) cols xm xn) = 
+          xrow (Ordinal Hih) (Ordinal Hih1) (submx_rows_cols m' n' A (p ++ h :: t1 ++ h1 :: s2) cols xm xn). {
           rewrite -matrixP => x y. rewrite xrow_val !mxE.
           have Hih': nat_of_ord (Ordinal Hih) = size (p ++ h1 :: t1) by [].
           have Hih1': nat_of_ord (Ordinal Hih1) = size p by [].
@@ -576,13 +589,13 @@ Qed.
 
 (*The easy corollary of above. This is what we wanted*)
 (*TODO: see if we can use this instead of proving the reverse rows stuff*)
-Lemma perm_eq_row_equiv: forall {m n} (A: 'M[F]_(m, n)) z (r1 r2: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
+Lemma perm_eq_row_equiv: forall {m n} (A: 'M[F]_(m, n)) m' n' (r1 r2: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
   perm_eq r1 r2 ->
-  z = size r1 ->
-  z = size r2 ->
-  row_equivalent (submx_rows_cols z A r1 cols xm xn) (submx_rows_cols z A r2 cols xm xn).
+  m' = size r1 ->
+  m' = size r2 ->
+  row_equivalent (submx_rows_cols m' n' A r1 cols xm xn) (submx_rows_cols m' n' A r2 cols xm xn).
 Proof.
-  move => m n A z r1 r2 cols xm xn Hperm Hsz1 Hsz2.
+  move => m n A m' n' r1 r2 cols xm xn Hperm Hsz1 Hsz2.
   rewrite -(cat0s r1) -(cat0s r2). by apply permute_rows_row_equiv.
 Qed.
 
@@ -591,28 +604,35 @@ Qed.
 Definition flip_rows {m n} (A: 'M[F]_(m, n)) : 'M[F]_(m, n) :=
   \matrix_(i < m, j < n) A (rev_ord i) j.
 
-Lemma submx_rows_cols_whole: forall n (A: 'M[F]_n) (xn: 'I_n),
-  A = submx_rows_cols n A (ord_enum n) (ord_enum n) xn xn.
+Lemma submx_rows_cols_whole: forall m n (A: 'M[F]_(m, n)) (xm: 'I_m) (xn: 'I_n),
+  A = submx_rows_cols m n A (ord_enum m) (ord_enum n) xm xn.
 Proof.
-  move => n A xn. rewrite -matrixP => x y. by rewrite mxE !nth_ord_enum.
+  move => m n A xm xn. rewrite -matrixP => x y. by rewrite mxE !nth_ord_enum.
 Qed.
 
-(*This is true in general, but we only need it for square matrices*)
-Lemma flip_rows_row_equiv: forall {n} (A: 'M[F]_n),
+(*We need the column result here*)
+Lemma matrix_zero_cols: forall {n} (A B: 'M[F]_(n, 0)), A = B.
+Proof.
+  move => n A B. rewrite -matrixP /eqrel. move => x y. have: y < 0 by []. by rewrite ltn0.
+Qed.
+
+Lemma flip_rows_row_equiv: forall {m n} (A: 'M[F]_(m, n)),
   row_equivalent A (flip_rows A).
 Proof.
-  move => n A. have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP H0 | Hpos].
+  move => m n A. have: 0 <= m by []. rewrite leq_eqVlt => /orP[/eqP H0 | Hmpos].
   - subst. rewrite {1}(matrix_zero_rows A (flip_rows A)). constructor.
-  - rewrite {1}(submx_rows_cols_whole A (pred_ord Hpos)).
-    have->: flip_rows A = submx_rows_cols n A (rev (ord_enum n)) (ord_enum n) (pred_ord Hpos) (pred_ord Hpos). {
-      rewrite -matrixP => x y. have Hsz: size (ord_enum n) = n by rewrite size_ord_enum.
-      rewrite !mxE nth_rev; rewrite Hsz. have Hsub: n - x.+1 < n by apply rev_ord_proof. 
-      have->: (n - x.+1)%nat = nat_of_ord (Ordinal Hsub) by []. rewrite !nth_ord_enum. f_equal.
-      by apply ord_inj. by []. }
-    apply perm_eq_row_equiv.
-    + by rewrite perm_sym perm_rev.
-    + by rewrite size_ord_enum.
-    + by rewrite size_rev size_ord_enum.
+  - have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP H0 | Hnpos].
+    + subst. rewrite {1}(matrix_zero_cols A (flip_rows A)). constructor. 
+    + rewrite {1}(submx_rows_cols_whole A (pred_ord Hmpos) (pred_ord Hnpos) ).
+      have->: flip_rows A = submx_rows_cols m n A (rev (ord_enum m)) (ord_enum n) (pred_ord Hmpos) (pred_ord Hnpos). {
+        rewrite -matrixP => x y. have Hsz: size (ord_enum m) = m by rewrite size_ord_enum.
+        rewrite !mxE nth_rev // Hsz //=. have Hsub: m - x.+1 < m by apply rev_ord_proof. 
+        have->: (m - x.+1)%nat = nat_of_ord (Ordinal Hsub) by []. rewrite !nth_ord_enum. f_equal.
+        by apply ord_inj. }
+      apply perm_eq_row_equiv.
+      * by rewrite perm_sym perm_rev.
+      * by rewrite size_ord_enum.
+      * by rewrite size_rev size_ord_enum.
 Qed.
 
 Lemma flip_rows_unitmx: forall {n} (A: 'M[F]_n),
@@ -655,7 +675,7 @@ Lemma any_submx_unitmx: forall {m n} (Hmn: m <= n) (Hm: 0 < m) z (l: list F) (ro
   size rows = size cols ->
   size rows = z ->
   (forall x, x \in cols -> m <= x) ->
-  (submx_rows_cols z (gaussian_elim (vandermonde m n l)) rows cols (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)) \in unitmx).
+  (submx_rows_cols z z (gaussian_elim (vandermonde m n l)) rows cols (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)) \in unitmx).
 Proof.
   move => m n Hmn Hm z l rows cols Hunl Hszl Hunr Hunc Hszrc Hz Hinc.
   (*Need this in multiple places*)
@@ -671,10 +691,10 @@ Proof.
   rewrite (@added_rows_unitmx_iff _ _ _ _ _ _ _ _ (map (widen_ord Hmn) (ord_comp rows)) (rows ++ (ord_comp rows)) _ m) //=.
   - (*We need to 1. replace rows by (ord_enum m), which is a permutations, then 2. prove equivalent to
       a colmx that is therefore invertible*)
-    rewrite (@row_equivalent_unitmx_iff _ _ _ (submx_rows_cols m (gaussian_elim (vandermonde m n l)) (ord_enum m)
+    rewrite (@row_equivalent_unitmx_iff _ _ _ (submx_rows_cols m m (gaussian_elim (vandermonde m n l)) (ord_enum m)
     ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols) (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)))).
     2: { apply perm_eq_row_equiv. by apply ord_comp_app_perm. by rewrite ord_comp_cat_size. by rewrite size_ord_enum. }
-    have->: submx_rows_cols m (gaussian_elim (vandermonde m n l)) (ord_enum m)
+    have->: submx_rows_cols m m (gaussian_elim (vandermonde m n l)) (ord_enum m)
       ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols) (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)) =
       colsub (fun (x: 'I_m) => (nth (widen_ord Hmn (Ordinal Hm)) 
         ([seq widen_ord Hmn i | i <- ord_comp rows] ++ cols) x))
