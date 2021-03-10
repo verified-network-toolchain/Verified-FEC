@@ -9,6 +9,7 @@ Set Bullet Behavior "Strict Subproofs".
 Require Import Vandermonde.
 Require Import Gaussian.
 Require Import CommonSSR.
+Require Import LinIndep. (*for summation - TODO move*)
 
 (*TODO: move*)
 Lemma index_ord_enum: forall (n: nat), (index_enum (ordinal_finType n)) = ord_enum n.
@@ -142,37 +143,33 @@ Variable max_h : nat.
 Variable max_n : nat.
 Variable max_size: max_h <= max_n.
 Variable k_size: k <= max_n - max_h.
-Variable x_max_h : 'I_(max_h).
-Variable x_max_n : 'I_(max_n).
-Variable x_k : 'I_k.
-Variable x_c : 'I_c. 
-
 Variable l : list F.
 Variable uniq_l: uniq l.
 Variable size_l: size l = max_n.
+
+Definition weights := gaussian_elim (vandermonde max_h max_n l).
 
 Lemma k_leq_n: k <= max_n.
 Proof.
   apply (leq_trans k_size). by rewrite leq_subr.
 Qed.
 
-Definition weights := gaussian_elim (vandermonde max_h max_n l).
-(*Definition rev_weight_mx := mxsub (fun x => x) (fun x => rev_ord x) weight_mx.*)
-
-(*Cast a matrix to a square matrix if m = n*)
-Definition castmx_square {m n : nat} (Hmn : m = n) (A: 'M[F]_(m, n)) : 'M[F]_n :=
-  castmx (Hmn, erefl n) A.
-
 (*Expand ords in a list*)
 Definition widen_ord_seq {m n} (Hmn: m <= n) (a: seq 'I_m) : seq 'I_n :=
   map (widen_ord Hmn) a.
+
+Variable x_max_h : 'I_(max_h).
+Variable x_max_n : 'I_(max_n).
+Variable x_k : 'I_k.
+Variable x_c : 'I_c. 
+
+(*First, the generic decoder that uses a matrix subtraction instead of an extra (not really needed)
+  multiplication. This works over any field*)
 
 (*The input comes in 2 pieces: the k - xh received packets and the xh found parity packets. We will also
   know the xh missing packet locations and the xh found parity packet locations. To represent this in our 
   mathematical model, we will have the decoder take in a full-size matrix (or else the dependent types
   get super annoying), and model the missing packets in the proof *)
-(*This is the nice version of the decoder that doesn't do superfluous matrix multiplication. We will
-  prove the other version equivalent*)
 Definition decoder (h xh: nat) (input: 'M[F]_(k, c)) (parities: 'M[F]_(h, c)) (missing: seq 'I_k) 
   (found_parities : list 'I_(h)) (Hh: h <= max_h) (x_h : 'I_h) : 'M[F]_(k, c) :=
   (*each matrix is named the same as in the C code except that s' is defined by adding the parity vector to s
@@ -217,9 +214,8 @@ Proof.
               submx_rows_cols (k - xh) c input (ord_comp missing_packets) (ord_enum c) x_k x_c) as s.
   remember (submx_rows_cols xh c parities found_parities (ord_enum c) x_h x_c) as p.
   remember (minusmx p s) as s'.
-  (*The key fact we want to prove: S' = (W')^-1 * x*, where x* is the missing data. TODO: maybe separate lemma*)
+  (*The key fact we want to prove: S' = (W')^-1 * x*, where x* is the missing data.*)
   have Hsyn: s' = w' *m (submx_rows_cols  xh c data missing_packets (ord_enum c) x_k x_c). {
-    (*TODO: use >0 instead of default ords maybe*)
     rewrite Heqs' Heqs Heqp Heqw'. rewrite -matrixP => i j. rewrite !mxE.
     rewrite Hparities. 2 : { apply mem_nth. by rewrite Hparsz. }
     rewrite !mxE. apply /eqP. rewrite GRing.subr_eq. apply /eqP.
@@ -233,12 +229,8 @@ Proof.
       + move => x Htriv. rewrite !mxE. f_equal. f_equal. rewrite !(nth_map x_h) //=.
         by rewrite Hparsz. f_equal. rewrite (nth_map x_max_n) //=. f_equal.
         by rewrite (nth_map x_k). by rewrite size_map Hpacksz.
-    - rewrite (big_nth x_k). have Hcompsz: (size (ord_comp missing_packets) = k - xh)%N. {
-        have: (size (ord_comp missing_packets) + size missing_packets)%N = k
-          by rewrite addnC -size_cat ord_comp_cat_size.
-        rewrite Hpacksz => Hsz.
-        have<-: ((size (ord_comp missing_packets) + xh) - xh)%N = (k - xh)%N by rewrite Hsz.
-        rewrite -subnBA. by rewrite subnn subn0. by rewrite leqnn. }
+    - rewrite (big_nth x_k). have Hcompsz: (size (ord_comp missing_packets) = k - xh)%N
+        by rewrite ord_comp_size_uniq // Hpacksz.
       rewrite (big_nat_widen 0 (size (ord_comp missing_packets)) (k - xh)).
       2: { by rewrite Hcompsz leqnn. }
       rewrite big_mkord. apply eq_big.
@@ -275,6 +267,244 @@ Proof.
   - have Hi': i \notin missing_packets by apply negbT. rewrite fill_rows_notin_spec //.
     by rewrite Hnonmissing. by rewrite Hpacksz leqnn.
 Qed.
+
+Section SpecializedDecoder.
+
+(*For the matrix multiplication decoder to be correct, we need to be in a field of characteristic 2, so
+  addition and subtraction are the same thing*)
+
+Variable Hchar: 2 \in [char F].
+
+Lemma max_n_pos: 0 < max_n.
+Proof.
+  have: 0 <= k by []. rewrite leq_eqVlt => /orP[/eqP Hk0 | Hkpos].
+  - subst. have: x_k < 0 by []. by rewrite ltn0.
+  - have Hkn: k <= max_n. apply (leq_trans k_size). by rewrite leq_subr.
+    apply (ltn_leq_trans Hkpos Hkn).
+Qed.
+
+(*We want to transform (x: 'I_h) into max_n - 2 - x and have the result be an I_(max_n)*)
+Lemma parity_loc_lt: forall h (x: 'I_h),
+  max_n - 2 - x < max_n.
+Proof.
+  move => h x. rewrite -subnDA addnC addn2 ltn_psubLR.
+  rewrite -{1}(add0n max_n) ltn_add2r //. apply max_n_pos.
+Qed.
+
+(*TODO: this isn't quite right, the indices match up to the number parity packet it is (ie, 1st, 2nd, 3rd, etc)
+  NOT its index in the parity packets - I think this works, so we should just add like max_n - 2 - iota 0 xh (abusing notation)*)
+
+(*The only difference is that the "found" array includes the reversed locations of the parity packets and
+  that we do a multiplication instead of a subtraction*)
+Definition decoder_mult (h xh: nat) (input: 'M[F]_(k, c)) (parities: 'M[F]_(h, c)) (missing: seq 'I_k) 
+  (found_parities : list 'I_h) (Hh: h <= max_h) (x_h : 'I_h) (Hxhk: xh <= k) : 'M[F]_(k, c) :=
+  (*each matrix is named the same as in the C code except that s' is defined by adding the parity vector to s
+    (the natural way of decoding)*)
+  let v := invmx (submx_rows_cols_rev xh xh weights (widen_ord_seq Hh found_parities)
+              (widen_ord_seq k_leq_n missing) x_max_h x_max_n) in
+  let w'' := submx_rows_cols_rev xh k weights (widen_ord_seq Hh found_parities) 
+             ((widen_ord_seq k_leq_n (ord_comp missing)) ++ 
+             map (fun (i: 'I_h) => Ordinal (parity_loc_lt i)) found_parities) x_max_h x_max_n in
+  (*need a cast bc we need to unify k - xh + xh and k*)
+  let s := w'' *m (castmx (subnK Hxhk, Logic.eq_refl c) (col_mx (submx_rows_cols (k-xh) c input (ord_comp missing) (ord_enum c) x_k x_c)
+                          (submx_rows_cols xh c parities found_parities (ord_enum c) x_h x_c))) in
+  let recovered := v *m s in
+  fill_rows input recovered missing x_k.
+(*TODO: redo with [big_geq]*)
+(*TODO: move, separate out summation stuff*)
+Lemma big_nat_widen_lt m1 m2 n (P : pred nat) (C: nat -> F) :
+     m1 <= m2 ->
+  \sum_(m2 <= i < n | P i) C i
+      = \sum_(m1 <= i < n | P i && (m2 <= i)) C i.
+Proof.
+  move => Hm. 
+  case : (orP (ltn_leq_total n m2)) => [Hout | Hin].
+  - rewrite big_nat_cond (big_nat_cond _ _ m1 n) !big_hasC //. 
+    apply /hasP; move => [x Hin /andP[/andP[Hm1 Hn] /andP[Hp Hm2]]]. 
+    have: x < m2. apply (ltn_trans Hn Hout). by rewrite ltnNge Hm2.
+    apply /hasP. move => [x Hin /andP[/andP[Hm2 Hn] Hp]].  
+    have: x < m2. apply (ltn_trans Hn Hout). by rewrite ltnNge Hm2.
+  - rewrite (big_cat_nat _ _ _ Hm) //=.
+    rewrite -(GRing.add0r (\sum_(m2 <= i < n | P i) C i)). f_equal.
+    + rewrite big_nat_cond big_hasC //. apply /hasP.
+      move => [x Hiota /andP[/andP[Hm1 Hm2] /andP[Hp Hm2']]].
+      move: Hm2 Hm2'. rewrite (leqNgt m2 x). by move ->.
+    + rewrite big_nat_cond (big_nat_cond _ _ m2 n (fun i => P i && (m2 <= i))).
+      apply eq_big =>[x |//]. case Hbound: (m2 <= x < n) =>[|//].
+      rewrite !andTb. move : Hbound => /andP[Hm2 Hn]. by rewrite Hm2 andbT.
+Qed.
+
+
+Lemma decoder_equivalent: forall (h xh: nat) (input: 'M[F]_(k, c)) (parities: 'M[F]_(h, c)) (missing: seq 'I_k) 
+  (found_parities : list 'I_h) (Hh: h <= max_h) (x_h : 'I_h) (Hxhk: xh <= k),
+  (*see what conditions we need*)
+  size missing = xh ->
+  size found_parities = xh ->
+  uniq missing ->
+  decoder_mult input parities missing found_parities Hh x_h Hxhk =
+  decoder xh input parities missing found_parities Hh x_h.
+Proof.
+  move => h xh input parities missing found_parities Hh x_h Hxkh Hpacksz Hparsz Hun.
+  rewrite /decoder /decoder_mult. f_equal. f_equal. rewrite -matrixP => x y.
+  rewrite !mxE /=. rewrite GRing.subr_char2 // GRing.addrC. (*need that addition = subtraction*)
+  rewrite (big_nth x_k) /=. rewrite (big_nat_widen 0 _ k). 2:  by rewrite index_ord_enum size_ord_enum.
+  rewrite (@big_cat_nat _ _ _ (k-xh)%N 0%N k) /=. f_equal.
+  - (*The packets side of the multiplication is the same as before (this is nontrivial to
+       show because we are multiplying bigger matrices and the ordinals are annoying)*)
+    rewrite big_mkord. apply eq_big. move => i.
+    rewrite index_ord_enum size_ord_enum. have Hi: i < k - xh by []. 
+    apply (ltn_leq_trans Hi). by rewrite leq_subr.
+    move => i. rewrite !mxE /=. rewrite !index_ord_enum nth_ord_enum size_ord_enum => Hik.
+    have->: (nth x_k (ord_enum k) i) = (Ordinal Hik).
+      have Hiord: (nat_of_ord i = nat_of_ord (Ordinal Hik)) by [].
+      have->: nth x_k (ord_enum k) i = nth x_k (ord_enum k) (Ordinal Hik) by [].
+      by rewrite nth_ord_enum.
+    have Hsz: size (ord_comp missing) = (k - xh)%N by rewrite ord_comp_size_uniq // Hpacksz.
+    rewrite /= !(nth_map x_max_n). rewrite nth_cat size_map Hsz.
+    have->: i < (k - xh)%N by []. f_equal. rewrite castmxE !mxE /=.
+    have Hik': i < (k - xh) + xh by rewrite subnK.
+    have->: (cast_ord (esym (subnK Hxkh)) (Ordinal Hik)) = Ordinal Hik'. by apply ord_inj. 
+    pose proof (splitP (Ordinal Hik')). case : X => [j /= Hj | j /= Hj]. subst. rewrite mxE. f_equal.
+    by rewrite Hj. by rewrite nth_ord_enum cast_ord_id. subst.
+    (*in the other case, we have a contradiction - not dealing with parities here*)
+    have: i < (k- size missing)%N by []. by rewrite Hj -{2}(addn0 (k- (size missing))%N) ltn_add2l ltn0.
+    by rewrite size_map Hsz. by rewrite size_cat !size_map Hparsz Hsz subnK.
+  - (*now need to show that the extra mattrix multiplication is equivalent to the sum - this is because we
+      multiply with the portion of the matrix that is the identity*)
+    rewrite nth_ord_enum. 
+    (*idea: the (k-xh +x)th entry is 1, rest are 0*) 
+    rewrite (@big_nat_widen_lt 0 (k-xh)%N) // big_mkord. 
+    have Hx: k - xh + x < k  by rewrite -ltn_subRL subKn.
+    rewrite (@sum_remove_one _ _ _ _ (Ordinal Hx)) //=. 
+    (*First, we will show that the rest of sum is 0*)
+    rewrite big1. 2: { rewrite index_ord_enum size_ord_enum => i /andP[ /andP[Hik Hikxh] Hix].
+    (*TODO: come back and finish this*)
+    have Hsz: size (ord_comp missing) = (k - xh)%N by rewrite ord_comp_size_uniq // Hpacksz.
+    rewrite !mxE (nth_map x_max_n). rewrite nth_cat size_map Hsz.
+    have->: nth x_k (ord_enum k) i = Ordinal Hik.
+      have->: nth x_k (ord_enum k) i = nth x_k (ord_enum k) (Ordinal Hik) by [].
+      by rewrite nth_ord_enum.
+    have->:Ordinal Hik < k - xh = false. rewrite /=. move: Hikxh. rewrite ltnNge. by move ->.
+    rewrite /= /weights. rewrite gaussian_elim_identity_val.
+    - rewrite /=. rewrite !(nth_map x_h) //=. rewrite -subnDA subnS subKn.
+      rewrite addnC addn2 /=. Search (?x + 2)%N.
+      
+
+
+
+  subKn. Search (?x - ?y - ?z)%N. rewrite subKn.
+
+
+
+ rewrite (nth_map x_h).
+
+
+ Search red_row_echelon.
+
+
+
+    rewrite mxE.
+
+
+ Search (_ < _) negb. rewrite ltNgeq. rewrite leqNgt.
+    
+
+ by [].
+    
+
+
+ have->: nat_of_ord i = nat_of_ord (Ordinal Hik).
+
+
+
+
+
+ Hi]. /andP[Hikxh Hix]].
+    rewrite big_pred0. 2: {
+    rewrite !mxE.
+
+
+
+ Search (?x - (?y - ?z))%N. Search (?x < ?y - ?z). Search (?x + ?y < ?z). Search (?x - ?y + ?z)%N.
+      by [].
+      have Hnth: (nth x_h found_parities x) < xh by [].
+      
+
+(sum_remove_one _ _
+
+
+
+    erewrite (@congr_big_nat _ _ _ (k-xh)%N k (0 + (k-xh))%N k).
+    rewrite big_mkord.
+
+
+
+ Search (?x - ?y + ?y)%N. rewrite /widen_ord_seq. size_map. size_cat.
+    Search (?x + ?y < ?x + ?z).
+    
+
+
+
+    subst.
+
+
+
+ inversion X.
+
+apply /splitP. Check splitP.
+    have Hsplit: split_spec (Ordinal Hik') (split (ordinal Hik')).
+    rewrite /=.
+    case : split (cast_ord (esym (subnK Hxkh)) (Ordinal Hik)).
+    K. Search castmx.
+
+
+
+ mxE.
+    hav
+
+
+ Search split. have: split_spec (Ordinal Hik) (split (Ordinal Hik)). Print split_spec. Search col_mx. rewrite /col_mx /=. Search 
+    case (split i0)
+
+ rewrite splitP. apply /splitP. Search split. Print split_spec. Check split. rewrite mxE. rewrite /col_mx.
+    rewrite insubT.
+    
+
+
+ Search nth cat.
+
+
+ Search nth map.
+
+
+ f_equal.
+
+ rewrite Hiord. apply ord_inj.
+
+
+ Search (?x - ?y <= ?x).
+  rewrite big_cat_nat.
+  rewrite (big_nth x_k) /=.
+
+
+
+
+- rewrite (big_nth x_k). rewrite (big_nat_widen 0 (size missing_packets) xh). 2: by rewrite Hpacksz leqnn.
+      rewrite big_mkord. apply eq_big.
+      + move => x. rewrite Hpacksz andTb. by have: x < xh by [].
+      + move => x Htriv. rewrite !mxE. f_equal. f_equal. rewrite !(nth_map x_h) //=.
+        by rewrite Hparsz. f_equal. rewrite (nth_map x_max_n) //=. f_equal.
+        by rewrite (nth_map x_k). by rewrite size_map Hpacksz.
+  
+
+ in
+  let s' := minusmx (submx_rows_cols xh c parities (found_parities) (ord_enum c) x_h x_c) s in
+  let recovered := w' *m s' in
+  (*need to build back the original matrix - put recovered in correct positions.*)
+  fill_rows input recovered missing x_k.
+
+
+Check GRing.subr_char2.
 
 (*TODO: Need version with mx multiplication (in field of char 2), can specialize with positive ordinals,
   prove equivalent to above, maybe make separate correctness thm that is easy corollary*)

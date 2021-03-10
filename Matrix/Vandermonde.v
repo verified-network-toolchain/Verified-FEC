@@ -337,6 +337,19 @@ Proof.
     + by [].
 Qed.
 
+Lemma nat_comp_eq_mem: forall n (l1 l2 : seq nat),
+  (l1 =i l2) ->
+  nat_comp n l1 = nat_comp n l2.
+Proof.
+  move => n l1 l2 Hl12. elim : n => [//= | n IH /=]. by rewrite Hl12 IH.
+Qed.
+
+Lemma nat_comp_undup: forall n (l: seq nat),
+  nat_comp n l = nat_comp n (undup l).
+Proof.
+  move => n l. symmetry. apply nat_comp_eq_mem. apply mem_undup.
+Qed.
+
 Lemma nat_comp_uniq: forall n l,
   uniq (nat_comp n l).
 Proof.
@@ -374,6 +387,38 @@ Proof.
   have Hxin': x \in l by [].
   rewrite in_ord_comp in Hxin. by rewrite Hxin' in Hxin.
 Qed.
+
+(*Now, we need to know that if we take a list l of 'I_n's and take l ++ (ord_comp rows),
+  this is a permutation of ord_enum m*)
+Lemma ord_comp_app_perm: forall {n: nat} (l: seq 'I_n),
+  uniq l ->
+  perm_eq (l ++ (ord_comp l)) (ord_enum n).
+Proof.
+  move => n l Hun. apply uniq_perm.
+  - by apply uniq_ord_comp_cat.
+  - apply ord_enum_uniq.
+  - move => x. rewrite mem_cat. rewrite mem_ord_enum.
+    case Hx: (x \in ord_comp l). by rewrite orbT. rewrite orbF.
+    rewrite in_ord_comp in Hx. move : Hx. by case : (x \in l).
+Qed.
+
+Lemma ord_comp_cat_size: forall n (l: seq 'I_n),
+  uniq l ->
+  size (l ++ ord_comp l) = n.
+Proof.
+  move => n l Hun. by rewrite (perm_size (ord_comp_app_perm Hun)) size_ord_enum.
+Qed.
+
+Lemma ord_comp_size_uniq: forall n (l: seq 'I_n),
+  uniq l ->
+  size (ord_comp l) = (n - size l)%N.
+Proof.
+  move => n l Hun.
+  have Hsz: (size (ord_comp l) + size l)%N = n by rewrite addnC -size_cat ord_comp_cat_size.
+  have<-: ((size (ord_comp l) + size l) - size l)%N = (n - size l)%N by rewrite Hsz.
+  rewrite -subnBA. by rewrite subnn subn0. by rewrite leqnn.
+Qed.
+
 
 (*TODO: move*)
 Lemma rem_in_neq: forall {A: eqType} (l : seq A) (y: A) (x: A),
@@ -639,27 +684,6 @@ Lemma flip_rows_unitmx: forall {n} (A: 'M[F]_n),
   A \in unitmx = (flip_rows A \in unitmx).
 Proof.
   move => n A. apply (row_equivalent_unitmx_iff (flip_rows_row_equiv A)).
-Qed.
-
-(*Now, we need to know that if we take a list l of 'I_n's and take l ++ (ord_comp rows),
-  this is a permutation of ord_enum m*)
-Lemma ord_comp_app_perm: forall {n: nat} (l: seq 'I_n),
-  uniq l ->
-  perm_eq (l ++ (ord_comp l)) (ord_enum n).
-Proof.
-  move => n l Hun. apply uniq_perm.
-  - by apply uniq_ord_comp_cat.
-  - apply ord_enum_uniq.
-  - move => x. rewrite mem_cat. rewrite mem_ord_enum.
-    case Hx: (x \in ord_comp l). by rewrite orbT. rewrite orbF.
-    rewrite in_ord_comp in Hx. move : Hx. by case : (x \in l).
-Qed.
-
-Lemma ord_comp_cat_size: forall n (l: seq 'I_n),
-  uniq l ->
-  size (l ++ ord_comp l) = n.
-Proof.
-  move => n l Hun. by rewrite (perm_size (ord_comp_app_perm Hun)) size_ord_enum.
 Qed.
 
 (*The result we want - any submatrix of a RR Vandermonde mx made of z unique rows and
