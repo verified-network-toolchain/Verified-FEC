@@ -51,32 +51,4 @@ Qed.
 
 End WeightMx.
 
-Require Import ListMatrix.
-Require Import ReedSolomon.
-Section Encoder.
 
-(* The ListMatrix version of the encoder*)
-Definition encode_list_mx (h k c : Z) (packets : list (list Z)) : matrix (Common.F) :=
-  list_matrix_multiply h k c (submatrix (fec_n - 1) weight_mx h k) 
-      (extend_mx k c (int_to_poly_mx packets)).
-
-(*Lift the above into ssreflect matrices and operations*)
-Lemma encoder_spec : forall (h k c : Z) (packets: list (list Z)) (Hh: h <= fec_max_h) (Hk: k <= fec_n - 1),
-  0 <= h ->
-  0 <= k ->
-  0 <= c ->
-  Zlength packets = k ->
-  Forall (fun x => Zlength x <= c) packets ->
-  matrix_to_mx h c (encode_list_mx h k c packets) = encoder (le_Z_N Hh) (le_Z_N Hk)
-    (matrix_to_mx fec_max_h (fec_n - 1) weight_mx) 
-    (matrix_to_mx k c (extend_mx k c (int_to_poly_mx packets))).
-Proof.
-  move => h k c packets Hh Hk Hn0 Hk0 Hc0 Hlen Hin. rewrite /encode_list_mx /encoder.
-  have Hwf: wf_matrix weight_mx fec_max_h (fec_n - 1). apply weight_mx_wf. 
-  rewrite list_matrix_multiply_correct.
-  by rewrite (@submatrix_to_mx _ (fec_max_h) (fec_n - 1) _ _ _ Hh Hk).
-  by apply submatrix_wf.
-  by apply extend_mx_wf. 
-Qed.
-
-End Encoder.

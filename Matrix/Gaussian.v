@@ -2095,4 +2095,55 @@ Proof.
   apply gaussian_elim_identity.
 Qed.
 
+(*We can use Gaussian elimination to find inverses: if we have the matrix [A | I] and A is invertible,
+  if we row reduce it, we get [I | B], where B = A^-1*)
+
+Definition find_invmx {n} (A: 'M[F]_n) :=
+  rsubmx (gaussian_elim (row_mx A 1%:M)).
+
+(*Convert between [colsub] and [lsubmx]*)
+Lemma colsub_lsubmx: forall {n} (A: 'M[F]_(n, n + n)),
+  colsub (widen_ord (leq_addr n n)) A = lsubmx A.
+Proof.
+  move => n A. rewrite lsubmxEsub /= -matrixP => x y.
+  rewrite !mxE /=. f_equal. by apply ord_inj.
+Qed. 
+
+(*This is another way of stating [gaussian_elim_identity]*)
+Lemma gaussian_id_structure: forall {n} (A B: 'M[F]_(n, n)),
+  A \in unitmx ->
+  exists C, gaussian_elim (row_mx A B) = row_mx 1%:M C.
+Proof.
+  move => n A B Hinv.
+  exists (rsubmx (gaussian_elim (row_mx A B))).
+  have->:1%:M = lsubmx (gaussian_elim (row_mx A B)).
+  pose proof (gaussian_elim_identity (leq_addr n n) (row_mx A B)) as Hgaus.
+    move: Hgaus. rewrite !colsub_lsubmx row_mxKl Hinv => Hid. apply /eqP.
+    by rewrite eq_sym -Hid. 
+  by rewrite hsubmxK.
+Qed.
+
+(*This may exist in mathcomp but I couldn't find it*)
+Lemma invmx_uniq: forall {n} (A B: 'M[F]_n),
+  B *m A = 1%:M ->
+  B = invmx A.
+Proof.
+  move => n A B Hmul. have Ha: A \in unitmx by apply (mulmx1_unit Hmul).
+  have: B *m A *m (invmx A) = invmx A by rewrite Hmul mul1mx.
+  by rewrite -mulmxA mulmxV // mulmx1.
+Qed.
+
+Lemma gaussian_finds_invmx: forall {n} (A: 'M[F]_(n, n)),
+  A \in unitmx ->
+  find_invmx A = invmx A.
+Proof.
+  move => n A Hinv. rewrite /find_invmx.
+  pose proof (@gaussian_id_structure n A 1%:M Hinv ) as [C Hrr]. rewrite Hrr row_mxKr.
+  have Hre: row_equivalent (row_mx A 1%:M) (row_mx 1%:M C).
+  rewrite -Hrr. apply gaussian_elim_row_equiv. apply row_equivalent_mul_unit in Hre.
+  move: Hre => [E /andP[He /eqP Hmul]]. move: Hmul.
+  rewrite mul_mx_row => Hrow. apply eq_row_mx in Hrow. case: Hrow => [Hea Hce].
+  symmetry in Hea. apply invmx_uniq in Hea. rewrite mulmx1 in Hce. by subst.
+Qed.
+
 End Gauss.
