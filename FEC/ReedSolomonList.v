@@ -81,8 +81,6 @@ Proof.
   move => mx m n rows cols. by apply mk_matrix_wf.
 Qed.
 
-Check submx_rows_cols.
-
 Lemma ord_zero_proof n (H: 0 < n) : (0 < Z.to_nat n)%N.
 Proof.
   apply /ltP. lia.
@@ -107,12 +105,6 @@ Proof.
   rewrite insubT.  apply /ltP. lia.
   move => Hh. rewrite /= IH. by rewrite Z2Nat.id; try lia. by inversion Hall.
 Qed.
-(*
-(*TODO: move*)
-Lemma map_map: forall {A B: Type} (f: A -> B) (l: list A),
-  map f l = List.map f l.
-Proof. by [].
-Qed.*)
 
 Lemma nth_nth: forall {A: Type} (d: A) (l: seq A) (n: nat),
   nth d l n = List.nth n l d.
@@ -133,6 +125,65 @@ Proof.
   have <-: Z.of_nat (ord_zero Hn) = Inhabitant_Z by []. by rewrite map_nth.
 Qed.
 
+Lemma Z_list_bound: forall (l: seq Z) n i,
+  Forall (fun x => 0 <= x < n) l ->
+  0 <= i < Zlength l ->
+  (Z.to_nat (Znth i l) < Z.to_nat n)%N.
+Proof.
+  move => l n i. rewrite Forall_Znth => /(_ i) Hin Hi. apply /ltP. lia.
+Qed.
+
+Lemma Z_ord_list_Zlength: forall n l,
+  Forall (fun x : Z => 0 <= x < n) l ->
+  Zlength (Z_ord_list l n) = Zlength l.
+Proof.
+  move => n l Hall. rewrite /Z_ord_list !Zlength_correct -!size_length. f_equal.
+  rewrite size_pmap_sub. 
+  have->: count (fun x : nat => (x < Z.to_nat n)%N) [seq Z.to_nat i | i <- l] = size [seq Z.to_nat i | i <- l].
+  { apply /eqP. rewrite -all_count all_in => x Hin. apply in_mem_In in Hin. move: Hin; rewrite in_map_iff =>
+    [[x' [Hx' Hin]]]. subst. move: Hall; rewrite Forall_forall => /(_ x' Hin) => Hx'. apply /ltP; lia. }
+  by rewrite size_map.
+Qed.
+
+Lemma nth_pmap: forall (aT rT: eqType) (f: aT -> option rT) (s: seq aT) (i: nat) (a: aT) (r: rT),
+  all f s ->
+  (i < size s)%N ->
+  Some (nth r (pmap f s) i) = f (nth a s i).
+Proof.
+  move => aT rT f s i a r. move: i. elim : s =>[//= | h t /= IH i /andP[Hh Hall]]. rewrite ltnS => Hi.
+  move : Hh. case Hh: (f h) => [h' /= | //=]. move => Htriv. 
+  have: (0 <= i)%N by []. rewrite leq_eqVlt => /orP[/eqP Hi0 | Hi'].
+  - subst. by rewrite /= Hh.
+  - have->: (i = (i.-1).+1)%N by rewrite (ltn_predK Hi'). rewrite /=. rewrite IH //.
+    have Hi1: (i.-1 < i)%N by apply pred_lt. by apply (ltn_leq_trans Hi1).
+Qed.
+
+Lemma some_inj: forall {A: Type} (x y: A),
+  Some x = Some y ->
+  x = y.
+Proof.
+  move => A x y Hop. by case : Hop.
+Qed.
+
+Lemma Z_ord_list_Znth': forall (l: seq Z) n i `{Inhabitant 'I_(Z.to_nat n)} (Hi: 0 <= i < Zlength l)
+  (Hall: Forall (fun x => 0 <= x < n) l),
+  0 <= n ->
+  Znth i (Z_ord_list l n) = Ordinal (Z_list_bound Hall Hi).
+Proof.
+  move => l n i Hinh Hi Hall Hn. have: n = 0%Z \/ 0 < n by lia. move => [Hn0 | {}Hn].
+  + subst. case : Hinh. move => m Hm. have: (m < Z.to_nat 0)%coq_nat by apply /ltP. lia.
+  + rewrite -nth_Znth. 2: by rewrite Z_ord_list_Zlength.
+    rewrite -nth_nth /Z_ord_list. apply some_inj. rewrite (nth_pmap 0%N).
+    * rewrite (nth_map 0%Z); last first. rewrite size_length -ZtoNat_Zlength. apply /ltP. lia.
+      rewrite insubT.
+      -- rewrite nth_nth nth_Znth. 2: lia. by apply Z_list_bound.
+      -- move => Hord. rewrite /=. f_equal. apply ord_inj.
+         by rewrite /= nth_nth nth_Znth.
+    * rewrite all_in => x. rewrite in_mem_In in_map_iff => [[x' [Hx' Hin]]]. subst.
+      rewrite insubT =>[|//]. apply /ltP. move: Hall; rewrite Forall_forall => /(_ x' Hin). lia.
+    * rewrite size_map size_length -ZtoNat_Zlength. apply /ltP. lia.
+Qed.
+
 Lemma submx_rows_cols_list_equiv: forall mx m n m' n' rows cols (Hm: 0 < m) (Hn: 0 < n),
   0 <= m' ->
   0 <= n' ->
@@ -146,7 +197,68 @@ Proof.
   rewrite !mxE. f_equal.
   - rewrite (Z_ord_list_Znth Hm) =>[//| |//]. lia.
   - rewrite (Z_ord_list_Znth Hn) => [//||//]. lia.
-Qed. 
+Qed.
+
+(*Take columns from end instead of beginning - large mx is m x n, submx is m' x n'*)
+Definition submx_rows_cols_rev_list (mx: matrix F) m' n' n rows cols :=
+  submx_rows_cols_list mx m' n' rows (map (fun x => n - x - 1) cols).
+
+Lemma submx_rows_cols_rev_list_wf: forall mx m' n' n rows cols,
+  0 <= m' ->
+  0 <= n' ->
+  wf_matrix (submx_rows_cols_rev_list mx m' n' n rows cols) m' n'.
+Proof.
+  move => mx m' n' n rows cols.
+  apply submx_rows_cols_list_wf.
+Qed.
+
+Lemma Z_ord_list_rev: forall n cols,
+ Forall (fun x : Z => 0 <= x < n) cols ->
+  Z_ord_list [seq n - x0 - 1 | x0 <- cols] n = [seq rev_ord x0 | x0 <- Z_ord_list cols n].
+Proof.
+  move => n cols Hall.
+  have Hn: n <= 0 \/ 0 < n by lia. case : Hn => [H0n | Hn].
+  - move : Hall; case : cols =>[// | h t /=].
+    rewrite Forall_forall => /( _ h) Hin.
+    have Hh: 0 <= h < n. apply Hin; by left. lia.
+  - have Hinh: Inhabitant 'I_(Z.to_nat n). have H0n: (0 < Z.to_nat n)%N by (apply /ltP; lia).
+      apply (Ordinal H0n).
+    have Hall': Forall (fun x : Z => 0 <= x < n) [seq n - x0 - 1 | x0 <- cols]. {
+      move : Hall. rewrite !Forall_forall => Hall x. rewrite in_map_iff => [[x' [Hx' Hin]]].
+      subst. apply Hall in Hin. lia. }
+    apply Znth_eq_ext.
+    + by rewrite Zlength_map !Z_ord_list_Zlength // Zlength_map.
+    + move => i. rewrite Z_ord_list_Zlength // Zlength_map => Hi.
+      rewrite Znth_map. 2: by rewrite Z_ord_list_Zlength.
+      rewrite !Z_ord_list_Znth'; try lia. rewrite Zlength_map; lia.
+      move => Hi'. apply ord_inj. rewrite /=.
+      rewrite Znth_map //.
+      have Hnth: 0 <= Znth i cols < n. by move : Hall; rewrite Forall_Znth => /(_ i Hi).
+      have->: (Z.to_nat n - (Z.to_nat (Znth i cols)).+1)%N = (Z.to_nat n - (Z.to_nat (Znth i cols)).+1)%coq_nat by [].
+      lia.
+Qed.
+
+(*m and n are dimensions of the whole matrix, m' and n' are the new dimensions of the submatrix*)
+Lemma submx_rows_cols_rev_list_spec: forall mx m n m' n' rows cols (Hm: 0 < m) (Hn: 0 < n),
+  0 <= m'->
+  0 <= n'->
+  Forall (fun x => 0 <= x < m) rows ->
+  Forall (fun x => 0 <= x < n) cols ->
+  matrix_to_mx m' n' (submx_rows_cols_rev_list mx m' n' n rows cols) =
+  submx_rows_cols_rev (Z.to_nat m') (Z.to_nat n') (matrix_to_mx m n mx)
+    (Z_ord_list rows m) (Z_ord_list cols n) (ord_zero Hm) (ord_zero Hn).
+Proof.
+  move => mx m n m' n' rows cols Hm Hn Hm' Hn' Hrows Hcols.
+  rewrite /submx_rows_cols_rev_list /submx_rows_cols_rev.
+  apply mk_matrix_mx; try lia. move => x y Hx Hy.
+  rewrite mxE /=. f_equal.
+  - rewrite (Z_ord_list_Znth Hm) =>[//| |//]. lia.
+  - rewrite (Z_ord_list_Znth Hn); try lia. 
+    + f_equal. f_equal. f_equal. by apply Z_ord_list_rev.
+    + move: Hcols. rewrite !Forall_forall => Hcols i. rewrite in_map_iff => [[x' [Hx' Hin]]].
+      subst. apply Hcols in Hin. lia.
+Qed.
+
 
 (*Concatenate two matrices*)
 Definition row_mx_list (left: matrix F) (right: matrix F) m n1 n2 : matrix F :=
@@ -180,6 +292,40 @@ Proof.
       * rewrite cast_ord_id mxE Hyk. f_equal. rewrite Nat2Z.inj_add. lia. (*again, why do I need to rewrite?*)
   - by apply Z_ord_bound.
   - apply Z_ord_bound. lia.
+Qed.
+
+(*Concatenate two matrices - up/down*)
+Definition col_mx_list (top: matrix F) (bottom: matrix F) m1 m2 n : matrix F :=
+  mk_matrix (m1 + m2) n (fun x y => if Z_lt_ge_dec x m1 then get top x y else get bottom (x - m1) y).
+
+Lemma col_mx_list_wf: forall top bottom m1 m2 n,
+  0 <= m1 ->
+  0 <= m2 ->
+  0 <= n ->
+  wf_matrix (col_mx_list top bottom m1 m2 n) (m1 + m2) n.
+Proof.
+  move => t u m1 m2 n Hm1 Hm2 Hn. apply mk_matrix_wf; lia.
+Qed.
+
+(*Need a cast bc it cannot unify Z.to_nat n + Z.to_nat m with Z.to_nat (n + m)*)
+Lemma col_mx_list_spec: forall top bottom m1 m2 n (Hm1: 0 <= m1) (Hm2: 0 <= m2),
+  0 <= n ->
+  matrix_to_mx (m1 + m2) n (col_mx_list top bottom m1 m2 n) =
+    castmx (Logic.eq_sym (Z2Nat.inj_add m1 m2 Hm1 Hm2), Logic.eq_refl)
+    (col_mx (matrix_to_mx m1 n top) (matrix_to_mx m2 n bottom)).
+Proof.
+  move => t u m1 m2 n Hm1 Hm2 Hn. rewrite -matrixP => x y.
+  rewrite castmxE !mxE /= mk_matrix_get.
+  - pose proof (splitP (cast_ord (esym (Logic.eq_sym (Z2Nat.inj_add m1 m2 Hm1 Hm2))) x)).
+    case : X => [j /= Hj | k /= Hk]; rewrite !mxE.
+    + case: (Z_lt_ge_dec (Z.of_nat x) m1) =>[ Hx /=|Hx  /=].
+      * by rewrite Hj.
+      * have: (0 <= Z.of_nat j < m1)%Z by apply Z_ord_bound. lia.
+    + case: (Z_lt_ge_dec (Z.of_nat x) m1) =>[ Hx /=|Hx  /=].
+      * rewrite Hk in Hx. rewrite Nat2Z.inj_add in Hx. lia.
+      * rewrite Hk. f_equal. rewrite Nat2Z.inj_add. lia.
+  - apply Z_ord_bound. lia.
+  - by apply Z_ord_bound.
 Qed.
 
 (*The identity matrix*)
@@ -238,9 +384,6 @@ Qed.
 Definition find_invmx_list (mx: matrix F) n :=
   right_submx n (gauss_restrict_rows n (n + n) (concat_mx_id mx n)).
 
-Check strong_inv_list.
-
-Check castmx.
 
 Lemma cast_eq: forall m n m' n' (A: 'M[F]_(m, n)) (B: 'M[F]_(m', n')) (Heq: (m = m') * (n = n')),
   (forall (x: 'I_m) (y: 'I_n), A x y = B (cast_ord (fst Heq) x) (cast_ord (snd Heq) y)) ->
@@ -251,22 +394,6 @@ Proof.
 Qed.
 
 (*TODO: move to Gaussian*)
-
-(*Lots of annoying stuff due to casting - is there an easier way to bring it all through?*)
-Print gaussian_elim_restrict.
-Print gauss_all_steps_restrict_end.
-Print gauss_all_steps_restrict_aux.
-Print gauss_one_step_restrict.
-Print all_cols_one_noif_gen.
-
-
-Check mx_row_transform.
-
-Check foldr.
-
-Check pmap.
-
-Print ord_enum.
 
 Definition cast_seq n n' (H: n = n') (s: seq 'I_n)  : seq 'I_n' :=
   map (cast_ord H) s.
@@ -325,37 +452,11 @@ Proof.
     rewrite lead_coef_none_iff. move => x. rewrite castmxE !cast_ordK. apply Hall.
 Qed.
 
-Check gauss_all_steps_equation.
-(*
-(*Could do in general but more annoying bc of Function*)
-Print gauss_all_steps_restrict_aux.
-Lemma gauss_all_steps_restrict_cast
-
-Lemma gauss_all_steps_cast: forall m n m' n' (Heq: (m = m') * (n = n')) (A: 'M[F]_(m, n)) (r: option 'I_m)
-  (c: option 'I_n),
-  castmx Heq (gauss_all_steps A r c) = (gauss_all_steps (castmx Heq A) (cast_option (fst Heq) r) (cast_option (snd Heq) c)).
-Proof.
-  move => m n m' n' Heq A r c. apply gauss_all_steps_ind.
-  - move => A' r' c' r'' Hr c'' Hc A'' or rc Hg IH. subst. rewrite IH /=. rewrite (gauss_all_steps_equation (castmx Heq A')) /=.
-    
-
-
- rewrite /=.
-
-
- Search gauss_all_steps. 
-
-
-(castmx Heq (gauss_all_steps A (insub 0%N) (insub 0%N))) = (gauss_all_steps (castmx Heq A) (insub 0%N) (insub 0%N))
-*)
-
 Lemma cast_leq: forall m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N),
   (m' <= n')%N.
 Proof.
   move => m n m' n' [Hm Hn]. by rewrite Hm Hn.
 Qed.
-
-Check mk_identity.
 
 Lemma cast_seq_pmap: forall n n' (H: n = n') (l: list nat),
   cast_seq H (pmap insub l) = pmap insub l.
@@ -396,11 +497,6 @@ Proof.
   apply foldr_castmx. move => x' A'. rewrite sc_mul_castmx. f_equal.
   rewrite castmxE /= !cast_ordK. f_equal. f_equal. by apply ord_inj.
 Qed.
-Check gauss_one_step_restrict.
-
-Check sub_all_rows_noif.
-
-Check add_mul.
 
 Lemma add_mul_castmx: forall m n m' n' (Heq: (m = m') * (n = n'))
   (A: 'M[F]_(m, n)) c (r1 r2: 'I_m),
@@ -474,45 +570,6 @@ Proof.
   rewrite /gauss_all_steps_restrict_end. rewrite gauss_all_steps_restrict_castmx. f_equal.
   by rewrite Heq.1.
 Qed.
-
-Print strong_inv.
-(*
-Lemma submx_remove_col_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (A: 'M[F]_(m, n)) (Hmn: (m <= n)%N) r j,
-  submx_remove_col (castmx Heq A) (cast_leq Heq Hmn) r j = 
-  submx_remove_col A Hmn (cast_ord (esym Heq.1) r) j.
-Proof.
-  move => m n m' n' Heq A Hmn r j. rewrite /submx_remove_col. rewrite -matrixP => x y.
-  rewrite !mxE castmxE /=. f_equal. by apply ord_inj.
-  case Hyj: (y < j)%N; by apply ord_inj.
-Qed.
-
-Lemma submx_add_row_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (A: 'M[F]_(m, n)) (Hmn: (m <= n)%N) r j,
-  submx_add_row (castmx Heq A) (cast_leq Heq Hmn) r j =
-  submx_add_row A Hmn (cast_ord (esym Heq.1) r) (cast_ord (esym Heq.1) j).
-Proof.
-  move => m n m' n' Heq A Hmn r j. rewrite /submx_add_row. rewrite -matrixP => x y.
-  rewrite !mxE castmxE /=. f_equal. case Hxr : (x < r)%N; by apply ord_inj. by apply ord_inj.
-Qed.
-
-Lemma strong_inv_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (A: 'M[F]_(m, n)) (Hmn: (m <= n)%N) (r: 'I_m),
-  strong_inv A Hmn r ->
-  strong_inv (castmx Heq A) (cast_leq Heq Hmn) (cast_ord Heq.1 r).
-Proof.
-  move => m n m' n' Heq A Hmn r. rewrite /strong_inv => Hstr r' Hr'. split.
-  - move => j Hj. rewrite submx_remove_col_castmx.
-    have Hr: (r <= cast_ord (esym Heq.1) r')%N by [].
-    move: Hstr => /(_ (cast_ord (esym Heq.1) r') Hr) => [[Hsub  Hcol]].
-    by apply Hsub.
-  - move => j Hj. rewrite submx_add_row_castmx.
-    have Hr: ((r <= cast_ord (esym Heq.1) r')%N ) by [].
-    move: Hstr => /(_ (cast_ord (esym Heq.1) r') Hr) => [[Hsub Hrow]].
-    by apply Hrow.
-Qed.
-*)
-
-Print strong_inv.
-
-Search (?x <= ?x + ?y)%N.
 
 Lemma submx_remove_col_rowmx: forall m n (A B: 'M[F]_(m, n)) (Hmn: (m <= n)%N) (Hmn' : (m <= n + n)%N) r j,
   submx_remove_col A Hmn r j =
@@ -657,4 +714,112 @@ Proof.
       by have ->: (Ordinal Hn') = Z_to_ord H0n by apply ord_inj.
   - by apply strong_inv_unitmx in Hstr.
 Qed.
+
+(*The parity packet is a list of option (list Z)'s, since some are lost in transit. We need to convert to 
+  a matrix*)
+Definition fill_missing (c: Z) (l: list (option (list Z))) : list (list Z) :=
+  fold_left (fun acc x => match x with
+                            | None => (list_repeat (Z.to_nat c) 0%Z) :: acc
+                            | Some l => l :: acc
+                            end) l nil.
+
+(*Lastly, fill in the input matrix with the missing data*)
+(*The first matrix is m x n, the second is some m' x n*)
+Definition fill_row_list m n (d r: matrix F) row_d row_r :=
+  mk_matrix m n (fun i j => if Z.eq_dec i row_d then get r row_r j else get d i j).
+
+Definition fill_rows_list_aux m n (d r: matrix F) (to_fill: seq Z) (src_idx: list Z) :=
+  fold_left (fun acc x => fill_row_list m n acc r (Znth x to_fill) x) src_idx d.
+
+Definition fill_rows_list m n xh (d r: matrix F) (to_fill: seq Z) :=
+  fill_rows_list_aux m n d r to_fill (Ziota 0 xh).
+
+Lemma fill_row_list_spec: forall m1 m2 n d r row_d row_r (Hd: 0 <= row_d < m1) (Hr: 0 <= row_r < m2),
+  0 <= n ->
+  matrix_to_mx m1 n (fill_row_list m1 n d r row_d row_r) =
+    fill_row (matrix_to_mx m1 n d) (matrix_to_mx m2 n r) (Z_to_ord Hd) (Z_to_ord Hr).
+Proof.
+  move => m1 m2 n d r row_d row_r Hd Hr Hn. apply mk_matrix_mx; try lia.
+  move => x y Hx Hy. rewrite !mxE /= !Z2Nat.id; try lia.
+  case: (Z.eq_dec x row_d) =>[//= Hxd | /= Hxd].
+  - subst. by have->: Z_to_ord Hx == Z_to_ord Hd by (apply /eqP; apply ord_inj).
+  - have->:Z_to_ord Hx == Z_to_ord Hd = false. rewrite -nat_of_ord_eq /=. apply /eqP. lia. by [].
+Qed.
+
+Lemma fill_rows_list_aux_spec: forall m1 m2 n d r to_fill src_idx (Hd: 0 < m1),
+  0 <= n ->
+  Forall (fun x => 0 <= x < m1) to_fill ->
+  Forall (fun x => 0 <= x < m2) src_idx ->
+  Zlength to_fill = m2 ->
+  matrix_to_mx m1 n (fill_rows_list_aux m1 n d r to_fill src_idx) =
+    fill_rows_aux (matrix_to_mx m1 n d) (matrix_to_mx m2 n r)
+       (Z_ord_list to_fill m1) (ord_zero Hd) (Z_ord_list src_idx m2).
+Proof.
+  move => m1 m2 n d r to_fill src_idx Hd Hn Hfill Hsrc Hlen. rewrite /Z_ord_list. move : d Hsrc.
+  elim : src_idx => [//= | h t IH d Hall /=].
+  rewrite IH. 2: by apply Forall_inv_tail in Hall.
+  have Hh: 0 <= h < m2 by apply Forall_inv in Hall. rewrite (@fill_row_list_spec m1 m2) //=.
+  move: Hfill; rewrite Forall_Znth. by rewrite Hlen => /(_ h Hh).
+  move => Hnth. rewrite insubT.
+  apply /ltP; lia. move => Hhm. rewrite /=. f_equal. f_equal.
+  2: by apply ord_inj.
+  have->:(pmap insub [seq Z.to_nat i | i <- to_fill]) = Z_ord_list to_fill m1 by []. apply ord_inj.
+  apply Nat2Z.inj. rewrite -Z_ord_list_Znth //. rewrite /= Z2Nat.id; lia. lia.
+Qed.
+
+Lemma Z_ord_list_iota: forall x,
+  0 <= x ->
+  Z_ord_list (Ziota 0 x) x = ord_enum (Z.to_nat x).
+Proof.
+  move => x Hx. rewrite /Ziota /ord_enum.
+  have->: (Z.to_nat 0%Z) = 0%N by []. 
+  have: forall i, i \in (iota 0 (Z.to_nat x)) -> (i < Z.to_nat x)%N. {
+    move => i. by rewrite mem_iota add0n. }
+  elim : (iota 0 (Z.to_nat x)) => [//= | h t /= IH Hin].
+  rewrite /Z_ord_list /=.
+  have Hhx: (h < Z.to_nat x)%coq_nat. apply /ltP. apply Hin. by rewrite in_cons eq_refl.
+  rewrite !insubT; try( apply /ltP; lia). move => Hh' Hh''. rewrite /=.
+  rewrite -IH.  rewrite /Z_ord_list. f_equal. apply ord_inj. by rewrite /= Nat2Z.id.
+  move => i Hi. apply Hin. by rewrite in_cons Hi orbT.
+Qed.
+
+Lemma fill_rows_list_spec: forall m1 m2 n (d r: matrix F) to_fill (Hd: 0 < m1),
+  0 <= n ->
+  Forall (fun x => 0 <= x < m1) to_fill ->
+  Zlength to_fill = m2 ->
+  matrix_to_mx m1 n (fill_rows_list m1 n m2 d r to_fill) =
+    fill_rows (matrix_to_mx m1 n d) (matrix_to_mx m2 n r)
+       (Z_ord_list to_fill m1) (ord_zero Hd).
+Proof.
+  move => m1 m2 n d r to_fill Hd Hn Hfill Hlen.
+  rewrite (@fill_rows_list_aux_spec m1 m2); try lia; try by [].
+  rewrite /fill_rows. f_equal. apply Z_ord_list_iota. list_solve.
+  rewrite Forall_forall=> x. rewrite Zseq_In; try lia. list_solve.
+Qed.
+
+(** The Decoder  *)
+
+(*First, we will do everything in terms of list matrices, then bring back to Z*)
+Definition decode_list_mx (k c : Z) (packets: list (list Z)) (parities: list (option (list Z))) 
+  (stats: list Z) : matrix F :=
+  (*populate all of the "arrays"*)
+  let lost := find_lost stats c in
+  let found1 := find_found stats c in 
+  let (row, found2) := find_parities parities c (fec_n - 1) in
+  let found := found1 ++ found2 in
+  let input := extend_mx k c (int_to_poly_mx packets) in
+  let parmx := int_to_poly_mx (fill_missing c parities) in
+  let xh := Zlength lost in
+  (*step 1: find w' and v*)
+  let w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) row lost in
+  let v := find_invmx_list w' xh in
+  (*step 2: find w'', d, and s*)
+  let w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) row found in
+  let d' := col_mx_list (submx_rows_cols_list input (k - xh) c found1 (Ziota 0 c))
+              (submx_rows_cols_list parmx xh c found2 (Ziota 0 c)) (k-xh) xh c in
+  let s := list_matrix_multiply xh k c w'' d' in
+  (*step 3: find missing packets and fill in*)
+  let d := list_matrix_multiply xh xh c v s in
+  fill_rows_list k c xh input d lost.
+
 
