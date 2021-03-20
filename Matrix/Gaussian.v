@@ -1316,7 +1316,7 @@ Definition ord_widen_succ r n (Hrn : r < n) (x: 'I_r) : 'I_n :=
   Ordinal (ltn_succ Hrn (ltn_ord x)).
 
 (*The first submatrix - the definition is a bit awkward because of the ordinal proof obligations*)
-Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j : nat) : 'M[F]_(r, r) :=
+Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j : 'I_m) : 'M[F]_(r, r) :=
   let Hrm := ltn_ord r in
   mxsub (fun (x: 'I_r) => widen_ord (ltnW Hrm) x)
         (fun (y : 'I_r) => if y < j then widen_ord (ltnW (ltn_leq_trans Hrm Hmn)) y
@@ -1333,7 +1333,7 @@ Definition submx_add_row {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j: 'I
   will only be partially preserved through the gaussian steps*)
 Definition strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) :=
   forall (r' : 'I_m), r <= r' ->
-    (forall j, j < r' -> (submx_remove_col A Hmn r' j) \in unitmx) /\
+    (forall (j: 'I_m), j < r' -> (submx_remove_col A Hmn r' j) \in unitmx) /\
     (forall (j : 'I_m), r' <= j -> (submx_add_row A Hmn r' j) \in unitmx).
 
 (*If a matrix has a row of zeroes, then it is not invertible*)

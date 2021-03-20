@@ -97,6 +97,100 @@ Defined.
 
 (*Parities are represented as a list (option (list Z)), representing whether the parity packet is there
   or not. We will translate this into Vundef or Vptr as needed*)
+
+(* Definition remove_option {A: Type} (l: list (option A)) : list A :=
+  fold_left (fun acc (x: option A) => match x with | None => acc | Some y => acc ++ [:: y] end ) l nil. *)
+
+Definition find_parity_aux (f: Z -> Z) (par: list (option (list Z))) (base : list Z) (l: list Z) :=
+  fold_left (fun acc x => match (Znth x par) with
+                          | None => acc
+                          | Some _ => acc ++ [:: f x]
+                          end) l base.
+
+Lemma find_parity_aux_bound: forall f pars base l b,
+  (forall x, In x l -> 0 <= f x < b) ->
+  (forall x, In x base -> 0 <= x < b) ->
+  Forall (fun x : Z => 0 <= x < b) (find_parity_aux f pars base l).
+Proof.
+  move => f pars base l b Hf Hbase. rewrite /find_parity_aux Forall_forall. move : base Hbase Hf.
+  elim : l => [ //= | h t /= IH base Hbase Hf x].
+  case Hh: (Znth h pars) => [y /= | //=]; apply IH; rewrite //=.
+  - move => z Hin. apply in_app_or in Hin. case : Hin => [Hin | Hzh].
+    + by apply Hbase.
+    + case : Hzh => [Hzh | Hfalse]; rewrite //. subst. apply Hf. by left.
+  - move => z Hin. apply Hf. by right.
+  - move => z Hin. apply Hf. by right.
+Qed. 
+
+(*What is best way to phrase this? Or should we use foldr and justconvert?*)
+Search fold_left fold_right.
+
+Search filter.
+
+(*maybe do this with map and filter, see*)
+
+Lemma fold_left_app_base: forall {A B: Type} (f: A -> bool) (g: A -> B) (l: list A) (b1: list B) x,
+  fold_left (fun acc x => if f x then acc ++ [:: g x] else acc)
+
+
+
+fold_left (fun (acc : seq B) (x : A) => if f x then acc ++ [:: g x] else acc) t
+  (if f h then base ++ [:: g h] else base) =
+
+Lemma fold_left_right_app_cons: forall {A B: Type} (f: A -> bool) (g: A -> B) (l: list A) (base: list B),
+  fold_left (fun acc x => if f x then acc ++ [ :: g x] else acc) l base =
+  fold_right (fun x acc => if f x then g x :: acc else acc) base l.
+Proof.
+  move => A B f g l base. move: base. elim : l => [//= | h t /= IH base].
+  rewrite -IH.
+
+ rewrite initial_world.fold_right_rev_left. move: base. elim : l => [//= | h t /= IH base].
+  rewrite fold_right_app /=. case Hfh: (f h).
+  - rewrite IH /=.
+
+
+ rewrite IH.
+
+Lemma find_parity_aux_in: forall f par base l x,
+  (forall x, In x base -> exists y, f y = x /\ In y l) ->
+  In x (find_parity_aux f par base l) ->
+  exists y, f y = x /\ In y l.
+Proof.
+  move => f par base l x. move : base. elim : l => [//= base Hbase | h t /= IH base Hbase].
+  apply Hbase. case Hh : (Znth h par) => [y /= | //=]. 
+  have->:(base ++ [:: f h]) = (base ++ [:: f h])%list by [] => Hin.
+  rewrite fold_left_app in Hin. Check fold_left_app.
+
+
+ rewrite fold_left_app in Hin. apply IH in Hin. case : Hin => [z [Hzx Hin]]. subst. exists z. split. by [].
+  by right. move => z Hin'. apply in_app_or in Hin'. case : Hin' => [Hin' | [Hzh | Hfalse]]; rewrite //.
+  apply Hbase in Hin'. case : Hin' => [q [Hwz [Hhq | Hwin]]]. subst. exists q. split. by [].
+   
+  apply Hbase.
+  
+
+Lemma find_parity_aux_NoDup: forall f par base l,
+  NoDup l ->
+  (forall x y, In x l -> In y l -> f x = f y -> x = y) ->
+  NoDup (find_parity_aux f par base l).
+Proof.
+  
+
+
+
+
+(*TODO: can we abstract this with previous? - options make it difficult*)
+Definition find_parity_rows (par: list (option (list Z))) (c: Z): list Z :=
+  fold_left (fun acc x => match (Znth x par) with
+                          | None => acc
+                          | Some _ => acc ++ [:: x]
+                          end) .
+  find_lost_found_aux (fun x => match x with
+                                | None =>  true) id nil (remove_option par) c.
+
+Definition find_parities_aux (par: list (option (list Z))) (c: Z) (max_n : Z) (b1 b2: list Z) :=
+  
+
 Definition find_parities (par: list (option (list Z))) (c: Z) (max_n : Z) : (list Z * list Z) :=
   fold_left (fun (acc: seq Z * seq Z) (x : Z) => let (rows, found) := acc in match (Znth x par) with
                                        | None => (rows, found)
@@ -1022,8 +1116,6 @@ Proof.
   rewrite castmxE !mxE. f_equal.
 Qed.
 
-Search (?x = ?y -> ?y = ?z -> ?x = ?z).
-
 (*TODO: move*)
 Lemma castmx_twice: forall m1 m2 m3 n1 n2 n3 (A: 'M[F]_(m1, n1)) 
   (Hm12: m1 = m2) (Hm23: m2 = m3) (Hn12: n1 = n2) (Hn23: n2 = n3),
@@ -1033,6 +1125,121 @@ Proof.
   move => m1 m2 m3 n1 n2 n3 A Hm12 Hm23 Hn12 Hn23. rewrite -matrixP => x y.
   rewrite !castmxE /=. by f_equal; apply ord_inj.
 Qed.
+
+(*TODO: move*)
+(*Need function to be injective only on domain of list, not in general*)
+Lemma NoDup_map_inj: forall {A B: Type} (l: list A) (f: A -> B),
+  (forall x y, In x l -> In y l -> f x = f y -> x = y) ->
+  NoDup l ->
+  NoDup (map f l).
+Proof.
+  move => A B l f. elim : l => [//= Hinj Hl | h t /= IH Hinj Hl].
+  - constructor.
+  - move: Hl; rewrite NoDup_cons_iff => [[Hnotin Hnodup]]. constructor. 
+    move => C. apply list_in_map_inv in C. move : C => [x [Hfxh Hin]].
+    apply Hinj in Hfxh. by subst. by left. by right.
+    apply IH. move => x y Hinx Hiny. apply Hinj; by right.
+    by [].
+Qed. 
+
+(*TODO: move*)
+Lemma Z_ord_list_uniq: forall (z: seq Z) n,
+  Forall (fun x => 0 <= x) z ->
+  NoDup z ->
+  uniq (Z_ord_list z n).
+Proof.
+  move => z n Hpos Hdup. rewrite /Z_ord_list pmap_sub_uniq //=.
+  rewrite uniq_NoDup. apply NoDup_map_inj => [|//].
+  move: Hpos; rewrite Forall_forall => Hall.
+  move => x y Hinx Hinj Hnats.
+  have: 0 <= x by apply Hall.
+  have: 0 <= y by apply Hall. lia.
+Qed.
+
+Search find_parities.
+Print find_parities.
+
+(*TODO: move and do similar for others that are needed*)
+Lemma find_parities_In_fst: forall pars h n x,
+  In x (find_parities pars h n) ->
+  
+
+Lemma find_parities_NoDup: forall pars h n,
+  (find_parities pars h n)
+
+
+find_parities parities h (fec_n - 1) = (row, foundp)
+
+(*We need this both for correctness and for the the VST proof*)
+Lemma strong_inv_list_partial: forall k xh h stats parities,
+  (*see what assumptions we need*)
+  0 < xh ->
+  0 <= h ->
+  h <= fec_max_h ->
+  k <= fec_n - 1 ->
+  let (row, foundp) := find_parities parities h (fec_n - 1) in
+  strong_inv_list xh xh (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) row (find_lost stats k)) 0%Z.
+Proof.
+  move => k xh h stats parities Hxh Hh Hhmax Hkn. case Hpar : (find_parities parities h (fec_n -1)) => [ row foundp].
+  rewrite /strong_inv_list. case : (range_le_lt_dec 0 0 xh); try lia.
+  move => Hxh0. case : (Z_le_lt_dec xh xh); try lia. move => Hxhtriv.
+  have Hallrow: Forall (fun x => 0 <= x < h) row. 
+    have->: row = (find_parities parities h (fec_n - 1)).1 by rewrite Hpar. by apply find_parities_bound_fst.
+  rewrite (@submx_rows_cols_rev_list_spec _ fec_max_h (fec_n - 1)) //=; try rep_lia.
+  - move => Hmaxh Hn. rewrite weight_mx_spec /weights /submx_rows_cols_rev. 
+    have Hhnat: (0 < Z.to_nat fec_max_h)%N by (apply /ltP; rep_lia).
+    have Hhn: (Z.to_nat fec_max_h <= Z.to_nat (fec_n - 1))%N by (apply /leP; rep_lia).
+    (*Need to switch defaults for applying theorem*)
+    rewrite (submx_rows_cols_default _ (ord_zero Hmaxh) (ord_zero Hn) (Ordinal Hhnat) ( widen_ord Hhn (Ordinal Hhnat))).
+    + have->: (le_Z_N Hxhtriv) = (leqnn (Z.to_nat xh)) by apply ProofIrrelevance.proof_irrelevance.
+      apply any_submx_strong_inv.
+      * rewrite /weight_list rev_uniq power_list_uniq //=. apply /leP. 
+        rewrite mod_poly_deg_eq /=. rep_lia.
+      * apply weight_list_size.
+      * apply Z_ord_list_uniq. eapply Forall_impl. 2: apply Hallrow. move => a; rewrite /=. lia.
+        
+        by [].
+
+ apply (Forall_impl _ _ Hallrow). 
+
+
+ eapply Forall_impl. Search (Forall ?g ?l -> Forall ?f ?l). Search Forall.
+
+(*need more general notion of implication, not just expanding bounds*)
+
+find_parities_bound_fst
+
+
+
+ Search Z_ord_list.
+
+
+ Search mod_poly.
+
+
+ rep_lia.
+
+
+ Check power_list_uniq.
+
+ Search (forall (P: Prop) (x y : P),  x = y). by [].
+    2: { 
+    Check (Ordinal Hhnat).
+ (Ordinal Hhnat) (widen_ord Hhnat (Ordinal Hhnat))).
+    have ->: (ord_zero Hn) = widen_ord Hhnat (Ordinal Hhnat) by apply ord_inj.
+    
+    
+
+
+  Search submx_rows_cols_rev_list.
+any_submx_strong_inv
+  
+  
+  
+
+
+
+strong_inv_list xh xh (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) row (find_lost stats k)) 0
 
 
 (*First, we prove that this is equivalent to the mathcomp decoder*)

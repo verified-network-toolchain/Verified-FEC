@@ -35,6 +35,15 @@ Proof.
   by rewrite -(addn1 (size l - n.+1)) addnA addn1 -pred_Sn.
 Qed.
 
+Lemma rem_nth_mem: forall {A: eqType} (l: list A) n x,
+  x \in (rem_nth l n) ->
+  x \in l.
+Proof.
+  move => A l n x. rewrite /rem_nth mem_cat => /orP[Hfst | Hsnd].
+  - by apply mem_take in Hfst.
+  - by apply mem_drop in Hsnd. 
+Qed.
+
 Lemma rem_nth_nth: forall {A: eqType} (l: list A) n (y: A) (i: nat),
   nth y (rem_nth l n) i = if i < n then nth y l i else nth y l (i.+1).
 Proof.
@@ -283,6 +292,51 @@ Proof.
   f_equal; apply set_nth_default. 
   have Hx: x < m' by []. by apply (ltn_leq_trans Hx).
   have Hy: y < n' by []. by apply (ltn_leq_trans Hy).
+Qed.
+
+(*First, we give an alternate definition for [strong_inv] based on this*)
+
+
+
+(*TODO: we can use this in a bunch of places, or can delte*)
+Lemma nth_ord_enum_nat: forall n (x: 'I_n) (i: nat),
+  i < n ->
+  nat_of_ord (nth x (ord_enum n) i) = i.
+Proof.
+  move => n x i Hi.
+  have->: nth x (ord_enum n) i = nth x (ord_enum n) (Ordinal Hi) by [].
+  by rewrite nth_ord_enum.
+Qed.
+
+(*The general case is not as useful, we show the result only when the underlying matrix is [submx_rows_cols]*)
+Lemma submx_remove_col_list: forall {m n} m' n' (Hmn': m' <= n') (A: 'M[F]_(m, n)) (rows: seq 'I_m) 
+  (cols: seq 'I_n) (xm: 'I_m) (xn: 'I_n)  r j,
+  submx_remove_col (submx_rows_cols m' n' A rows cols xm xn) Hmn' r j =
+  submx_rows_cols r r A (take r rows) (rem_nth (take r.+1 cols) j) xm xn.
+Proof.
+  move => m n m' n' Hmn' A rows cols xm xn r j. rewrite -matrixP => x y. rewrite !mxE.
+  rewrite nth_take // rem_nth_nth !nth_take //=. f_equal.
+  case Hyj: (y < j).
+  - by [].
+  - by [].
+  - by rewrite -(addn1 y) -(addn1 r) ltn_add2r.
+  - by rewrite (ltn_trans (ltn_ord y)).
+Qed.
+
+Lemma submx_add_row_list: forall {m n} m' n' (Hmn': m' <= n') (A: 'M[F]_(m, n)) 
+  (rows: seq 'I_m) (cols: seq 'I_n) (xm: 'I_m) (xn: 'I_n)  r j,
+  (nat_of_ord r) <= size rows ->
+  submx_add_row (submx_rows_cols m' n' A rows cols xm xn) Hmn' r j =
+  submx_rows_cols r.+1 r.+1 A ((take r rows) ++ [:: nth xm rows j]) (take r.+1 cols) xm xn.
+Proof.
+  move => m n m' n' Hmn' A rows cols xm xn r j Hr.
+  rewrite -matrixP => x y. rewrite !mxE /= !nth_take //= nth_cat.
+  have->: size (take r rows) = r. rewrite size_take.
+  move : Hr; rewrite leq_eqVlt => /orP[/eqP Hr | Hr].
+  by rewrite Hr ltnn. by rewrite Hr. 
+  f_equal. have: x <= r by rewrite -ltnS. rewrite leq_eqVlt => /orP[/eqP Hxr | Hxr]. 
+  - by rewrite Hxr ltnn subnn /=.
+  - by rewrite Hxr nth_take /=.
 Qed.
 
 (*To prove the invertibility of this submatrix, we will need to expand this to cover more columns. First we need
@@ -633,7 +687,6 @@ Proof.
 Qed.
 
 (*The easy corollary of above. This is what we wanted*)
-(*TODO: see if we can use this instead of proving the reverse rows stuff*)
 Lemma perm_eq_row_equiv: forall {m n} (A: 'M[F]_(m, n)) m' n' (r1 r2: list 'I_m) (cols: list 'I_n) (xm: 'I_m) (xn: 'I_n),
   perm_eq r1 r2 ->
   m' = size r1 ->
@@ -736,6 +789,134 @@ Proof.
   - by rewrite !size_cat size_map Hszrc addnC.
   - move => x. rewrite mem_map. rewrite mem_cat !in_ord_comp.
     by case Hx: (x \in rows). move => i j Hw. apply (widen_ord_inj Hw).
+Qed.
+(*
+Print strong_inv.
+
+(*Use the second list to index into the first one*)
+Definition combine_nth {m n : nat} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m) : seq 'I_m :=
+  foldr (fun (x: 'I_n) acc => nth xm l1 x :: acc) nil l2.
+
+Lemma combine_nth_nth: forall {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm xm': 'I_m) (xn: 'I_n) (z: nat),
+  z < size l2 ->
+  nth xm' (combine_nth l1 l2 xm) z = nth xm l1 (nth xn l2 z).
+Proof.
+  move => m n l1 l2 xm xm' xn. elim : l2 => [//= | h t /= IH z Hz].
+  have: 0 <= z by []. rewrite leq_eqVlt => /orP[/eqP Hz0 | Hzpos].
+  - by rewrite -Hz0 /=.
+  - have Hz1: z = z.-1.+1 by rewrite (ltn_predK Hzpos). by rewrite Hz1 /= IH //= -subn1 ltn_subLR.
+Qed.
+
+Lemma combine_nth_in:  forall {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m) (x: 'I_m),
+  (forall x, x \in l2 -> x < size l1) ->
+  x \in (combine_nth l1 l2 xm) ->
+  x \in l1.
+Proof.
+  move => m n l1 l2 xm x. elim : l2 => [//= | h t /= IH Hlen].
+  rewrite in_cons => /orP[/eqP Hinh | Hint].
+  - rewrite Hinh mem_nth //. apply Hlen. by rewrite in_cons eq_refl.
+  - apply IH. move => y Hy. apply Hlen. by rewrite in_cons Hy orbT. by [].
+Qed.
+
+Lemma combine_nth_in': forall  {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m) (x: 'I_n),
+  uniq l1 ->
+  (nth xm l1 x \in combine_nth l1 l2 xm) ->
+  x \in l2.
+Proof.
+  move => m n l1 l2 xm x Hun. elim : l2 => [//= | h t /= IH].
+  rewrite !in_cons => /orP[/eqP Hnth | Hrest].
+  - Search uniq nth.  
+
+(nth xm l1 h \notin combine_nth l1 t xm)
+
+Lemma combine_nth_uniq: forall {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m),
+  uniq l1 ->
+  uniq l2 ->
+  uniq (combine_nth l1 l2 xm).
+Proof.
+  move => m n l1 l2 xm Hunl1. elim : l2 => [//= | h t /= IH /andP[Hnotin Hunl2]].
+  rewrite IH.
+
+(*TODO: move to [submx_rows_cols]*)
+Lemma submx_rows_cols_twice: forall {m n m' n' m'' n''} (A: 'M[F]_(m, n)) (r1: seq 'I_m) (r2: seq 'I_m')
+  (c1: seq 'I_n) (c2: seq 'I_n') (xm: 'I_m) (xn: 'I_n) (xm' : 'I_m') (xn': 'I_n'),
+  m'' <= size r2 ->
+  n'' <= size c2 ->
+  submx_rows_cols m'' n'' (submx_rows_cols m' n' A r1 c1 xm xn) r2 c2 xm' xn' =
+  submx_rows_cols m'' n'' A (combine_nth r1 r2 xm) (combine_nth c1 c2 xn) xm xn.
+Proof.
+  move => m n m' n' m'' n'' A r1 r2 c1 c2 xm xn xm' xn' Hm'' Hn''. rewrite -matrixP => x y. rewrite !mxE.
+  rewrite (combine_nth_nth _ _ xm xm').
+  rewrite (combine_nth_nth _ _ xn xn') //.
+  have Hy: y < n'' by []. by apply (ltn_leq_trans Hy).
+  have Hx: x < m'' by []. by apply (ltn_leq_trans Hx).
+Qed.
+
+Check size_rem.
+
+(*TODO: move*)
+Lemma size_rem': forall {T: eqType} (x: T) (s: seq_predType T),
+  (size s).-1 <= size (rem x s).
+Proof.
+  move => T x s. case Hin: (x \in s).
+  - by rewrite size_rem // leqnn.
+  - rewrite rem_id. by rewrite leq_pred. by rewrite Hin.
+Qed. 
+*)
+
+Lemma add_sub_1: forall n m,
+  n.+1 = m ->
+  n = m.-1.
+Proof.
+  move => n m Hm. by rewrite -Hm.
+Qed.
+
+Lemma if_lt_succ: forall n m,
+  n < m ->
+  (if n.+1 < m then n.+1 else m) = n.+1.
+Proof.
+  move => n m. rewrite leq_eqVlt => /orP[/eqP Hnm | Hnm].
+  - by rewrite Hnm ltnn.
+  - by rewrite Hnm.
+Qed. 
+
+
+(*As a corollary of this result, [strong_inv] is satisfied for this submatrix*)
+Lemma any_submx_strong_inv: forall {m n} (Hmn: m <= n) (Hm: 0 < m) z (l: list F) (rows: list 'I_m) (cols: list 'I_n) (r: 'I_z),
+  uniq l ->
+  size l = n ->
+  uniq rows ->
+  uniq cols ->
+  size rows = size cols ->
+  size rows = z ->
+  (forall x, x \in cols -> m <= x) ->
+  strong_inv (submx_rows_cols z z (gaussian_elim (vandermonde m n l)) rows cols (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)))
+    (leqnn _) r.
+Proof.
+  move => m n Hmn Hm z l rows cols r Hunl Hszl Hunr Hunc Hszrc Hszr Hincols.
+  have H0n: 0 < n by apply (ltn_leq_trans Hm).
+  rewrite /strong_inv. move => r' Hr'. split; move => j Hjr'.
+  - rewrite submx_remove_col_list. apply any_submx_unitmx; try by [].
+    + by apply take_uniq.
+    + apply rem_nth_uniq. apply (Ordinal H0n). by apply take_uniq.
+    + rewrite size_take Hszr (ltn_ord r') rem_nth_size. by rewrite size_take -Hszrc Hszr if_lt_succ.
+      rewrite size_take -Hszrc Hszr if_lt_succ //. by apply (ltn_trans Hjr').
+    + by rewrite size_take Hszr (ltn_ord r').
+    + move => x Hin. apply rem_nth_mem in Hin. apply mem_take in Hin. by apply Hincols.
+  - rewrite submx_add_row_list. apply any_submx_unitmx; try by [].
+    + rewrite cat_uniq take_uniq //= orbF andbT -has_pred1 has_take_leq /=.
+      case Hfind: (find (pred1 (nth (Ordinal Hm) rows j)) rows < r') => [//|//].
+      move : Hfind. rewrite /pred1 /=. remember (find [pred x | x == nth (Ordinal Hm) rows j] rows ) as f. rewrite -Heqf.
+      have : nth (Ordinal Hm) rows f == nth (Ordinal Hm) rows j.
+      rewrite Heqf. pose proof (@nth_find _ (Ordinal Hm) [pred x | x == nth (Ordinal Hm) rows j] rows) as Hfind.
+      rewrite /= in Hfind. apply Hfind. rewrite has_pred1 mem_nth //=. by rewrite Hszr.
+      rewrite nth_uniq. move => /eqP Hfj. by rewrite Hfj ltnNge Hjr'.
+      by rewrite Heqf -has_find has_pred1 mem_nth //= Hszr. by rewrite Hszr. by []. rewrite Hszr. by apply ltnW.
+    + by apply take_uniq.
+    + by rewrite size_cat size_take /= Hszr (ltn_ord r') size_take -Hszrc Hszr if_lt_succ //= addn1.
+    + by rewrite size_cat size_take /= Hszr (ltn_ord r') addn1.
+    + move => x Hin. apply mem_take in Hin. by apply Hincols.
+    + rewrite Hszr. by apply ltnW.
 Qed.
 
 End RowRedVandermonde.
@@ -857,7 +1038,7 @@ Qed.
 
 (*Now we deal with the matrices more directly*)
 
-Lemma vandermonde_remove_col_list: forall m n (Hmn: m <= n) l (r:'I_m) (j: nat),
+Lemma vandermonde_remove_col_list: forall m n (Hmn: m <= n) l (r:'I_m) (j: 'I_m),
   submx_remove_col (@vandermonde F m n l) Hmn r j = vandermonde r r (rem_nth (take (r.+1) l) j).
 Proof.
   move => m n Hmn l r j. rewrite /submx_remove_col /vandermonde -matrixP /eqrel => x y.
@@ -866,7 +1047,7 @@ Proof.
   - rewrite /=. rewrite nth_take. by []. by rewrite -(addn1 y) -(addn1 r) ltn_add2r.
 Qed.
 
-Lemma vandermonde_remove_col_unitmx: forall m n (Hmn: m <= n) (r: 'I_m) (j: nat),
+Lemma vandermonde_remove_col_unitmx: forall m n (Hmn: m <= n) (r: 'I_m) (j: 'I_m),
   j < r ->
   (n <= (PeanoNat.Nat.pow 2 (Z.to_nat (deg f)) - 1)%coq_nat) ->
   submx_remove_col (vandermonde_powers m n) Hmn r j \in unitmx.
