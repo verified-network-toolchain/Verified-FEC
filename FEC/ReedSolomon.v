@@ -309,6 +309,18 @@ Definition decoder_mult (h xh: nat) (input: 'M[F]_(k, c)) (parities: 'M[F]_(h, c
   let recovered := v *m s in
   fill_rows input recovered missing x_k.
 
+Lemma decoder_mult_0: forall (h xh: nat) (input: 'M[F]_(k, c)) (parities: 'M[F]_(h, c)) (missing: seq 'I_k) 
+  (found_parities : list 'I_h) (Hh: h <= max_h) (x_h : 'I_h) (Hxhk: xh <= k),
+  size missing = 0%N ->
+  xh = 0%N ->
+  decoder_mult input parities missing found_parities Hh x_h Hxhk = input.
+Proof.
+  move => h xh input parities missing found_parities Hh x_h Hxhk Hsz Hxh. subst.
+  rewrite /decoder_mult /=. rewrite (matrix_zero_rows (invmx _) 1%:M) mul1mx.
+  rewrite -matrixP => x y. apply fill_rows_notin_spec. by rewrite Hsz. 
+  apply size0nil in Hsz. by rewrite Hsz.
+Qed.
+
 (*TODO: move, separate out summation stuff*)
 Lemma big_nat_widen_lt m1 m2 n (P : pred nat) (C: nat -> F) :
      m1 <= m2 ->
