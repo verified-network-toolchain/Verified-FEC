@@ -1028,12 +1028,6 @@ Proof.
   move => mx1 mx2 i j b Hb. rewrite /dot_prod Ziota_plus_1; try lia. by rewrite foldl_cat.
 Qed.
 
-Lemma iota_plus_1: forall x y,
-  iota x (y.+1) = iota x y ++ [ :: (x + y)%N].
-Proof.
-  move => x y. by rewrite -addn1 iotaD /=.
-Qed.
-
 (*Prove that this [dot_prod] expression is equivalent to the matrix multiplication sum in ssreflect*)
 Lemma dot_prod_sum: forall m n p mx1 mx2 i j b (d: 'I_(Z.to_nat n)) (Hi: 0 <= i < m) (Hj : 0 <= j < p),
   0 <= b <= n ->

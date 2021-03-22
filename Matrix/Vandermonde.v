@@ -343,40 +343,46 @@ Qed.
   to get a list of the rows that are not included in [rows].*)
 
 (*The complement of a nat list, up to bound n*)
-Fixpoint nat_comp (n: nat) (l: list nat) : list nat :=
-  match n with
-  | O => nil
-  | n.+1 => if n \in l then nat_comp n l else (n :: nat_comp n l) 
-  end.
+Definition nat_comp (n: nat) (l: seq nat) : seq nat :=
+  foldl (fun acc x => if x \in l then acc else acc ++ [:: x]) nil (iota 0 n).
+
+Lemma nat_comp_plus_one: forall n l,
+  nat_comp n.+1 l =
+  if n \in l then nat_comp n l else (nat_comp n l ++ [:: n]).
+Proof.
+  move => n l. by rewrite /nat_comp iota_plus_1 foldl_cat /= !add0n.
+Qed.
 
 Lemma nat_comp_bound: forall n l i,
   i \in (nat_comp n l) -> i < n.
 Proof.
   move => n. elim : n => [l i Hin /= | /= n IH l i].
   - by rewrite ltn0.
-  -  case Hnin : (n \in l).
-    + move => Hin. apply IH in Hin. apply (ltn_trans Hin (ltnSn _)).
-    + rewrite in_cons; move /orP => [Hin | Hrest].
-      * eq_subst Hin. apply ltnSn.
-      * apply IH in Hrest. apply (ltn_trans Hrest (ltnSn _)).
+  - rewrite nat_comp_plus_one. case Hnin : (n \in l).
+    + move => Hin. apply IH in Hin. by apply (ltn_trans Hin).
+    + rewrite mem_cat in_cons => /orP[Hincomp | /orP[/eqP Hin | Hf]].
+      * apply IH in Hincomp. by apply (ltn_trans Hincomp).
+      * by subst.
+      * by [].
 Qed.
 
 Lemma in_nat_comp: forall n l i,
   i < n ->
   i \in (nat_comp n l) = (i \notin l).
 Proof.
-  move => n. elim : n => [l i Hi /= | n IH l i Hi /=].
+  move => n. elim : n => [l i Hi /= | n IH l i Hi].
   - by rewrite ltn0 in Hi.
-  - have /orP Hlt: (i == n) || (i < n). rewrite ltnS in Hi. by rewrite -leq_eqVlt.
-    case : Hlt => [Heq | Hlt].
-    + eq_subst Heq. case Hin: (n \in l).
+  - rewrite nat_comp_plus_one.
+    have /orP Hlt: (i == n) || (i < n). rewrite ltnS in Hi. by rewrite -leq_eqVlt.
+    case : Hlt => [/eqP Heq | Hlt].
+    + subst. case Hin: (n \in l).
       * case Hincomp: (n \in nat_comp n l).
         -- apply nat_comp_bound in Hincomp. by rewrite ltnn in Hincomp.
         -- by [].
-      * by rewrite in_cons eq_refl orTb.
+      * by rewrite mem_cat in_cons eq_refl /= orbT.
     + case Hnin: (n \in l).
       * by apply IH.
-      * rewrite in_cons. have->: (i == n = false) by apply ltn_eqF. rewrite orFb.
+      * rewrite mem_cat in_cons. have->: (i == n = false) by apply ltn_eqF. rewrite /= in_nil orbF.
         by apply IH.
 Qed.
 
@@ -395,8 +401,9 @@ Lemma nat_comp_eq_mem: forall n (l1 l2 : seq nat),
   (l1 =i l2) ->
   nat_comp n l1 = nat_comp n l2.
 Proof.
-  move => n l1 l2 Hl12. elim : n => [//= | n IH /=]. by rewrite Hl12 IH.
-Qed.
+  move => n l1 l2 Hl12. elim : n => [//= | n IH /=].
+  rewrite !nat_comp_plus_one !IH. by move: Hl12 => /(_ n) ->.
+Qed. 
 
 Lemma nat_comp_undup: forall n (l: seq nat),
   nat_comp n l = nat_comp n (undup l).
@@ -408,11 +415,12 @@ Lemma nat_comp_uniq: forall n l,
   uniq (nat_comp n l).
 Proof.
   move => n. elim : n => [l //= | n IH l /=].
+  rewrite nat_comp_plus_one.
   case Hn : (n \in l).
   - apply IH.
-  - rewrite /=. case Hcon: (n\in nat_comp n l).
+  - rewrite cat_uniq /= orbF andbT IH /=.  case Hcon: (n\in nat_comp n l).
     + apply nat_comp_bound in Hcon. by rewrite ltnn in Hcon.
-    + by rewrite IH.
+    + by [].
 Qed. 
 
 (*Now, we need to wrap this in Ordinals*)

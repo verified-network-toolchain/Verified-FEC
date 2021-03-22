@@ -156,6 +156,12 @@ Proof.
   move => b. move => H. by apply H.
 Qed.
 
+Lemma iota_plus_1: forall x y,
+  iota x (y.+1) = iota x y ++ [ :: (x + y)%N].
+Proof.
+  move => x y. by rewrite -addn1 iotaD /=.
+Qed.
+
 
 (** Lemmas about [find] *)
 

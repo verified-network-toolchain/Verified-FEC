@@ -156,6 +156,43 @@ Definition find_parity_aux (f: Z -> Z) (par: list (option (list Z))) (base : lis
                           | Some _ => acc ++ [:: f x]
                           end) l base.
 
+Lemma find_parity_aux_base_Zlength: forall f par base l,
+  Zlength (find_parity_aux f par base l) = Zlength base + Zlength (find_parity_aux f par [::] l).
+Proof.
+  move => f par base l. move: base. elim : l => [//= b | h t /= IH base].
+  - list_solve.
+  - case Hh: (Znth h par) => [o |].
+    + rewrite IH. rewrite (IH [:: f h]). rewrite Zlength_app. lia.
+    + apply IH.
+Qed.
+
+Lemma find_parity_aux_Zlength: forall f1 f2 par base l,
+  Zlength (find_parity_aux f1 par base l) = Zlength (find_parity_aux f2 par base l).
+Proof.
+  move => f1 f2 par base l. move: base. elim : l => [//= | h t /= IH base].
+  case Hh: (Znth h par) => [o |].
+  - by rewrite /= find_parity_aux_base_Zlength (find_parity_aux_base_Zlength _ _ (base ++ [:: f2 h])) !Zlength_app 
+    !Zlength_cons !Zlength_nil IH.
+  - by apply IH.
+Qed.
+
+Lemma find_parity_aux_map: forall f par b1 b2 l,
+  map f b1 = b2 ->
+  map f (find_parity_aux id par b1 l) = find_parity_aux f par b2 l.
+Proof.
+  move => f par b1 b2 l. move: b1 b2. elim : l => [//= | h t /= IH b1 b2 Hb12].
+  apply IH. case Hh : (Znth h par) => [o |].
+  - by rewrite map_cat /= Hb12.
+  - by [].
+Qed.
+
+Lemma find_parity_aux_map': forall f par l,
+  map f (find_parity_aux id par nil l) = find_parity_aux f par nil l.
+Proof.
+  move => f par l. by apply find_parity_aux_map.
+Qed.
+  
+
 Lemma find_parity_aux_bound: forall f pars base l b,
   (forall x, In x l -> 0 <= f x < b) ->
   (forall x, In x base -> 0 <= x < b) ->
@@ -257,6 +294,28 @@ Proof.
   move => par c max_n Hc. apply find_parity_aux_NoDup'.
   apply Ziota_NoDup. move => x y. rewrite !Zseq_In; lia.
 Qed.
+
+(*The relationship between these two functions*)
+Lemma find_parity_rows_found_Zlength: forall par c max_n,
+  Zlength (find_parity_found par c max_n) = Zlength (find_parity_rows par c).
+Proof.
+  move => par c max_n.
+  apply find_parity_aux_Zlength.
+Qed.
+
+Lemma find_parity_rows_found_map: forall par c max_n,
+  map (fun x => max_n - 1 - x) (find_parity_rows par c) = find_parity_found par c max_n.
+Proof.
+  move => par c max_n. apply find_parity_aux_map'.
+Qed.
+
+Lemma find_parity_rows_found_Znth: forall par c max_n i,
+  0 <= i < Zlength (find_parity_rows par c) ->
+  Znth i (find_parity_found par c max_n) = max_n - 1 - Znth i (find_parity_rows par c).
+Proof.
+  move => par c max_n i Hi. by rewrite -find_parity_rows_found_map Znth_map.
+Qed.
+
 
 (*TODO: move*)
 Lemma forall_lt_leq_trans: forall n m (l: list Z),
@@ -1016,7 +1075,7 @@ Definition decode_list_mx (k c : Z) (packets: list (list Z)) (parities: list (op
   (*step 2: find w'', d, and s*)
   let w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) row found in
   let d' := col_mx_list (submx_rows_cols_list input (k - xh) c found1 (Ziota 0 c))
-              (submx_rows_cols_list parmx xh c found2 (Ziota 0 c)) (k-xh) xh c in
+              (submx_rows_cols_list parmx xh c row (Ziota 0 c)) (k-xh) xh c in
   let s := list_matrix_multiply xh k c w'' d' in
   (*step 3: find missing packets and fill in*)
   let d := list_matrix_multiply xh xh c v s in
@@ -1248,6 +1307,109 @@ Proof.
   by rewrite /fill_rows_list /=.
 Qed.
 
+Search (?x <= ?y -> (Z.to_nat ?x <= Z.to_nat ?y)%N).
+
+Print find_lost_found_aux.
+
+Check fold_left_app.
+
+Lemma find_lost_found_aux_app: forall f g base pack l1 l2,
+  find_lost_found_aux f g base pack (l1 ++ l2) =
+  find_lost_found_aux f g (find_lost_found_aux f g base pack l1) pack l2.
+Proof.
+  move => f g base pack l1 l2. by rewrite /find_lost_found_aux fold_left_app.
+Qed.
+
+Lemma nat_comp_app_notin: forall n l1 l2,
+  (forall x, x \in l2 -> (n <= x)%N) ->
+  nat_comp n l1 =
+  nat_comp n (l1 ++ l2).
+Proof.
+  move => n l1 l2. elim : n => [//= | n /= IH Hin].
+  rewrite !nat_comp_plus_one mem_cat.
+  have->:n \in l2 = false. 
+  case Hn: (n \in l2) =>[//|//]. apply Hin in Hn.
+  by rewrite ltnn in Hn. rewrite orbF !IH //. move => x Hin'.
+  apply ltnW. by apply Hin.
+Qed.
+
+Lemma nat_comp_app: forall n l1,
+  nat_comp n (l1 ++ [:: n]) =
+  nat_comp n l1.
+Proof.
+  move => n l1. rewrite -nat_comp_app_notin //. move => x. rewrite in_cons => /orP[/eqP Hxn | Hinf].
+  subst. by rewrite leqnn. by [].
+Qed.
+
+(*TODO: may want to redefine [nat_comp] w foldl and iota instead, will make easier*)
+
+(*TODO: move to above*)
+Lemma find_lost_found_aux_in: forall f stats l x b,
+  (forall x, In x l -> 0 <= x < b) ->
+  In x (find_lost_found_aux f id [::] stats l) ->
+  0 <= x < b.
+Proof.
+  move => f stats l x b Hl Hin.
+  have Htriv: (forall x : Z, In x [::] -> 0 <= x < b) by [].
+  pose proof (@find_lost_found_aux_bound f id [::] stats l b Hl Htriv) as Hall.
+  by move: Hall; rewrite Forall_forall => /(_ _ Hin).
+Qed.
+
+(*TODO: move*)
+(*Lost and found are complements*)
+Lemma find_lost_found_comp_nat: forall stats k,
+  map (Z.to_nat) (find_found stats k) =
+  nat_comp (Z.to_nat k) (map Z.to_nat (find_lost stats k)).
+Proof.
+  move => stats k. rewrite /find_found /find_lost /Ziota /=.
+  elim : (Z.to_nat k) => [//= | n IH]. rewrite nat_comp_plus_one !iota_plus_1 /= !map_cat /= !add0n !find_lost_found_aux_app /=.
+  case: (Z.eq_dec (Znth (Z.of_nat n) stats) 1) => [/= Hn1 | /= Hn0].
+  - have->:n
+    \in [seq Z.to_nat i
+           | i <- find_lost_found_aux (fun x : Z => Z.eq_dec x 1) id [::] stats
+                    [seq Z.of_nat y | y <- iota 0 n] ++ [:: Z.of_nat n]]
+    by rewrite map_cat /= mem_cat Nat2Z.id in_cons eq_refl orbT.
+    rewrite map_cat /= Nat2Z.id nat_comp_app. apply IH.
+  - have->:n
+    \in [seq Z.to_nat i
+           | i <- find_lost_found_aux (fun x : Z => Z.eq_dec x 1) id [::] stats
+                    [seq Z.of_nat y | y <- iota 0 n]] = false. {
+    apply /negPf /negP; rewrite in_mem_In in_map_iff => [[x [Hxn Hinx]]].
+    subst. apply (@find_lost_found_aux_in _ _ _ _  x) in Hinx. lia.
+    move => y. rewrite in_map_iff => [[x' [Hx' Hin]]]. subst. move: Hin.
+    rewrite -in_mem_In mem_iota add0n => /andP[/leP Hx0 /ltP Hxx]. lia. }
+    by rewrite map_cat /= Nat2Z.id IH.
+Qed.
+
+Lemma find_lost_found_comp: forall stats k,
+  0 <= k ->
+  Z_ord_list (find_found stats k) k =
+  (ord_comp (Z_ord_list (find_lost stats k) k)).
+Proof.
+  (*do widen_ord stuff separately*)
+  move => stats k Hk. rewrite {1}/Z_ord_list /ord_comp find_lost_found_comp_nat.
+  f_equal. f_equal. pose proof (find_lost_bound stats Hk) as Hbound.
+   have[H0k | H0k]: k = 0%Z \/ 0 < k by lia.
+  - subst. by [].
+  - apply Znth_eq_ext.
+    + by rewrite !Zlength_map Z_ord_list_Zlength.
+    + move => i. rewrite Zlength_map => Hi.
+      have Hinhab: Inhabitant 'I_(Z.to_nat k). apply (ord_zero H0k).
+      rewrite !Znth_map //=.
+      * by rewrite Z_ord_list_Znth'.
+      * by rewrite Z_ord_list_Zlength.
+Qed.
+
+(*TODO: move*)
+Lemma Znth_Ziota: forall b x,
+  0 <= x < b ->
+  Znth x (Ziota 0 b) = x.
+Proof.
+  move => b x Hxb. rewrite /Ziota Znth_map. rewrite -nth_Znth. rewrite -nth_nth nth_iota //=.
+  rewrite add0n. lia. apply /ltP; lia.
+  all: rewrite Zlength_correct -size_length size_iota; lia.
+Qed.
+
 (*First, we prove that this is equivalent to the mathcomp decoder*)
 (*LOTS of ordinals and dependent types in here, eventually we will be able to just have a few bounds hypotheses
   that can be solved with [lia]*)
@@ -1258,7 +1420,6 @@ Lemma decode_list_mx_equiv: forall k c h xh packets parities stats (Hk: 0 < k <=
   Zlength lost = xh ->
   Zlength row = xh ->
   Zlength parities = h ->
-  (*0 < xh ->*)
   matrix_to_mx k c (decode_list_mx k c packets parities stats) = 
     decoder_mult (F:=F) max_h_n (k_bound_proof (proj2 Hk)) weight_list_size (ord_zero h_pos) (ord_zero n_pos)
       (ord_zero (proj1 Hk)) (ord_zero Hc) (matrix_to_mx k c (extend_mx k c (int_to_poly_mx packets)))
@@ -1302,7 +1463,7 @@ Proof.
       * have Hkn: k <= fec_n - 1 by lia. by apply (forall_lt_leq_trans Hkn). 
     + rewrite list_matrix_multiply_correct. 2: { apply submx_rows_cols_rev_list_wf; lia. }
       2 : { have Hkxh: k = (k - xh) + xh by lia. rewrite {5}Hkxh. apply col_mx_list_wf; lia. }
-      rewrite (@submx_rows_cols_rev_list_spec _ fec_max_h) //; try lia. (*TODO: make sure this should be h*)
+      rewrite (@submx_rows_cols_rev_list_spec _ fec_max_h) //; try lia.
       2 : {  subst; by apply (forall_lt_leq_trans (proj2 Hh)). }
       2 : { subst. rewrite Forall_app. split =>[|//]. have Hkn: (k <= fec_n - 1) by lia. by apply (forall_lt_leq_trans Hkn). }
       move => Hh0 Hn0. f_equal.
@@ -1310,25 +1471,37 @@ Proof.
         -- apply weight_mx_spec.
         -- subst; by apply Z_ord_list_widen.
         -- rewrite Z_ord_list_app. f_equal.
-          ++ (*will probably just prove this separately - need to prove w ord comp*)
-             admit.
-          ++ (*also prove this separately - relationship between found parity locations and rows*) admit.
+          ++ rewrite (Z_ord_list_widen (k_leq_n (k_bound_proof (proj2 Hk)))) // find_lost_found_comp //. lia.
+          ++ have Hinhab: Inhabitant 'I_(Z.to_nat (fec_n - 1)) by apply (ord_zero Hn0).
+             have Hfoundpbound': Forall (fun x : Z => 0 <= x < fec_n - 1) (find_parity_found parities h (fec_n - 1)) by subst.
+             apply Znth_eq_ext. 
+             ** rewrite Zlength_map !Z_ord_list_Zlength //. subst. by rewrite find_parity_rows_found_Zlength.
+             ** move => i. rewrite !Z_ord_list_Zlength //  => Hi.
+                have Hinhabh: Inhabitant 'I_(Z.to_nat h). apply (ord_zero (proj1 Hh)).
+                rewrite Znth_map //.
+                { have Hilen: 0 <= i < Zlength row. subst. by rewrite find_parity_rows_found_Zlength in Hi.
+                  rewrite !Z_ord_list_Znth' //; try lia. apply ord_inj. subst. rewrite /= find_parity_rows_found_Znth //=.
+                  have->: (Z.to_nat (fec_n - 1) - 1 - Z.to_nat (Znth i (find_parity_rows parities (Zlength parities))))%N =
+                        ((Z.to_nat (fec_n - 1) - 1)%coq_nat - Z.to_nat (Znth i (find_parity_rows parities (Zlength parities))))%coq_nat by [].
+                  rewrite !Z2Nat.inj_sub; try lia. move: Hrowbound; rewrite Forall_Znth => /(_ i Hilen). lia.
+                }
+                { subst. rewrite Z_ord_list_Zlength //. by rewrite find_parity_rows_found_Zlength in Hi.
+                }
         -- by apply ord_inj.
         -- by apply ord_inj.
       * rewrite (@matrix_to_mx_cast k ((k - xh) + xh) c c). lia. move => Hkxh.
         rewrite col_mx_list_spec; try lia. move => Hkxh0 Hxh0'. rewrite castmx_twice.
-        (*TODO: deal with cast issue*)
         rewrite (@submx_rows_cols_list_equiv _ k c (k-xh) c) //=; try lia.
         2: { rewrite Forall_forall => y. rewrite Zseq_In; lia. }
-        (*Let's try, see if it works*)
         rewrite -matrixP => x y.
         rewrite !castmxE /= !mxE /=.
         pose proof (splitP (cast_ord (esym (etrans (Logic.eq_sym (Z2Nat.inj_add (k - xh) xh Hkxh0 Hxh0')) (Z_to_nat_eq Hkxh))) x)).
         case : X => [j /= Hj | k' /= Hk'].
         { rewrite !mxE /=. pose proof (splitP (cast_ord (esym (subnK (le_Z_N Hxh))) x)).
           case : X => [j' /= Hj' | k'' /= Hk''].
-          { rewrite !mxE /=. f_equal; f_equal. (*again, need relation between find_found and find_lost w ord_comp*)
-            admit. }
+          { rewrite !mxE /=. f_equal; f_equal. rewrite find_lost_found_comp //.
+            rewrite -Hj Hj' /=. have->:(ord_zero Hk0 = (ord_zero (proj1 Hk))) by apply ord_inj. by []. lia.
+            rewrite Z_ord_list_iota //. lia. }
           { have /ltP Hx: (x < Z.to_nat (k - xh))%N by rewrite Hj.
             move: Hk''; have->: (Z.to_nat k - Z.to_nat xh + k'')%N = ((Z.to_nat k - Z.to_nat xh)%coq_nat + k'')%coq_nat by [] => Hk''. 
             lia. }
@@ -1338,9 +1511,12 @@ Proof.
           { have /ltP Hx: (x < (Z.to_nat k - Z.to_nat xh)%coq_nat)%N by rewrite Hj'.
             move: Hk'; have->:(Z.to_nat (k - xh) + k')%N = (Z.to_nat (k - xh) + k')%coq_nat by [] => Hk'. lia.
           }
-          { rewrite !mxE /=. (*need relation between foundp and rows*) admit. }
-
-
-(*TODO: go back and do these things, finish proofs*)
-
-
+          { rewrite !mxE /=. rewrite !mk_matrix_get; try lia. f_equal.
+            have->:(nat_of_ord k'') = Z.to_nat (Z.of_nat k'') by rewrite Nat2Z.id.
+            have->: k' = k''. move: Hk'' => /eqP Hx. move: Hx. rewrite Hk' Z2Nat.inj_sub; try lia.
+            have->: (Z.to_nat k - Z.to_nat xh)%coq_nat = (Z.to_nat k - Z.to_nat xh)%N by [].
+            rewrite eqn_add2l => /eqP Hx. by apply ord_inj.
+            rewrite -Z_ord_list_Znth //. by subst. lia. rewrite nth_ord_enum Znth_Ziota //=.
+            apply Z_ord_bound; lia. apply Z_ord_bound; lia. apply Z_ord_bound; lia. }
+        }
+Qed.
