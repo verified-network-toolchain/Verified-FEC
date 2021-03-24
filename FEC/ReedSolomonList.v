@@ -976,10 +976,10 @@ Qed.
 (*The parity packet is a list of option (list Z)'s, since some are lost in transit. We need to convert to 
   a matrix*)
 Definition fill_missing (c: Z) (l: list (option (list Z))) : list (list Z) :=
-  fold_left (fun acc x => match x with
-                            | None => (list_repeat (Z.to_nat c) 0%Z) :: acc
-                            | Some l => l :: acc
-                            end) l nil.
+  map (fun x => match x with
+                | None =>  (list_repeat (Z.to_nat c) 0%Z)
+                | Some l => l
+                end) l.
 
 (*Lastly, fill in the input matrix with the missing data*)
 (*The first matrix is m x n, the second is some m' x n*)
@@ -1086,8 +1086,6 @@ Lemma max_h_n: ((Z.to_nat fec_max_h <= Z.to_nat (fec_n - 1)))%N.
 Proof.
   apply /leP. rep_lia.
 Qed.
-
-Check decoder_mult.
 
 Lemma k_bound_proof: forall k,
   (k <= (fec_n - 1) - fec_max_h) ->
@@ -1231,6 +1229,40 @@ Proof.
 Qed.
 
 Lemma Z_ord_list_In: forall (l: seq Z) n x,
+  Forall (fun x => 0 <= x < n) l ->
+  x \in (Z_ord_list l n) <->
+  In (Z.of_nat x) l.
+Proof.
+  move => l n x. rewrite /Z_ord_list. elim : l => [//= | h t /= IH Hall].
+  case Hh : (Z.to_nat h < Z.to_nat n)%N.
+  - rewrite insubT /= in_cons. split.
+    + move => /orP[/eqP Hxh | Hin].
+      * subst. left. rewrite /= Z2Nat.id //. apply Forall_inv in Hall. lia.
+      * right. apply IH. by apply Forall_inv_tail in Hall. by [].
+    + move => [Hhx | Hint].
+      * subst. have ->: (x == Ordinal Hh).  
+        by apply /eqP; apply ord_inj; rewrite /= Nat2Z.id. by [].
+      * have->: (x \in pmap insub [seq Z.to_nat i | i <- t]). apply IH. 
+        by apply Forall_inv_tail in Hall. by []. by rewrite orbT.
+  - rewrite insubF //=. rewrite IH. 2: by apply Forall_inv_tail in Hall. split.
+    move => Hin. by right. move => [Hhx | Ht //]. subst.
+    apply (Forall_inv) in Hall. move : Hh => /ltP Hh. lia.
+Qed.
+
+Lemma Z_ord_list_notin: forall (l: seq Z) n x,
+  Forall (fun x => 0 <= x < n) l ->
+  x \notin (Z_ord_list l n) <->
+  ~ In (Z.of_nat x) l.
+Proof.
+  move => l n x Hall. split => Hnotin.
+  - rewrite -Z_ord_list_In //. by apply /idP.
+  - move: Hnotin; rewrite -Z_ord_list_In //=.
+    by case : (x \in Z_ord_list l n).
+Qed. 
+
+(*old version TODO remove*)
+(*
+Lemma Z_ord_list_In: forall (l: seq Z) n x,
   Forall (fun x => 0 <= x) l ->
   x \in (Z_ord_list l n) ->
   In (Z.of_nat x) l.
@@ -1241,8 +1273,13 @@ Proof.
     + subst. left. rewrite /= Z2Nat.id //. by apply Forall_inv in Hall.
     + right. apply IH. by apply Forall_inv_tail in Hall. by [].
   - rewrite insubF //=. move => Hin. right. apply IH. by apply Forall_inv_tail in Hall. by [].
-Qed.
+Qed.*)
 
+Lemma weight_list_uniq: uniq weight_list.
+Proof.
+  rewrite /weight_list rev_uniq power_list_uniq //=. apply /leP. 
+  rewrite mod_poly_deg_eq /=. rep_lia.
+Qed.
 
 (*We need this both for correctness and for the the VST proof*)
 Lemma strong_inv_list_partial: forall k xh h stats parities,
@@ -1275,8 +1312,7 @@ Proof.
   rewrite (submx_rows_cols_default _ (ord_zero Hmaxh) (ord_zero Hn) (Ordinal Hhnat) ( widen_ord Hhn (Ordinal Hhnat))).
   + have->: (le_Z_N Hxhtriv) = (leqnn (Z.to_nat xh)) by apply ProofIrrelevance.proof_irrelevance.
     apply any_submx_strong_inv; rewrite //=.
-    * rewrite /weight_list rev_uniq power_list_uniq //=. apply /leP. 
-      rewrite mod_poly_deg_eq /=. rep_lia.
+    * by rewrite weight_list_uniq. 
     * apply weight_list_size.
     * apply Z_ord_list_uniq. eapply Forall_impl. 2: apply Hallrow. move => a; rewrite /=. lia.
       subst. apply find_parity_rows_NoDup.
@@ -1306,12 +1342,6 @@ Proof.
   rewrite /decode_list_mx /=. rewrite !Hlen0 /=.
   by rewrite /fill_rows_list /=.
 Qed.
-
-Search (?x <= ?y -> (Z.to_nat ?x <= Z.to_nat ?y)%N).
-
-Print find_lost_found_aux.
-
-Check fold_left_app.
 
 Lemma find_lost_found_aux_app: forall f g base pack l1 l2,
   find_lost_found_aux f g base pack (l1 ++ l2) =
@@ -1520,3 +1550,198 @@ Proof.
             apply Z_ord_bound; lia. apply Z_ord_bound; lia. apply Z_ord_bound; lia. }
         }
 Qed.
+
+(*TODO: move to common and use in [int_to_poly_mx]*)
+Definition Z_to_F (z: Z) : F :=
+  exist (fun x => deg x < deg mod_poly) (poly_of_int z %~ mod_poly) (pmod_lt_deg _ _).
+
+
+(*Are the parity packets valid? To be valid, we require that all the "Some" entries are the actual rows produced
+  by the encoder. It's a bit awkward to state this in Coq*)
+(*TODO: see whether to use this or "fill_missing"*)
+Definition parities_valid h k c parities data :=
+  forall i j, 0 <= i < h -> 0 <= j < c ->
+    match (Znth i parities) with
+      | Some par => Z_to_F (Znth j par) = get (encode_list_mx h k c data) i j
+      | None => True
+    end.
+
+(*
+(*TODO: MOVE, only one direction exists in stnd library, this is In version of [mem_map]*)
+Lemma in_map_iff_inj: forall {A B} (f: A -> B) l x,
+  (forall (x y : A), {x = y} + {x <> y}) ->
+  (forall x y, In x l -> In y l -> f x = f y -> x = y) ->
+  In x l <-> In (f x) (map f l).
+Proof.
+  move => A B f l x Heq. elim : l => [//= | h t /= IH Hinj].
+  move: Heq => /(_ h x) [Heq | Hneq].
+  - subst. split
+
+ split.
+  - by apply in_map.
+  - rewrite in_map_iff => [[x' [Hxx' Hinx']]]. apply Hinj in Hxx'. by subst. 
+Qed. *)
+
+(*TODO: move*)
+Lemma find_lost_found_aux_in_spec: forall f base pack l x,
+  In x (find_lost_found_aux f id base pack l) <-> In x base \/ (In x l /\ f (Znth x pack)).
+Proof.
+  move => f base pack l x. move : base. elim : l => [//= base | h t /= IH base].
+  - by split => [Hin | [Hin | [Hfalse Hf]]]; try left.
+  - case Hfh : (f (Znth h pack)).
+    + rewrite IH in_app_iff /= binop_lemmas2.or_False or_assoc. apply or_iff_compat_l.
+      split.
+      * move => [Hxh | [Hin Hh]].
+        -- subst. split. by left. by [].
+        -- split. by right. by [].
+      * move => [[Hxh | Hin] Hf].
+        -- subst. by left.
+        -- right. by split.
+    + rewrite IH. apply or_iff_compat_l. split.
+      * move => [Hin Hf]. split. by right. by [].
+      * move => [[Hhx | Hin] Hf]. subst. by rewrite Hf in Hfh. by split.
+Qed.  
+
+Lemma and_true_l: forall (P Q: Prop),
+  P ->
+  ((P /\ Q) <-> Q).
+Proof.
+  tauto.
+Qed.
+    
+(*TODO: move*)
+Lemma find_lost_found_in: forall l k x,
+  0 <= x < k ->
+  In x (find_found l k) <-> ~ In x (find_lost l k).
+Proof.
+  move => l k x Hxk. rewrite !find_lost_found_aux_in_spec /= !binop_lemmas2.False_or.
+  have Hin: In x (Ziota 0 k) by rewrite Zseq_In; lia.
+  rewrite !and_true_l //. symmetry. apply rwN. apply idP.
+Qed.
+
+(*TODO: move to map2d*)
+
+Lemma map2d_Znth_eq: forall {A B} (l1 l2: list (list A)) (f: A -> B) i,
+  Znth i l1 = Znth i l2 ->
+  0 <= i < Zlength l1 ->
+  0 <= i < Zlength l2 ->
+  Znth i (map_2d f l1) = Znth i (map_2d f l2).
+Proof.
+  move => A B l1 l2 f i Hnth Hil1 Hil2. by rewrite /map_2d !Znth_map // Hnth.
+Qed.
+
+(*Or else things get unfolded a lot*)
+Lemma int_to_poly_mx_Znth_eq: forall (l1 l2: list (list Z)) i,
+  Znth i l1 = Znth i l2 ->
+  0 <= i < Zlength l1 ->
+  0 <= i < Zlength l2 ->
+  Znth i (int_to_poly_mx l1) = Znth i (int_to_poly_mx l2).
+Proof.
+  move => l1 l2 i Hnth Hil1 Hil2. by apply map2d_Znth_eq.
+Qed.
+
+(*TODO: move*)
+(*TODO: maybe combine w other one*)
+Lemma find_parity_aux_in_iff: forall par base l x,
+  In x (find_parity_aux id par base l) <-> In x base \/ (In x l /\ exists p, Znth x par = Some p).
+Proof.
+  move => par base l x. move: base. elim : l => [//= base | h t /= IH base].
+  - by split => [ Hin //| [Hin // | [Hfalse Hex //]]]; left.
+  - case Hnth : (Znth h par) => [c |]; rewrite IH /=.
+    + rewrite in_app_iff /= or_assoc binop_lemmas2.or_False. apply or_iff_compat_l. split.
+      * move => [Hxh | [Hint Hex]]. 
+        -- subst. split. by left. by exists c.
+        -- split. by right. by [].
+      * move => [[Hxh | Hin] Hex].
+        -- subst. by left.
+        -- right. by split.
+    + apply or_iff_compat_l. split.
+      * move => [Hin Hex]. split. by right. by [].
+      * move => [[Hhx | Hin] [p Hex]]. subst. by rewrite Hex in Hnth. split. by []. by exists p.
+Qed. 
+
+Lemma fill_missing_some: forall c l i p,
+  0 <= i < Zlength l ->
+  Znth i l = Some p ->
+  Znth i (fill_missing c l) = p.
+Proof.
+  move => c l i p Hlen Hith. by rewrite Znth_map // Hith.
+Qed. 
+
+Lemma fill_missing_mx_some: forall c l i j p,
+  Znth i l = Some p ->
+  0 <= j < c ->
+  0 <= i < Zlength l ->
+  Zlength p = c ->
+  get (int_to_poly_mx (fill_missing c l)) i j = Z_to_F (Znth j p).
+Proof.
+  move => c l i j p Hith Hj Hilen Hlenp.
+  rewrite /get. rewrite map_2d_Znth /= /Z_to_F. by rewrite !(fill_missing_some _ Hilen Hith).
+  by rewrite Zlength_map. by rewrite (fill_missing_some _ Hilen Hith) Hlenp.
+Qed.
+
+Lemma matrix_to_mx_get : forall m n (l: matrix F) mx (i: 'I_(Z.to_nat m)) (j: 'I_(Z.to_nat n)),
+  matrix_to_mx m n l = mx ->
+  get l (Z.of_nat i) (Z.of_nat j) = mx i j.
+Proof.
+  move => m n l mx i j. move <-. by rewrite mxE.
+Qed.
+
+(*The correctness theorem for the decoder, at the matrix level. We will convert this back to list(list Z) and give
+  more convenient preconditions for clients of the VST code*)
+Lemma decoder_list_mx_correct:forall k c h xh data packets parities stats,
+  0 < k <= fec_n - 1 - fec_max_h ->
+  0 < c ->
+  0 < h <= fec_max_h ->
+  xh <= h ->
+  xh <= k ->
+  Zlength (find_lost stats k) = xh ->
+  Zlength (find_parity_rows parities h) = xh ->
+  Zlength parities = h ->
+  Zlength stats = k ->
+  Zlength packets = k ->
+  Zlength data = k ->
+  Forall (fun l => Zlength l <= c) data ->
+  (forall l, In (Some l) parities -> Zlength l = c) ->
+  (forall i, 0 <= i < k -> Znth i stats <> 1%Z -> Znth i packets = Znth i data) ->
+  parities_valid h k c parities data ->
+  matrix_to_mx k c (decode_list_mx k c packets parities stats) = (matrix_to_mx k c (extend_mx k c (int_to_poly_mx data))).
+Proof.
+  move => k c h xh data packets parities stats Hkn Hc Hhh Hxhh Hxhk Hlostlen Hrowslen Hparlen Hstatslen Hpacklen 
+    Hdatalen Hdatalens Hparlens Hfound Hpars.
+  (*Things we need multiple times*)
+  have Hstatsun: uniq (Z_ord_list (find_lost stats k) k). { apply Z_ord_list_uniq. eapply Forall_impl.
+    2: { apply find_lost_bound; lia. } move => a. rewrite /=. lia. apply find_lost_NoDup. }
+  have Hrowsun : uniq (Z_ord_list (find_parity_rows parities h) h). { apply Z_ord_list_uniq. eapply Forall_impl.
+    2: { apply find_parity_rows_bound; lia. } move => a. rewrite /=; lia. apply find_parity_rows_NoDup. }
+  have Hstatssz: size (Z_ord_list (find_lost stats k) k) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength Z_ord_list_Zlength //=.
+    by rewrite Hlostlen. apply find_lost_bound; lia. }
+  have Hrowssz: size (Z_ord_list (find_parity_rows parities h) h) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength
+    Z_ord_list_Zlength. by rewrite Hrowslen. apply find_parity_rows_bound; lia. }
+  rewrite (@decode_list_mx_equiv _ _ _ _ packets parities stats Hkn Hc Hhh Hxhk) // decoder_equivalent //=.
+  - rewrite (decoder_correct (data:=(matrix_to_mx k c (extend_mx k c (int_to_poly_mx data)))) max_h_n weight_list_uniq weight_list_size (ord_zero h_pos) (ord_zero n_pos) 
+        (ord_zero (proj1 Hkn)) (ord_zero Hc) (le_Z_N Hxhh) ) //.
+    + move => x y. rewrite !mxE !extend_mx_spec; try (apply Z_ord_bound; lia). 
+      rewrite Z_ord_list_notin //=. 2: apply find_lost_bound; lia. rewrite -find_lost_found_in. 2: apply Z_ord_bound; lia.
+      rewrite find_lost_found_aux_in_spec /= => [[Hfalse // | [Htriv Hstats]]].
+      have Hstatsx: Znth (Z.of_nat x) stats <> 1%Z. by move : Hstats; case : (Z.eq_dec (Znth (Z.of_nat x) stats) 1%Z).
+      apply Hfound in Hstatsx. 2: apply Z_ord_bound; lia. rewrite (int_to_poly_mx_Znth_eq Hstatsx) //.
+      rewrite Hpacklen. apply Z_ord_bound; lia. rewrite Hdatalen. apply Z_ord_bound; lia.
+    + move => x y. rewrite Z_ord_list_In. 2: apply find_parity_rows_bound; lia.
+      rewrite find_parity_aux_in_iff /= => [[ Hfalse // | [Htriv [p Hnthx]]]].
+      rewrite mxE. have Hx: (0 <= Z.of_nat x < h) by (apply Z_ord_bound; lia).
+      have  Hy: (0 <= Z.of_nat y < c) by (apply Z_ord_bound; lia).
+      move: Hpars; rewrite /parities_valid => /(_ (Z.of_nat x) (Z.of_nat y) Hx Hy).
+      rewrite Hnthx /= (fill_missing_mx_some Hnthx) //=.
+      * move ->. rewrite -(@matrix_to_mx_get _ _ (encode_list_mx h k c data)) //=.
+        have Hkn': k <= fec_n - 1  by lia. 
+        have->: (k_leq_n (k_bound_proof (proj2 Hkn))) = le_Z_N Hkn'. 
+          apply ProofIrrelevance.proof_irrelevance. rewrite -weight_mx_spec. 
+        apply encoder_spec; try lia. by [].
+      * rewrite Hparlen. apply Z_ord_bound; lia.
+      * apply Hparlens; rewrite -Hnthx. apply Znth_In. rewrite Hparlen. apply Z_ord_bound; lia.
+  - apply weight_list_uniq.
+  - apply F_char_2.
+Qed.
+
+End Decoder.

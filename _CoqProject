@@ -25,6 +25,7 @@ FEC/Common.v
 #can move earlier
 FEC/ReedSolomon.v
 Matrix/VandermondeList.v
+FEC/ReedSolomonList.v
 FEC/CommonVST.v
 FEC/Specs.v
 FEC/FECTactics.v

@@ -266,4 +266,13 @@ Qed.
 Definition qpoly_fieldmixin := FieldMixin qpoly_mulVf qpoly_inv0.
 Canonical qpoly_fieldType := FieldType (qpoly f) qpoly_fieldmixin.
 
+(*This is a field of characteristic 2 - this is important for the decoder's correctness*)
+Lemma F_char_2: 2%N \in [char qpoly_fieldType]%R.
+Proof.
+  rewrite /GRing.char //= /in_mem /= GRing.mulr2n /=.
+  have->:1%R = q1 by []. have->:(q1 + q1)%R = qadd q1 q1 by []. rewrite /qadd /r_add /=.
+  apply /eqP. have->: (0%R = q0) by []. rewrite /q0 /r0. exist_eq. 
+  by rewrite /poly_add_mod poly_add_inv pmod_zero.
+Qed.
+
 End PolyField.
