@@ -9,6 +9,7 @@ Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import Vandermonde.
 Require Import Common.
+Require Import List2D.
 Require Import ListMatrix.
 Require Import ReedSolomon.
 Require Import VandermondeList.
@@ -1559,11 +1560,22 @@ Definition Z_to_F (z: Z) : F :=
 (*Are the parity packets valid? To be valid, we require that all the "Some" entries are the actual rows produced
   by the encoder. It's a bit awkward to state this in Coq*)
 (*TODO: see whether to use this or "fill_missing"*)
+
+(*
 Definition parities_valid h k c parities data :=
   forall i j, 0 <= i < h -> 0 <= j < c ->
     match (Znth i parities) with
       | Some par => Z_to_F (Znth j par) = get (encode_list_mx h k c data) i j
       | None => True
+    end.
+
+*)
+
+Definition parities_valid k c parities data :=
+  forall i j, 0 <= i < Zlength parities -> 0 <= j < c ->
+    match (Znth i parities) with
+      | Some par => Znth j par = Znth j (Znth i (norev_mx (encode_list_mx (Zlength parities) k c data)))
+      | _ => True
     end.
 
 (*
@@ -1687,6 +1699,13 @@ Proof.
   move => m n l mx i j. move <-. by rewrite mxE.
 Qed.
 
+Lemma poly_to_int_Z_F: forall f,
+  Z_to_F (poly_to_int (f_to_poly f)) = f.
+Proof.
+  move => f. rewrite /f_to_poly/ Z_to_F poly_of_int_inv //=. case : f => p Hp. exist_eq.
+  rewrite /=. apply pmod_refl => [// | //]. apply mod_poly_PosPoly.
+Qed. 
+
 (*The correctness theorem for the decoder, at the matrix level. We will convert this back to list(list Z) and give
   more convenient preconditions for clients of the VST code*)
 Lemma decoder_list_mx_correct:forall k c h xh data packets parities stats,
@@ -1704,7 +1723,7 @@ Lemma decoder_list_mx_correct:forall k c h xh data packets parities stats,
   Forall (fun l => Zlength l <= c) data ->
   (forall l, In (Some l) parities -> Zlength l = c) ->
   (forall i, 0 <= i < k -> Znth i stats <> 1%Z -> Znth i packets = Znth i data) ->
-  parities_valid h k c parities data ->
+  parities_valid k c parities data ->
   matrix_to_mx k c (decode_list_mx k c packets parities stats) = (matrix_to_mx k c (extend_mx k c (int_to_poly_mx data))).
 Proof.
   move => k c h xh data packets parities stats Hkn Hc Hhh Hxhh Hxhk Hlostlen Hrowslen Hparlen Hstatslen Hpacklen 
@@ -1730,18 +1749,245 @@ Proof.
     + move => x y. rewrite Z_ord_list_In. 2: apply find_parity_rows_bound; lia.
       rewrite find_parity_aux_in_iff /= => [[ Hfalse // | [Htriv [p Hnthx]]]].
       rewrite mxE. have Hx: (0 <= Z.of_nat x < h) by (apply Z_ord_bound; lia).
+      have Hx': (0 <= Z.of_nat x < Zlength parities) by lia.
       have  Hy: (0 <= Z.of_nat y < c) by (apply Z_ord_bound; lia).
-      move: Hpars; rewrite /parities_valid => /(_ (Z.of_nat x) (Z.of_nat y) Hx Hy).
+      move: Hpars; rewrite /parities_valid => /(_ (Z.of_nat x) (Z.of_nat y) Hx' Hy).
       rewrite Hnthx /= (fill_missing_mx_some Hnthx) //=.
-      * move ->. rewrite -(@matrix_to_mx_get _ _ (encode_list_mx h k c data)) //=.
+      * move ->. have [Henc [ Hc0 Hinenc]]: wf_matrix (encode_list_mx (Zlength parities) k c data) (Zlength parities) c. {
+          apply list_matrix_multiply_wf; lia. }
+        rewrite -(@matrix_to_mx_get _ _ (encode_list_mx h k c data)) //=.
+        rewrite /get norev_mx_Znth; try lia. by rewrite /= poly_to_int_Z_F Hparlen.
+        rewrite -Henc in Hx'.
+        move: Hinenc; rewrite Forall_Znth => /(_ (Z.of_nat x) Hx'); lia.
         have Hkn': k <= fec_n - 1  by lia. 
         have->: (k_leq_n (k_bound_proof (proj2 Hkn))) = le_Z_N Hkn'. 
           apply ProofIrrelevance.proof_irrelevance. rewrite -weight_mx_spec. 
         apply encoder_spec; try lia. by [].
-      * rewrite Hparlen. apply Z_ord_bound; lia.
       * apply Hparlens; rewrite -Hnthx. apply Znth_In. rewrite Hparlen. apply Z_ord_bound; lia.
   - apply weight_list_uniq.
   - apply F_char_2.
+Qed.
+
+(*Restore the packets to their original lengths*)
+Definition crop_mx (mx: matrix F) (lens: list Z) :=
+  map (fun x => sublist 0 (Znth x lens) (Znth x mx)) (Ziota 0 (Zlength mx)).
+
+(*As long as the lengths array is correct and all lengths are bounded by c, [crop_mx] and [extend_mx] are
+  inverses*) 
+Lemma crop_extend: forall mx lens c,
+  0 <= c ->
+  Zlength mx = Zlength lens ->
+  (forall i, 0 <= i < Zlength mx -> Znth i lens = Zlength (Znth i mx)) ->
+  Forall (fun x => Zlength x <= c) mx ->
+  crop_mx (extend_mx (Zlength mx) c mx) lens = mx.
+Proof.
+  move => mx lens c Hc Hlen Hlens Hcbound.
+  have Hmxlen: 0 <= Zlength mx by list_solve. 
+  pose proof (@extend_mx_wf _ (Zlength mx) c mx Hc Hmxlen) as [Hextlen [H0c Hall]].
+  have Hcroplen: Zlength (crop_mx (extend_mx (Zlength mx) c mx) lens) = Zlength mx
+    by rewrite Zlength_map Zlength_Ziota; try lia.
+  apply Znth_eq_ext =>[//| i]. rewrite Hcroplen => Hi.
+  rewrite Znth_map /=. rewrite !Znth_Ziota //; try lia. 2: by rewrite Hextlen.
+  rewrite Hlens //. 2: rewrite Zlength_Ziota //; [rewrite Hextlen //| rewrite Hextlen; lia].
+  have Hsublen: Zlength (sublist 0 (Zlength (Znth i mx)) (Znth i (extend_mx (Zlength mx) c mx))) = Zlength (Znth i mx). {
+    rewrite Zlength_sublist; try lia. list_solve.
+    have Hi': 0 <= i < Zlength (extend_mx (Zlength mx) c mx) by lia.
+    move: Hall; rewrite Forall_Znth => /(_ i Hi'). move ->.
+    by move: Hcbound; rewrite Forall_Znth => /(_ i Hi). }
+  apply Znth_eq_ext =>[//| j]. rewrite Hsublen => Hj. rewrite Znth_sublist; try lia.
+  rewrite Z.add_0_r. pose proof extend_mx_spec as Hextget. rewrite /get in Hextget; rewrite Hextget{Hextget} //.
+  case : (Z_lt_le_dec j (Zlength (Znth i mx))) => [//= Hj' | /= Hj']. 
+  have: j < j by apply (Z.lt_le_trans _ _ _ (proj2 Hj)).  (*lia doesnt work for some reason*)
+  lia. move: Hcbound; rewrite Forall_Znth => /(_ i Hi). lia.
+Qed.
+
+(*For the decoder preconditions, we don't want to explicitly mention [find_lost] and [find_parity_rows], especially
+  since only the length is important. So we will use [filter] instead, which should be easier to reason about*)
+
+
+Lemma find_lost_found_aux_Zlength: forall f g base pack l,
+  Zlength (find_lost_found_aux f g base pack l) = Zlength base + Zlength (find_lost_found_aux f g [::] pack l).
+Proof.
+  move => f g base pack l. move: base. elim : l => [//= base| h t /= IH base].
+  - list_solve.
+  - rewrite IH (IH (if f (Znth h pack) then [:: g h] else [::])). case Hf: (f (Znth h pack)).
+    + rewrite Zlength_app. lia.
+    + list_solve.
+Qed.
+
+(*Need a pretty strong IH, so use sublists*)
+Lemma find_lost_found_aux_filter_sublist: forall f g pack (hi : nat),
+  (Z.of_nat hi <= Zlength pack) ->
+  Zlength (find_lost_found_aux f g [::] pack (Ziota 0 (Z.of_nat hi))) = 
+  Zlength (filter f (sublist 0 (Z.of_nat hi) pack)).
+Proof.
+  move => f g pack hi. elim : hi => [//= | hi IH Hlen].
+  have->: (Z.of_nat hi.+1) = (Z.of_nat hi + 1)%Z by lia. rewrite Ziota_plus_1; try lia.
+  rewrite sublist_last_1; try lia. rewrite find_lost_found_aux_app find_lost_found_aux_Zlength /= filter_cat /=.
+  rewrite IH //. rewrite Zlength_app !Z.add_0_l //.
+  case Hf: (f (Znth (Z.of_nat hi) pack)); list_solve.
+  lia.
+Qed.
+
+(*Now we can state the precondition in terms of filter, so a client doesn't need to know anything about
+  [find_lost]*)
+Lemma find_lost_filter: forall stats k,
+  k = Zlength stats ->
+  Zlength (find_lost stats k) = Zlength (filter (fun x => Z.eq_dec x 1) stats).
+Proof.
+  move => stats k Hk. have Hk0: 0 <= k by list_solve.
+  have ->: k = Z.of_nat (Z.to_nat k) by lia. rewrite find_lost_found_aux_filter_sublist; try lia.
+  rewrite sublist_same //. lia.
+Qed.
+
+(*Similar thing for parities*)
+
+(*TODO: maybe can make generic with f : A -> Z -> bool, and ignore 1st argument for lost/found*)
+
+Lemma find_parity_aux_app: forall f par base l1 l2,
+  find_parity_aux f par base (l1 ++ l2) =
+  find_parity_aux f par (find_parity_aux f par base l1) l2.
+Proof.
+  move => f par b l1 l2. by rewrite /find_parity_aux fold_left_app.
+Qed.
+
+Lemma find_parity_aux_filter_sublist: forall f (par : seq (option (seq Z))) (hi: nat),
+  (Z.of_nat hi <= Zlength par) ->
+  Zlength (find_parity_aux f par [::] (Ziota 0 (Z.of_nat hi))) = 
+  Zlength (filter isSome (sublist 0 (Z.of_nat hi) par)).
+Proof.
+  move => f par hi. elim : hi => [//= | hi IH Hlen].
+  have->: (Z.of_nat hi.+1) = (Z.of_nat hi + 1)%Z by lia. rewrite Ziota_plus_1; try lia.
+  rewrite sublist_last_1; try lia. rewrite find_parity_aux_app find_parity_aux_base_Zlength /= filter_cat /=.
+  rewrite IH //. 2: lia. rewrite Zlength_app !Z.add_0_l //.
+  by case Hf: (Znth (Z.of_nat hi) par).
+Qed.
+
+(*Now we can state the precondition in terms of filter, so a client doesn't need to know anything about
+  [find_parity_rows]*)
+Lemma find_parity_rows_filter: forall parities h,
+  Zlength parities = h ->
+  Zlength (find_parity_rows parities h) = Zlength (filter isSome parities).
+Proof.
+  move => pars h Hh. have Hh0: 0 <= h by list_solve.
+  have ->: h = Z.of_nat (Z.to_nat h) by lia. rewrite find_parity_aux_filter_sublist; try lia.
+  rewrite sublist_same //. lia.
+Qed.
+
+Lemma matrix_to_mx_inj: forall (mx1 mx2 : matrix F) m n,
+  wf_matrix mx1 m n ->
+  wf_matrix mx2 m n ->
+  matrix_to_mx m n mx1 = matrix_to_mx m n mx2 ->
+  mx1 = mx2.
+Proof.
+  move => mx1 mx2 m n [Hlen1 [Hn Hall1]] [Hlen2 [Hn' Hall2]]. rewrite -matrixP /eqrel => Hmx.
+  apply Znth_eq_ext. lia. move => i Hi. 
+  have Hleni: Zlength (Znth i mx1) = n by move: Hall1; rewrite Forall_Znth => /(_ i Hi).
+  have Hleni': Zlength (Znth i mx2) = n by move : Hall2; rewrite Hlen1 in Hi; rewrite -Hlen2 in Hi;
+    rewrite Forall_Znth => /(_ i Hi).
+  apply Znth_eq_ext. lia. move => j. rewrite Hleni => Hj.
+  rewrite Hlen1 in Hi. move: Hmx => /(_ (Z_to_ord Hi) (Z_to_ord Hj)). by rewrite !mxE /get /= !Z2Nat.id; try lia.
+Qed.
+
+(*TODO: MOVE*)
+Lemma map_2d_twice: forall {A B C: Type} (f: A -> B) (g: B -> C) (l: seq (seq A)),
+  map_2d g (map_2d f l) = map_2d (fun x => g (f x)) l.
+Proof.
+  move => A B C f g l. rewrite /map_2d !map_map /=. apply map_ext.
+  move => a. by rewrite map_map.
+Qed. 
+
+Lemma poly_of_int_byte: forall (z: Z),
+  0 <= z < Byte.max_unsigned ->
+  poly_of_int z %~ mod_poly = poly_of_int z.
+Proof.
+  move => z Hz. apply pmod_refl. apply mod_poly_PosPoly. apply polys_deg_bounded. rep_lia.
+Qed.
+
+(*TODO: move*)
+Lemma poly_to_int_inv: forall z,
+  0 <= z ->
+  poly_to_int (poly_of_int z) = z.
+Proof.
+  move => z Hz. symmetry. by rewrite -poly_of_int_to_int.
+Qed.
+
+Lemma norev_mx_int_to_poly_mx: forall (l: list (list Z)),
+  Forall2D (fun x => 0 <= x < Byte.max_unsigned) l ->
+  norev_mx (int_to_poly_mx l) = l.
+Proof.
+  move => l Hall. rewrite /norev_mx /int_to_poly_mx map_2d_twice /=. 
+  apply Znth_eq_ext; rewrite map_2d_Zlength1 //= => i Hi.
+  apply Znth_eq_ext; rewrite map_2d_Zlength2 // => j Hj.
+  move : Hall; rewrite Forall2D_Znth => /(_ i j Hi Hj) => Hij.
+  rewrite map_2d_Znth // poly_of_int_byte // poly_to_int_inv //. lia.
+Qed.
+
+(*TODO: move*)
+Print fill_row_list.
+Lemma fill_row_list_wf: forall m n d r row_d row_r,
+  0 <= m ->
+  0 <= n ->
+  wf_matrix (fill_row_list m n d r row_d row_r) m n.
+Proof.
+  move => m n d r row_d row_r. by apply mk_matrix_wf.
+Qed.
+
+Lemma fill_rows_list_aux_wf: forall m n d r to_fill l,
+  wf_matrix d m n ->
+  wf_matrix (fill_rows_list_aux m n d r to_fill l) m n.
+Proof.
+  move => m n d r to_fill l. apply mx_foldl_wf. move => mx' i Hwf'.
+  apply fill_row_list_wf. apply (matrix_m_pos Hwf'). apply (matrix_n_pos Hwf').
+Qed.
+
+(** Final Definition of Decoder and Correctness*)
+
+(*Our final decoder definition does everything in terms of lists and Z, making it useful for VST*)
+Definition decoder_list k c packets parities stats lens :=
+  norev_mx (crop_mx (decode_list_mx k c packets parities stats) lens).
+
+Theorem decoder_list_correct: forall k c h xh (data packets : list (list Z)) 
+  (parities : list (option (list Z))) (stats lens : list Z),
+  0 < k <= fec_n - 1 - fec_max_h ->
+  0 < c ->
+  0 < h <= fec_max_h ->
+  xh <= h ->
+  xh <= k ->
+  Zlength (filter (fun x => Z.eq_dec x 1) stats) = xh ->
+  Zlength (filter isSome parities) = xh ->
+  Zlength parities = h ->
+  Zlength stats = k ->
+  Zlength packets = k ->
+  Zlength data = k ->
+  Zlength lens = k ->
+  (forall i, 0 <= i < k -> Znth i lens = Zlength (Znth i data)) ->
+  Forall (fun l => Zlength l <= c) data ->
+  Forall2D (fun x => 0 <= x < Byte.max_unsigned) data ->
+  (forall i, 0 <= i < k -> Znth i stats <> 1%Z -> Znth i packets = Znth i data) ->
+  (forall l, In (Some l) parities -> Zlength l = c) ->
+  parities_valid k c parities data ->
+  decoder_list k c packets parities stats lens = data.
+Proof.
+  move => k c h xh data packets parities stats lens Hknh Hc Hh Hxhh Hxhk Hstatsxh Hparsxh Hparlen
+    Hstatlen Hpacklen Hdatalen Hlenslen Hlens Hdatac Hdatabound Hpackdata Hparlens Hparvalid.
+  rewrite /decoder_list. 
+  have Hmx: matrix_to_mx k c (decode_list_mx k c packets parities stats) = 
+    (matrix_to_mx k c (extend_mx k c (int_to_poly_mx data))). { 
+    apply (decoder_list_mx_correct Hknh Hc Hh Hxhh); try by [].
+    - by rewrite find_lost_filter.
+    - by rewrite find_parity_rows_filter. }
+  apply matrix_to_mx_inj in Hmx. 
+  - rewrite Hmx. have->: k = Zlength (int_to_poly_mx data) by rewrite int_to_poly_mx_length1 Hdatalen.
+    rewrite crop_extend; try lia.
+    + by apply norev_mx_int_to_poly_mx.
+    + rewrite int_to_poly_mx_length1; lia.
+    + move => i. rewrite int_to_poly_mx_length1 => Hi.
+      rewrite int_to_poly_mx_length2. apply Hlens. lia.
+    + move: Hdatac; rewrite !Forall_Znth => Hall x. rewrite int_to_poly_mx_length1 => Hx.
+      rewrite int_to_poly_mx_length2. by apply Hall.
+  - apply fill_rows_list_aux_wf. apply extend_mx_wf; lia.
+  - apply extend_mx_wf; lia.
 Qed.
 
 End Decoder.
