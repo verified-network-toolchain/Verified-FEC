@@ -109,6 +109,12 @@ Proof.
     + by rewrite leqNgt Hi.
 Qed.
 
+Lemma lpoly_Poly_eq: forall (p q : lpoly),
+  Poly p = Poly q -> p = q.
+Proof.
+  move => p q. by rewrite !polyseqK.
+Qed. 
+
 Lemma lpolyP: forall (p q : lpoly), nth 0 p =1 nth 0 q <-> p = q.
 Proof.
   move => p q. apply polyP.
@@ -223,6 +229,12 @@ Proof.
   by rewrite coefCM lpoly_sc_mul_aux_full_nth.
 Qed.
 
+Lemma lpoly_sc_mul_1: forall (l: lpoly),
+  lpoly_sc_mul l 1 = l.
+Proof.
+  move => l. apply lpoly_Poly_eq. by rewrite lpoly_sc_mul_spec GRing.mul1r.
+Qed. 
+
 (*Now similarly, multiply by x^n*)
 Definition lpoly_shift_aux (s: seq F) (n: nat) :=
   nseq n 0 ++ s.
@@ -323,6 +335,12 @@ Proof.
       /( _ l n); rewrite Hl.
 Qed.
 
+Lemma lpoly_sc_mul_shift_1: forall (l: lpoly) n,
+  lpoly_sc_mul_shift l 1 n = lpoly_shift l n.
+Proof.
+  move => l n. apply lpoly_Poly_eq. by rewrite lpoly_sc_mul_shift_spec lpoly_shift_spec GRing.mul1r.
+Qed.
+
 End Shift.
 
 Section Monomial.
@@ -406,10 +424,7 @@ Proof.
 Qed.
 
 Definition lpoly_redivp (p q: lpoly) : nat * lpoly * lpoly :=
-  match (polyseq q) with
-  | nil => (0%N, 0, p) 
-  | _ :: _ => lpoly_redivp_rec q 0 (seq_to_lpoly nil) p (size p)
-  end.
+  if nilp q then (0%N, 0, p) else lpoly_redivp_rec q 0 (seq_to_lpoly nil) p (size p).
 
 Lemma lpoly_zero: forall (l: lpoly),
   (Poly l == 0) = nilp l.
@@ -428,65 +443,163 @@ Proof.
     rewrite lpoly_redivp_rec_spec. f_equal. by rewrite polyseqK.
 Qed.
 
+(*For computability reasons, we don't want to use "==". Luckily we are in a field, so testing
+  for a unit is easily computable*)
+Lemma f_eq_dec : forall (x y : F), { x = y } + { x <> y}.
+Proof.
+  move => x y. apply (decP eqP).
+Defined.
+
 Definition lpoly_edivp (p q: lpoly) : nat * lpoly * lpoly :=
   let '(k, d, r) := lpoly_redivp p q in
   let lc := last 0 q in
-  if lc \is a GRing.unit then (0%N, lc ^- k *: d, lc ^-k *: r) else (k, d, r).
+  if (f_eq_dec lc 0) then (k, d, r) else (0%N, (lpoly_sc_mul d (lc ^- k)), lpoly_sc_mul r (lc ^-k)). 
 
 Lemma lpoly_edivp_spec: forall p q,
   tuple_to_poly (lpoly_edivp p q) = Pdiv.Field.edivp (Poly p) (Poly q).
 Proof.
   move => p q. rewrite /lpoly_edivp /Pdiv.Field.edivp locked_withE /Pdiv.Field.edivp_expanded_def !lead_coef_Poly.
   rewrite -lpoly_redivp_spec /= /tuple_to_poly.
-  case Hdiv: (lpoly_redivp p q) => [[k d] r] . 
-  case Hun: ( last 0 q \is a GRing.unit).
-  - by rewrite !polyseqK.
-  - by [].
+  case Hdiv: (lpoly_redivp p q) => [[k d] r] .
+  rewrite GRing.unitfE. case: (f_eq_dec (last 0 q) 0) => [Hlast /= | Hlast].
+  - by rewrite Hlast eq_refl /=.
+  - rewrite /=. apply (introF eqP) in Hlast. rewrite Hlast !polyseqK /=. f_equal. f_equal.
+    by rewrite lpoly_sc_mul_spec /= mul_polyC polyseqK.
+    by rewrite lpoly_sc_mul_spec /= mul_polyC polyseqK.
 Qed.
 
 End Div.
 
-
-(*TODO: When working over GF(2), we can give simpler functions because all leading coefficients are 1. This
-  results in more efficient code*)
-
-
-
-(*
-Definition lpoly_to_poly : lpoly -> {poly F} := Poly. (*id*)
-Definition poly_to_lpoly : {poly F} -> lpoly := id.
-
-Lemma lpoly_to_poly_inv: forall (l: lpoly), poly_to_lpoly (lpoly_to_poly l) = l.
-Proof.
-  move => l. rewrite /poly_to_lpoly /lpoly_to_poly. apply polyseqK.
-Qed.
-
-Lemma poly_to_poly_inv: forall (p: {poly F}), lpoly_to_poly (poly_to_lpoly p) = p.
-Proof.
-  move => p. apply polyseqK. 
-Qed.*)
-
-
 End LPoly.
 
-(*Tests for computability*)
+(*We will be working over GF(2), so we can give simpler functions because all leading coefficients are 1. The
+  code will be more efficient, which is important because this will be run many times in a loop*)
+Require Import BoolField.
+
+Section BoolPolyDiv.
+
+Local Open Scope ring_scope.
+
+Definition F := bool_fieldType.
+
+(*Some facts about the field of booleans*)
+Lemma bool_1_0: forall (f: F),
+  (f != 0) = (f == 1).
+Proof.
+  move => f. by case : f.
+Qed.
+
+Lemma bool_lc: forall (l: lpoly F),
+  ~~(nilp l) ->
+  last 0 l = 1.
+Proof.
+  move => l. case : l => [l /=]. case : l => [// | h t /= Hlast Htriv]. apply /eqP. by rewrite -bool_1_0.
+Qed.
+
+Lemma neg_one: GRing.one F = - 1.
+Proof.
+  by [].
+Qed.
+
+
+Definition bool_redivp_rec (l: lpoly F) :=
+  let sq := size l in
+  fix loop (qq r : lpoly F) (n: nat) {struct n} : lpoly F * lpoly F :=
+    if size r < sq then (qq, r)
+    else
+      let qq1 := lpoly_add qq (lpoly_mono F (size r - sq)%N) in
+      let r1 := lpoly_add r (lpoly_shift l (size r - sq)) in
+      match n with
+      | 0 => (qq1, r1)
+      | n1.+1 => loop qq1 r1 n1
+      end.
+
+(*TODO: move*)
+Lemma size_not_nil: forall {A: Type} (l: seq A),
+  (0 < size l) = ~~ (nilp l).
+Proof.
+  move => A l. case Hsz: (size l) => [/= | n /=].
+  - apply size0nil in Hsz. by subst.
+  - move: Hsz. by case : l.
+Qed.
+
+(*TODO: move maybe, only in separate lemma so I don't need to do it twice in the following proof*)
+Lemma larger_not_nil: forall {A: Type} (l1 l2: seq A),
+  ~~ nilp l2 ->
+  (size l1 < size l2) = false ->
+  ~~ nilp l1.
+Proof.
+  move => A l1 l2 Hl2 Hsz. rewrite ltnNge in Hsz. apply negbFE in Hsz. move : Hl2;
+  rewrite -!size_not_nil => Hl2. by apply (ltn_leq_trans Hl2).
+Qed.
+
+(*Last two elts of a tuple*)
+Definition last_two {A B C : Type} (x: A * B * C) : B * C :=
+  match x with
+  | (a, b, c) => (b, c)
+  end.
+
+Lemma bool_redivp_rec_spec: forall (l: lpoly F) q r n k,
+  ~~(nilp l) ->
+  (bool_redivp_rec l q r n) = last_two (lpoly_redivp_rec l k q r n).
+Proof.
+  move => l q r n. move: l q r. elim : n => [/= l q r k Hl | n /= IH l q r k Hl].
+  - case Hsz: (size r < size l).
+    + by [].
+    + rewrite /= !bool_lc //. by rewrite !lpoly_sc_mul_1 -neg_one lpoly_sc_mul_shift_1. by apply (larger_not_nil Hl). 
+  - case Hsz: (size r < size l).
+    + by [].
+    + rewrite /= !bool_lc //. by rewrite !lpoly_sc_mul_1 /= -neg_one lpoly_sc_mul_shift_1 -IH.
+      by apply (larger_not_nil Hl).
+Qed.
+
+Definition bool_edivp (p q : lpoly F) : lpoly F * lpoly F :=
+  if nilp q then (0, p) else bool_redivp_rec q (seq_to_lpoly nil) p (size p).
+
+Lemma bool_edivp_spec: forall p q,
+  bool_edivp p q = last_two (lpoly_edivp p q).
+Proof.
+  move => p q. rewrite /bool_edivp /lpoly_edivp /lpoly_redivp /=.
+  case Hq: (nilp q) => [/= | /=].
+  - case: (f_eq_dec (last 0 q) 0) => [Hz //= | Hz /=].
+    move : Hz Hq. case : q => q. by case : q.
+  - rewrite (bool_redivp_rec_spec _ _ _ 0); last first. by rewrite Hq.
+    case Hr: (lpoly_redivp_rec q 0 (seq_to_lpoly [::]) p (size p)) => [ [k d] r].
+    case : (f_eq_dec (last 0 q) 0) => [Hz //= | Hz /=].
+    rewrite !bool_lc; last first. by rewrite Hq. by rewrite !GRing.expr1n !GRing.invr1 !lpoly_sc_mul_1.
+Qed.
+
+(*Test for computability*)
+(*x^4+x^3+1 = (x^2+1) * (x^2 + x + 1) + x in GF(2)*)
+Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
+  (seq_to_lpoly [:: true; false; true])).1).
+Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
+  (seq_to_lpoly [:: true; false; true])).2).
+
+(*TODO: may need lemmas about equivalence with mathcomp mod (which is easy)*)
+
+End BoolPolyDiv.
+
+(*Tests for computability for original functions*)
 
 Require Import BoolField.
 
-Check lpoly_redivp_rec.
-
 Eval compute in (lpoly_to_seq (lpoly_redivp_rec (seq_to_lpoly [:: true; false; true]) 0%N (seq_to_lpoly nil)
   (seq_to_lpoly [:: true; true; false; true]) 4).1.2).
-
+(*
 Eval compute in rem_trail_zero(lpoly_add_aux (lpoly_sc_mul_aux_full (nil) true)
             (lpoly_sc_mul_aux_full (lpoly_mono_aux bool_fieldType (4 - 3)) true)).
 
 Eval compute in (nilp ((seq_to_lpoly [:: true; false; true]))).
-
+*)
 Eval compute in (lpoly_to_seq (lpoly_redivp (seq_to_lpoly [:: true; true; false; true]) 
   (seq_to_lpoly [:: true; true])).1.2).
 
 (*need to remove unit check (could change to =0 for general case*)
+
+Eval compute in lpoly_to_seq(lpoly_add (lpoly_sc_mul (seq_to_lpoly [::]) true)
+            (lpoly_sc_mul (lpoly_mono bool_fieldType (4 - 3)) true)).
+
 
 Eval compute in (lpoly_to_seq (lpoly_edivp (seq_to_lpoly [:: true; true; false; true]) 
   (seq_to_lpoly [:: true; false; true])).1.2).
@@ -495,7 +608,3 @@ Eval compute in (lpoly_to_seq (lpoly_add (seq_to_lpoly ( [:: true; false; false]
   (seq_to_lpoly( [:: true; false; true])))).
 
 Eval compute in (lpoly_to_seq (lpoly_shift (seq_to_lpoly ([:: true; false; true])) 3)).
-
-
-Eval compute in (poly_to_lpoly 
-  (@lpoly_to_poly bool_fieldType ([:: true; false; false]) + Poly [:: true; false; false])%R).
