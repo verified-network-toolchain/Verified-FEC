@@ -1,5 +1,6 @@
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
+Require Import mathcomp.algebra.finalg.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -59,3 +60,5 @@ Proof.
 Qed.
 
 Canonical bool_fieldType := FieldType bool bool_fieldMixin.
+
+Canonical bool_finFieldType := Eval hnf in [finFieldType of bool].

@@ -2,6 +2,7 @@ From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.poly.
 Require Import mathcomp.algebra.polydiv.
+Require Import mathcomp.algebra.finalg.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -13,14 +14,16 @@ Section Field.
 
 Local Open Scope ring_scope.
 
-Variable F : fieldType.
+(*We only work with polynomials over finite fields, the proof that this is a field is easier. In particular,
+  we will want to prove that a certain map is bijective, and the injectivity is clear. We use [injF_bij]
+  to prove that the map is therefore bijective. And since we are constructing finite fields anyway, it is
+  OK to assume that the base field is finite*)
+Variable F : finFieldType.
 
 Variable p : {poly F}.
 Variable Hirred: irreducible_poly p.
 (*Don't want p to be a constant*)
 Variable Hnonconst: 1 < size p.
-
-Print Polynomial.
 
 (*The type of polynomials of degree less than p*)
 Inductive qpoly : predArgType := Qpoly (qp : {poly F}) of (size qp < size p).
@@ -34,11 +37,36 @@ Canonical qpoly_eqType := Eval hnf in EqType qpoly qpoly_eqMixin.
 
 Definition qpoly_choiceMixin := [choiceMixin of qpoly by <:].
 Canonical qpoly_choiceType := Eval hnf in ChoiceType qpoly qpoly_choiceMixin.
-(*These didn't work for some reason but its ok*)
-(*
+
 Definition qpoly_countMixin := [countMixin of qpoly by <:].
 Canonical qpoly_countType := Eval hnf in CountType qpoly qpoly_countMixin.
-Canonical qpoly_subCountType := [subCountType of qpoly].*)
+Canonical qpoly_subCountType := [subCountType of qpoly].
+
+Lemma qpoly_eq: forall (p1 p2: {poly F}) (Hp1: size p1 < size p) (Hp2: size p2 < size p),
+  p1 = p2 ->
+  Qpoly Hp1 = Qpoly Hp2.
+Proof.
+  move => p1 p2 Hp1 Hp2 Hp12. subst. f_equal. apply bool_irrelevance.
+Qed.
+
+(*Want to prove that this is finite. We do this by proving a mapping into [bseq (size p)]
+  (defined in CommonSSR.v)*)
+
+Definition qpoly_to_bseq (q: qpoly) : bseq F (size p) :=
+  exist (fun x => size x < size p) (qp q) (qsz q).
+
+Definition bseq_to_qpoly (b: bseq F (size p)) : option qpoly :=
+  insub (Poly b).
+
+Lemma bseq_qpoly_cancel: pcancel (qpoly_to_bseq) (bseq_to_qpoly).
+Proof.
+  move => x. rewrite /qpoly_to_bseq /bseq_to_qpoly /=.
+  rewrite insubT /=. rewrite polyseqK. apply qsz. case : x => [q Hq /= hszq].
+  f_equal. apply qpoly_eq. by rewrite polyseqK.
+Qed.
+
+Definition qpoly_finMixin := PcanFinMixin bseq_qpoly_cancel.
+Canonical qpoly_finType := Eval hnf in FinType qpoly qpoly_finMixin.
 
 (*First, prove this is a Z Module*)
 Lemma q0_bound: size (0 : {poly F}) < size p.
@@ -67,13 +95,6 @@ Proof.
 Qed. 
 
 Definition qopp (q: qpoly) := Qpoly (qopp_bound q).
-
-Lemma qpoly_eq: forall (p1 p2: {poly F}) (Hp1: size p1 < size p) (Hp2: size p2 < size p),
-  p1 = p2 ->
-  Qpoly Hp1 = Qpoly Hp2.
-Proof.
-  move => p1 p2 Hp1 Hp2 Hp12. subst. f_equal. apply bool_irrelevance.
-Qed.
 
 Lemma qpoly_qsz: forall (q: qpoly),
   Qpoly (qsz q) = q.
@@ -108,3 +129,4 @@ Definition qpoly_zmodmixin := ZmodMixin qaddA qaddC qaddFq qaddqq.
 Canonical qpoly_zmodtype := ZmodType qpoly qpoly_zmodmixin.
 
 (*TODO: do ring axioms, then will take a bit of work to prove field*)
+End Field.

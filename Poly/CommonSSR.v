@@ -241,5 +241,209 @@ Proof.
   by rewrite IH.
 Qed.
 
+(** Bounded lists of finTypes are finite *)
+Section BoundedSeq.
 
+Variable T : finType.
 
+Section TypeDefs.
+
+Variable n : nat.
+
+Definition bseq : Type := { s: seq T | size s < n}.
+Coercion bseq_to_seq (b: bseq) : seq T := proj1_sig b.
+
+Definition bseq_eqMixin := Eval hnf in [eqMixin of bseq by <:].
+Canonical bseq_eqType := Eval hnf in EqType bseq bseq_eqMixin.
+
+Definition bseq_choiceMixin := [choiceMixin of bseq by <:].
+Canonical bseq_choiceType := Eval hnf in ChoiceType bseq bseq_choiceMixin.
+
+Definition bseq_countMixin := [countMixin of bseq by <:].
+Canonical bseq_countType := Eval hnf in CountType bseq bseq_countMixin.
+(*don't need bf of [sig_subCountType]*)
+(*
+Canonical bseq_subCountType := [subCountType of bseq].*)
+
+End TypeDefs.
+
+(*To show this is finite, we need to construct a list of all instances of this type. This is a bit complicated.*)
+Definition cons_one {A: Type} (x: A) (c: seq (seq A)) :=
+  map (fun y => x :: y) c.
+
+Lemma cons_oneP: forall {A: eqType} (x: A) (c: seq (seq A)) (s: seq A),
+  reflect (exists2 l1 : seq A, l1 \in c & s = x :: l1) (s \in cons_one x c).
+Proof.
+  move => A x c s. rewrite /cons_one. apply mapP.
+Qed.
+
+Lemma cons_one_uniq: forall {A: eqType} (x: A) c,
+  uniq (cons_one x c) = uniq c.
+Proof.
+  move => A x c. rewrite /cons_one. apply map_inj_uniq. by move => a b [Heq].
+Qed.
+
+Definition cons_all_aux {A: Type}  (c: seq (seq A)) (l: seq A) : seq (seq A) :=
+  foldr (fun x acc => (cons_one x c) ++ acc) nil l.
+
+(*Probably a way to use finite exists, maybe see*)
+Lemma cons_all_aux_in: forall {A: eqType} (c: seq (seq A)) l s,
+  s \in (cons_all_aux c l) <-> exists x l1, (x \in l) && (l1 \in c) && (s == x :: l1).
+Proof.
+  move => A c l s. elim : l => [//= | h t /= IH].
+  - rewrite in_nil. split => [// | //[x [y H]] //].
+  - rewrite mem_cat. split.
+    + move => /orP[/cons_oneP [l1 Hl1 Hhl1] | Hst].
+      * subst. exists h. exists l1. by rewrite in_cons !eq_refl Hl1.
+      * apply IH in Hst. case : Hst => [x [l1 /andP[/andP[Hxt Hl1c] /eqP Hsxl1]]]. subst.
+        exists x. exists l1. by rewrite in_cons Hxt orbT Hl1c eq_refl.
+    + move => [x [l1 /andP[/andP[Hxt Hl1c] /eqP Hsxl1]]]. subst. apply /orP.
+      move: Hxt; rewrite in_cons => /orP[/eqP Hxh | Hxt].
+      * subst. left. apply /cons_oneP. exists l1. by rewrite Hl1c. by []. 
+      * right. apply IH. exists x. exists l1. by rewrite Hxt Hl1c eq_refl.
+Qed.
+
+Lemma cons_all_aux_uniq: forall {A: eqType} (c: seq (seq A)) l,
+  uniq l ->
+  uniq c ->
+  uniq (cons_all_aux c l).
+Proof.
+  move => A c l Hl Hc. move: Hl. elim : l => [//= | h t /= IH /andP [Hht Hunt]].
+  rewrite cat_uniq cons_one_uniq Hc /= IH // andbT. apply /hasPn => l Hl.
+  case Hin:(mem (cons_one h c) l) => [|//]. 
+  have /cons_oneP [h1 Hhc Hl1]: l \in (cons_one h c) by [].
+  move : Hl; rewrite cons_all_aux_in => [[x [l2 /andP[/andP[Hxt Hl21] /eqP Hl]]]]. subst.
+  case : Hl => [Hxh Hh12]. subst. by rewrite Hxt in Hht.
+Qed.
+
+Definition cons_all (c: seq (seq T)) : seq (seq T) :=
+  cons_all_aux c (enum T).
+
+Lemma in_enum: forall (x: T),
+  x \in (enum T).
+Proof.
+  move => x. rewrite enumT. pose proof (@enumP T) as Hfin. move: Hfin; rewrite /Finite.axiom => /(_ x) Hx.
+  case Hin: (x \in Finite.enum T) => [// | ].
+  have / count_memPn Hnotin: (x \notin Finite.enum T) by rewrite Hin. by rewrite Hnotin in Hx.
+Qed.
+
+Lemma cons_all_in: forall (c: seq (seq T)) s,
+  s \in cons_all c <-> exists x l1, (l1 \in c) && (s == x :: l1).
+Proof.
+  move => c s. rewrite cons_all_aux_in. split.
+  - move => [x [l1 /andP[/andP[Hxt Hl1c] /eqP Hsxl1]]]. subst. exists x. exists l1. by rewrite Hl1c eq_refl.
+  - move => [x [l1 /andP[Hl1c /eqP Hs]]]. subst. exists x. exists l1. by rewrite in_enum Hl1c eq_refl.
+Qed.
+
+Lemma cons_all_uniq: forall (c: seq (seq T)),
+  uniq c ->
+  uniq (cons_all c).
+Proof.
+  move => c Hunc. apply cons_all_aux_uniq. by rewrite enum_uniq. by [].
+Qed.
+
+(*First list contains all lists of length <= n, second list contains all lists of length = n*)
+Fixpoint bseq_seqs (n: nat) : seq (seq T) * seq (seq T) :=
+  match n with
+  | 0 => ([:: nil], [:: nil])
+  | n'.+1 => let (leq_seq, eq_seq) := (bseq_seqs n') in
+             let plus_1_seq := cons_all eq_seq in
+             (leq_seq ++ plus_1_seq, plus_1_seq)
+  end.
+
+(*First we prove the correctness of the right half (which is independent of the rest)*)
+Lemma bseq_seqs_snd: forall n (s: seq T),
+  (s \in (bseq_seqs n).2) = (size s == n).
+Proof.
+  move => n s. move: s. elim : n => [//= s | n /= IH s ].
+  - by rewrite in_cons in_nil orbF size_eq0.
+  - case Hbseq: (bseq_seqs n) => [ leq_seq eq_seq /=].
+    case Hin: (s \in cons_all eq_seq).
+    + have: (is_true (s \in cons_all eq_seq)) by rewrite Hin. rewrite cons_all_in => [[x [l1 /andP[Hl1 /eqP Hs]]]].
+      subst. move: IH => /(_ l1). by rewrite Hbseq /= Hl1.
+    + case Hsz: (size s == n.+1) => [|//].
+      move: Hsz Hin. case : s => [// | h t /=]. rewrite eqSS => Hsz Hin.
+      have: (h :: t \in cons_all eq_seq). rewrite cons_all_in. exists h. exists t.
+      move: IH => /(_ t). rewrite Hbseq /= Hsz; move->. by rewrite eq_refl.
+      by rewrite Hin.
+Qed.
+
+Lemma bseq_seqs_fst: forall n (s: seq T),
+  (s \in (bseq_seqs n).1) = (size s <= n).
+Proof.
+  move => n s. move: s. elim : n => [//= s | n /= IH s].
+  - by rewrite leqn0 in_cons in_nil orbF size_eq0.
+  - case Hbseq: (bseq_seqs n) => [ leq_seq eq_seq /=].
+    have Hlast: (s \in cons_all eq_seq) = (size s == n.+1)
+      by rewrite -bseq_seqs_snd /= Hbseq /=.
+    by rewrite mem_cat leq_eqVlt Hlast ltnS -IH Hbseq /= orbC.
+Qed.
+
+Lemma bseq_seq_snd_uniq: forall n,
+  uniq (bseq_seqs n).2.
+Proof.
+  move => n. elim : n => [//= | n /= IH].
+  case Hbseq: (bseq_seqs n) => [ leq_seq eq_seq /=].
+  move: IH; rewrite Hbseq /= => IH. by rewrite cons_all_uniq.
+Qed.
+
+Lemma bseq_seq_fst_uniq: forall n,
+  uniq (bseq_seqs n).1.
+Proof.
+  move => n. elim : n => [//= | n /= IH].
+  case Hbseq: (bseq_seqs n) => [ leq_seq eq_seq /=].
+  have Heq: eq_seq = (bseq_seqs n).2 by rewrite Hbseq.
+  move: IH; rewrite Hbseq /= => IH. rewrite cat_uniq IH /= cons_all_uniq //; last first.
+  rewrite Heq; apply bseq_seq_snd_uniq. rewrite andbT.
+  have Hcons: (cons_all eq_seq) = (bseq_seqs n.+1).2 by rewrite /= Hbseq.
+  rewrite Hcons.
+  apply /hasPn => l. rewrite bseq_seqs_snd => /eqP Hlsz.
+  case Hmem: (mem leq_seq l) => [|//].
+  have Hin : l \in leq_seq by [].
+  have: (size l <= n) by rewrite -bseq_seqs_fst Hbseq /=. by rewrite Hlsz ltnn.
+Qed. 
+
+(*Do this to avoid dependent type issues*)
+Definition bseq_seq_full_aux (n: nat) (m: nat) (Hmn: n = m) : seq (bseq n) :=
+  match m with
+  | 0 => pmap insub nil
+  | m'.+1 => pmap insub (bseq_seqs m').1
+  end.
+
+Definition bseq_seq_full (n: nat) := bseq_seq_full_aux (erefl n). 
+
+(*Prove finType*)
+Lemma bseq_seq_full_aux_uniq: forall n m (Hmn: n = m), uniq (@bseq_seq_full_aux n m Hmn).
+Proof.
+  move => n m. move: n. case : m => [//= | m /= n Hmn]. apply pmap_sub_uniq.
+  by apply bseq_seq_fst_uniq.
+Qed.
+
+Lemma bseq_seq_full_aux_axiom: forall n m (Hmn: n = m), Finite.axiom (@bseq_seq_full_aux n m Hmn).
+Proof.
+  move => n m. move: n. rewrite /Finite.axiom. case : m => [//= x Hx0 [h Hl] // | m /= n Hmn x]. by subst.
+  rewrite count_uniq_mem. 2: { apply pmap_sub_uniq. apply bseq_seq_fst_uniq. }
+  rewrite mem_pmap_sub. case : x => [l Hl /=].
+  rewrite bseq_seqs_fst -ltnS. subst. by rewrite Hl.
+Qed.
+
+Lemma bseq_seq_full_uniq: forall n, uniq (bseq_seq_full n).
+Proof.
+  move => n. apply bseq_seq_full_aux_uniq.
+Qed.
+
+Lemma bseq_seq_full_axiom: forall n, Finite.axiom (bseq_seq_full n).
+Proof.
+  move => n. by apply bseq_seq_full_aux_axiom.
+Qed.
+
+Section BseqFinType.
+
+Variable n : nat.
+
+Definition bseq_finMixin := FinMixin (@bseq_seq_full_axiom n).
+Canonical bseq_finType := FinType (bseq n) bseq_finMixin.
+
+End BseqFinType.
+
+End BoundedSeq.
