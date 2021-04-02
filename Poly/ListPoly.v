@@ -387,7 +387,7 @@ Definition tuple_to_poly (x: (nat * lpoly * lpoly)) : nat * {poly F} * {poly F} 
   | (n, p1, p2) => (n, Poly p1, Poly p2)
   end.
 
-Lemma size_Poly: forall (l: lpoly),
+Lemma size_Poly_lpoly: forall (l: lpoly),
   size (Poly l) = size l.
 Proof.
   move => l. f_equal. by rewrite polyseqK.
@@ -403,13 +403,13 @@ Lemma lpoly_redivp_rec_spec: forall l k qq r n,
   tuple_to_poly (lpoly_redivp_rec l k qq r n) = Pdiv.Ring.redivp_rec (Poly l) k (Poly qq) (Poly r) n.
 Proof.
   move => l k qq r n. move: l k qq r. elim : n => [/= l k qq r | n /= IH l k qq r].
-  - rewrite !size_Poly. case Hsz: (size r < size l).
+  - rewrite !size_Poly_lpoly. case Hsz: (size r < size l).
     + by [].
     + rewrite /tuple_to_poly !lpoly_add_spec !lpoly_sc_mul_spec !lead_coef_Poly !lpoly_mono_spec
       lpoly_sc_mul_shift_spec /=. f_equal. 
       * f_equal. rewrite GRing.mulrC. f_equal. by rewrite mul_polyC.
       * rewrite GRing.mulrC. f_equal. by rewrite -!mul_polyC polyCN !GRing.mulrA !GRing.mulNr.
-  - rewrite !size_Poly. case Hsz: (size r < size l).
+  - rewrite !size_Poly_lpoly. case Hsz: (size r < size l).
     + by [].
     + rewrite !lead_coef_Poly IH. f_equal.
       * by rewrite !lpoly_add_spec !lpoly_sc_mul_spec !lpoly_mono_spec -!mul_polyC GRing.mulrC.
