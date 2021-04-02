@@ -242,6 +242,7 @@ Proof.
 Qed.
 
 (** Bounded lists of finTypes are finite *)
+(*TODO: see if we actually need this*)
 Section BoundedSeq.
 
 Variable T : finType.
@@ -447,3 +448,19 @@ Canonical bseq_finType := FinType (bseq n) bseq_finMixin.
 End BseqFinType.
 
 End BoundedSeq.
+
+Lemma bijective_card: forall {T T': finType} (f: T -> T'),
+  bijective f ->
+  #|T| = #|T'|.
+Proof.
+  move => T T' f Hb. have Htt': #|T| <= #|T'|. apply (leq_card f). by apply bij_inj.
+  case : Hb => g Hfg Hgf. have Htt'': #|T'| <= #|T|. apply (leq_card g). apply (can_inj Hgf).
+  apply /eqP. by rewrite eqn_leq Htt' Htt''.
+Qed.
+
+Lemma tuple_eq: forall {A: Type} (n: nat) (t1 t2: n.-tuple A),
+  tval t1 = tval t2 ->
+  t1 = t2.
+Proof.
+  move => A n [l1 Hl1] [l2 Hl2]. rewrite /= => Hl12. subst. f_equal. apply bool_irrelevance.
+Qed. 

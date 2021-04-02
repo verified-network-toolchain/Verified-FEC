@@ -58,24 +58,113 @@ Proof.
   move => [p1 Hp1] [p2 Hp2] /=. apply qpoly_eq.
 Qed.
 
-(*Want to prove that this is finite. We do this by proving a mapping into [bseq (size p)]
-  (defined in CommonSSR.v)*)
+(** Size of the Finite Field*)
 
-Definition qpoly_to_bseq (q: qpoly) : bseq F (size p) :=
-  exist (fun x => size x < size p) (qp q) (qsz q).
+(*We want to prove that the cardinality of this set is |F|^(deg p) (and therefore that this
+  set is finite). We do so with a mapping from qpolys to tuples of length (size p).-1*)
 
-Definition bseq_to_qpoly (b: bseq F (size p)) : option qpoly :=
-  insub (Poly b).
+Definition qpoly_to_n_seq (q: qpoly) : seq F :=
+  (qp q) ++ nseq ((size p).-1 - size (qp q)) 0.
 
-Lemma bseq_qpoly_cancel: pcancel (qpoly_to_bseq) (bseq_to_qpoly).
+Lemma p_gt_0: 0 < size p.
 Proof.
-  move => x. rewrite /qpoly_to_bseq /bseq_to_qpoly /=.
-  rewrite insubT /=. rewrite polyseqK. apply qsz. case : x => [q Hq /= hszq].
-  f_equal. apply qpoly_eq. by rewrite polyseqK.
+  have H01: 0 < 1 by []. apply (ltn_trans H01). apply Hirred.
 Qed.
 
-Definition qpoly_finMixin := PcanFinMixin bseq_qpoly_cancel.
+Lemma qpoly_to_n_seq_size: forall q, size (qpoly_to_n_seq q) == (size p).-1.
+Proof.
+  move => q. apply /eqP. rewrite /qpoly_to_n_seq size_cat size_nseq subnKC //. case : q => [x Hx /=].
+  by rewrite -ltn_pred // p_gt_0. 
+Qed.
+
+Definition qpoly_to_tuple q : ((size p).-1).-tuple F := Tuple (qpoly_to_n_seq_size q).
+
+Definition tuple_to_poly (t: ((size p).-1).-tuple F) : {poly F} :=
+  Poly (rem_trail_zero (tval t)).
+
+(*TODO: maybe move*)
+Lemma rem_trail_zero_polyseq: forall (l: seq F),
+  polyseq (Poly (rem_trail_zero l)) = (rem_trail_zero l).
+Proof.
+  move => l. have: polyseq (Poly (Polynomial (rem_trail_zero_wf l))) = rem_trail_zero l by rewrite polyseqK /=.
+  by [].
+Qed.
+
+(*TODO: move*)
+Lemma dropWhileEnd_size: forall {A: eqType} (p: pred A) (l: seq A),
+  size (dropWhileEnd p l) <= size l.
+Proof.
+  move => A pr l. elim : l => [//= | h t /= IH ].
+  case : (nilp (dropWhileEnd pr t) && pr h) => [//|/=].
+  by rewrite ltnS.
+Qed.
+
+Lemma rem_trail_zero_size: forall (l: seq F),
+  size (rem_trail_zero l) <= size l.
+Proof.
+  move => l. apply dropWhileEnd_size.
+Qed. 
+
+Lemma tuple_to_poly_size: forall t,
+  size (tuple_to_poly t) < size p.
+Proof.
+  move => t. rewrite /tuple_to_poly. have Ht: size t = ((size p).-1) by apply size_tuple.
+  have Hlt: size t < size p. rewrite Ht. apply pred_lt. by rewrite p_gt_0.
+  rewrite rem_trail_zero_polyseq. by apply (leq_ltn_trans (rem_trail_zero_size t)).
+Qed.
+
+Definition tuple_to_qpoly (t: ((size p).-1).-tuple F) : qpoly := Qpoly (tuple_to_poly_size t).
+
+Lemma tuple_qpoly_cancel: cancel (tuple_to_qpoly) (qpoly_to_tuple).
+Proof.
+  move => x. rewrite /qpoly_to_tuple /tuple_to_qpoly /=. apply tuple_eq. rewrite /=.
+  pose proof (dropWhileEnd_spec (eq_op^~ 0) x 1 (dropWhileEnd (eq_op^~ 0) x)) as Hdrop. 
+  case : Hdrop => [Hdrop Htriv]; move => {Htriv}. case : Hdrop => [//|[l1 [Hx Hinl1 Hlast]]].
+  rewrite /qpoly_to_n_seq /= /tuple_to_poly /= /rem_trail_zero.
+  rewrite {3}Hx. f_equal.
+  - apply rem_trail_zero_polyseq.
+  - rewrite rem_trail_zero_polyseq /rem_trail_zero.
+    have Hsz: size (nseq ((size p).-1 - size (dropWhileEnd (eq_op^~ 0) x)) (GRing.zero F)) = size l1. {
+      rewrite size_nseq. have: size x = ((size p).-1) by apply size_tuple. rewrite {1}Hx size_cat addnC => Hszx.
+      rewrite -{1}Hszx -addnBA. by rewrite subnn addn0. by rewrite leqnn. }
+    apply (@eq_from_nth _ 0).
+    + by [].
+    + move => i. rewrite Hsz => Hi. rewrite nth_nseq. rewrite size_nseq in Hsz. rewrite Hsz Hi.
+      apply /eqP. rewrite eq_sym. apply Hinl1. by rewrite mem_nth.
+Qed.
+
+(*TODO: move*)
+Lemma dropWhileEnd_last: forall {A: eqType} (p: pred A) (l: seq A) (x: A),
+  ~~ p (last x l) ->
+  dropWhileEnd p l = l.
+Proof.
+  move => A pr l x Hlast. rewrite (dropWhileEnd_spec pr l x). split. exists nil. split. by rewrite cats0.
+  by []. by rewrite Hlast.
+Qed. 
+  
+Lemma qpoly_tuple_cancel: cancel (qpoly_to_tuple) (tuple_to_qpoly).
+Proof.
+  move => x. rewrite /qpoly_to_tuple /tuple_to_qpoly /=. apply qpoly_eq'. rewrite /=.
+  rewrite /tuple_to_poly /= /qpoly_to_n_seq /=. rewrite /rem_trail_zero dropWhileEnd_end.
+  rewrite (@dropWhileEnd_last _ _ _ 1). by rewrite polyseqK. case : x => [x' Hx']. rewrite /=. move : Hx'.
+  by case : x'. rewrite all_in => a. by rewrite mem_nseq => /andP[H Ha].
+Qed.
+
+Lemma qpoly_to_tuple_bijective: bijective (qpoly_to_tuple).
+Proof.
+  apply (Bijective qpoly_tuple_cancel tuple_qpoly_cancel).
+Qed.
+
+Definition qpoly_finMixin := CanFinMixin qpoly_tuple_cancel.
 Canonical qpoly_finType := Eval hnf in FinType qpoly qpoly_finMixin.
+
+(*Finally, the result we want. This is a finite field of size |F|^(deg p)*)
+Lemma qpoly_size: #|qpoly| = #|F|^((size p).-1).
+Proof.
+  by rewrite (bijective_card qpoly_to_tuple_bijective) card_tuple.
+Qed.
+
+(** Algebraic Structures*)
 
 (*First, prove this is a Z Module*)
 Lemma q0_bound: size (0 : {poly F}) < size p.
@@ -345,133 +434,18 @@ Qed.
 
 Definition qpoly_fieldmixin := FieldMixin qpoly_mulVf qpoly_inv0.
 Canonical qpoly_fieldType := FieldType qpoly qpoly_fieldmixin.
+Canonical qpoly_finFieldType := Eval hnf in [finFieldType of qpoly].
 
-(*Now (TODO: maybe before), we want to find the size of this set. We do this by providing a bijection
-  from the set of qpolys to the set of N-tuples. (TODO: maybe change finType to use this too)*)
-
-(*TODO: move*)
-Lemma bijective_card: forall {T T': finType} (f: T -> T'),
-  bijective f ->
-  #|T| = #|T'|.
-Proof.
-  move => T T' f Hb. have Htt': #|T| <= #|T'|. apply (leq_card f). by apply bij_inj.
-  case : Hb => g Hfg Hgf. have Htt'': #|T'| <= #|T|. apply (leq_card g). apply (can_inj Hgf).
-  apply /eqP. by rewrite eqn_leq Htt' Htt''.
-Qed.
-
-Definition qpoly_to_n_seq (q: qpoly) : seq F :=
-  (qp q) ++ nseq ((size p).-1 - size (qp q)) 0.
-
-Lemma p_gt_0: 0 < size p.
-Proof.
-  have H01: 0 < 1 by []. apply (ltn_trans H01). apply Hirred.
-Qed.
-
-Lemma qpoly_to_n_seq_size: forall q, size (qpoly_to_n_seq q) == (size p).-1.
-Proof.
-  move => q. apply /eqP. rewrite /qpoly_to_n_seq size_cat size_nseq subnKC //. case : q => [x Hx /=].
-  by rewrite -ltn_pred // p_gt_0. 
-Qed.
-
-Definition qpoly_to_tuple q : ((size p).-1).-tuple F := Tuple (qpoly_to_n_seq_size q).
-
-Definition tuple_to_poly (t: ((size p).-1).-tuple F) : {poly F} :=
-  Poly (rem_trail_zero (tval t)).
-
-(*TODO: maybe move*)
-Lemma rem_trail_zero_polyseq: forall (l: seq F),
-  polyseq (Poly (rem_trail_zero l)) = (rem_trail_zero l).
-Proof.
-  move => l. have: polyseq (Poly (Polynomial (rem_trail_zero_wf l))) = rem_trail_zero l by rewrite polyseqK /=.
-  by [].
-Qed.
-
-(*TODO: move*)
-Lemma dropWhileEnd_size: forall {A: eqType} (p: pred A) (l: seq A),
-  size (dropWhileEnd p l) <= size l.
-Proof.
-  move => A pr l. elim : l => [//= | h t /= IH ].
-  case : (nilp (dropWhileEnd pr t) && pr h) => [//|/=].
-  by rewrite ltnS.
-Qed.
-
-Lemma rem_trail_zero_size: forall (l: seq F),
-  size (rem_trail_zero l) <= size l.
-Proof.
-  move => l. apply dropWhileEnd_size.
-Qed. 
-
-Lemma tuple_to_poly_size: forall t,
-  size (tuple_to_poly t) < size p.
-Proof.
-  move => t. rewrite /tuple_to_poly. have Ht: size t = ((size p).-1) by apply size_tuple.
-  have Hlt: size t < size p. rewrite Ht. apply pred_lt. by rewrite p_gt_0.
-  rewrite rem_trail_zero_polyseq. by apply (leq_ltn_trans (rem_trail_zero_size t)).
-Qed.
-
-Definition tuple_to_qpoly (t: ((size p).-1).-tuple F) : qpoly := Qpoly (tuple_to_poly_size t).
-
-Lemma tuple_eq: forall {A: Type} (n: nat) (t1 t2: n.-tuple A),
-  tval t1 = tval t2 ->
-  t1 = t2.
-Proof.
-  move => A n [l1 Hl1] [l2 Hl2]. rewrite /= => Hl12. subst. f_equal. apply bool_irrelevance.
-Qed. 
-
-Lemma tuple_qpoly_cancel: cancel (tuple_to_qpoly) (qpoly_to_tuple).
-Proof.
-  move => x. rewrite /qpoly_to_tuple /tuple_to_qpoly /=. apply tuple_eq. rewrite /=.
-  pose proof (dropWhileEnd_spec (eq_op^~ 0) x 1 (dropWhileEnd (eq_op^~ 0) x)) as Hdrop. 
-  case : Hdrop => [Hdrop Htriv]; move => {Htriv}. case : Hdrop => [//|[l1 [Hx Hinl1 Hlast]]].
-  rewrite /qpoly_to_n_seq /= /tuple_to_poly /= /rem_trail_zero.
-  rewrite {3}Hx. f_equal.
-  - apply rem_trail_zero_polyseq.
-  - rewrite rem_trail_zero_polyseq /rem_trail_zero.
-    have Hsz: size (nseq ((size p).-1 - size (dropWhileEnd (eq_op^~ 0) x)) (GRing.zero F)) = size l1. {
-      rewrite size_nseq. have: size x = ((size p).-1) by apply size_tuple. rewrite {1}Hx size_cat addnC => Hszx.
-      rewrite -{1}Hszx -addnBA. by rewrite subnn addn0. by rewrite leqnn. }
-    apply (@eq_from_nth _ 0).
-    + by [].
-    + move => i. rewrite Hsz => Hi. rewrite nth_nseq. rewrite size_nseq in Hsz. rewrite Hsz Hi.
-      apply /eqP. rewrite eq_sym. apply Hinl1. by rewrite mem_nth.
-Qed.
-
-Lemma dropWhileEnd_last: forall {A: eqType} (p: pred A) (l: seq A) (x: A),
-  ~~ p (last x l) ->
-  dropWhileEnd p l = l.
-Proof.
-  move => A pr l x Hlast. rewrite (dropWhileEnd_spec pr l x). split. exists nil. split. by rewrite cats0.
-  by []. by rewrite Hlast.
-Qed. 
-  
-Lemma qpoly_tuple_cancel: cancel (qpoly_to_tuple) (tuple_to_qpoly).
-Proof.
-  move => x. rewrite /qpoly_to_tuple /tuple_to_qpoly /=. apply qpoly_eq'. rewrite /=.
-  rewrite /tuple_to_poly /= /qpoly_to_n_seq /=. rewrite /rem_trail_zero dropWhileEnd_end.
-  rewrite (@dropWhileEnd_last _ _ _ 1). by rewrite polyseqK. case : x => [x' Hx']. rewrite /=. move : Hx'.
-  by case : x'. rewrite all_in => a. by rewrite mem_nseq => /andP[H Ha].
-Qed.
-
-Lemma qpoly_to_tuple_bijective: bijective (qpoly_to_tuple).
-Proof.
-  apply (Bijective qpoly_tuple_cancel tuple_qpoly_cancel).
-Qed.
-
-(*Finally, the result we want. This is a finite field of size |F|^(deg p)*)
-Lemma qpoly_size: #|qpoly| = #|F|^((size p).-1).
-Proof.
-  by rewrite (bijective_card qpoly_to_tuple_bijective) card_tuple.
-Qed.
-
-(*We needed this because we want to consider primitive polynomials, and we want to show that for any q!=0,
+(*We needed the cardinality of qpolys because we want to consider primitive polynomials, 
+  and we want to show that for any q!=0,
   there is an a such that x ^ a %% p = q. We define a mapping from 'I_(size p - 1) -> qpoly and show that
   it is injective. We need the above size result to conclude that the mapping is bijective and therefore
   surjective*)
 
 (*Definition of primitive polynomial. Note that size p = 1 + deg p, and I believe the 2nd condition is
   always true, though we don't need to prove it*)
-Definition primitive_poly (p: {poly F}) := irreducible_poly p /\ p %| 'X^(#|F|^(size p - 1) - 1) - 1 /\
-  (forall n, p %| 'X^n - 1 -> (n == 0%N) || ((#|F|^(size p - 1) - 1) <= n)).
+Definition primitive_poly (p: {poly F}) := irreducible_poly p /\ p %| 'X^((#|F|^((size p).-1)).-1) - 1 /\
+  (forall n, p %| 'X^n - 1 -> (n == 0%N) || (((#|F|^((size p).-1)).-1) <= n)).
 
 Variable Hprim: primitive_poly p.
 (*Also, we assume that p <> cx for some constant c. This is not very interesting, since F[X] / (x) is isomorphic to F.
@@ -487,8 +461,153 @@ Qed.
 
 Definition qx : qpoly := Qpoly (qx_bound).
 
-Definition qpoly_pow_map (i: 'I_((size p).-1)) : qpoly := qx ^+ i.
+Lemma qx_pow: forall (a: nat), qp (qx ^+ a) = ('X^a) %% p.
+Proof.
+  move => a. elim : a => [//= | a /= IH /=]. rewrite GRing.expr0 modp_small // size_poly1. apply Hirred.
+  rewrite !GRing.exprSr. have->: qx ^+ a * qx = qmul (qx ^+ a) qx by []. 
+  by rewrite /qmul /= IH GRing.mulrC modp_mul GRing.mulrC.
+Qed.
 
- 
+Definition qpow_map (i: 'I_(#|F|^((size p).-1))) : qpoly := if (nat_of_ord i == 0%N) then q0 else qx ^+ i.
+
+(*We need to know that p does not divide x^n for any n*)
+Lemma irred_dvdn_Xn: forall (p: {poly F}) (n: nat),
+  irreducible_poly p ->
+  2 < size p ->
+  ~~ (p %| 'X^n).
+Proof.
+  move => r n Hirr Hszr. elim : n => [//= | n /= IH].
+  - rewrite GRing.expr0 dvdp1. case Hsz: (size r == 1%N) => [|//].
+    apply (elimT eqP) in Hsz. by rewrite Hsz in Hszr.
+  - rewrite GRing.exprS. case Hdiv: (r %| 'X * 'X^n) => [|//].
+    have Hirr' : irreducible_poly r by [].
+    apply (irreducibles_are_prime) in Hirr. apply Hirr in Hdiv.
+    move : Hdiv => /orP[Hrx | Hrxn].
+    + apply dvdp_leq in Hrx. move: Hrx. by rewrite size_polyX leqNgt Hszr. 
+      by rewrite polyX_eq0.
+    + by rewrite Hrxn in IH.
+Qed. 
+
+(*TODO: move*)
+Lemma qp_sub: forall (q1 q2: qpoly),
+  qp (q1 - q2) = ((qp q1) - (qp q2))%% p.
+Proof.
+  move => q1 q2. by [].
+Qed. 
+
+(*A weaker lemma than [modpD]*)
+Lemma modpD': forall (d p q : {poly F}), d != 0 -> (p + q) %% d = (p %% d + q %% d) %% d.
+Proof.
+  move => d p' q Hd. rewrite modpD. apply esym. by rewrite modp_small // -modpD ltn_modp.
+Qed.
+
+Lemma qx_0: qx != 0.
+Proof.
+  have->: 0 = q0 by []. rewrite /qx/q0 /=. case Heq: (Qpoly qx_bound == Qpoly q0_bound) => [|//].
+  apply (elimT eqP) in Heq. case : Heq => /eqP Hx0. have: ((polyX F) == 0 = false) by apply polyX_eq0.
+  by rewrite Hx0.
+Qed. 
+
+(*TODO: move*)
+(*
+Lemma pred_leq : forall (n m: nat),
+  0 < m ->
+  (n.-1 <= m.-1) = (n <= m).
+Proof.
+  move => n m H0m. by rewrite -!subn1 leq_subLR addnBCA // subnn addn0. 
+Qed.*)
+
+Lemma pred_leq: forall (n m: nat),
+  (n.-1 <= m) = (n <= m.+1).
+Proof.
+  move => n m. by rewrite -subn1 -addn1 add0n leq_subLR addnC addn1.
+Qed.
+
+Lemma qpow_map_bij: bijective qpow_map.
+Proof.
+  apply inj_card_bij; last first. by rewrite qpoly_size card_ord leqnn.
+  move => a b. rewrite /qpow_map. case Ha0: (nat_of_ord a == 0%N).
+  { apply (elimT eqP) in Ha0. case Hb0: (nat_of_ord b == 0%N).
+    { apply (elimT eqP) in Hb0. move => Htriv. apply ord_inj. by rewrite Ha0 Hb0. }
+    { move => Hx0. have: (qx ^+ b != q0). apply GRing.expf_neq0. apply qx_0.
+      by rewrite Hx0 eq_refl. } }
+  { case Hb0: (nat_of_ord b == 0%N).
+    { move => Hx0. have: (qx ^+ a != q0). apply GRing.expf_neq0. apply qx_0. by rewrite Hx0 eq_refl. }
+    { move: Ha0 Hb0. wlog: a b / (a <= b). 
+  - move => Hall. case : (orP (leq_total a b)) => [Hab Ha0 Hb0 | Hab Ha0 Hb0].
+    by apply Hall. move => Hab'. symmetry. by apply Hall.
+  - move => Hab Ha0 Hb0 Hxab. have Hbsplit: nat_of_ord b = (a + (b - a))%N by rewrite subnKC.
+    have: (qx ^+ b - qx ^+ a = 0) by rewrite Hxab GRing.subrr. rewrite Hbsplit GRing.exprD.
+    rewrite -{2}(GRing.mulr1 (qx ^+ a)) -GRing.mulrBr => Hxab0. apply qpoly_mulf_eq0 in Hxab0.
+    move: Hxab0 => /orP[|].
+    + rewrite qpoly_zero qx_pow modp_mod => Hdiv.
+      have: ~~ (p %| 'X^a) by apply irred_dvdn_Xn. by rewrite /dvdp Hdiv.
+    + rewrite qpoly_zero /= modp_mod qx_pow GRing.addrC modpD'; last first.
+      rewrite -size_poly_eq0. case Hp: (size p == 0%N) =>[|//]. apply (elimT eqP) in Hp.
+      by have: 2 < 0 by rewrite -{2}Hp. 
+      rewrite  modp_mod GRing.addrC -modpD modp_mod => Hmod.
+      have Hdiv: (p %| ('X^(b-a) - 1)) by [].
+      apply Hprim in Hdiv. move: Hdiv => /orP [Hba0 | Hbabig].
+      * rewrite subn_eq0 in Hba0. apply ord_inj. apply /eqP. by rewrite eqn_leq Hba0 Hab.
+      * have Hb: b <   (#|F| ^ (size p).-1) by []. rewrite pred_leq in Hbabig.
+        have Hba: (b - a).+1 <= b by rewrite ltn_subrL !neq0_lt0n.
+        have: (#|F| ^ (size p).-1 <= b) by apply (leq_trans Hbabig Hba).
+        by rewrite leqNgt Hb. } }
+Qed.
+
+Lemma qpow_exist: forall (q: qpoly),
+  q != 0 ->
+  exists (i: 'I_(#|F|^((size p).-1))), (nat_of_ord i != 0%N) && (qx ^+ i == q).
+Proof.
+  move => q Hq. case : (qpow_map_bij) => g Hqg Hgq.
+  exists (g q). move: Hgq => /(_ q) /=. rewrite /qpow_map.
+  case Hi: (nat_of_ord (g q) == 0%N).
+  - move => Hq0. subst. move: Hq. have->: q0 = 0 by []. by rewrite eq_refl.
+  - move->. by rewrite eq_refl.
+Qed.
+
+Lemma field_geq_0: 
+  0 < #|F|^((size p).-1).
+Proof.
+  rewrite expn_gt0 /=. apply /orP. left. rewrite lt0n. apply /eqP. apply fintype0. apply 0%R.
+Qed.
+
+(*Computable function version*)
+Definition find_qpow (q: qpoly) : 'I_(#|F|^((size p).-1)) :=
+  find_val (fun i => (nat_of_ord i != 0%N) && (qx ^+ (nat_of_ord i) == q)) (enum  'I_(#|F|^((size p).-1))) 
+  (Ordinal field_geq_0).
+
+Lemma find_qpow_correct_aux: forall q,
+  q != 0 ->
+  (nat_of_ord (find_qpow q) != 0%N) && (qx ^+ (find_qpow q) == q).
+Proof.
+  move => q Hq. rewrite /find_qpow. 
+  apply (@find_val_exists _ (fun i : 'I_(#|F| ^ (size p).-1) => (nat_of_ord i != 0%N) && (qx ^+ i == q))).
+  rewrite /=. apply qpow_exist in Hq. case : Hq => [i /andP[Hi0 Hqx]].
+  exists i. by rewrite in_enum Hi0 Hqx.
+Qed.
+
+Lemma find_qpow_nonzero: forall q,
+  q != 0 ->
+  nat_of_ord (find_qpow q) != 0%N.
+Proof.
+  move => q Hq. apply find_qpow_correct_aux in Hq. apply (elimT andP) in Hq. apply Hq.
+Qed.
+
+Lemma find_qpow_correct: forall q,
+  q != 0 ->
+  qx ^+ (find_qpow q) = q.
+Proof.
+  move => q Hq. apply /eqP. apply find_qpow_correct_aux in Hq. apply (elimT andP) in Hq. apply Hq.
+Qed.
+
+Lemma find_qpow_zero: nat_of_ord (find_qpow 0) == 0%N.
+Proof.
+  have Hfind: find_qpow 0 = (Ordinal field_geq_0). apply find_val_none. rewrite all_in.
+  move => x Hx. 
+  have Hnz: (qx ^+ x != 0). apply GRing.expf_neq0. apply qx_0.
+  have->: (qx ^+ x == 0) = false by apply negbTE. by rewrite andbF.
+  by rewrite Hfind /=.
+Qed.
 
 End Field.
