@@ -9,7 +9,6 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import CommonSSR.
-Require Import ListPoly. (*TODO: probably not - put [rem_trail_zero] in CommonSSR*)
 
 (*Definition of field constructed from polynomials modulo an irreducible polynomial*)
 Section Field.
@@ -82,29 +81,6 @@ Definition qpoly_to_tuple q : ((size p).-1).-tuple F := Tuple (qpoly_to_n_seq_si
 Definition tuple_to_poly (t: ((size p).-1).-tuple F) : {poly F} :=
   Poly (rem_trail_zero (tval t)).
 
-(*TODO: maybe move*)
-Lemma rem_trail_zero_polyseq: forall (l: seq F),
-  polyseq (Poly (rem_trail_zero l)) = (rem_trail_zero l).
-Proof.
-  move => l. have: polyseq (Poly (Polynomial (rem_trail_zero_wf l))) = rem_trail_zero l by rewrite polyseqK /=.
-  by [].
-Qed.
-
-(*TODO: move*)
-Lemma dropWhileEnd_size: forall {A: eqType} (p: pred A) (l: seq A),
-  size (dropWhileEnd p l) <= size l.
-Proof.
-  move => A pr l. elim : l => [//= | h t /= IH ].
-  case : (nilp (dropWhileEnd pr t) && pr h) => [//|/=].
-  by rewrite ltnS.
-Qed.
-
-Lemma rem_trail_zero_size: forall (l: seq F),
-  size (rem_trail_zero l) <= size l.
-Proof.
-  move => l. apply dropWhileEnd_size.
-Qed. 
-
 Lemma tuple_to_poly_size: forall t,
   size (tuple_to_poly t) < size p.
 Proof.
@@ -132,15 +108,6 @@ Proof.
     + move => i. rewrite Hsz => Hi. rewrite nth_nseq. rewrite size_nseq in Hsz. rewrite Hsz Hi.
       apply /eqP. rewrite eq_sym. apply Hinl1. by rewrite mem_nth.
 Qed.
-
-(*TODO: move*)
-Lemma dropWhileEnd_last: forall {A: eqType} (p: pred A) (l: seq A) (x: A),
-  ~~ p (last x l) ->
-  dropWhileEnd p l = l.
-Proof.
-  move => A pr l x Hlast. rewrite (dropWhileEnd_spec pr l x). split. exists nil. split. by rewrite cats0.
-  by []. by rewrite Hlast.
-Qed. 
   
 Lemma qpoly_tuple_cancel: cancel (qpoly_to_tuple) (tuple_to_qpoly).
 Proof.
@@ -507,21 +474,6 @@ Proof.
   apply (elimT eqP) in Heq. case : Heq => /eqP Hx0. have: ((polyX F) == 0 = false) by apply polyX_eq0.
   by rewrite Hx0.
 Qed. 
-
-(*TODO: move*)
-(*
-Lemma pred_leq : forall (n m: nat),
-  0 < m ->
-  (n.-1 <= m.-1) = (n <= m).
-Proof.
-  move => n m H0m. by rewrite -!subn1 leq_subLR addnBCA // subnn addn0. 
-Qed.*)
-
-Lemma pred_leq: forall (n m: nat),
-  (n.-1 <= m) = (n <= m.+1).
-Proof.
-  move => n m. by rewrite -subn1 -addn1 add0n leq_subLR addnC addn1.
-Qed.
 
 Lemma qpow_map_bij: bijective qpow_map.
 Proof.

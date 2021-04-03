@@ -11,65 +11,6 @@ Set Bullet Behavior "Strict Subproofs".
 Require Import CommonSSR.
 
 (*Stuff from helper, mathcomp versions*)
-Section Helper.
-
-(* function (from Haskell) to remove all values from end of list that satisfy a predicate. *)
-Definition dropWhileEnd {A: Type} (p: pred A) (l: seq A) : seq A :=
-  foldr (fun x acc => if (nilp acc) && (p x) then nil else x :: acc) nil l.
-
-Lemma dropWhileEnd_nil: forall {A} p (l: seq A),
-  reflect (dropWhileEnd p l = nil) (all p l).
-Proof.
-  move => A p l. apply Bool.iff_reflect. elim : l => [//= | h t /= IH].
-  case Hnil: (nilp (dropWhileEnd p t)) => [/= | /=].
-  - case Hp: (p h) => [//= | //=]. rewrite -IH. apply (elimT nilP) in Hnil. by rewrite Hnil.
-  - split; move => Hcon.
-    + by [].
-    + move: Hcon => /andP[Hph Ht]. have: all p t = true by rewrite Ht. rewrite -IH => Htl.
-      by rewrite Htl in Hnil.
-Qed.
-
-Lemma dropWhileEnd_end: forall {A: Type} p (l1 l2: seq A),
-  all p l2 ->
-  dropWhileEnd p (l1 ++ l2) = dropWhileEnd p l1.
-Proof.
-  move => A p l1. elim : l1 => [//= l2 Hall | h t /= IH l2 Hall].
-  - by apply /dropWhileEnd_nil.
-  - by rewrite IH.
-Qed.
-
-(*Could do with In instead of \in but eqType should be fine for our purposes*)
-Lemma dropWhileEnd_spec: forall {A: eqType} p (l: seq A) (x: A) res,
-  dropWhileEnd p l = res <->
-  (exists l1, l = res ++ l1 /\ forall x, x \in l1 -> p x) /\ (~~nilp res -> ~~p(last x res)).
-Proof.
-  move => A p l x. elim : l => [//= | h t /= IH res]; split.
-  - move <-. split. by exists nil. by [].
-  - move => [[l1 [Hl1 Hall]] Hlast]. move: Hl1 Hlast. by case : res.
-  - case Hdrop: (nilp (dropWhileEnd p t)) => [//= | //=].
-    + case Hph : ( p h) => [/= | /=].
-      * move <-. rewrite /=. split. exists (h :: t). split. by [].
-        have Ht: forall x, x \in t -> p x. apply all_in. apply /dropWhileEnd_nil. by apply /nilP.
-        move => y. rewrite in_cons => /orP[/eqP Hyh | Hyt]. by subst. by apply Ht. by [].
-      * case : res => [// | r1 t1 /= [Hhr1 Htl]]. rewrite Hhr1. move: Htl; rewrite IH => [[[l1 [Hl1 Hinl1]] Hlast]].
-        subst. split. by exists l1. move => {Hdrop} {IH}. move: Hlast. case : t1 => [//= | //=].
-        move => Htriv Htriv1. by rewrite Hph.
-    + case : res => [//= | r1 t1 /= [Hhr1 Hdt1]]. rewrite Hhr1.
-      move: Hdt1; rewrite IH => [[[l1 [Hl1 Hinl1]] Hlast]]. subst. split. by exists l1.
-      move: Hdrop. rewrite dropWhileEnd_end. move : Hlast => {IH}. by case : t1. by rewrite all_in.
-  - move => [[l1 [Hl1 Hinl1]] Hlast]. move: Hl1 Hlast. case : res => [//= Hl1 | r1 t1 /=[Hhr1 Ht]].
-    + subst. move => Htriv. rewrite Hinl1. rewrite andbT.
-      have->: nilp (dropWhileEnd p t). apply /nilP. apply /dropWhileEnd_nil. rewrite all_in.
-      move => y Hy. apply Hinl1. by rewrite in_cons Hy orbT. by []. by rewrite in_cons eq_refl.
-    + move => Hlast. subst. have Hdrop: dropWhileEnd p (t1 ++ l1) = t1. apply IH. split.
-      by exists l1. move: Hlast {IH}. by case : t1.
-      rewrite Hdrop. case Hnil: (nilp t1) => [/= | //=].
-      * apply (elimT nilP) in Hnil. subst. move: Hlast; rewrite /= => Hpr1.
-        have->: p r1 = false. apply (elimT negPf). by apply Hpr1. by [].
-Qed.
-
-End Helper.
-
 Section LPoly.
 
 Local Open Scope ring_scope.
@@ -79,36 +20,6 @@ Variable F : fieldType.
 Definition lpoly := polynomial F.
 
 (*Transform an arbitrary list into a valid lpoly*)
-
-Definition rem_trail_zero (s: seq F) : seq F := dropWhileEnd (fun x => x == 0) s.
-
-Lemma rem_trail_zero_wf: forall s,
-  last 1 (rem_trail_zero s) != 0.
-Proof.
-  move => s. rewrite /rem_trail_zero.
-  have: (dropWhileEnd (eq_op^~ 0) s) = (dropWhileEnd (eq_op^~ 0) s) by [].
-  rewrite (dropWhileEnd_spec _ _ 1) => [[[l1 [Hl1 Hinl1]] Hlast]].
-  case Hdrop: (dropWhileEnd (eq_op^~ 0) s) => [/= | h t /=].
-  - apply GRing.oner_neq0.
-  - rewrite Hdrop in Hlast. by apply Hlast.
-Qed.
-
-Lemma rem_tail_zero_nth: forall s i,
-  nth 0 s i = nth 0 (rem_trail_zero s) i.
-Proof.
-  move => s i. rewrite /rem_trail_zero.
-  have: (dropWhileEnd (eq_op^~ 0) s) = (dropWhileEnd (eq_op^~ 0) s) by [].
-  rewrite (dropWhileEnd_spec _ _ 1) => [[[l1 [Hl1 Hinl1]] Hlast]].
-  rewrite {1}Hl1 nth_cat. 
-  case Hi: (i < size (dropWhileEnd (eq_op^~ 0) s)).
-  - by [].
-  - rewrite (@nth_default _ 0 (dropWhileEnd (eq_op^~ 0) s) i). 
-    case Hi': (i - size (dropWhileEnd (eq_op^~ 0) s) < size l1).
-    + move: Hinl1. rewrite -all_in => /all_nthP Hall. apply /eqP. by apply Hall.
-    + by rewrite nth_default // leqNgt Hi'.
-    + by rewrite leqNgt Hi.
-Qed.
-
 Lemma lpoly_Poly_eq: forall (p q : lpoly),
   Poly p = Poly q -> p = q.
 Proof.
@@ -156,7 +67,7 @@ Qed.
 Lemma lpoly_add_nth: forall l1 l2 i,
   (lpoly_add l1 l2)`_i = l1`_i + l2`_i.
 Proof.
-  move => l1 l2 i. by rewrite /lpoly_add -rem_tail_zero_nth lpoly_add_aux_nth.
+  move => l1 l2 i. by rewrite /lpoly_add -rem_trail_zero_nth lpoly_add_aux_nth.
 Qed.
 
 Lemma lpoly_add_spec: forall l1 l2,
@@ -166,9 +77,6 @@ Proof.
   by rewrite coef_add_poly !polyseqK lpoly_add_nth.
 Qed.
 
-(*TODO: need info about degrees: in particular, leq the max degree, and if the last element of both are additive
-  inverses, degree is strictly smaller*)
-(*maybe, maybe not if just equivalence, their version uses fuel*)
 End Add.
 
 (*In Euclidean division, we only need to multiply a polynomial p by kx^n for some scalar k. We can do this
@@ -575,6 +483,124 @@ Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; 
   (seq_to_lpoly [:: true; false; true])).1).
 Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
   (seq_to_lpoly [:: true; false; true])).2).
+
+(*We need to enumerate all polynomials up to a certain length. This takes a bit of work due to the dependent types*)
+Fixpoint seq_of_polyseqs (n: nat) : (seq (seq F)) * (seq (seq F)) :=
+  match n with
+  | 0 => ([:: [:: true]], [:: [:: true]])
+  | n'.+1 => let (leq_seq, eq_seq) := (seq_of_polyseqs n') in
+             let new_eq_seq := (map (cons true) eq_seq) ++ (map (cons false) eq_seq) in
+             (leq_seq ++ new_eq_seq, new_eq_seq)
+  end.
+
+Lemma nil_notin_seq: forall n,
+  (nil \notin (seq_of_polyseqs n).1) && (nil \notin (seq_of_polyseqs n).2).
+Proof.
+  move => n. elim : n => [//= | n /=].
+  case Hseq : (seq_of_polyseqs n) => [leq_seq eq_seq]. rewrite /= => /andP[Hle Heq].  
+  rewrite !mem_cat !negb_or Hle /= {1}andbC andbA -(andbA ([::] \notin [seq false :: i | i <- eq_seq])) 
+  andbb andbC andbA andbb. apply /andP. split; apply /mapP => [[x Hx] //].
+Qed. 
+
+Lemma zero_notin_seq: forall n,
+  ([:: 0] \notin (seq_of_polyseqs n).1) && ([:: 0] \notin (seq_of_polyseqs n).2).
+Proof.
+  move => n. elim : n => [//= | n /=].
+  case Hseq : (seq_of_polyseqs n) => [leq_seq eq_seq]. rewrite /= => /andP[Hle Heq].  
+  rewrite !mem_cat !negb_or Hle /= {1}andbC andbA -(andbA ([:: 0] \notin [seq false :: i | i <- eq_seq])) 
+  andbb andbC andbA andbb. apply /andP.
+  pose proof (nil_notin_seq n) as Hnil. move: Hnil; rewrite Hseq /= => /andP[Hnileq Hnilleq].
+  split. apply /mapP => [[x Hin [Hx]]]. subst. by rewrite Hin in Hnilleq.
+  by apply /mapP => [[x Hin [Hx]]].
+Qed.
+
+Lemma seq_of_polyseqs_last: forall n s,
+  (s \in (seq_of_polyseqs n).1) || (s \in (seq_of_polyseqs n).2) ->
+  last 1 s != 0.
+Proof.
+  move => n. elim : n => [//= s | n /=].
+  - rewrite !in_cons in_nil orbF orbb => /eqP Hs. rewrite Hs. by [].
+  - case Hseq: (seq_of_polyseqs n) => [leq_seq eq_seq]. rewrite /=. move => IH s.
+    rewrite !mem_cat -orbA -orbA orbC -orbA (orbC (s \in [seq false :: i | i <- eq_seq])) -!orbA
+    (orbA (s \in [seq false :: i | i <- eq_seq])) !orbb orbA orbb => 
+    /orP[/mapP [x Hx Hs] | /orP[/mapP [x Hx Hs] | Hleq]].
+    + rewrite Hs /=. apply IH. by rewrite Hx orbT.
+    + rewrite Hs /=. have->: (last false x) = (last 1 x). move: Hx Hs. case : x => [//= Hnil | //=].
+      pose proof (nil_notin_seq n) as Hnil'; move: Hnil'. by rewrite Hseq Hnil /= andbF.
+      apply IH. by rewrite Hx orbT.
+    + apply IH. by rewrite Hleq.
+Qed.
+
+Lemma size1P: forall {T: Type} (s: seq T),
+  reflect (exists (x: T), s = [:: x]) (size s == 1%N) .
+Proof.
+  move => T s. case : s => [/= | h t /=].
+  - apply ReflectF. by move =>[x Hx].
+  - case : t => [|h' t' /=].
+    + apply ReflectT. by exists h.
+    + apply ReflectF. by move => [x Hx].
+Qed.
+
+Lemma in_seq_of_polyseqs_snd: forall n s,
+  s \in (seq_of_polyseqs n).2 = ((last 1 s != 0) && (size s == n.+1)).
+Proof.
+  move => n. elim : n => [//= s | n /=].
+  - rewrite !in_cons in_nil orbF.
+    case Hs: (s == [:: true]). apply (elimT eqP) in Hs. by rewrite Hs.
+    case  Hsz: ((size s) == 1%N).
+    + apply (elimT (size1P s)) in Hsz. case : Hsz => [x Hsx]. move: Hsx; case : x =>[ //=|->//=].
+      move => /eqP Hst. by rewrite Hst in Hs.
+    +  by rewrite andbF.
+  - case Hseq: (seq_of_polyseqs n) => [leq_seq eq_seq]. rewrite /= => IH s. rewrite !mem_cat.
+    case Hfst: (s \in [seq true :: i | i <- eq_seq]) =>[/= | /=].
+    + move: Hfst => /mapP [x Hx Hs]. subst. by rewrite /= eqSS -IH Hx.
+    + case Hsnd: (s \in [seq false :: i | i <- eq_seq]).
+      * move : Hsnd => /mapP [x Hx Hs]. subst. rewrite /= eqSS.
+        have->: (last false x = last 1 x). move : {Hfst} Hx. case : x =>[/= Hnil|//].
+        by pose proof (nil_notin_seq n) as Hnils; move : Hnils; rewrite Hseq /= Hnil andbF.
+        by rewrite -IH Hx.
+      * case Hin: (((last 1 s) != 0) && ((size s) == (n.+2))) =>[|//].
+        move: Hin Hsnd Hfst. case : s => [//= | h]. 
+        case : h => [  t /= /andP[Hlast Hsz] Hsnd Hfst |  t /= /andP[Hlast Hsz] Hsnd Hfst];
+        rewrite eqSS in Hsz.
+        -- have Htin: (t \in eq_seq) by rewrite IH Hlast Hsz. by rewrite map_f in Hfst.
+        -- have Hlast': (last false t = last 1 t). move {Hsnd Hfst Hsz}. move: Hlast.
+           by case : t. rewrite Hlast' in Hlast. have Htin: (t \in eq_seq) by rewrite IH Hlast Hsz.
+           by rewrite map_f in Hsnd.
+Qed.
+
+Lemma in_seq_of_polyseqs_fst: forall n s,
+  s \in (seq_of_polyseqs n).1 = (last 1 s != 0) && (0 < size s <= n.+1).
+Proof.
+  move => n. elim : n => [//= s | n /=].
+  - pose proof (in_seq_of_polyseqs_snd 0 s) as Hsnd. move: Hsnd; rewrite /=; move ->.
+    f_equal. by rewrite eq_sym eqn_leq.
+  - case Hseq: (seq_of_polyseqs n) => [leq_seq eq_seq]. rewrite /= => IH s. rewrite mem_cat.
+    pose proof (in_seq_of_polyseqs_snd (n.+1) s) as Hsnd. move: Hsnd; rewrite /= Hseq /=.
+    move ->. rewrite IH /=. rewrite -(andb_orr). f_equal. rewrite (leq_eqVlt _ (n.+2)).
+    rewrite andb_orr orbC. rewrite (@andb_idl _ (size s == n.+2)) //.
+    move => /eqP Hsz. by rewrite Hsz.
+Qed.
+
+Lemma seq_of_polyseqs_all_last: forall n,
+  all (fun x => last 1 x != 0) (seq_of_polyseqs n).1.
+Proof.
+  move => n. rewrite all_in => x Hin. apply (@seq_of_polyseqs_last n).
+  by rewrite Hin.
+Qed.
+
+Definition seq_of_lpoly (n: nat) : (seq (lpoly F)) :=
+  sub_seq (polynomial_subType F) (seq_of_polyseqs_all_last n).
+
+(*Finally we have what we want: an lpoly is in the list iff it is a nonzero polynomial of degree at most n*)
+Lemma seq_of_lpoly_in: forall n (l: lpoly F),
+  (l \in seq_of_lpoly n) = (0 < size l <= n.+1).
+Proof.
+  move => n l. rewrite sub_seq_in /= in_seq_of_polyseqs_fst /=.
+  case : l => [s Hs /=]. by rewrite Hs.
+Qed.
+
+Eval compute in (map (@lpoly_to_seq F) (seq_of_lpoly 2)).
 
 (*TODO: may need lemmas about equivalence with mathcomp mod (which is easy)*)
 
