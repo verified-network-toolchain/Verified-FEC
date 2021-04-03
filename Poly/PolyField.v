@@ -305,32 +305,6 @@ Qed.
 
 (*Now we need a computable inverse function. This is relatively straightforward*)
 
-(*Unfortunately, the mathcomp [find] function returns the index, not the item*)
-Definition find_val {T: Type} (p: pred T) (s: seq T) (d: T) : T :=
-  match (filter p s) with
-  | nil => d
-  | h :: _ => h
-  end.
-
-Lemma find_val_none: forall {T: Type} (p: pred T) s d,
-  all (fun x => ~~ p x) s ->
-  find_val p s d = d.
-Proof.
-  move => T pr s d. elim : s => [//= | h t /= IH /andP[Hh Ht]].
-  rewrite /find_val /=. have->: (pr h = false) by move: Hh; case : (pr h). move: IH; rewrite /find_val.
-  by move ->.
-Qed.
-
-Lemma find_val_exists: forall {T: eqType} (p: pred T) s d,
-  (exists x, (x \in s) && p x) ->
-  p (find_val p s d).
-Proof.
-  move => T pr s d. elim : s => [//= [ Hfalse] // | h t //= IH [x /andP[Hin Hpx]]].
-  move: IH; rewrite /find_val /= => IH. move: Hin; rewrite in_cons => /orP[/eqP Hxh | Hxt].
-  - subst. by rewrite Hpx.
-  - case Hh: (pr h) =>[//|]. apply IH. exists x. by rewrite Hxt Hpx.
-Qed.
-
 Definition find_inv (q: qpoly) :=
   find_val (fun x => x * q == 1) (enum qpoly) 0.
 

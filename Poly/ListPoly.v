@@ -383,6 +383,7 @@ End LPoly.
 (*We will be working over GF(2), so we can give simpler functions because all leading coefficients are 1. The
   code will be more efficient, which is important because this will be run many times in a loop*)
 Require Import BoolField.
+Require Import PolyField.
 
 Section BoolPolyDiv.
 
@@ -479,10 +480,11 @@ Qed.
 
 (*Test for computability*)
 (*x^4+x^3+1 = (x^2+1) * (x^2 + x + 1) + x in GF(2)*)
+(*
 Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
   (seq_to_lpoly [:: true; false; true])).1).
 Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
-  (seq_to_lpoly [:: true; false; true])).2).
+  (seq_to_lpoly [:: true; false; true])).2).*)
 
 (*We need to enumerate all polynomials up to a certain length. This takes a bit of work due to the dependent types*)
 Fixpoint seq_of_polyseqs (n: nat) : (seq (seq F)) * (seq (seq F)) :=
@@ -599,38 +601,200 @@ Proof.
   move => n l. rewrite sub_seq_in /= in_seq_of_polyseqs_fst /=.
   case : l => [s Hs /=]. by rewrite Hs.
 Qed.
-
+(*
 Eval compute in (map (@lpoly_to_seq F) (seq_of_lpoly 2)).
+*)
 
-(*TODO: may need lemmas about equivalence with mathcomp mod (which is easy)*)
+(*Test for irreducibility*)
+
+Lemma size_one: forall (p: {poly F}),
+  (size p == 1%N) = (p == 1).
+Proof.
+  move => p. rewrite -val_eqE /= polyseq1. case : p => [l /=].
+  case : l => [//= Htriv | h t /=].
+  case : t => [//= | h' t' /= Hlast]. by case : h.
+  have->: ((size t').+2 == 1%N) = false by [].
+  case Hseq : ([:: h, h' & t'] == [:: 1]) =>[|//].
+  apply (elimT eqP) in Hseq. by case: Hseq.
+Qed.
+
+(*In boolean field, %= is the same as =*)
+Lemma eqp_eq: forall (p q: {poly F}),
+  (p %= q) = (p == q).
+Proof.
+  move => p q. case Hq0: (q == 0).
+  - apply (elimT eqP) in Hq0. subst. by rewrite eqp0.
+  - case Hdiv: (p %= q).
+    + move: Hdiv; rewrite /eqp /dvdp => /andP[/eqP Hdivqp /eqP Hdivpq].
+      pose proof (divp_eq p q) as Hp.
+      pose proof (divp_eq q p) as Hq.
+      move: Hp Hq. rewrite Hdivqp Hdivpq !GRing.addr0 => Hp. rewrite {2} Hp GRing.mulrA.
+      rewrite GRing.mulrC -{1}(GRing.mulr1 q) => Hq. apply GRing.mulfI in Hq.
+      have: 1%N = size (q %/ p * (p %/ q)) by rewrite -(size_poly1 F) Hq.
+      move => /eqP Hsz1. move: Hsz1. rewrite eq_sym size_mul_eq1 => /andP[Hqp1 Hpq1].
+      move: Hpq1; rewrite size_one => /eqP Hpq1. move: Hp. rewrite Hpq1 GRing.mul1r. move ->. 
+      by rewrite eq_refl. by rewrite Hq0.
+    + case Heq: (p == q) =>[|//].
+      apply (elimT eqP) in Heq. rewrite Heq in Hdiv. by rewrite eqpxx in Hdiv.
+Qed.
+
+Lemma propTp: forall (P: Prop),
+  true * P <-> P.
+Proof.
+  move => P. split. by move => [Htriv p].
+  move => Hp. by split.
+Qed. 
+
+Lemma irreducible_poly_factor: forall (p: {poly F}),
+  1 < size p ->
+  irreducible_poly p <-> (forall (f: {poly F}), size f < size p -> (f == 1) || ~~ (f %| p)).
+Proof.
+  move => p Hsz. rewrite /irreducible_poly Hsz /= propTp.
+  split.
+  - move => Hirred f Hszf.
+    case Hf1: (f == 1) =>[//|/=]. rewrite -size_one in Hf1.
+    case Hdiv: (f %| p) =>[|//].
+    apply Hirred in Hdiv. move: Hdiv; rewrite eqp_eq => /eqP Hfp. subst.
+    by rewrite ltnn in Hszf. by rewrite Hf1.
+  - move => Halt q Hszq Hqp. case Hq0: (q == 0).
+    + apply (elimT eqP) in Hq0. subst. move: Hqp => /dvd0pP Hp. subst.
+      by rewrite eqpxx.
+    + have: (size q <= size p). apply dvdp_leq. rewrite -size_poly_eq0.
+      case Hszp: (size p == 0%N) => [|//]. apply (elimT eqP) in Hszp. by rewrite Hszp in Hsz.
+      by []. rewrite leq_eqVlt => /orP[Hszpq | Hszlt].
+      * by rewrite -dvdp_size_eqp.
+      * apply Halt in Hszlt. move: Hszlt => /orP[Hq1 | Hdiv].
+        move: Hq1; rewrite -size_one => /eqP Hq1. by rewrite Hq1 in Hszq.
+        by rewrite Hqp in Hdiv.
+Qed.
+
+Lemma pred_sum: forall (n m : nat),
+  n != 0%N ->
+  m != 0%N ->
+  (n.-1 + m.-1)%N = (n+m).-2.
+Proof.
+  move => n m Hn Hm. rewrite -matrix.mx'_cast. rewrite (addnC n (m.-1)) -matrix.mx'_cast //.
+  by rewrite addnC. all: apply pred_ord; by rewrite lt0n.
+Qed.
+
+(*We can make the search more efficient by only considering polynomials up to degree (deg p) /2*)
+Lemma irreducible_poly_factor_small: forall (p : {poly F}) n,
+  1 < size p ->
+  n < (size p).-1 <= n.*2 ->
+  irreducible_poly p <-> (forall (f: {poly F}), (size f) <= n.+1 -> (f == 1) || ~~ (f %| p)).
+Proof.
+  move => p n Hp /andP[Hnle Hngt]. rewrite (irreducible_poly_factor Hp).
+  split; move => Hirred f Hsz.
+  - apply Hirred. apply (leq_ltn_trans Hsz). by rewrite -ltn_predRL.
+  - case (orP (ltn_leq_total n.+1 (size f))) => [Hge | Hlt]; last first.
+    + by apply Hirred.
+    + case Hdiv : (f %| p) =>[//= | /=]; last first. by apply orbT.
+      have: (f %| p) by []. apply divp_dvd in Hdiv.
+      rewrite /dvdp => /eqP Hmod.
+      pose proof (divp_eq p f) as Hpf. move: Hpf; rewrite Hmod GRing.addr0 => Hpf.
+      have Hf0: (f == 0) = false. { case Hf0: (f == 0) => [|//]. 
+        apply (elimT eqP) in Hf0. move: Hpf. rewrite Hf0 GRing.mulr0 => Hp0.
+        subst. by rewrite size_poly0 in Hsz. }
+      have Hpf0: (p %/ f == 0) = false. {  case Hpf0: (p %/ f == 0)=>[|//].
+        apply (elimT eqP) in Hpf0. move: Hpf. rewrite Hpf0 GRing.mul0r => Hp0.
+        subst. by rewrite size_poly0 in Hsz. }
+      have Hszsum: size p = (size (p %/f) + size f).-1
+        by rewrite {1}Hpf size_proper_mul // GRing.mulf_eq0 !lead_coef_eq0 Hf0 Hpf0.
+     case: (orP (ltn_leq_total n.+1 (size (p %/ f)))) => [Hge' | Hlt']; last first.
+      * apply Hirred in Hlt'. move: Hlt' => /orP [/eqP Hpf1 | Hpfdiv].
+        -- move: Hpf; rewrite Hpf1 GRing.mul1r => Hpf. subst. by rewrite ltnn in Hsz.
+        -- by rewrite Hdiv in Hpfdiv.
+      * rewrite -ltn_predRL in Hge. rewrite -ltn_predRL in Hge'.
+        have Hn2big: n.*2 < (size f).-1 + (size (p %/ f)).-1. rewrite -addnn. by apply ltn_add2rl.
+        have: (size p).-1 < (size f).-1 + (size (p %/ f)).-1 by apply (leq_ltn_trans Hngt).
+        rewrite Hszsum pred_sum. by rewrite addnC ltnn. by rewrite size_poly_eq0 Hf0.
+        by rewrite size_poly_eq0 Hpf0.
+Qed.
+
+Definition isOne (l: lpoly F) :=
+  match (polyseq l) with
+  | true :: nil => true
+  | _ => false
+  end.
+
+Lemma isOne_spec: forall l,
+  (isOne l) = (l == 1).
+Proof.
+  move => l. rewrite -size_one /= /isOne.
+  case : l => [l Hl /=]. move: Hl. case : l => [//= | h t /=]. case : h => [/=|//=].
+  case : t =>[//= | //=]. by case : t.
+Qed.
+
+(*TODO: move above*)
+Definition bool_modp (p q: lpoly F) : lpoly F :=
+  (bool_edivp p q).2.
+
+Lemma bool_modp_spec: forall p q,
+  Poly (bool_modp p q) = modp (Poly p) (Poly q).
+Proof.
+  move => p q. rewrite /modp /bool_modp. rewrite bool_edivp_spec /last_two /=.
+  case Hdiv: (lpoly_edivp p q) => [[k' q'] r' /=].
+  by rewrite -lpoly_edivp_spec Hdiv /=.
+Qed.
+
+Definition bool_dvdp (p q: lpoly F) : bool :=
+  nilp (bool_modp q p).
+
+Lemma bool_dvdp_spec: forall p q,
+  (bool_dvdp p q) = ((Poly p) %| (Poly q)).
+Proof.
+  move => p q. rewrite /dvdp /bool_dvdp.
+  by rewrite -bool_modp_spec /= lpoly_zero.
+Qed.
+
+(*TODO: move*)
+Lemma isSome_none: forall {T: eqType} (o: option T),
+  ~~ (isSome o) = (o == None).
+Proof.
+  move => T o. by case : o.
+Qed.
+
+(*Finally, a (computable) function to find irreducible polynomials of lpolys*)
+Definition find_irred (l: lpoly F) (n: nat) : option (lpoly F) :=
+  find_val_option (fun q => ~~ (isOne q) && (bool_dvdp q l)) (seq_of_lpoly n).
+
+Lemma find_irredP: forall (l: lpoly F) n,
+  1 < size l ->
+  n < (size l).-1 <= n.*2 ->
+  reflect (irreducible_poly (Poly l)) ((find_irred l n == None)).
+Proof.
+  move => l n Hl Hn. case Hfind: (find_irred l n) => [p /= | /=].
+  - move: Hfind; rewrite /find_irred => Hfind.
+    have Hin: p \in (seq_of_lpoly n) by apply (find_val_option_some_in Hfind). 
+    apply find_val_option_some in Hfind.
+    apply ReflectF. rewrite (@irreducible_poly_factor_small _ n); last first.
+    by rewrite size_Poly_lpoly. by rewrite size_Poly_lpoly.
+    move => Hall; move: Hfind => /andP[Hone Hdiv].
+    rewrite seq_of_lpoly_in in Hin. move: Hin => /andP[Hp0 Hpn].
+    apply Hall in Hpn. move: Hpn => /orP [Hp1 | Hpdiv].
+    + rewrite isOne_spec in Hone. by rewrite Hp1 in Hone.
+    + rewrite bool_dvdp_spec in Hdiv. rewrite polyseqK in Hdiv. by rewrite Hdiv in Hpdiv.
+  - apply ReflectT. rewrite (@irreducible_poly_factor_small _ n); last first.
+    by rewrite size_Poly_lpoly. by rewrite size_Poly_lpoly.
+    have: (find_irred l n) == None. by apply /eqP. rewrite -isSome_none /find_irred -find_val_option_none 
+    all_in => Hall f Hszf.
+    case Hf: (f == 0). apply (elimT eqP) in Hf. subst. rewrite dvd0p.
+    case Hl0 : (Poly l == 0) => [//= | //=]. rewrite lpoly_zero in Hl0. apply (elimT nilP) in Hl0.
+    move: Hl. by rewrite Hl0 /=. by rewrite orbT.
+    have Hinf: (f \in (seq_of_lpoly n)). by rewrite seq_of_lpoly_in Hszf size_poly_gt0 Hf.
+    apply Hall in Hinf. move: Hinf. rewrite negb_and negbK => /orP[Hone | Hdiv].
+    + by rewrite -isOne_spec Hone.
+    + move: Hdiv; rewrite bool_dvdp_spec polyseqK. move ->. by rewrite orbT.
+Qed.
+
+(*Now, let's test this on our polynomial*)
+Definition p256 : lpoly F := seq_to_lpoly [:: true; false; true; true; true; false; false; false; true].
+
+Lemma p256_irreducible: irreducible_poly (Poly p256).
+Proof.
+  by apply /(@find_irredP _ 4).
+Qed.
+
+(*Yay!*)
 
 End BoolPolyDiv.
-
-(*Tests for computability for original functions*)
-
-Require Import BoolField.
-
-Eval compute in (lpoly_to_seq (lpoly_redivp_rec (seq_to_lpoly [:: true; false; true]) 0%N (seq_to_lpoly nil)
-  (seq_to_lpoly [:: true; true; false; true]) 4).1.2).
-(*
-Eval compute in rem_trail_zero(lpoly_add_aux (lpoly_sc_mul_aux_full (nil) true)
-            (lpoly_sc_mul_aux_full (lpoly_mono_aux bool_fieldType (4 - 3)) true)).
-
-Eval compute in (nilp ((seq_to_lpoly [:: true; false; true]))).
-*)
-Eval compute in (lpoly_to_seq (lpoly_redivp (seq_to_lpoly [:: true; true; false; true]) 
-  (seq_to_lpoly [:: true; true])).1.2).
-
-(*need to remove unit check (could change to =0 for general case*)
-
-Eval compute in lpoly_to_seq(lpoly_add (lpoly_sc_mul (seq_to_lpoly [::]) true)
-            (lpoly_sc_mul (lpoly_mono bool_fieldType (4 - 3)) true)).
-
-
-Eval compute in (lpoly_to_seq (lpoly_edivp (seq_to_lpoly [:: true; true; false; true]) 
-  (seq_to_lpoly [:: true; false; true])).1.2).
-
-Eval compute in (lpoly_to_seq (lpoly_add (seq_to_lpoly ( [:: true; false; false])) 
-  (seq_to_lpoly( [:: true; false; true])))).
-
-Eval compute in (lpoly_to_seq (lpoly_shift (seq_to_lpoly ([:: true; false; true])) 3)).

@@ -205,6 +205,76 @@ Proof.
   - move => Hnotin. apply hasNfind. apply (introT hasPn). move => x. apply Hnotin. 
 Qed.
 
+(** [find] but for values rather than indices*)
+
+Definition find_val_option {T: Type} (p: pred T) (s: seq T) : option T :=
+  match (filter p s) with
+  | nil => None
+  | h :: _ => Some h
+  end.
+
+Definition find_val {T: Type} (p: pred T) (s: seq T) (d: T) : T :=
+  match (find_val_option p s) with
+  | None => d
+  | Some h => h
+  end.
+
+Lemma find_val_option_none: forall {T: Type} (p: pred T) s,
+  all (fun x => ~~ p x) s = ~~ (isSome (find_val_option p s)).
+Proof.
+  move => T p s. elim : s => [//= | h t /=].
+  rewrite /find_val_option /= => IH.
+  case Hh: (p h) =>[//|/=].
+  by rewrite IH.
+Qed.
+
+Lemma find_val_none: forall {T: Type} (p: pred T) s d,
+  all (fun x => ~~ p x) s ->
+  find_val p s d = d.
+Proof.
+  move => T p s d. rewrite find_val_option_none /find_val.
+  by case (find_val_option).
+Qed.
+
+Lemma find_val_option_some_in: forall {T: eqType} (p: pred T) s h,
+  (find_val_option p s) = Some h ->
+  h \in s.
+Proof.
+  move => T p s. elim : s =>[// | x t /=].
+  rewrite /find_val_option/= => IH h. case Hx: (p x) => [/= |/=].
+  move => [Hxh]. subst. by rewrite in_cons eq_refl. move => Hh. apply IH in Hh.
+  by rewrite in_cons Hh orbT.
+Qed.
+
+Lemma find_val_option_some: forall {T: Type} (p: pred T) s h,
+  (find_val_option p s) = Some h ->
+  p h.
+Proof.
+  move => T p s. elim : s =>[// | x t /=].
+  rewrite /find_val_option/= => IH h. case Hx: (p x) => [/= |/=].
+  move => [Hxh]. by subst. apply IH.
+Qed.
+
+Lemma find_val_option_exists: forall {T: eqType} (p: pred T) s,
+  (exists x, (x \in s) && p x) ->
+  exists h, ((find_val_option p s == Some h) && p h).
+Proof.
+  move => T p s. elim : s => [//= | h t /=].
+  rewrite /find_val_option/= => IH [x /andP[Hin Hpx]].
+  move: Hin; rewrite in_cons => /orP[/eqP Hxh | Hxt].
+  - subst. rewrite Hpx. exists h. by rewrite Hpx eq_refl.
+  - case Hh: (p h). exists h. by rewrite Hh eq_refl. apply IH.
+    exists x. by rewrite Hxt Hpx.
+Qed.
+
+Lemma find_val_exists: forall {T: eqType} (p: pred T) s d,
+  (exists x, (x \in s) && p x) ->
+  p (find_val p s d).
+Proof.
+  move => T p s d Hex. rewrite /find_val. apply find_val_option_exists in Hex.
+  case : Hex => [h /andP[/eqP Hfind Hph]]. by rewrite Hfind Hph.
+Qed.
+
 (** Lemmas about [all]*)
 
 Lemma all_in: forall {A: eqType} (l: seq A) (p: pred A),
