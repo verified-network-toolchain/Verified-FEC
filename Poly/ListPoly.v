@@ -787,14 +787,172 @@ Proof.
     + move: Hdiv; rewrite bool_dvdp_spec polyseqK. move ->. by rewrite orbT.
 Qed.
 
-(*Now, let's test this on our polynomial*)
-Definition p256 : lpoly F := seq_to_lpoly [:: true; false; true; true; true; false; false; false; true].
+(** Testing for Primitive lpolys*)
 
-Lemma p256_irreducible: irreducible_poly (Poly p256).
+(*Similarly, we want a computable method for determining if a polynomial over GF(2) is primitive. We want to
+  enumerate 'X^n - 1 = 'X^n + 1 for all 0 < n < b for some bound. Because this will be quite large, we
+  want to do this as efficiently as possible*)
+
+Definition xn1_seq (n: nat) : seq F := true :: rcons (nseq (n.-1) false) true.
+
+Lemma xn1_seq_wf: forall n, 
+  last 1 (xn1_seq n) != 0.
 Proof.
-  by apply /(@find_irredP _ 4).
+  move => n. by rewrite /xn1_seq /= last_rcons.
 Qed.
 
-(*Yay!*)
+Definition xn1_lpoly (n: nat) : lpoly F := Polynomial (xn1_seq_wf n).
+
+Lemma xn1_lpoly_spec: forall n,
+  n != 0%N ->
+  Poly (xn1_lpoly n) = 'X^n - 1.
+Proof.
+  move => n Hn. rewrite -polyP => i.
+  rewrite coef_Poly /= /xn1_seq /= coefB coef1 coefXn.
+  case Hi0: (i == 0%N).
+  - apply (elimT eqP) in Hi0. subst. have->: (0%N == n) = false. rewrite eq_sym. by apply negbTE.
+    by [].
+  - have Hi: i = i.-1.+1 by rewrite prednK // lt0n Hi0. rewrite {1}Hi /= nth_rcons size_nseq nth_nseq.
+    case Hin: (i == n) => [/= | /=]. 
+    + apply (elimT eqP) in Hin. subst. by rewrite ltnn eq_refl.
+    + case : (i.-1 < n.-1)=>[//|/=].
+      case Hin': (i.-1 == n.-1) =>[|//]. apply (elimT eqP) in Hin'. apply PeanoNat.Nat.pred_inj in Hin'.
+      subst. by rewrite eq_refl in Hin. apply /eqP. by rewrite Hi0. by apply /eqP.
+Qed.
+
+Definition all_xn1 (n: nat) : seq (lpoly F) :=
+  map xn1_lpoly (iota 1 (n.-1)).
+
+Lemma all_xn1_in: forall n l,
+  reflect (exists2 i: nat, (0 < i < n) & (l = xn1_lpoly i)) (l \in (all_xn1 n)).
+Proof.
+  move => n l.
+  rewrite /all_xn1. case Hn0: (n == 0%N).
+  - move: Hn0 => /eqP Hn0. subst. rewrite /=. apply ReflectF. move => [x].
+    by rewrite ltn0 andbF.
+  - case Hin: (l \in [seq xn1_lpoly i | i <- iota 1 n.-1]).
+    + apply ReflectT. move: Hin => /mapP [x Hin Hlx]. subst. exists x. move: Hin.
+      by rewrite mem_iota addnC addn1 prednK // lt0n Hn0. by [].
+    + apply ReflectF. move: Hin => /mapP Hin [x] Hx Hl.
+      subst. apply Hin. exists x. by rewrite mem_iota addnC addn1 prednK // lt0n Hn0. by [].
+Qed.
+
+Definition prim_div_check (l: lpoly F) : option (lpoly F) :=
+  find_val_option (bool_dvdp l) (all_xn1 (2%N ^ ((size l).-1)).-1).
+
+Lemma prim_div_check_spec: forall (l: lpoly F),
+  reflect (forall n, (Poly l) %| 'X^n - 1 -> (n == 0%N) || (((#|F|^((size (Poly l)).-1)).-1) <= n)) 
+    (prim_div_check l == None).
+Proof.
+  move => l. case Hcheck : (prim_div_check l ) => [q /= | /=].
+  - apply ReflectF. move: Hcheck; rewrite /prim_div_check => Hcheck.
+    have Hinq: q \in (all_xn1 (2 ^ (size l).-1).-1) by apply (find_val_option_some_in Hcheck).
+    apply find_val_option_some in Hcheck. rewrite card_bool. move => Hall.
+    apply (elimT (all_xn1_in ((2 ^ (size l).-1).-1) _)) in Hinq.
+    case : Hinq => [i /andP[Hi0 Hisz] Hqi]. subst.
+    have Hi0f: (i == 0%N) = false by rewrite eqn0Ngt Hi0.
+    move : Hcheck; rewrite bool_dvdp_spec xn1_lpoly_spec; last first. by rewrite Hi0f.
+    move => Hdiv. apply Hall in Hdiv. move: Hdiv => /orP [Hi0t | Hiszbig].
+    + by rewrite Hi0t in Hi0f.
+    + move: Hiszbig. by rewrite size_Poly_lpoly leqNgt Hisz.
+  - apply ReflectT. move => n Hdiv.
+    move: Hcheck; rewrite /prim_div_check => /eqP Hcheck.
+    move: Hcheck; rewrite -isSome_none -find_val_option_none all_in => Hall.
+    have: 0 <= n by []. rewrite leq_eqVlt => /orP[Hn0 | Hn0]. by rewrite eq_sym Hn0.
+    have->/=: (n == 0%N) = false by rewrite eqn0Ngt Hn0. rewrite card_bool size_Poly_lpoly. 
+    case (orP (ltn_leq_total n ((2 ^ (size l).-1).-1))) => [Hin | //].
+    move: Hall => /(_ (xn1_lpoly n)) /=.
+    have-> : (xn1_lpoly n \in all_xn1 (2 ^ (size l).-1).-1). apply /all_xn1_in.
+    exists n. by rewrite Hn0 Hin. by []. move => Hnodiv. apply rem_impl in Hnodiv.
+    move: Hnodiv. rewrite bool_dvdp_spec xn1_lpoly_spec. by rewrite Hdiv. by apply lt0n_neq0.
+Qed.
+
+Definition find_prim (l: lpoly F) (n: nat) : bool :=
+  ((find_irred l n) == None) && (bool_dvdp l (xn1_lpoly ((2^((size l).-1)).-1))) &&
+  ((prim_div_check l) == None).
+
+Lemma find_primP: forall (l: lpoly F) n,
+  1 < size l ->
+  n < (size l).-1 <= n.*2 ->
+  reflect (primitive_poly l) (find_prim l n).
+Proof.
+  move => l n Hszl Hn. 
+  have Hpow0: (2 ^ (size l).-1).-1 != 0%N. { have: 2^ 1 <= 2 ^((size l).-1) by rewrite leq_exp2l // ltn_predRL.
+    have->: 2 ^ 1 = 2 by []. move => Hbound. by rewrite -lt0n ltn_predRL. }
+  case Hprim: (find_prim l n).
+  - apply ReflectT. move: Hprim; rewrite /find_prim /primitive_poly => 
+    /andP[/andP [/(find_irredP Hszl Hn) Hirred Hdiv] / prim_div_check_spec Hdivcheck].
+    split. by rewrite polyseqK in Hirred.
+    split. rewrite /= card_bool. move: Hdiv. rewrite bool_dvdp_spec polyseqK xn1_lpoly_spec //.
+    rewrite /=. move: Hdivcheck. by rewrite polyseqK card_bool.
+  - apply ReflectF. move: Hprim; rewrite /find_prim /primitive_poly => Hfalse [Hirred [Hdiv Halldiv]].
+    have: (irreducible_poly (Poly l)) by rewrite polyseqK. move => /(find_irredP Hszl Hn) Hirrb.
+    have Hprimb: (prim_div_check l == None). apply /prim_div_check_spec. rewrite /= polyseqK. apply Halldiv.
+    move: Hfalse; rewrite Hprimb Hirrb /= andbT bool_dvdp_spec polyseqK xn1_lpoly_spec.
+    move: Hdiv. by rewrite /= card_bool; move ->. by [].
+Qed.
+
+(** Concrete Polynomials*)
+
+(*The following are the polynomials that appear in the FEC code. Only p256 is used, but the 
+  others could be in theory if some flags are changed*)
+(*NOTE: Checking that p128 and p256 are primitive takes a long time - there is a lot to check*)
+
+(*1011*)
+Definition p8 := seq_to_lpoly [:: true; true; false; true].
+(*10011*)
+Definition p16 := seq_to_lpoly [:: true; true; false; false; true].
+(*100101*)
+Definition p32 := seq_to_lpoly [:: true; false; true; false; false; true]. 
+(*1000011*)
+Definition p64 := seq_to_lpoly [:: true; true; false; false; false; false; true]. 
+(*10001001*)
+Definition p128:= seq_to_lpoly [:: true; false; false; true; false; false; false; true]. 
+(*100011101*)
+Definition p256 := seq_to_lpoly [:: true; false; true; true; true; false; false; false; true].
+
+Lemma p8_primitive : primitive_poly p8.
+Proof.
+  have Hsz: 1 < size p8 by [].
+  have Hn: 2 < (size p8).-1 <= 2.*2 by [].
+  by apply (elimT (find_primP Hsz Hn)).
+Qed.
+
+Lemma p16_primitive: primitive_poly p16.
+Proof.
+  have Hsz: 1 < size p16 by [].
+  have Hn: 2 < (size p16).-1 <= 2.*2 by [].
+  by apply (elimT (find_primP Hsz Hn)).
+Qed.
+
+Lemma p32_primitive: primitive_poly p32.
+Proof.
+  have Hsz: 1 < size p32 by [].
+  have Hn: 3 < (size p32).-1 <= 3.*2 by [].
+  by apply (elimT (find_primP Hsz Hn)).
+Qed.
+
+Lemma p64_primitive: primitive_poly p64.
+Proof.
+  have Hsz: 1 < size p64 by [].
+  have Hn: 3 < (size p64).-1 <= 3.*2 by [].
+  by apply (elimT (find_primP Hsz Hn)).
+Qed.
+
+(*Takes about 40 seconds*)
+Lemma p128_primitive: primitive_poly p128.
+Proof.
+  have Hsz: 1 < size p128 by [].
+  have Hn: 4 < (size p128).-1 <= 4.*2 by [].
+  by apply (elimT (find_primP Hsz Hn)).
+Qed.
+
+(*Takes about 12 minutes*)
+Lemma p256_primitive: primitive_poly p256.
+Proof.
+  have Hsz: 1 < size p256 by [].
+  have Hn: 4 < (size p256).-1 <= 4.*2 by [].
+  by apply (elimT (find_primP Hsz Hn)).
+Qed.
 
 End BoolPolyDiv.
