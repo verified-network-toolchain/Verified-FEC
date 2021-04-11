@@ -3,6 +3,7 @@ Require Import VST.floyd.proofauto.
 Require Import Common.
 Require Import CommonVST.
 Require Import VandermondeList.
+Require Import ReedSolomonList.
 Require Import fec.
 Require Import Poly.
 Require Import List2D.

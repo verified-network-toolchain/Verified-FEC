@@ -10,13 +10,14 @@ Require Import FECTactics.
 Set Bullet Behavior "Strict Subproofs".
 
 (** Verification of [fec_find_mod]*)
-(*
+
 Lemma body_fec_find_mod : semax_body Vprog Gprog f_fec_find_mod fec_find_mod_spec.
 Proof.
 start_function. 
-(*TODO: why doesn't this work, and how to prove a switch statement in which only 1 branch can be taken?*)
-forward_if (PROP () LOCAL (temp _modulus (Vint (Int.repr modulus))) SEP ()).
-*)
+forward_if (PROP () LOCAL (temp _modulus (Vint (Int.repr modulus))) SEP ()); try lia.
+- forward. forward. entailer!. f_equal. f_equal. rep_lia.
+- forward.
+Qed. 
 
 
 (** Verification of [fec_gf_mult] *)
