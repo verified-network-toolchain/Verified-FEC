@@ -915,28 +915,28 @@ Lemma p8_primitive : primitive_poly p8.
 Proof.
   have Hsz: 1 < size p8 by [].
   have Hn: 2 < (size p8).-1 <= 2.*2 by [].
-  by apply (elimT (find_primP Hsz Hn)).
+  apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
 Lemma p16_primitive: primitive_poly p16.
 Proof.
   have Hsz: 1 < size p16 by [].
   have Hn: 2 < (size p16).-1 <= 2.*2 by [].
-  by apply (elimT (find_primP Hsz Hn)).
+  apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
 Lemma p32_primitive: primitive_poly p32.
 Proof.
   have Hsz: 1 < size p32 by [].
   have Hn: 3 < (size p32).-1 <= 3.*2 by [].
-  by apply (elimT (find_primP Hsz Hn)).
+  apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
 Lemma p64_primitive: primitive_poly p64.
 Proof.
   have Hsz: 1 < size p64 by [].
   have Hn: 3 < (size p64).-1 <= 3.*2 by [].
-  by apply (elimT (find_primP Hsz Hn)).
+  apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
 (*Takes about 40 seconds*)
@@ -944,7 +944,7 @@ Lemma p128_primitive: primitive_poly p128.
 Proof.
   have Hsz: 1 < size p128 by [].
   have Hn: 4 < (size p128).-1 <= 4.*2 by [].
-  by apply (elimT (find_primP Hsz Hn)).
+  apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
 (*Takes about 12 minutes*)
@@ -952,7 +952,7 @@ Lemma p256_primitive: primitive_poly p256.
 Proof.
   have Hsz: 1 < size p256 by [].
   have Hn: 4 < (size p256).-1 <= 4.*2 by [].
-  by apply (elimT (find_primP Hsz Hn)).
+  apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
 End BoolPolyDiv.
