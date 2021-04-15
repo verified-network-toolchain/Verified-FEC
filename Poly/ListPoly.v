@@ -423,25 +423,6 @@ Definition bool_redivp_rec (l: lpoly F) :=
       | n1.+1 => loop qq1 r1 n1
       end.
 
-(*TODO: move*)
-Lemma size_not_nil: forall {A: Type} (l: seq A),
-  (0 < size l) = ~~ (nilp l).
-Proof.
-  move => A l. case Hsz: (size l) => [/= | n /=].
-  - apply size0nil in Hsz. by subst.
-  - move: Hsz. by case : l.
-Qed.
-
-(*TODO: move maybe, only in separate lemma so I don't need to do it twice in the following proof*)
-Lemma larger_not_nil: forall {A: Type} (l1 l2: seq A),
-  ~~ nilp l2 ->
-  (size l1 < size l2) = false ->
-  ~~ nilp l1.
-Proof.
-  move => A l1 l2 Hl2 Hsz. rewrite ltnNge in Hsz. apply negbFE in Hsz. move : Hl2;
-  rewrite -!size_not_nil => Hl2. by apply (ltn_leq_trans Hl2).
-Qed.
-
 (*Last two elts of a tuple*)
 Definition last_two {A B C : Type} (x: A * B * C) : B * C :=
   match x with
@@ -745,13 +726,6 @@ Lemma bool_dvdp_spec: forall p q,
 Proof.
   move => p q. rewrite /dvdp /bool_dvdp.
   by rewrite -bool_modp_spec /= lpoly_zero.
-Qed.
-
-(*TODO: move*)
-Lemma isSome_none: forall {T: eqType} (o: option T),
-  ~~ (isSome o) = (o == None).
-Proof.
-  move => T o. by case : o.
 Qed.
 
 (*Finally, a (computable) function to find irreducible polynomials of lpolys*)

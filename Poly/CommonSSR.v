@@ -28,6 +28,7 @@ Qed.
 
 (*TODO: remove this, this is [eqn_leq]*)
 (*exists in the library but this version is move convenient*)
+(*
 Lemma leq_both_eq: forall m n,
   ((m <= n) && (n <= m)) = (m == n).
 Proof.
@@ -41,7 +42,7 @@ Proof.
     rewrite eq_sym. by case: (m == n). move ->. 
     have: (m <= n = false). rewrite ltnNge in Hgt. move : Hgt.
     by case : (m <= n). move ->. by rewrite andFb.
-Qed.
+Qed.*)
 
 Lemma ltn_leq_trans: forall [n m p : nat], m < n -> n <= p -> m < p.
 Proof.
@@ -86,43 +87,6 @@ Proof.
   move => n m. by rewrite -subn1 -addn1 add0n leq_subLR addnC addn1.
 Qed.
 
-(*A few lemmas for working with division by 2*)
-
-Lemma div_lt_bound: forall (n: nat),
-  (n < n./2 + 1) = (n == 0)%N.
-Proof.
-  move => n. elim : n => [//= | n IH /=].
-  rewrite -(addn1 n) ltn_add2r. rewrite uphalf_half. case  Hodd: (odd n) => [/=|/=].
-  - rewrite addnC IH. case Hn0 : (n == 0)%N. by eq_subst Hn0.
-    rewrite addn1. by [].
-  - rewrite add0n. have->: n < n./2 = false. rewrite -divn2.
-    case Hn : (n < n %/ 2) =>[|//]. have Hnle : (n %/ 2 <= n) by apply leq_div.
-    have: (n < n) by apply (ltn_leq_trans Hn Hnle). by rewrite ltnn.
-    by rewrite addn1.
-Qed.
-
-Lemma sub_half_lower: forall (n: nat),
-  n./2 <= n - n./2.
-Proof.
-  move => n. rewrite leq_subRL. rewrite addnn -{2}(odd_double_half n).
-  case : (odd n) =>[/=|/=]. by rewrite addnC addn1 leqnSn. by rewrite add0n leqnn.
-  rewrite -divn2. apply leq_div.
-Qed.
-
-Lemma sub_half_upper: forall n,
-  n - n./2 <= n./2 + 1.
-Proof.
-  move => n. rewrite leq_subLR addnA addnn -{1}(odd_double_half n) addnC leq_add2l.
-  by case (odd n).
-Qed.
-
-Lemma div_2_pos: forall n,
-  1 < n ->
-  0 < n./2.
-Proof.
-  move => n H1n. by rewrite -divn2 divn_gt0.
-Qed.
-
 (** Lemmas about Ordinals*)
 
 (*If an 'I_m exists, then 0 < m*)
@@ -142,13 +106,32 @@ Qed.
 
 Definition pred_ord (n: nat) (Hn: 0 < n) : 'I_n := Ordinal (pred_lt Hn).
 
-
 Lemma widen_ord_inj: forall {m n: nat} (H: m <= n) x y, widen_ord H x = widen_ord H y -> x = y.
 Proof.
   move => m n H x y Hw. apply (elimT eqP).
   have: nat_of_ord (widen_ord H x) == x by []. have: nat_of_ord (widen_ord H y) == y by [].
   move => /eqP Hy /eqP Hx. rewrite Hw in Hx. have: nat_of_ord x == nat_of_ord y by rewrite -Hx -Hy. by [].
 Qed.
+
+(** Lemmas about [iota]*)
+
+Lemma iota_plus_1: forall x y,
+  iota x (y.+1) = iota x y ++ [ :: (x + y)%N].
+Proof.
+  move => x y. by rewrite -addn1 iotaD /=.
+Qed.
+
+Lemma last_iota: forall n m k,
+  (0 < n)%N ->
+  last k (iota m n) = (m+n).-1.
+Proof.
+  move => n. elim : n => [/= m k | /=n IH m k Hn].
+  - by rewrite ltnn.
+  - apply ltnSE in Hn. move: Hn; rewrite leq_eqVlt => /orP[/eqP Hn0 | Hnpos].
+    + by rewrite -Hn0 /= addn1 -pred_Sn.
+    + by rewrite IH // addSnnS.
+Qed.
+
 
 (** Other lemmas*)
 
@@ -163,12 +146,11 @@ Proof.
   move => b. move => H. by apply H.
 Qed.
 
-Lemma iota_plus_1: forall x y,
-  iota x (y.+1) = iota x y ++ [ :: (x + y)%N].
+Lemma isSome_none: forall {T: eqType} (o: option T),
+  ~~ (isSome o) = (o == None).
 Proof.
-  move => x y. by rewrite -addn1 iotaD /=.
+  move => T o. by case : o.
 Qed.
-
 
 (** Lemmas about [find] *)
 
@@ -316,6 +298,33 @@ Lemma size_length: forall {A : Type} (l: list A),
 Proof.
   move => A l. elim: l => [//|h t IH /=].
   by rewrite IH.
+Qed.
+
+Lemma nth_nth: forall {A: Type} (d: A) (l: seq A) (n: nat),
+  nth d l n = List.nth n l d.
+Proof.
+  move => A d l. elim : l => [//= n | //= h t IH n].
+  - by case : n.
+  - case: n. by []. move => n. by rewrite /= IH.
+Qed.
+
+(** Other list lemmas*)
+
+Lemma size_not_nil: forall {A: Type} (l: seq A),
+  (0 < size l) = ~~ (nilp l).
+Proof.
+  move => A l. case Hsz: (size l) => [/= | n /=].
+  - apply size0nil in Hsz. by subst.
+  - move: Hsz. by case : l.
+Qed.
+
+Lemma larger_not_nil: forall {A: Type} (l1 l2: seq A),
+  ~~ nilp l2 ->
+  (size l1 < size l2) = false ->
+  ~~ nilp l1.
+Proof.
+  move => A l1 l2 Hl2 Hsz. rewrite ltnNge in Hsz. apply negbFE in Hsz. move : Hl2;
+  rewrite -!size_not_nil => Hl2. by apply (ltn_leq_trans Hl2).
 Qed.
 
 (** Stuff about finTypes*)
@@ -503,6 +512,3 @@ Proof.
 Qed. 
 
 End RemZeroes.
-
-
-

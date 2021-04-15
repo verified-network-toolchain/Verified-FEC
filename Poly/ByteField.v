@@ -13,14 +13,30 @@ Require Import mathcomp.algebra.poly.
 Require Import PolyField.
 Require Import BoolField.
 
-(*TODO: move to CommonSSR*)
-Lemma nth_nth: forall {A: Type} (d: A) (l: seq A) (n: nat),
-  nth d l n = List.nth n l d.
+(*A few generic results*)
+
+Lemma Znth_nil: forall {A: Type} {d: Inhabitant A} (i: Z),
+  @Znth A d i [::] = d.
 Proof.
-  move => A d l. elim : l => [//= n | //= h t IH n].
-  - by case : n.
-  - case: n. by []. move => n. by rewrite /= IH.
+  move => A d i. rewrite /Znth. case : (zlt i 0) => [//= Hi0 | //= Hi0].
+  by case : (Z.to_nat i).
 Qed.
+
+(*A few results about bytes in general*)
+Lemma byte_unsigned_inj: forall (b1 b2: byte),
+  Byte.unsigned b1 = Byte.unsigned b2 ->
+  b1 = b2.
+Proof.
+  move => b1 b2 Hb12. apply Vubyte_injective. by rewrite /Vubyte Hb12.
+Qed.
+
+Lemma byte_log2_range: forall (b: byte), 
+  0 <= Z.log2 (Byte.unsigned b) <= 7%Z.
+Proof.
+  move => [z Hz /=]. move: Hz; have ->: Byte.modulus = 256%Z by []; move => [Hlo Hhi]. split.
+  apply Z.log2_nonneg. have {}Hhi: z <= 255 by lia.
+  apply Z.log2_le_mono in Hhi. by move: Hhi; have->: Z.log2 255 = 7 by [].
+Qed. 
 
 Section Ziota.
 (*Version of [iota] for nonnegative integers*)
@@ -110,15 +126,6 @@ Qed.
 Definition Z_to_bits (z: Z) : seq bool :=
   if Z.eq_dec z 0 then nil else
   map (Z.testbit z) (Ziota 0 (Z.log2 z + 1)).
- (* foldr (fun i acc => acc ++ [:: Z.testbit z i]) nil (Ziota 0 (Z.log2 z)).*)
-
-(*TODO: move*)
-Lemma Znth_nil: forall {A: Type} {d: Inhabitant A} (i: Z),
-  @Znth A d i [::] = d.
-Proof.
-  move => A d i. rewrite /Znth. case : (zlt i 0) => [//= Hi0 | //= Hi0].
-  by case : (Z.to_nat i).
-Qed.
 
 Lemma bits_to_Z_spec: forall s i,
   Z.testbit (bits_to_Z s) i = Znth i s.
@@ -151,19 +158,15 @@ Proof.
       pose proof (Z.log2_nonneg z). lia.
 Qed.
 
-Definition GF2 := bool_finFieldType.
-
-(*TODO: move*)
-Lemma last_iota: forall n m k,
-  (0 < n)%N ->
-  last k (iota m n) = (m+n).-1.
+(*We need this because ssreflect stuff uses nth*)
+Lemma Z_to_bits_nth: forall z i, (0 <= z)%Z ->
+  ((Z_to_bits z)`_i)%R = Z.testbit z (Z.of_nat i).
 Proof.
-  move => n. elim : n => [/= m k | /=n IH m k Hn].
-  - by rewrite ltnn.
-  - apply ltnSE in Hn. move: Hn; rewrite leq_eqVlt => /orP[/eqP Hn0 | Hnpos].
-    + by rewrite -Hn0 /= addn1 -pred_Sn.
-    + by rewrite IH // addSnnS.
+  move => z i Hz. rewrite Z_to_bits_spec // /Znth. case : (zlt (Z.of_nat i) 0); try lia ; move => Htriv.
+  by rewrite Nat2Z.id nth_nth.
 Qed.
+
+Definition GF2 := bool_finFieldType.
 
 Lemma Z_to_bits_last: forall z,
   0 <= z ->
@@ -269,6 +272,10 @@ Proof.
   move => z Hz. apply Z_to_bits_size.
 Qed.
 
+End ZPoly.
+
+Section ByteQpolyMap.
+
 (*Work directly with field of polys over p256*)
 Lemma p256_irred: polydiv.Pdiv.Field.irreducible_poly (Poly p256).
 Proof.
@@ -320,15 +327,6 @@ Qed.
 Definition byte_to_poly (b: byte) :  {poly BoolField.bool_fieldType} :=
   Z_to_poly (@Byte_unsigned_nonneg b).
 
-(*TODO: move*)
-Lemma byte_log2_range: forall (b: byte), 
-  0 <= Z.log2 (Byte.unsigned b) <= 7%Z.
-Proof.
-  move => [z Hz /=]. move: Hz; have ->: Byte.modulus = 256%Z by []; move => [Hlo Hhi]. split.
-  apply Z.log2_nonneg. have {}Hhi: z <= 255 by lia.
-  apply Z.log2_le_mono in Hhi. by move: Hhi; have->: Z.log2 255 = 7 by [].
-Qed. 
-
 Lemma byte_to_poly_range: forall b,
   (size (byte_to_poly b) < size (Poly p256))%N.
 Proof.
@@ -340,13 +338,7 @@ Qed.
 Definition byte_to_qpoly (b: byte) : qpoly_p256 :=
   @Qpoly GF2 (Poly p256) _ (byte_to_poly_range b).
 
-(*TODO: move*)
-Lemma byte_unsigned_inj: forall (b1 b2: byte),
-  Byte.unsigned b1 = Byte.unsigned b2 ->
-  b1 = b2.
-Proof.
-  move => b1 b2 Hb12. apply Vubyte_injective. by rewrite /Vubyte Hb12.
-Qed.
+
 
 (*Now, we have to show that these maps form a bijection, and then we can define the ring and field operations*)
 Lemma byte_qpoly_cancel: cancel byte_to_qpoly qpoly_to_byte.
@@ -361,6 +353,22 @@ Proof.
   apply val_inj. rewrite /= /qpoly_to_Z /poly_to_Z. apply Z_bits_cancel.
   by case : s => [[p Hp] Hsz /=].
 Qed.
+
+(*Could also prove this from injective, from bijective, from cancel*)
+Lemma byte_to_qpoly_inj: forall b1 b2,
+  byte_to_qpoly b1 = byte_to_qpoly b2 ->
+  b1 = b2.
+Proof.
+  move => b1 b2 Hb.
+  have: qpoly_to_byte (byte_to_qpoly b1 ) = qpoly_to_byte (byte_to_qpoly b2) by rewrite Hb.
+  by rewrite !byte_qpoly_cancel.
+Qed.
+
+End ByteQpolyMap.
+
+Section ByteAlg.
+
+Local Open Scope ring_scope.
 
 (*Now we need to define some structures*)
 Definition beq (b1 b2: byte) : bool := (Byte.eq_dec b1 b2).
@@ -386,14 +394,6 @@ Canonical byte_finType := FinType byte byte_finMixin.
 (*Zmodtype*)
 
 (*TODO: how to get it to infer the fieldType - it is already Canonical*)
-
-(*TODO: move probably. We need this because ssreflect stuff uses nth*)
-Lemma Z_to_bits_nth: forall z i, (0 <= z)%Z ->
-  (Z_to_bits z)`_i = Z.testbit z (Z.of_nat i).
-Proof.
-  move => z i Hz. rewrite Z_to_bits_spec // /Znth. case : (zlt (Z.of_nat i) 0); try lia ; move => Htriv.
-  by rewrite Nat2Z.id nth_nth.
-Qed.
 
 Lemma addb_xorb: forall (b1 b2: bool),
   addb b1 b2 = xorb b1 b2.
@@ -428,6 +428,20 @@ Proof.
   apply val_inj. by rewrite /= polyseq0 /Byte.zero Byte.unsigned_repr.
 Qed.
 
+Lemma byte_zero_qpoly_iff: forall b, (byte_to_qpoly b == (@GRing.zero qpoly_p256_fieldType)) = (b == Byte.zero).
+Proof.
+  move => b. case Hb: (b == Byte.zero).
+  - apply (elimT eqP) in Hb. by rewrite Hb byte_zero_qpoly eq_refl.
+  - case Hbq: (byte_to_qpoly b == 0) => [|//]. apply (elimT eqP) in Hbq. move: Hbq.
+    have->: (@GRing.zero qpoly_p256_fieldType) = (q0 (p256_irred)) by [].
+    rewrite /byte_to_qpoly /q0 => Hq. apply (@congr1 _ _ val (Qpoly (byte_to_poly_range b)) _) in Hq.
+    move: Hq; rewrite /= /byte_to_poly /Z_to_poly => Hp.
+    apply (@congr1 _ _ val (Polynomial (Z_to_bits_last (Byte_unsigned_nonneg (b:=b))))) in Hp.
+    move: Hp; rewrite /= polyseq0 => Hz. apply (congr1 bits_to_Z) in Hz. move: Hz.
+    rewrite bits_Z_cancel /=. have->: 0%Z = Byte.unsigned Byte.zero by rewrite Byte.unsigned_zero.
+    move => Hun. apply byte_unsigned_inj in Hun. by rewrite Hun in Hb. apply Byte_unsigned_nonneg.
+Qed.
+
 Lemma byte_one_qpoly: byte_to_qpoly Byte.one = (q1 (p256_irred)).
 Proof.
   rewrite /byte_to_qpoly /q1. apply val_inj. rewrite /= /byte_to_poly /= /Z_to_poly /=.
@@ -443,14 +457,134 @@ Proof.
 Qed.
 
 (*We define multiplication and division in terms of qpolys directly*)
-Definition mul_byte (b1 b2: byte) : byte :=
+Definition byte_mul (b1 b2: byte) : byte :=
   qpoly_to_byte (@GRing.mul qpoly_p256_fieldType (byte_to_qpoly b1) (byte_to_qpoly b2)).
 
-Definition inv_byte (b: byte) : byte :=
+Definition byte_inv (b: byte) : byte :=
   qpoly_to_byte (@GRing.inv qpoly_p256_fieldType (byte_to_qpoly b)).
 
 (*This proves (implictly) that these rings are isomorphic. Since we need the canonical instances, we prove
   all the conditions manually, but they all follow from the above isomorphism*)
 
+Lemma baddA: associative Byte.xor.
+Proof.
+  move => b1 b2 b3. by rewrite Byte.xor_assoc.
+Qed.
 
+Lemma baddC: commutative Byte.xor.
+Proof.
+  move => b1 b2. apply Byte.xor_commut.
+Qed.
 
+Lemma baddFb: left_id Byte.zero Byte.xor.
+Proof.
+  move => b. apply Byte.xor_zero_l.
+Qed.
+
+Lemma baddbb: left_inverse Byte.zero id Byte.xor.
+Proof.
+  move => b. apply Byte.xor_idem.
+Qed.
+
+Definition byte_zmodmixin := ZmodMixin baddA baddC baddFb baddbb.
+Canonical byte_zmodtype := ZmodType byte byte_zmodmixin.
+
+Lemma byte_mulA: associative byte_mul.
+Proof.
+  move => b1 b2 b3. rewrite /byte_mul. f_equal. by rewrite !qpoly_byte_cancel GRing.mulrA.
+Qed.
+
+Lemma byte_mulC: commutative byte_mul.
+Proof.
+  move => b1 b2. rewrite /byte_mul. f_equal. by rewrite GRing.mulrC.
+Qed.
+
+Lemma byte_mul1q: left_id Byte.one byte_mul.
+Proof.
+  move => b. by rewrite /byte_mul byte_one_qpoly GRing.mul1r byte_qpoly_cancel.
+Qed.
+
+Lemma byte_mulD: left_distributive byte_mul Byte.xor.
+Proof.
+  move => b1 b2 b3. rewrite /byte_mul. apply byte_to_qpoly_inj. 
+  by rewrite !xor_qpoly !qpoly_byte_cancel GRing.mulrDl.
+Qed.
+
+Lemma byte_1not0: Byte.one != Byte.zero.
+Proof.
+  apply /beq_axiom. apply Byte.one_not_zero.
+Qed.
+
+Definition byte_comringmixin := ComRingMixin byte_mulA byte_mulC byte_mul1q byte_mulD byte_1not0.
+Canonical byte_ring := RingType byte byte_comringmixin.
+Canonical byte_comring := ComRingType byte byte_mulC.
+
+Definition bunit : pred byte :=
+  fun x => x != Byte.zero.
+
+Lemma bunit_qunit: forall b,
+  bunit b = qunit p256_irred (byte_to_qpoly b).
+Proof.
+  move => b. by rewrite /bunit /qunit byte_zero_qpoly_iff.
+Qed.
+
+Lemma byte_mulVr: {in bunit, left_inverse Byte.one byte_inv byte_mul}.
+Proof.
+  move => b Hin. rewrite /byte_mul /byte_inv qpoly_byte_cancel GRing.mulVr.
+  - apply byte_to_qpoly_inj. by rewrite byte_one_qpoly qpoly_byte_cancel.
+  - rewrite GRing.unitfE. have: b != Byte.zero by []. by rewrite byte_zero_qpoly_iff.
+Qed.
+
+Lemma byte_mulrV: {in bunit, right_inverse Byte.one byte_inv byte_mul}.
+Proof.
+  move => b Hin. rewrite byte_mulC. by apply byte_mulVr.
+Qed.
+
+Lemma byte_unitP : forall x y : byte, (y * x) = 1 /\ (x * y) = 1 -> bunit x.
+Proof.
+  move => x y. have->: (x * y) = byte_mul x y by [].
+  have->: (y * x) = byte_mul y x by []. rewrite /byte_mul => [[Hun1 Hun2]].
+  have Hun: @GRing.mul qpoly_p256_fieldType (byte_to_qpoly y) (byte_to_qpoly x) = (q1 p256_irred) /\
+        @GRing.mul qpoly_p256_fieldType (byte_to_qpoly x) (byte_to_qpoly y) = (q1 p256_irred). {
+  split.
+  - apply (congr1 byte_to_qpoly) in Hun1. move: Hun1; rewrite qpoly_byte_cancel. move ->.
+    apply byte_one_qpoly.
+  - apply (congr1 byte_to_qpoly) in Hun2. move: Hun2; rewrite qpoly_byte_cancel. move ->.
+    apply byte_one_qpoly. }
+  apply (qpoly_unitP) in Hun. by rewrite bunit_qunit.
+Qed.
+
+Lemma byte_inv0id : {in [predC bunit], byte_inv =1 id}.
+Proof.
+  move => b Hun. have Hz: ~~ (b != 0) by []. move: Hz; rewrite negbK => /eqP Hz. subst.
+  rewrite /byte_inv /= byte_zero_qpoly GRing.invr0. apply byte_to_qpoly_inj.
+  rewrite qpoly_byte_cancel. apply /eqP. by rewrite eq_sym byte_zero_qpoly_iff.
+Qed.
+
+Definition byte_unitringmixin := UnitRingMixin byte_mulVr byte_mulrV byte_unitP byte_inv0id.
+Canonical byte_unitringtype := UnitRingType byte byte_unitringmixin.
+
+Lemma byte_mulf_eq0 : forall x y : byte, (x * y) = 0 -> (x == 0) || (y == 0).
+Proof.
+  move => x y. have->: (x * y) = byte_mul x y by []. have->:0 = Byte.zero by []. rewrite /byte_mul => Hq.
+  apply (congr1 byte_to_qpoly) in Hq. move: Hq; rewrite qpoly_byte_cancel byte_zero_qpoly => Hz.
+  apply qpoly_mulf_eq0 in Hz. by rewrite -!byte_zero_qpoly_iff.
+Qed.
+
+Canonical byte_comunitring := [comUnitRingType of byte].
+Canonical byte_idomaintype := IdomainType byte byte_mulf_eq0.
+
+Lemma byte_mulVf : GRing.Field.axiom byte_inv.
+Proof.
+  move => b Hnz. by apply byte_mulVr.
+Qed. 
+
+Lemma byte_inv0: byte_inv 0%R = 0%R.
+Proof. 
+  by apply byte_inv0id.
+Qed. 
+
+Definition byte_fieldmixin := FieldMixin byte_mulVf byte_inv0.
+Canonical byte_fieldType := FieldType byte byte_fieldmixin.
+(*Canonical byte_finFieldType := Eval hnf in [finFieldType of byte]. - dont actually need this*)
+End ByteAlg.
