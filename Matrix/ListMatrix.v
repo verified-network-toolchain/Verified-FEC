@@ -12,8 +12,8 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import Gaussian.
-Require Import PropList.
 Require Import CommonSSR.
+Require Import ZSeq.
 
 (*Convert bounded Z to ordinal*)
 Lemma Z_nat_bound: forall m x (Hx: 0 <= x < m),
@@ -141,16 +141,16 @@ Qed.
 Section GenMx.
 
 Definition mk_matrix m n (f: Z -> Z -> F) : matrix :=
-  prop_list (fun i => prop_list (fun j => f i j) n) m.
+  mkseqZ (fun i => mkseqZ (fun j => f i j) n) m.
 
 Lemma mk_matrix_wf: forall m n f,
   0 <= m ->
   0 <= n ->
   wf_matrix (mk_matrix m n f) m n.
 Proof.
-  move => m n f Hm Hn. rewrite /wf_matrix /mk_matrix prop_list_length =>[|//].
-  repeat split; try lia. rewrite Forall_Znth prop_list_length =>[i Hi|//].
-  rewrite prop_list_Znth; try lia. by rewrite prop_list_length.
+  move => m n f Hm Hn. rewrite /wf_matrix /mk_matrix mkseqZ_Zlength =>[|//].
+  repeat split; try lia. rewrite Forall_Znth mkseqZ_Zlength =>[i Hi|//].
+  rewrite mkseqZ_Znth; try lia. by rewrite mkseqZ_Zlength.
 Qed.
 
 Lemma mk_matrix_get: forall m n f i j,
@@ -158,8 +158,8 @@ Lemma mk_matrix_get: forall m n f i j,
   0 <= j < n ->
   get (mk_matrix m n f) i j = f i j.
 Proof.
-  move => m n f i j Hi Hj. rewrite /mk_matrix /get prop_list_Znth => [|//].
-  by rewrite prop_list_Znth.
+  move => m n f i j Hi Hj. rewrite /mk_matrix /get mkseqZ_Znth => [|//].
+  by rewrite mkseqZ_Znth.
 Qed.
 
 Lemma mk_matrix_mx:forall m n (f: Z -> Z -> F) (g: 'I_(Z.to_nat m) -> 'I_(Z.to_nat n) -> F),
@@ -394,8 +394,8 @@ Lemma foldl_ziota_get: forall m n (mx: matrix) (f: matrix -> Z -> matrix) (b: Z)
 Proof.
   move => m n mx f b i j Hconds Hi Hj Hb Hwf.
   case : (Z_lt_le_dec i b) => [Hin /= | Hout /=].
-  - apply (mx_foldl_in Hconds); try by []. rewrite Zseq_In; lia. apply Ziota_NoDup.
-  - apply (mx_foldl_notin (proj1 Hconds)); try by []. rewrite Zseq_In; lia.
+  - apply (mx_foldl_in Hconds); try by []. rewrite Ziota_In; lia. apply Ziota_NoDup.
+  - apply (mx_foldl_notin (proj1 Hconds)); try by []. rewrite Ziota_In; lia.
 Qed.
 
 (*Convert any function of this form to a mathcomp matrix (so we only have to prove this once*)
@@ -725,7 +725,7 @@ Proof.
   - move => mx' i Hi Hwf'. rewrite /=. apply sub_all_rows_partial_wf =>[//|].
     by apply all_cols_one_partial_wf.
   - by [].
-  - move => x. rewrite Zseq_In; lia.
+  - move => x. rewrite Ziota_In; lia.
 Qed.
 
 End AllSteps.

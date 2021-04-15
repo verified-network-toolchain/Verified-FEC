@@ -798,79 +798,6 @@ Proof.
   - move => x. rewrite mem_map. rewrite mem_cat !in_ord_comp.
     by case Hx: (x \in rows). move => i j Hw. apply (widen_ord_inj Hw).
 Qed.
-(*
-Print strong_inv.
-
-(*Use the second list to index into the first one*)
-Definition combine_nth {m n : nat} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m) : seq 'I_m :=
-  foldr (fun (x: 'I_n) acc => nth xm l1 x :: acc) nil l2.
-
-Lemma combine_nth_nth: forall {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm xm': 'I_m) (xn: 'I_n) (z: nat),
-  z < size l2 ->
-  nth xm' (combine_nth l1 l2 xm) z = nth xm l1 (nth xn l2 z).
-Proof.
-  move => m n l1 l2 xm xm' xn. elim : l2 => [//= | h t /= IH z Hz].
-  have: 0 <= z by []. rewrite leq_eqVlt => /orP[/eqP Hz0 | Hzpos].
-  - by rewrite -Hz0 /=.
-  - have Hz1: z = z.-1.+1 by rewrite (ltn_predK Hzpos). by rewrite Hz1 /= IH //= -subn1 ltn_subLR.
-Qed.
-
-Lemma combine_nth_in:  forall {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m) (x: 'I_m),
-  (forall x, x \in l2 -> x < size l1) ->
-  x \in (combine_nth l1 l2 xm) ->
-  x \in l1.
-Proof.
-  move => m n l1 l2 xm x. elim : l2 => [//= | h t /= IH Hlen].
-  rewrite in_cons => /orP[/eqP Hinh | Hint].
-  - rewrite Hinh mem_nth //. apply Hlen. by rewrite in_cons eq_refl.
-  - apply IH. move => y Hy. apply Hlen. by rewrite in_cons Hy orbT. by [].
-Qed.
-
-Lemma combine_nth_in': forall  {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m) (x: 'I_n),
-  uniq l1 ->
-  (nth xm l1 x \in combine_nth l1 l2 xm) ->
-  x \in l2.
-Proof.
-  move => m n l1 l2 xm x Hun. elim : l2 => [//= | h t /= IH].
-  rewrite !in_cons => /orP[/eqP Hnth | Hrest].
-  - Search uniq nth.  
-
-(nth xm l1 h \notin combine_nth l1 t xm)
-
-Lemma combine_nth_uniq: forall {m n} (l1: seq 'I_m) (l2: seq 'I_n) (xm: 'I_m),
-  uniq l1 ->
-  uniq l2 ->
-  uniq (combine_nth l1 l2 xm).
-Proof.
-  move => m n l1 l2 xm Hunl1. elim : l2 => [//= | h t /= IH /andP[Hnotin Hunl2]].
-  rewrite IH.
-
-(*TODO: move to [submx_rows_cols]*)
-Lemma submx_rows_cols_twice: forall {m n m' n' m'' n''} (A: 'M[F]_(m, n)) (r1: seq 'I_m) (r2: seq 'I_m')
-  (c1: seq 'I_n) (c2: seq 'I_n') (xm: 'I_m) (xn: 'I_n) (xm' : 'I_m') (xn': 'I_n'),
-  m'' <= size r2 ->
-  n'' <= size c2 ->
-  submx_rows_cols m'' n'' (submx_rows_cols m' n' A r1 c1 xm xn) r2 c2 xm' xn' =
-  submx_rows_cols m'' n'' A (combine_nth r1 r2 xm) (combine_nth c1 c2 xn) xm xn.
-Proof.
-  move => m n m' n' m'' n'' A r1 r2 c1 c2 xm xn xm' xn' Hm'' Hn''. rewrite -matrixP => x y. rewrite !mxE.
-  rewrite (combine_nth_nth _ _ xm xm').
-  rewrite (combine_nth_nth _ _ xn xn') //.
-  have Hy: y < n'' by []. by apply (ltn_leq_trans Hy).
-  have Hx: x < m'' by []. by apply (ltn_leq_trans Hx).
-Qed.
-
-Check size_rem.
-
-(*TODO: move*)
-Lemma size_rem': forall {T: eqType} (x: T) (s: seq_predType T),
-  (size s).-1 <= size (rem x s).
-Proof.
-  move => T x s. case Hin: (x \in s).
-  - by rewrite size_rem // leqnn.
-  - rewrite rem_id. by rewrite leq_pred. by rewrite Hin.
-Qed. 
-*)
 
 Lemma add_sub_1: forall n m,
   n.+1 = m ->
@@ -933,13 +860,14 @@ End GenericVandermonde.
 
 (** Results about the Weight Matrix*)
 
-
-Require Import PolyField.
+(*TODO: fix this to be consistent*)
+Require Import ByteField.
+(*
 Require Import Poly.
 Require Import Coq.ZArith.BinInt.
 Require Import PolyMod.
 Require Import Lia.
-Require Import PrimitiveFacts (*for typeclass*).
+Require Import PrimitiveFacts (*for typeclass*).*)
 
 Section PrimitiveVandermonde.
 

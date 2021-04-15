@@ -1364,7 +1364,7 @@ Proof.
   remember (r - n)%N as x. move : n Heqx. elim : x.
   - move => n Hrn Hmn Hr. have: r <= n by rewrite /leq -Hrn. move {Hrn} => Hrn.
     have : n <= r by []. move => Hnr.
-    have : (nat_of_ord r == n)  by rewrite -leq_both_eq Hrn Hnr. move => Hnat.
+    have : (nat_of_ord r == n)  by rewrite eqn_leq Hrn Hnr. move => Hnat.
     have: (r == Ordinal Hmn) by []. move => /eqP Hord. by rewrite -Hord.
   - move => n Hind' n' Hsub Hnm'. rewrite leq_eqVlt => /orP[Heq | Hlt].
     + have: (Ordinal Hnm' == r) by []. by move => /eqP H; subst.
@@ -1891,7 +1891,7 @@ Proof.
   - by rewrite mk_identity_val_in.
   - rewrite mk_identity_val_notin =>[|//|//]. 
     have Hxm: x <= m.-1 by rewrite -ltn_pred.
-    have Hxm1 : nat_of_ord x == m.-1 by rewrite -leq_both_eq Hxm Hnotin.
+    have Hxm1 : nat_of_ord x == m.-1 by rewrite eqn_leq Hxm Hnotin.
     have /eqP Hxord: x == Ordinal Hm by []. by rewrite Hxord Hlast GRing.invr1 GRing.mul1r.
 Qed. 
 

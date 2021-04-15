@@ -16,6 +16,19 @@ Require Import VandermondeList.
 Require Import Gaussian.
 Require Import CommonSSR.
 
+Lemma NoDup_app: forall {A: Type} (l1 l2:list A),
+  NoDup l1 ->
+  NoDup l2 ->
+  (forall x, In x l1 -> ~In x l2) ->
+  NoDup (l1 ++ l2).
+Proof.
+  intros A l1; induction l1; intros.
+  - simpl. assumption.
+  - simpl. inversion H; subst. constructor. intro.
+    apply in_app_or in H2. destruct H2. contradiction. apply (H1 a). left. reflexivity. assumption.
+    apply IHl1. assumption. assumption. intros. apply H1. right. assumption.
+Qed.
+
 
 Section Encoder.
 
