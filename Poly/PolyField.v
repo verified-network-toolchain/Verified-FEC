@@ -147,9 +147,10 @@ Qed.
 Definition q0 : qpoly := Qpoly q0_bound.
 Definition q1 : qpoly := Qpoly q1_bound.
 
-Lemma qadd_bound: forall (p1 p2: {poly F}),  size ((p1 + p2)%% p) < size p.
+Lemma qadd_bound: forall (q1 q2: qpoly), size (val q1 + val q2) < size p.
 Proof.
-  move => p1 p2. rewrite ltn_modp. by apply irredp_neq0.
+  move => [p1 Hp1] [p2 Hp2] /=. pose proof (size_add p1 p2) as Hmax. 
+  apply (leq_ltn_trans Hmax). by rewrite gtn_max Hp1 Hp2.
 Qed.
 
 Definition qadd (q1 q2: qpoly) : qpoly := Qpoly (qadd_bound q1 q2).
@@ -169,8 +170,8 @@ Qed.
 
 Lemma qaddA : associative qadd.
 Proof.
-  move => q1 q2 q3. rewrite /qadd /=. apply qpoly_eq. 
-  by rewrite !modpD !modp_mod GRing.addrA.
+  move => q1 q2 q3. rewrite /qadd /=. apply qpoly_eq.
+  by rewrite GRing.addrA. 
 Qed.
 
 Lemma qaddC : commutative qadd.
@@ -181,13 +182,13 @@ Qed.
 Lemma qaddFq : left_id q0 qadd.
 Proof.
   move => q. rewrite /qadd /q0 /= -{3}(qpoly_qsz q). apply qpoly_eq.
-  rewrite GRing.add0r modp_small //. apply qsz. 
+  by rewrite GRing.add0r.
 Qed.
 
 Lemma qaddqq : left_inverse q0 qopp qadd.
 Proof.
   move => q. rewrite /qadd /qopp /q0. apply qpoly_eq.
-  by rewrite /= GRing.addrC GRing.subrr mod0p.
+  by rewrite /= GRing.addrC GRing.subrr.
 Qed.
 
 Definition qpoly_zmodmixin := ZmodMixin qaddA qaddC qaddFq qaddqq.
@@ -222,7 +223,7 @@ Qed.
 Lemma qpoly_mulD : left_distributive qmul qadd.
 Proof.
   move => x y z. rewrite /qmul /qadd /=. apply qpoly_eq.
-  by rewrite -modpD modp_mod GRing.mulrC modp_mul GRing.mulrC GRing.mulrDl.
+  by rewrite -modpD GRing.mulrDl. 
 Qed.
 
 Lemma qpoly_1not0: q1 != q0.
@@ -429,13 +430,6 @@ Proof.
     + by rewrite Hrxn in IH.
 Qed. 
 
-(*TODO: move*)
-Lemma qp_sub: forall (q1 q2: qpoly),
-  qp (q1 - q2) = ((qp q1) - (qp q2))%% p.
-Proof.
-  move => q1 q2. by [].
-Qed. 
-
 (*A weaker lemma than [modpD]*)
 Lemma modpD': forall (d p q : {poly F}), d != 0 -> (p + q) %% d = (p %% d + q %% d) %% d.
 Proof.
@@ -468,7 +462,7 @@ Proof.
     move: Hxab0 => /orP[|].
     + rewrite qpoly_zero qx_pow modp_mod => Hdiv.
       have: ~~ (p %| 'X^a) by apply irred_dvdn_Xn. by rewrite /dvdp Hdiv.
-    + rewrite qpoly_zero /= modp_mod qx_pow GRing.addrC modpD'; last first.
+    + rewrite qpoly_zero /= qx_pow GRing.addrC modpD'; last first.
       rewrite -size_poly_eq0. case Hp: (size p == 0%N) =>[|//]. apply (elimT eqP) in Hp.
       by have: 2 < 0 by rewrite -{2}Hp. 
       rewrite  modp_mod GRing.addrC -modpD modp_mod => Hmod.

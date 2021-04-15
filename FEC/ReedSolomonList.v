@@ -365,14 +365,6 @@ Proof.
   move => Hh. rewrite /= IH. by rewrite Z2Nat.id; try lia. by inversion Hall.
 Qed.
 
-Lemma nth_nth: forall {A: Type} (d: A) (l: seq A) (n: nat),
-  nth d l n = List.nth n l d.
-Proof.
-  move => A d l. elim : l => [//= n | //= h t IH n].
-  - by case : n.
-  - case: n. by []. move => n. by rewrite /= IH.
-Qed.
-
 Lemma Z_ord_list_Znth: forall (l: seq Z) n i (Hn: 0 < n),
   0 <= i ->
   Forall (fun x => 0 <= x < n) l ->

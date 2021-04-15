@@ -321,59 +321,6 @@ Qed.
 
 End ScMul.
 
-(*Version of [iota] for nonnegative integers*)
-Definition Ziota (x len : Z) :=
-  map (fun y => Z.of_nat y) (iota (Z.to_nat x) (Z.to_nat len)).
-
-Lemma Zlength_iota: forall a b,
-  Zlength (iota a b) = Z.of_nat b.
-Proof.
-  move => a b. by rewrite Zlength_correct -size_length size_iota.
-Qed.
-
-Lemma Zlength_Ziota: forall x len,
-  (0<=x) ->
-  (0<= len) ->
-  Zlength (Ziota x len) = len.
-Proof.
-  move => x len Hx Hlen. rewrite /Ziota Zlength_map Zlength_iota. by lia.
-Qed.
-
-Lemma Zseq_In: forall x len z,
-  (0 <= x) ->
-  (0 <= len) ->
-  In z (Ziota x len) <-> (x <= z < x + len).
-Proof.
-  move => x len z Hx Hlen. rewrite /Ziota in_map_iff. split => [[i [Hiz Hin]] | Hb].
-  move : Hin; rewrite -in_mem_In mem_iota. move => /andP[Hxi Hixlen].
-  have {} Hxi: (Z.to_nat x <= i)%coq_nat by apply (elimT leP).
-  have {} Hixlen: (i < Z.to_nat x + Z.to_nat len)%coq_nat by apply (elimT ltP). subst.
-  split. lia. rewrite Z2Nat.inj_lt; try lia. by rewrite Nat2Z.id Z2Nat.inj_add; try lia.
-  exists (Z.to_nat z). split. rewrite Z2Nat.id; lia. rewrite -in_mem_In mem_iota.
-  apply (introT andP). split. by apply (introT leP); lia. apply (introT ltP).
-  move : Hb => [Hxz Hzxlen]. move: Hzxlen. rewrite Z2Nat.inj_lt; try lia. by rewrite Z2Nat.inj_add; try lia.
-Qed. 
-
-Lemma Ziota_NoDup: forall x len,
-  NoDup (Ziota x len).
-Proof.
-  move => x len. rewrite /Ziota. apply FinFun.Injective_map_NoDup.
-  - rewrite /FinFun.Injective => x' y' Hxy. lia.
-  - rewrite -uniq_NoDup. apply iota_uniq.
-Qed.
-
-Lemma Ziota_plus_1: forall (x len : Z),
-  0 <= x ->
-  0 <= len ->
-  Ziota x (len + 1) = Ziota x len ++ [:: (x +len)%Z].
-Proof.
-  move => x len Hx Hlen. rewrite /Ziota.
-  have ->: (Z.to_nat (len + 1) = Z.to_nat len + 1%nat)%nat by rewrite Z2Nat.inj_add; try lia.
-  rewrite iotaD map_cat /=.
-  f_equal. f_equal.
-  have ->: ((Z.to_nat x + Z.to_nat len)%nat = Z.to_nat (x + len)%Z) by rewrite Z2Nat.inj_add; try lia.
-  lia.
-Qed.
 
 (*Generalized notion of repeated fold_left for row transformation (we have something similar in Gaussian for foldr*)
 
