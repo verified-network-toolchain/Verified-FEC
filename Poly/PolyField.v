@@ -475,6 +475,10 @@ Proof.
         by rewrite leqNgt Hb. } }
 Qed.
 
+(*The other definition was needed for the inverse of 0, but x^0=1. This map is NOT bijective, since
+  0 is not in the codomain*)
+Definition qpow_map_full (i: 'I_(#|F|^((size p).-1))): qpoly := qx ^+ i.
+
 Lemma qpow_exist: forall (q: qpoly),
   q != 0 ->
   exists (i: 'I_(#|F|^((size p).-1))), (nat_of_ord i != 0%N) && (qx ^+ i == q).

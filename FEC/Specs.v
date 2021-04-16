@@ -1,18 +1,52 @@
 Require Import VST.floyd.proofauto.
 
+Require Import fec.
+Require Import ByteField.
+Require Import ZSeq.
+(*
 Require Import Common.
 Require Import CommonVST.
 Require Import VandermondeList.
 Require Import fec.
 Require Import Poly.
 Require Import List2D.
-
+*)
 Instance CompSpecs : compspecs.
 make_compspecs prog. Defined.
 
 Definition Vprog : varspecs.
 mk_varspecs prog. Defined.
 
+(** Constants*)
+
+Definition fec_n : Z := proj1_sig (opaque_constant 256).
+Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
+
+Definition modulus : Z := proj1_sig (opaque_constant 285).
+Definition modulus_eq : modulus = 285%Z := proj2_sig (opaque_constant _).
+
+Definition fec_max_h : Z := proj1_sig (opaque_constant 128).
+Definition fec_max_h_eq : fec_max_h = 128%Z := proj2_sig (opaque_constant _).
+
+Definition fec_max_cols : Z := proj1_sig (opaque_constant 16000).
+Definition fec_max_cols_eq: fec_max_cols = 16000%Z := proj2_sig(opaque_constant _).
+
+Hint Rewrite fec_n_eq : rep_lia.
+Hint Rewrite fec_max_h_eq : rep_lia.
+Hint Rewrite modulus_eq : rep_lia.
+Hint Rewrite fec_max_cols_eq : rep_lia.
+
+(** Field tables*)
+
+Definition INDEX_TABLES gv :=
+  (data_at Ews (tarray tuchar fec_n) (map Vubyte byte_pows) (gv _fec_2_index) *
+   data_at Ews (tarray tuchar fec_n) (map Vubyte byte_logs) (gv _fec_2_power))%logic.
+
+Definition FIELD_TABLES gv :=
+  (INDEX_TABLES gv *
+   data_at Ews (tarray tuchar fec_n) (map Vubyte byte_invs) (gv _fec_invefec))%logic.
+
+(*
 (*For multiplication, we do not need the inverse table*)
 Definition INDEX_TABLES gv :=
    (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index) *
@@ -69,7 +103,7 @@ Definition fec_gf_mult_spec :=
   POST [ tuchar ]
     PROP ()
     RETURN (Vint (Int.repr (poly_to_int (((poly_of_int f) *~ (poly_of_int g)) %~ mod_poly ))))
-    SEP (INDEX_TABLES gv).
+    SEP (INDEX_TABLES gv).*)
 
 Definition fec_generate_math_tables_spec :=
   DECLARE _fec_generate_math_tables
@@ -78,9 +112,9 @@ Definition fec_generate_math_tables_spec :=
     PROP ()
     PARAMS ()
     GLOBALS (gv)
-    SEP (data_at Ews (tarray tuchar fec_n) (list_repeat (Z.to_nat fec_n) (Vint Int.zero)) (gv _fec_2_index);
-         data_at Ews (tarray tuchar fec_n) (list_repeat (Z.to_nat fec_n) (Vint Int.zero)) (gv _fec_2_power);
-         data_at Ews (tarray tuchar fec_n) (list_repeat (Z.to_nat fec_n) (Vint Int.zero)) (gv _fec_invefec))
+    SEP (data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_invefec))
   POST [ tvoid ]
     PROP ()
     RETURN ()
@@ -97,7 +131,7 @@ Definition fec_find_mod_spec :=
     PROP ()
     RETURN (Vint (Int.repr modulus))
     SEP ().
-
+(*
 Definition rse_init_spec :=
   DECLARE _rse_init
   WITH gv: globals
@@ -160,5 +194,6 @@ Definition fec_blk_encode_spec :=
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
           
 Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
-  fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].
+  fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].*)
+Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec].
 

@@ -201,6 +201,14 @@ Proof.
   move => z Hz. apply Z_to_bits_size.
 Qed.
 
+(*Because of dependent type annoying stuff*)
+Lemma Z_to_poly_eq: forall z1 z2 (Hz1: 0 <= z1) (Hz2 : 0 <= z2),
+  z1 = z2 ->
+  Z_to_poly Hz1 = Z_to_poly Hz2.
+Proof.
+  move => z1 z2 Hz1 Hz2 Hz12. rewrite /Z_to_poly. apply val_inj. rewrite /=. by subst.
+Qed. 
+
 End ZPoly.
 
 Section ByteQpolyMap.
@@ -283,14 +291,14 @@ Proof.
   by case : s => [[p Hp] Hsz /=].
 Qed.
 
-(*Could also prove this from injective, from bijective, from cancel*)
-Lemma byte_to_qpoly_inj: forall b1 b2,
-  byte_to_qpoly b1 = byte_to_qpoly b2 ->
-  b1 = b2.
+Lemma byte_qpoly_bij: bijective byte_to_qpoly.
 Proof.
-  move => b1 b2 Hb.
-  have: qpoly_to_byte (byte_to_qpoly b1 ) = qpoly_to_byte (byte_to_qpoly b2) by rewrite Hb.
-  by rewrite !byte_qpoly_cancel.
+  apply (Bijective byte_qpoly_cancel). apply qpoly_byte_cancel.
+Qed.
+
+Lemma byte_to_qpoly_inj: injective byte_to_qpoly.
+Proof.
+  apply bij_inj. apply byte_qpoly_bij.
 Qed.
 
 End ByteQpolyMap.
@@ -320,6 +328,11 @@ Canonical byte_countType := CountType byte byte_countMixin.
 Definition byte_finMixin := CanFinMixin byte_qpoly_cancel. 
 Canonical byte_finType := FinType byte byte_finMixin.
 
+Lemma card_byte: #|byte_finType| = 256%N.
+Proof.
+  by rewrite (bijective_card byte_qpoly_bij) qpoly_size size_p256 /= card_bool.
+Qed. 
+
 (*Zmodtype*)
 
 (*TODO: how to get it to infer the fieldType - it is already Canonical*)
@@ -337,18 +350,36 @@ Proof.
   by [].
 Qed.
 
+Lemma Z_lxor_nonneg': forall a b,
+  0 <= a ->
+  0 <= b ->
+  0 <= Z.lxor a b.
+Proof.
+  move => a b Ha Hb. by rewrite Z.lxor_nonneg.
+Qed.
+
 (*Addition is xor, which is not too hard to prove*)
+(*We first prove for general Z, then bytes*)
+Lemma xor_poly: forall (z1 z2: Z) (Hz1: 0 <= z1) (Hz2: 0 <= z2) (Hxor: 0 <= Z.lxor z1 z2),
+  Z_to_poly Hxor = (Z_to_poly Hz1) + (Z_to_poly Hz2). 
+Proof.
+  move => z1 z2 Hz1 Hz2 Hxor. rewrite -polyP => i /=.
+  by rewrite coef_add_poly /Z_to_poly /= !Z_to_bits_nth // Z.lxor_spec -addb_xorb.
+Qed.
+
 Lemma xor_qpoly: forall (b1 b2: byte),
   byte_to_qpoly (Byte.xor b1 b2) = @GRing.add qpoly_p256_fieldType (byte_to_qpoly b1) (byte_to_qpoly b2).
 Proof.
-  move => b1 b2. apply val_inj. rewrite -polyP => i /=. rewrite coef_add_poly Z_to_bits_nth.
-  rewrite byte_testbit_fold.
-  have [Hi | Hi]: (0 <= Z.of_nat i < Byte.zwordsize)%Z \/ ((Z.of_nat i) >= Byte.zwordsize)%Z by lia.
-  - rewrite Byte.bits_xor // /byte_to_poly /= !Z_to_bits_nth.
-    by rewrite /Byte.testbit -addb_xorb. all: apply Byte_unsigned_nonneg.
-  - rewrite Byte.bits_above // /byte_to_poly /= !Z_to_bits_nth.
-    rewrite !byte_testbit_fold !Byte.bits_above //. all: apply Byte_unsigned_nonneg.
-  - apply Byte_unsigned_nonneg.
+  move => b1 b2. apply val_inj. rewrite /=. rewrite /byte_to_poly /Byte.xor.
+  rewrite (@Z_to_poly_eq _ (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2))).
+  - apply Z_lxor_nonneg'; rep_lia.
+  - move => Hxor. by apply xor_poly.
+  - rewrite Byte.unsigned_repr //. split. apply Z_lxor_nonneg'; rep_lia.
+    pose proof (Z.log2_lxor (Byte.unsigned b1) (Byte.unsigned b2)).
+    have: Z.max (Z.log2 (Byte.unsigned b1)) (Z.log2 (Byte.unsigned b2)) <= Z.log2 255. {
+      apply Z.max_lub; apply Z.log2_le_mono; rep_lia. } rewrite /= => Hup.
+    have: Z.log2 (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) < Z.log2 (Byte.modulus). rewrite /=. rep_lia.
+    move => Hloglt. apply Z.log2_lt_cancel in Hloglt. rep_lia.
 Qed.
 
 Lemma byte_zero_qpoly: byte_to_qpoly Byte.zero = (q0 (p256_irred)).
@@ -523,3 +554,381 @@ Proof.
 Qed.
 
 End ByteAlg.
+
+Require Import mathcomp.algebra.polydiv.
+
+Section Pow.
+
+Local Open Scope ring_scope.
+
+(*Now we need to define the power and logarithm maps and tables*)
+Lemma ord_byte_bound: forall (x: 'I_#|byte_finType|), -1 < Z.of_nat x < Byte.modulus.
+Proof.
+  move => [n Hn] /=. rewrite card_byte in Hn. move: Hn => /ltP Hn. rep_lia.
+Qed.
+
+Definition ord_to_byte (x: 'I_#|byte_finType|) := Byte.mkint _ (ord_byte_bound x).
+
+Lemma byte_ord_bound: forall (b: byte), (Z.to_nat (Byte.unsigned b) < #|byte_finType|)%N.
+Proof.
+  move => b. rewrite card_byte. pose proof (Byte.unsigned_range b) as Hrange. apply /ltP. rep_lia.
+Qed.
+
+Definition byte_to_ord (b: byte) : 'I_#|byte_finType| := Ordinal (byte_ord_bound b).
+
+(*TODO: maybe will need cancel for these, not sure*)
+
+(*Now, we can define the power and inverse power (log) maps*)
+
+Lemma p256_geq_2: (2 < size (Poly p256))%N.
+Proof.
+  by rewrite size_p256.
+Qed.
+
+Lemma byte_qpoly_size: #|byte_finType| = (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1)%N.
+Proof.
+  by rewrite card_bool size_p256 card_byte.
+Qed.
+
+(*TODO; move to commonssr*)
+Lemma eq_leqn: forall m n,
+  m = n ->
+  (m <= n)%N.
+Proof.
+  move => m n ->. by rewrite leqnn.
+Qed. 
+
+Definition eq_ord m n (Hmn: m = n) (x: 'I_m) : 'I_n  := widen_ord (eq_leqn Hmn) x.
+
+Definition byte_pow_map (b: byte) : byte :=
+  qpoly_to_byte (qpow_map_full p256_irred p256_geq_2 (eq_ord byte_qpoly_size (byte_to_ord b))).
+
+Definition byte_log_map (b: byte) : byte :=
+  ord_to_byte (eq_ord (esym byte_qpoly_size) (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b))).
+
+Definition byte_pows : seq byte :=
+  mkseqByte byte_pow_map Byte.modulus.
+
+Definition byte_logs : seq byte :=
+  mkseqByte byte_log_map Byte.modulus.
+
+Definition byte_invs: seq byte :=
+  mkseqByte byte_inv Byte.modulus.
+
+(*Lemmas about these maps*)
+Lemma byte_pow_map_zero: byte_pow_map Byte.zero = Byte.one.
+Proof.
+  rewrite /byte_pow_map /byte_to_ord /qpow_map_full /=.
+  have->:Z.to_nat (Byte.unsigned Byte.zero) = 0%N by []. rewrite GRing.expr0.
+  apply byte_to_qpoly_inj. by rewrite byte_one_qpoly qpoly_byte_cancel.
+Qed.
+
+(*We will model the functions that populate the lookup tables here, so the VST proof does not need to
+  directly reason about any field properties*)
+
+Definition p256_val : Z := 285.
+
+Lemma p256_val_nonneg: 0 <= p256_val.
+Proof.
+  rewrite /p256_val. lia.
+Qed.
+
+Lemma p256_val_poly: Z_to_poly (p256_val_nonneg) = Poly p256.
+Proof.
+  apply val_inj. by rewrite polyseqK.
+Qed. 
+
+(*Multiply a byte by x, directly*)
+Definition byte_mulX (b: byte) :=
+  let temp := Z.shiftl (Byte.unsigned b) 1 in
+  if (Z_lt_ge_dec temp Byte.modulus) then Byte.repr temp else
+  Byte.repr (Z.lxor temp p256_val).
+
+Lemma Z_shiftl_nonneg': forall a n,
+  0 <= a ->
+  0 <= Z.shiftl a n.
+Proof.
+  move => a n Ha. by rewrite Z.shiftl_nonneg.
+Qed.
+
+(*Left shifting an integer multiplies the corresponding poly by X*)
+Lemma Z_shiftl_poly: forall z (Hz: 0 <= z) (Hshift: 0 <= Z.shiftl z 1),
+  Z_to_poly Hshift = 'X * (Z_to_poly Hz).
+Proof.
+  move => z Hz Hshift. rewrite -polyP => i. rewrite coefXM /Z_to_poly /polyseq !Z_to_bits_nth //.
+  rewrite Z.shiftl_spec; try lia.  case Hi: (i == 0%N).
+  - apply (elimT eqP) in Hi. by subst.
+  - apply (elimF eqP) in Hi. f_equal. rewrite Nat2Z.inj_pred; lia.
+Qed.
+
+Opaque Z.shiftl.
+Opaque p256.
+
+
+(*TODO: move*)
+Lemma Z_to_poly_zero: forall z (Hz: 0 <= z),
+  (Z_to_poly Hz = 0) <-> z = 0%Z.
+Proof.
+  move => z Hz. split.
+  - rewrite /Z_to_poly => Hpoly. apply (congr1 polyseq) in Hpoly. move: Hpoly; rewrite /= polyseq0 => Hbits.
+    apply Z.bits_inj_0. move => n. by rewrite Z_to_bits_spec // Hbits Znth_nil.
+  - move => Hz0. subst. rewrite /Z_to_poly. apply val_inj. rewrite /=. by rewrite /Z_to_bits polyseq0.
+Qed.
+
+Lemma byte_mulX_correct: forall b,
+  byte_to_qpoly (byte_mulX b) = @GRing.mul qpoly_p256_fieldType (qx p256_geq_2) (byte_to_qpoly b).
+Proof.
+  move => b. rewrite /byte_mulX. case : (Z_lt_ge_dec (Z.shiftl (Byte.unsigned b) 1) Byte.modulus) => [Hsmall |Hbig];
+  rewrite /proj_sumbool.
+  - rewrite /byte_to_qpoly /=. apply qpoly_eq'.
+    have->:(@GRing.mul qpoly_p256_fieldType (qx p256_geq_2) (Qpoly (byte_to_poly_range b))) =
+      qmul p256_irred (qx p256_geq_2) (Qpoly (byte_to_poly_range b)) by [].
+    rewrite /qmul /= /byte_to_poly /= (@Z_to_poly_eq _ (Z.shiftl (Byte.unsigned b) 1)).
+    + apply Z_shiftl_nonneg'. rep_lia.
+    + move => Hb1. rewrite Z_shiftl_poly. apply Byte_unsigned_nonneg. move => Hb0.
+      rewrite modp_small. f_equal. by apply Z_to_poly_eq.
+      have [{}Hb0 | {}Hb0]: Byte.unsigned b <> 0%Z \/ Byte.unsigned b = 0%Z by lia.
+      * rewrite size_mul.
+        -- rewrite size_polyX /= Z_to_poly_size; try rep_lia.
+          case : (Z.eq_dec (Byte.unsigned b) 0) => [// | {}Hb0 /=]; try lia.
+          have {}Hsmall: Z.shiftl (Byte.unsigned b) 1 <= 255 by rep_lia.
+          have Hlog: Z.log2 (Z.shiftl (Byte.unsigned b) 1) = (Z.log2 (Byte.unsigned b) + 1)%Z. {
+            rewrite Z.log2_shiftl; rep_lia. } apply /ltP.
+          apply Z.log2_le_mono in Hsmall. move: Hsmall; rewrite Hlog /= size_p256. lia.
+        -- by rewrite polyX_eq0.
+        -- apply /eqP. by rewrite Z_to_poly_zero.
+      * have->: Z_to_poly (Byte_unsigned_nonneg (b:=b)) = 0%R by rewrite Z_to_poly_zero.
+        by rewrite GRing.mulr0 size_poly0 size_p256.
+    + rewrite Byte.unsigned_repr //. split; try rep_lia. apply Z_shiftl_nonneg'. rep_lia.
+  - apply val_inj. rewrite /= /byte_to_poly /= (@Z_to_poly_eq _  (Z.lxor (Z.shiftl (Byte.unsigned b) 1) p256_val)).
+    + rewrite Z.lxor_nonneg. split. rewrite /p256_val. lia. move => Hb. apply Z_shiftl_nonneg'; rep_lia.
+    + move => Hxor. have->:Z_to_poly Hxor = (('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + (Poly p256))). {
+      rewrite xor_poly. apply Z_shiftl_nonneg'; rep_lia. rewrite /p256_val; rep_lia.
+      move => Hshl Hp256. rewrite Z_shiftl_poly. rep_lia. move => Hb0.
+      f_equal. f_equal. by apply Z_to_poly_eq. rewrite /=. rewrite -p256_val_poly. by apply Z_to_poly_eq. }
+      (*Now we just have the polynomial goal (the interesting part)*)
+      rewrite -(@modp_small _ ('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + Poly p256) (Poly p256)).
+      * by rewrite modpD modpp GRing.addr0.
+      *
+
+(*TODO: need to prove, if size p = size q (bc we are in bool field), size (p + q) < size p*)
+(*better yet, do in terms of log (poly_to_Z) and use result from Verif_field*)
+Search poly_to_Z.
+
+
+ Check size_Mmonic.
+
+
+ Search size (?x + ?Y)%R. rewrite size_add.
+ rewrite add_size. Search (size (?x + ?y)%R).
+
+ Search (?x %% ?x). Search ((?x + ?y) %% ?p).
+
+
+    + by [].
+      (*Now, we just have the polynomial goal*)
+      by [].
+      
+
+
+
+      Search Z.lxor poly.
+
+
+ lia. rep_lia.
+
+
+ rep_lia.
+    
+
+
+ rewrite /byte_to_qpoly.
+
+
+ 
+
+
+rep_lia.
+    +
+
+ Search size 0%R.
+
+Z_to_poly_zero
+
+
+Search Z_to_bits. rewrite /Z_to_poly /=.
+        apply /ltP. lia.
+ lia.
+
+
+ rewrite Hlog in Hsmall. 
+        Search Z.log2 "mono".
+
+
+        rewrite Hlog in Hsmall.
+        move: Hsmall. Check Z.log2_shiftl.
+
+Z_to_poly_size
+
+
+    Search 
+    
+
+ rewrite /=.
+
+
+ . 
+  have->: (Byte_unsigned_nonneg (b:=Byte.repr (Z.shiftl (Byte.unsigned b) 1))) =
+    (@Z_shiftl_nonneg' _ 1 (Byte_unsigned_nonneg (b:= b))).
+  Search
+
+(Byte_unsigned_nonneg (b:=Byte.repr (Z.shiftl (Byte.unsigned b) 1)))
+
+
+
+
+  rewrite /=.
+
+
+ rewrite /=. apply val_inj. Search val. Search qp. rewrite /=.
+
+
+ simpl. apply val_inj. rewrite /qx. rewrite /=.
+
+
+
+ rewrite /qp. /byte_to_poly.
+
+(*TODO: prove that byte_to_qpoly (byte_mulX b) = qx * (byte_to_qpoly b)*)
+
+(*Populate the byte_pows and byte_logs up to index i*)
+(*Need generic version for induction*)
+Definition populate_pows_logs_aux (l: seq Z) (base : (seq byte) * (seq byte)) : (seq byte) * (seq byte) :=
+  fold_left (fun (acc: seq byte * seq byte) z => 
+    let (pows, logs) := acc in
+    if Z.eq_dec z 0 then (upd_Znth z pows Byte.one, logs) else
+    let newVal := (byte_mulX (Znth (z -1) pows)) in
+    let newPows := upd_Znth z pows newVal in
+    let newLogs := upd_Znth (Byte.unsigned (Znth z newPows)) logs (Byte.repr z) in
+    (newPows, newLogs)) l base.
+
+Definition populate_pows_logs_iota_aux (i: Z) base : (seq byte) * (seq byte) :=
+  populate_pows_logs_aux (Ziota 0 i) base.
+
+Lemma populate_pows_logs_iota_aux_plus_1: forall i base,
+  0 <= i ->
+  populate_pows_logs_iota_aux (i + 1) base =
+  if Z.eq_dec i 0 then (upd_Znth i (populate_pows_logs_iota_aux i base).1 Byte.one, 
+    (populate_pows_logs_iota_aux i base).2) else
+  (upd_Znth i (populate_pows_logs_iota_aux i base).1 
+    (byte_mulX (Znth (i-1) (populate_pows_logs_iota_aux i base).1)),
+   upd_Znth (Byte.unsigned (Znth i (populate_pows_logs_iota_aux (i +1) base).1))
+      (populate_pows_logs_iota_aux i base).2 (Byte.repr i)).
+Proof.
+  move => i base Hi. rewrite /populate_pows_logs_iota_aux Ziota_plus_1; try lia.
+  have->:(Ziota 0 i ++ [:: (0 + i)%Z]) = (Ziota 0 i ++ [:: (0 + i)%Z])%list by []. rewrite /=.
+  case Hbefore : (populate_pows_logs_aux (Ziota 0 i) base)
+  => [pows logs]. move: Hbefore.
+  rewrite /populate_pows_logs_aux /= fold_left_app /= => Hbefore. rewrite Hbefore.  
+  by case : (Z.eq_dec i 0).
+Qed.
+
+Definition populate_pows_logs (i: Z) : (seq byte) * (seq byte) :=
+  populate_pows_logs_iota_aux i (zseq Byte.modulus Byte.zero, zseq Byte.modulus Byte.zero).
+
+Lemma populate_pows_logs_0: populate_pows_logs 0 = 
+  (zseq Byte.modulus Byte.zero, zseq Byte.modulus Byte.zero).
+Proof.
+  by rewrite /populate_pows_logs /Ziota /=.
+Qed.
+
+Lemma populate_pows_logs_aux_length1: forall l b,
+  Zlength (populate_pows_logs_aux l b).1 = Zlength b.1.
+Proof.
+  move => l. elim : l => [//= | h t /= IH b].
+  rewrite IH. case : b => [pows logs] /=.
+  by case (Z.eq_dec h 0) => [Hh0 /= | Hh0 /=]; rewrite Zlength_upd_Znth.
+Qed.
+
+Lemma populate_pows_logs_length1: forall i,
+   Zlength (fst (populate_pows_logs i)) = Byte.modulus.
+Proof.
+  move => i. rewrite /populate_pows_logs populate_pows_logs_aux_length1 /=.
+  apply zseq_Zlength. rep_lia.
+Qed.
+
+Lemma populate_pows_logs_plus_1: forall (i: Z),
+  0 <= i ->
+  populate_pows_logs (i+1) =
+  if Z.eq_dec i 0 then (upd_Znth i (populate_pows_logs i).1 Byte.one, (populate_pows_logs i).2) else
+  (upd_Znth i (populate_pows_logs i).1 (byte_mulX (Znth (i-1) (populate_pows_logs i).1)),
+   upd_Znth (Byte.unsigned (Znth i (populate_pows_logs (i+1)).1))
+      (populate_pows_logs i).2 (Byte.repr i)).
+Proof.
+  move => i Hi. rewrite {1}/populate_pows_logs. by rewrite populate_pows_logs_iota_aux_plus_1.
+Qed.
+
+(*Now, we need to prove that this is actually correct*)
+
+(*The "loop invariant"*)
+Definition populate_pows_logs_invar (l: seq byte * seq byte) (i: Z) :=
+  (forall z, 0 <= z < i -> Znth z l.1 = byte_pow_map (Byte.repr z)) /\
+  (forall (b: byte), Byte.unsigned (byte_log_map b) < i -> Znth (Byte.unsigned b) l.2 = byte_log_map b).
+
+Lemma populate_pows_logs_correct_ind: forall (i: Z) base,
+  0 <= i <= Byte.modulus ->
+  Zlength base.1 = Byte.modulus ->
+  populate_pows_logs_invar (populate_pows_logs_iota_aux i base) i.
+Proof.
+  move => i base Hi. have Hinat: i = Z.of_nat (Z.to_nat i) by lia. move: Hinat Hi ->. move : base.
+  elim : (Z.to_nat i) => [//= base Hi | n IH base].
+  - rewrite /populate_pows_logs_invar. split.
+    + move => z. lia.
+    + move => b. rep_lia.
+  - have->: Z.of_nat n.+1 = (Z.of_nat n + 1) %Z by lia. move => Hn1 Hlen.
+    move: IH; rewrite /populate_pows_logs_invar => IH. split.
+    + move => z Hz. rewrite populate_pows_logs_iota_aux_plus_1; try lia.
+      case : (Z.eq_dec (Z.of_nat n) 0) => [Hn0 /= | Hn0 /=].
+      * have->: z = 0%Z by lia. rewrite Hn0. rewrite /populate_pows_logs_iota_aux /=.
+        rewrite upd_Znth_same. have->:Byte.repr 0 = Byte.zero by []. by rewrite byte_pow_map_zero. lia.
+      * have [Hbef | Hcurr]: (0 <= z < Z.of_nat n)%Z \/ (z = Z.of_nat n)%Z by lia.
+        -- rewrite upd_Znth_diff; try lia. apply IH. rep_lia. lia. by []. 
+           rewrite populate_pows_logs_aux_length1. lia. 
+           rewrite populate_pows_logs_aux_length1. lia. 
+        -- rewrite Hcurr upd_Znth_same; last first. rewrite populate_pows_logs_aux_length1. lia. 
+           have Hprev: (Znth (z - 1) (populate_pows_logs_iota_aux (Z.of_nat n) base).1) = byte_pow_map (Byte.repr (z-1)).
+           apply IH; lia. rewrite Hcurr in Hprev. rewrite Hprev.
+
+
+byte_mulX (byte_pow_map (Byte.repr (Z.of_nat n - 1))) = byte_pow_map (Byte.repr (Z.of_nat n))
+          
+
+
+
+
+ rewrite Hprev. lia. lia. rewrite Hpref.
+           rewrite IH. 
+
+
+ have [Hn0 | Hn0]: n = 0%N \/ n <> 0%N by lia.
+           { subst. rewrite /=.  
+
+ Search (?x + 0)%Z.
+
+
+ move ->.
+
+ rewrite / 
+
+move => lo len base Hlo Hlen Hlolen. rewrite /populate_pows_logs_invar /populate_pows_logs_aux.
+
+
+  populate_pows_logs_invar lo lo base ->
+  populate_pows_logs_invar 
+  
+  
+  
+
+End Pow.
+
+
