@@ -479,6 +479,12 @@ Qed.
   0 is not in the codomain*)
 Definition qpow_map_full (i: 'I_(#|F|^((size p).-1))): qpoly := qx ^+ i.
 
+Lemma qpow_map_full_neq0: forall i,
+  qpow_map_full i != 0.
+Proof.
+  move => i. rewrite /qpow_map_full. apply GRing.expf_neq0. apply qx_0.
+Qed. 
+
 Lemma qpow_exist: forall (q: qpoly),
   q != 0 ->
   exists (i: 'I_(#|F|^((size p).-1))), (nat_of_ord i != 0%N) && (qx ^+ i == q).
@@ -532,6 +538,49 @@ Proof.
   have Hnz: (qx ^+ x != 0). apply GRing.expf_neq0. apply qx_0.
   have->: (qx ^+ x == 0) = false by apply negbTE. by rewrite andbF.
   by rewrite Hfind /=.
+Qed.
+
+Lemma find_qpow_zero_iff: forall q, (nat_of_ord (find_qpow q) == 0%N) = (q == 0%R).
+Proof.
+  move => q. case Hq: (q == 0).
+  - apply (elimT eqP) in Hq. rewrite Hq. apply find_qpow_zero.
+  - have Hq': q != 0 by rewrite Hq. apply find_qpow_nonzero in Hq'. by rewrite -Bool.negb_true_iff.
+Qed.
+
+Lemma find_qpow_cancel: cancel find_qpow qpow_map.
+Proof.
+  move => q. rewrite /qpow_map. case Hq: (nat_of_ord (find_qpow q) == 0%N).
+  - rewrite find_qpow_zero_iff in Hq. apply (elimT eqP) in Hq. by rewrite Hq.
+  - apply find_qpow_correct. by rewrite -find_qpow_zero_iff Hq.
+Qed.
+
+Lemma qpow_map_cancel: cancel qpow_map find_qpow.
+Proof.
+  rewrite -bij_can_sym. apply find_qpow_cancel. apply qpow_map_bij.
+Qed. 
+
+Lemma find_qpow_bij: bijective find_qpow.
+Proof.
+  apply (bij_can_bij qpow_map_bij). apply qpow_map_cancel.
+Qed.
+
+Lemma find_qpow_inj: injective find_qpow.
+Proof.
+  apply bij_inj. apply find_qpow_bij.
+Qed.
+ 
+Lemma qpow_map_full_equiv: forall i,
+  nat_of_ord i != 0%N ->
+  qpow_map_full i = qpow_map i.
+Proof.
+  move => i. rewrite /qpow_map /qpow_map_full. by case : (nat_of_ord i == 0%N).
+Qed. 
+
+Lemma qpow_map_full_inv: forall i,
+  nat_of_ord i != 0%N ->
+  find_qpow (qpow_map_full i) = i.
+Proof.
+  move => i Hi. rewrite qpow_map_full_equiv //. by rewrite qpow_map_cancel.
 Qed.
 
 End Field.

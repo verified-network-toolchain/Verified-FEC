@@ -19,9 +19,6 @@ mk_varspecs prog. Defined.
 
 (** Constants*)
 
-Definition fec_n : Z := proj1_sig (opaque_constant 256).
-Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
-
 Definition modulus : Z := proj1_sig (opaque_constant 285).
 Definition modulus_eq : modulus = 285%Z := proj2_sig (opaque_constant _).
 
