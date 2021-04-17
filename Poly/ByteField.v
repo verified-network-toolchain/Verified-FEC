@@ -617,6 +617,11 @@ Qed.
 
 Definition eq_ord m n (Hmn: m = n) (x: 'I_m) : 'I_n  := widen_ord (eq_leqn Hmn) x.
 
+(*We don't want to use Byte.modulus directly because it will simplify*)
+Definition fec_n : Z := proj1_sig (opaque_constant 256).
+Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
+Hint Rewrite fec_n_eq : rep_lia.
+
 Definition byte_pow_map (b: byte) : byte :=
   qpoly_to_byte (qpow_map_full p256_irred p256_geq_2 (eq_ord byte_qpoly_size (byte_to_ord b))).
 
@@ -624,49 +629,49 @@ Definition byte_log_map (b: byte) : byte :=
   ord_to_byte (eq_ord (esym byte_qpoly_size) (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b))).
 
 Definition byte_pows : seq byte :=
-  mkseqByte byte_pow_map Byte.modulus.
+  mkseqByte byte_pow_map fec_n.
 
 Definition byte_logs : seq byte :=
-  mkseqByte byte_log_map Byte.modulus.
+  mkseqByte byte_log_map fec_n.
 
 Definition byte_invs: seq byte :=
-  mkseqByte byte_inv Byte.modulus.
+  mkseqByte byte_inv fec_n.
 
 (*So we don't need to unfold the definitions ever*)
 Lemma byte_pows_Zlength: Zlength byte_pows = Byte.modulus.
 Proof.
-  by rewrite /byte_pows mkseqByte_Zlength.
+  by rewrite /byte_pows mkseqByte_Zlength; rep_lia.
 Qed.
 
 Lemma byte_pows_Znth: forall i,
   0 <= i < Byte.modulus ->
   Znth i byte_pows = byte_pow_map (Byte.repr i).
 Proof.
-  move => i Hi. by apply mkseqByte_Znth_Z.
+  move => i Hi. by apply mkseqByte_Znth_Z; rep_lia.
 Qed.
 
 Lemma byte_logs_Zlength: Zlength byte_logs = Byte.modulus.
 Proof.
-  by rewrite /byte_logs mkseqByte_Zlength.
+  by rewrite /byte_logs mkseqByte_Zlength; rep_lia.
 Qed.
 
 Lemma byte_logs_Znth: forall i,
   0 <= i < Byte.modulus ->
   Znth i byte_logs = byte_log_map (Byte.repr i).
 Proof.
-  move => i Hi. by apply mkseqByte_Znth_Z.
+  move => i Hi. by apply mkseqByte_Znth_Z; rep_lia.
 Qed.
 
 Lemma byte_invs_Zlength: Zlength byte_invs = Byte.modulus.
 Proof.
-  by rewrite /byte_invs mkseqByte_Zlength.
+  by rewrite /byte_invs mkseqByte_Zlength; rep_lia.
 Qed.
 
 Lemma byte_invs_Znth: forall i,
   0 <= i < Byte.modulus ->
   Znth i byte_invs = byte_inv (Byte.repr i).
 Proof.
-  move => i Hi. by apply mkseqByte_Znth_Z.
+  move => i Hi. by apply mkseqByte_Znth_Z; rep_lia.
 Qed.
 
 (*Lemmas about these maps*)
@@ -1039,14 +1044,14 @@ Proof.
     by rewrite populate_pows_logs_aux_length2. }
   rewrite /populate_pows_logs_invar //= => [[Hfst [Hzero Hsnd]]].
   have->: pows = byte_pows. { apply Znth_eq_ext.
-  - rewrite /byte_pows mkseqByte_Zlength //.
-  - move => i. rewrite Hsz1 => Hi. by rewrite Hfst // /byte_pows mkseqByte_Znth_Z. }
+  - rewrite /byte_pows mkseqByte_Zlength //. rep_lia. rep_lia.
+  - move => i. rewrite Hsz1 => Hi. rewrite Hfst // /byte_pows mkseqByte_Znth_Z. by []. rep_lia. }
   have->: logs = byte_logs. { apply Znth_eq_ext.
-  - rewrite /byte_pows mkseqByte_Zlength //.
+  - rewrite /byte_pows mkseqByte_Zlength; rep_lia.
   - move => i. rewrite Hsz2 => Hi. 
     have Hibyte: i = Byte.unsigned (Byte.repr i) by rewrite Byte.unsigned_repr; rep_lia.
     rewrite {1}Hibyte. rewrite Hsnd.
-    * by rewrite /byte_logs mkseqByte_Znth_Z.
+    * rewrite /byte_logs mkseqByte_Znth_Z. by []. rep_lia.
     * have->: Byte.modulus = Z.of_nat (256%N) by []. apply inj_lt.
       apply /ltP. case : (find_qpow p256_irred p256_geq_2 (byte_to_qpoly (Byte.repr i))) => [m Hm].
       rewrite /=. move: Hm. by rewrite card_bool size_p256.
@@ -1055,12 +1060,6 @@ Proof.
 Qed.
 
 (*Similarly, we will have a functional version of the VST code for generating the inverse table*)
-
-(*We don't want to use Byte.modulus directly because it will simplify*)
-Definition fec_n : Z := proj1_sig (opaque_constant 256).
-Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
-
-Hint Rewrite fec_n_eq : rep_lia.
 
 Definition populate_invs_aux i base :=
   fold_left (fun acc z => 
@@ -1228,7 +1227,7 @@ Proof.
   have Hb0: Znth 0 base = Byte.zero by rewrite Heqbase /= zseq_Znth.
   pose proof (populate_invs_aux_invar Hmod Hb1 Hb0) as [Hfst Hinvs].
   apply Znth_eq_ext.
-  - by rewrite populate_invs_aux_length.
+  - rewrite populate_invs_aux_length byte_invs_Zlength. rep_lia.
   - move => i. rewrite populate_invs_aux_length Hb1 => Hi.
     have Hib: i = Byte.unsigned (Byte.repr i) by rewrite Byte.unsigned_repr; rep_lia.
     rewrite {1}Hib Hinvs; try rep_lia. by rewrite byte_invs_Znth.
@@ -1236,4 +1235,102 @@ Qed.
 
 End Pow.
 
+(*The theorems for the proof of multiplication in VST (using the pow and log tables)*)
 
+Section Mult.
+
+Local Open Scope ring_scope.
+
+Lemma ord_byte_simpl: forall (x: 'I_#|byte_finType|),
+  Byte.unsigned (ord_to_byte x) = Z.of_nat (nat_of_ord x).
+Proof.
+  move => x. by [].
+Qed.
+
+Lemma nat_eq_ord: forall n m (Hmn: m = n) (x: 'I_m),
+  nat_of_ord (eq_ord Hmn x) = nat_of_ord x.
+Proof.
+  move => m n Hmn x. by [].
+Qed.
+
+(*TODO: fix this*)
+Hint Rewrite fec_n_eq : rep_lia.
+
+(*A key result, needed in a few places: if a and b are equal mod 255, then x ^+ a = x^+ b*)
+Lemma powX_eq_mod: forall a b,
+  modn a 255%N = modn b 255%N ->
+  (@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) a) = (qx p256_geq_2) ^+ b.
+Proof.
+  move => a b Hab. rewrite (divn_eq a 255%N) (divn_eq b 255%N).
+  by rewrite !GRing.exprD !(mulnC _ 255%N) !GRing.exprM !prim_fieldsize !GRing.expr1n !GRing.mul1r Hab.
+Qed.
+
+(*Therefore, we can add the field size without changing anything*)
+Lemma powX_add_255: forall a,
+  (@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) a) =
+  (qx p256_geq_2) ^+ (a + 255).
+Proof.
+  move => a. apply powX_eq_mod. by rewrite addnC modnDl.
+Qed. 
+
+(*The large case of multiplication*)
+Lemma mult_large: forall b1 b2,
+  fec_n - 1 < Byte.unsigned (byte_log_map b1) + Byte.unsigned (byte_log_map b2) ->
+  byte_pow_map (Byte.repr (Byte.unsigned (byte_log_map b1) + Byte.unsigned (byte_log_map b2) - (fec_n - 1))) =
+    byte_mul b1 b2.
+Proof.
+  move => b1 b2. rewrite /byte_log_map /byte_pow_map /byte_mul /qpow_map_full !ord_byte_simpl !nat_eq_ord.
+  move => Hbig. f_equal.
+  (*so we don't have to do it twice*)
+  have Hnz: forall (x y : byte), fec_n - 1 <
+       Z.of_nat (find_qpow p256_irred p256_geq_2 (byte_to_qpoly x)) +
+       Z.of_nat (find_qpow p256_irred p256_geq_2 (byte_to_qpoly y)) ->
+       x != 0. { move => x y Hbig'.
+    case Hx: (x == 0) => [|//]. rewrite -byte_zero_qpoly_iff in Hx.
+    apply (elimT eqP) in Hx. move: Hbig'.
+    rewrite Hx. have->:nat_of_ord (find_qpow p256_irred p256_geq_2 (GRing.zero qpoly_p256_fieldType)) = 0%N.
+      apply /eqP. by rewrite find_qpow_zero. rewrite Nat2Z.inj_0 Z.add_0_l.
+    case : (find_qpow p256_irred p256_geq_2 (byte_to_qpoly y)) => [m Hm].
+    move: Hm. rewrite size_p256 card_bool /=. have->: (2^ 8)%N = 256%N by []. move => /ltP Hm. rep_lia. }
+  have Hb1: b1 != 0. apply (Hnz b1 b2 Hbig).
+  have Hb2: b2 != 0. rewrite Z.add_comm in Hbig. apply (Hnz b2 b1 Hbig). rewrite {Hnz}.
+  rewrite -byte_zero_qpoly_iff in Hb1. rewrite -byte_zero_qpoly_iff in Hb2.
+  apply (find_qpow_correct p256_primitive' p256_geq_2) in Hb1.
+  apply (find_qpow_correct p256_primitive' p256_geq_2) in Hb2.
+  rewrite powX_add_255 -{2}Hb1 -{2}Hb2 -GRing.exprD. f_equal. cbn.
+  move: Hbig.  remember (nat_of_ord (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b1))) as a. rewrite -Heqa.
+  remember (nat_of_ord (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b2))) as b. rewrite -Heqb => Hbig.
+  rewrite Byte.unsigned_repr.
+  - have->:(Z.to_nat (Z.of_nat a + Z.of_nat b - (fec_n - 1)) + 255)%Nrec =
+           (Z.to_nat (Z.of_nat a + Z.of_nat b - (fec_n - 1)) + 255)%coq_nat by [].
+    have->: (a + b)%Nrec = (a + b)%coq_nat by []. rep_lia.
+  - move: Heqa Heqb Hbig. case : (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b1)) => [a'].
+    case : (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b2)) => [b'].
+    rewrite size_p256 card_bool /=. have->:( 2 ^ 8)%N = 256%N by []. 
+    move => /ltP Ha' /ltP Hb' -> ->. rep_lia.
+Qed.
+
+(*The small and easier case*)
+Lemma mult_small: forall b1 b2,
+  b1 <> Byte.zero ->
+  b2 <> Byte.zero ->
+  fec_n - 1 >= Byte.unsigned (byte_log_map b1) + Byte.unsigned (byte_log_map b2) ->
+  byte_pow_map (Byte.repr (Byte.unsigned (byte_log_map b1) + Byte.unsigned (byte_log_map b2))) =
+    byte_mul b1 b2.
+Proof.
+  move => b1 b2 /eqP Hb1 /eqP Hb2 Hsmall.
+  rewrite -byte_zero_qpoly_iff in Hb1. rewrite -byte_zero_qpoly_iff in Hb2.
+  apply (find_qpow_correct p256_primitive' p256_geq_2) in Hb1.
+  apply (find_qpow_correct p256_primitive' p256_geq_2) in Hb2.
+  move: Hsmall.
+  rewrite /byte_log_map /byte_pow_map /byte_mul /qpow_map_full !ord_byte_simpl !nat_eq_ord => Hsmall.
+  rewrite -{2}Hb1 -{2}Hb2 -GRing.exprD. f_equal. f_equal. cbn. move: Hsmall.
+  case : (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b1)) => [a].
+  case : (find_qpow p256_irred p256_geq_2 (byte_to_qpoly b2)) => [b]. rewrite card_bool size_p256 /=.
+  have ->: (2 ^ 8)%N = 256%N by []. move => /ltP Ha /ltP Hb Hab.
+  rewrite Byte.unsigned_repr ; try rep_lia.
+  have->:(a + b)%Nrec = (a + b)%coq_nat by []. rep_lia.
+Qed.
+
+End Mult.
+  

@@ -88,19 +88,19 @@ Definition fec_matrix_transform_spec :=
     SEP(FIELD_TABLES gv;
         data_at Ews (tarray tuchar (m * n)) 
           (map Vint (map Int.repr (flatten_mx (gauss_restrict_rows m n mx)))) s).
-
+*)
 Definition fec_gf_mult_spec :=
   DECLARE _fec_gf_mult
-  WITH gv: globals, f : Z, g : Z
+  WITH gv: globals, b1 : byte, b2 : byte
   PRE [ tuchar, tuchar ]
-    PROP (0 <= f < fec_n; 0 <= g < fec_n)
-    PARAMS (Vint (Int.repr f); Vint (Int.repr g))
+    PROP ()
+    PARAMS (Vubyte b1; Vubyte b2)
     GLOBALS (gv)
     SEP (INDEX_TABLES gv)
   POST [ tuchar ]
     PROP ()
-    RETURN (Vint (Int.repr (poly_to_int (((poly_of_int f) *~ (poly_of_int g)) %~ mod_poly ))))
-    SEP (INDEX_TABLES gv).*)
+    RETURN (Vubyte (byte_mul b1 b2))
+    SEP (INDEX_TABLES gv).
 
 Definition fec_generate_math_tables_spec :=
   DECLARE _fec_generate_math_tables
@@ -192,5 +192,5 @@ Definition fec_blk_encode_spec :=
           
 Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
   fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].*)
-Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec].
+Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec].
 
