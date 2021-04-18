@@ -50,14 +50,22 @@ Ltac pose_poly_bounds t :=
        pose_power p N1 N2
   end.
 *)
+Lemma is_int_Vubyte: forall b: byte, is_int I8 Unsigned (Vubyte b).
+Proof.
+  intros b. simpl. pose proof (Byte.unsigned_range_2 b) as Hrange.
+  rewrite Int.unsigned_repr; rep_lia.
+Qed. 
+
 (*Solves goals with Int.unsigned (Int.repr _) and Zbits.Zzero_ext when the value is an integer, not a qpoly (ie,
   rep_lia can prove that z is small enough)*)
 Ltac simpl_repr_byte :=
   repeat match goal with
+  |  [ |- is_int I8 Unsigned (Vubyte ?b)] => apply is_int_Vubyte
   |  [ |- context [ Byte.unsigned (Byte.repr ?b) ]] => rewrite Byte.unsigned_repr by rep_lia
   |  [ |- context [ Int.unsigned (Int.repr ?x)]] => rewrite Int.unsigned_repr by rep_lia
   |  [ |- context [ Zbits.Zzero_ext 8 ?x]] => rewrite zbits_small by rep_lia
   |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
+  |  [ |- context [ is_int ?x ?y ?y ]] => simpl 
   end; try rep_lia; auto.
 
 (*
@@ -123,17 +131,17 @@ Definition B := ByteField.byte_fieldType.
 
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
-  repeat(match goal with
-  | [H: _ |- wf_lmatrix (F:=B) (scalar_mul_row_partial (F:=B)  _ _ _ _ _ _) _ _] => apply scalar_mul_row_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (scalar_mul_row (F:=B) _ _ _ _ _) _ _ ] => apply scalar_mul_row_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (all_cols_one_partial (F:=B) _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (add_multiple_partial (F:=B) _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (add_multiple (F:=B) _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (sub_all_rows_partial (F:=B) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (gauss_all_steps_rows_partial (F:=B) _ _ _ _) _ _] => apply gauss_all_steps_rows_partial_wf
-  | [H: _ |- wf_lmatrix (F:=B) (all_lc_one_rows_partial (F:=B) _ _ _ _) _ _] => apply all_lc_one_rows_partial_wf
+  repeat(lazymatch goal with
+  | [H: _ |- wf_lmatrix (scalar_mul_row_partial (F:=B)  _ _ _ _ _ _) _ _] => apply scalar_mul_row_partial_wf
+  | [H: _ |- wf_lmatrix (scalar_mul_row (F:=B) _ _ _ _ _) _ _ ] => apply scalar_mul_row_partial_wf
+  | [H: _ |- wf_lmatrix (all_cols_one_partial (F:=B) _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
+  | [H: _ |- wf_lmatrix (add_multiple_partial (F:=B) _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_lmatrix (add_multiple (F:=B) _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_lmatrix (sub_all_rows_partial (F:=B) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
+  | [H: _ |- wf_lmatrix (gauss_all_steps_rows_partial (F:=B) _ _ _ _) _ _] => apply gauss_all_steps_rows_partial_wf
+  | [H: _ |- wf_lmatrix (all_lc_one_rows_partial (F:=B) _ _ _ _) _ _] => apply all_lc_one_rows_partial_wf
   (*| [H: _ |- wf_lmatrix (F:=B) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf*)
-  end; try lia); assumption.
+  end); try lia; try assumption.
 
 (*Maybe move elsewhere*)
 Lemma byte_int_repr: forall z: Z,

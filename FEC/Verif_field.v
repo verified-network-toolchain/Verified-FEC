@@ -76,12 +76,6 @@ Qed.
 
 (** Verification of [fec_generate_math_tables]*)
 
-Lemma is_int_Vubyte: forall b: byte, is_int I8 Unsigned (Vubyte b).
-Proof.
-  intros b. simpl. pose proof (Byte.unsigned_range_2 b) as Hrange.
-  rewrite Int.unsigned_repr; rep_lia.
-Qed. 
-
 Lemma body_fec_generate_math_tables : semax_body Vprog Gprog f_fec_generate_math_tables fec_generate_math_tables_spec.
 Proof.
 start_function.
