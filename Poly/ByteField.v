@@ -11,6 +11,7 @@ Require Import mathcomp.algebra.poly.
 Require Import PolyField.
 Require Import BoolField.
 Require Import ZSeq.
+Require Import ByteFacts.
 
 (*A few generic results*)
 
@@ -20,22 +21,6 @@ Proof.
   move => A d i. rewrite /Znth. case : (zlt i 0) => [//= Hi0 | //= Hi0].
   by case : (Z.to_nat i).
 Qed.
-
-(*A few results about bytes in general*)
-Lemma byte_unsigned_inj: forall (b1 b2: byte),
-  Byte.unsigned b1 = Byte.unsigned b2 ->
-  b1 = b2.
-Proof.
-  move => b1 b2 Hb12. apply Vubyte_injective. by rewrite /Vubyte Hb12.
-Qed.
-
-Lemma byte_log2_range: forall (b: byte), 
-  0 <= Z.log2 (Byte.unsigned b) <= 7%Z.
-Proof.
-  move => [z Hz /=]. move: Hz; have ->: Byte.modulus = 256%Z by []; move => [Hlo Hhi]. split.
-  apply Z.log2_nonneg. have {}Hhi: z <= 255 by lia.
-  apply Z.log2_le_mono in Hhi. by move: Hhi; have->: Z.log2 255 = 7 by [].
-Qed. 
 
 (*Converting between polynomials and integers*)
 
@@ -209,6 +194,15 @@ Proof.
   move => z1 z2 Hz1 Hz2 Hz12. rewrite /Z_to_poly. apply val_inj. rewrite /=. by subst.
 Qed. 
 
+Lemma Z_to_poly_zero: forall z (Hz: 0 <= z),
+  (Z_to_poly Hz = 0) <-> z = 0%Z.
+Proof.
+  move => z Hz. split.
+  - rewrite /Z_to_poly => Hpoly. apply (congr1 polyseq) in Hpoly. move: Hpoly; rewrite /= polyseq0 => Hbits.
+    apply Z.bits_inj_0. move => n. by rewrite Z_to_bits_spec // Hbits Znth_nil.
+  - move => Hz0. subst. rewrite /Z_to_poly. apply val_inj. rewrite /=. by rewrite /Z_to_bits polyseq0.
+Qed.
+
 End ZPoly.
 
 Section ByteQpolyMap.
@@ -260,16 +254,8 @@ Proof.
   - move ->. by rewrite polyseq0.
 Qed.
 
-
 Definition qpoly_to_byte (q: qpoly_p256) : byte :=
   Byte.mkint _ (qpoly_to_Z_bound q).
-
-(*This will be useful in a few places*)
-Lemma Byte_unsigned_nonneg: forall b,
-  0 <= Byte.unsigned b.
-Proof.
-  move => b. pose proof (Byte.unsigned_range_2 b); lia.
-Qed.
 
 Definition byte_to_poly (b: byte) :  {poly BoolField.bool_fieldType} :=
   Z_to_poly (@Byte_unsigned_nonneg b).
@@ -284,7 +270,6 @@ Qed.
 
 Definition byte_to_qpoly (b: byte) : qpoly_p256 :=
   @Qpoly GF2 (Poly p256) _ (byte_to_poly_range b).
-
 
 
 (*Now, we have to show that these maps form a bijection, and then we can define the ring and field operations*)
@@ -351,21 +336,6 @@ Lemma addb_xorb: forall (b1 b2: bool),
   addb b1 b2 = xorb b1 b2.
 Proof.
   move => b1 b2. by (case : b1; case : b2).
-Qed.
-
-(*Fold tactics don't work great*)
-Lemma byte_testbit_fold: forall b i,
-  Z.testbit (Byte.unsigned b) i = Byte.testbit b i.
-Proof.
-  by [].
-Qed.
-
-Lemma Z_lxor_nonneg': forall a b,
-  0 <= a ->
-  0 <= b ->
-  0 <= Z.lxor a b.
-Proof.
-  move => a b Ha Hb. by rewrite Z.lxor_nonneg.
 Qed.
 
 (*Addition is xor, which is not too hard to prove*)
@@ -618,9 +588,6 @@ Qed.
 Definition eq_ord m n (Hmn: m = n) (x: 'I_m) : 'I_n  := widen_ord (eq_leqn Hmn) x.
 
 (*We don't want to use Byte.modulus directly because it will simplify*)
-Definition fec_n : Z := proj1_sig (opaque_constant 256).
-Definition fec_n_eq : fec_n = 256%Z := proj2_sig (opaque_constant _).
-Hint Rewrite fec_n_eq : rep_lia.
 
 Definition byte_pow_map (b: byte) : byte :=
   qpoly_to_byte (qpow_map_full p256_irred p256_geq_2 (eq_ord byte_qpoly_size (byte_to_ord b))).
@@ -685,30 +652,21 @@ Qed.
 (*We will model the functions that populate the lookup tables here, so the VST proof does not need to
   directly reason about any field properties*)
 
-Definition p256_val : Z := 285.
-
-Lemma p256_val_nonneg: 0 <= p256_val.
+Lemma modulus_nonneg: 0 <= modulus.
 Proof.
-  rewrite /p256_val. lia.
+  rep_lia.
 Qed.
 
-Lemma p256_val_poly: Z_to_poly (p256_val_nonneg) = Poly p256.
+Lemma modulus_val_poly: Z_to_poly modulus_nonneg = Poly p256.
 Proof.
-  apply val_inj. by rewrite polyseqK.
+  apply val_inj. by rewrite polyseqK /= modulus_eq.
 Qed. 
 
 (*Multiply a byte by x, directly*)
 Definition byte_mulX (b: byte) :=
   let temp := Z.shiftl (Byte.unsigned b) 1 in
   if (Z_lt_ge_dec temp Byte.modulus) then Byte.repr temp else
-  Byte.repr (Z.lxor temp p256_val).
-
-Lemma Z_shiftl_nonneg': forall a n,
-  0 <= a ->
-  0 <= Z.shiftl a n.
-Proof.
-  move => a n Ha. by rewrite Z.shiftl_nonneg.
-Qed.
+  Byte.repr (Z.lxor temp modulus).
 
 (*Left shifting an integer multiplies the corresponding poly by X*)
 Lemma Z_shiftl_poly: forall z (Hz: 0 <= z) (Hshift: 0 <= Z.shiftl z 1),
@@ -722,71 +680,6 @@ Qed.
 
 Opaque Z.shiftl.
 Opaque p256.
-
-
-(*TODO: move*)
-Lemma Z_to_poly_zero: forall z (Hz: 0 <= z),
-  (Z_to_poly Hz = 0) <-> z = 0%Z.
-Proof.
-  move => z Hz. split.
-  - rewrite /Z_to_poly => Hpoly. apply (congr1 polyseq) in Hpoly. move: Hpoly; rewrite /= polyseq0 => Hbits.
-    apply Z.bits_inj_0. move => n. by rewrite Z_to_bits_spec // Hbits Znth_nil.
-  - move => Hz0. subst. rewrite /Z_to_poly. apply val_inj. rewrite /=. by rewrite /Z_to_bits polyseq0.
-Qed.
-
-(*TODO: from Verif_field, need to figure out where to put this stuff*)
-(*If z2 has its last true testbit at after z2, then its log is larger*)
-Lemma testbit_lt: forall m z1 z2,
-  0 <= m ->
-  2 <= z2 ->
-  (forall n, m <= n -> Z.testbit z1 n = false) ->
-  Z.testbit z2 m = true ->
-  Z.log2 z1 < Z.log2 z2.
-Proof.
-  move => m z1 z2 Hm Hz2 Hafter Htestm.
-  have [Hz1 | Hz1]: (z1 <= 0 \/ 0 < z1) by lia.
-  - rewrite Z.log2_nonpos //. apply Z.log2_le_mono in Hz2. move: Hz2; rewrite /=; lia.
-  - have Hmlog: m <= Z.log2 z2. have [Hmlog // | Hmlog]: (m <= Z.log2 z2 \/ Z.log2 z2 < m) by lia.
-      apply Z.bits_above_log2 in Hmlog; try lia. by rewrite Hmlog in Htestm.
-    have [Hz12 // | Hz12]: (Z.log2 z1 < Z.log2 z2 \/ Z.log2 z2 <= Z.log2 z1) by lia.
-    have: Z.testbit z1 (Z.log2 z1) = false. apply Hafter; lia. by rewrite Z.bit_log2.
-Qed.
-
-(*This is actually not too bad to prove*)
-Lemma Z_lxor_smaller: forall z1 z2,
-  2 <= z1 ->
-  Z.log2 z1 = Z.log2 z2 ->
-  Z.log2 (Z.lxor z1 z2) < Z.log2 z1.
-Proof.
-  move => z1 z2 Hz1 Hlog. have Hz2: 2 <= z2. { have Hz2: 1 <= Z.log2 z2.
-    rewrite -Hlog. by apply Z.log2_le_mono in Hz1. have [Hz21 | Hz21]: (z2 <= 1 \/ 2 <= z2) by lia.
-    move: Hz21. rewrite -Z.log2_null. lia. by []. }
-  apply (@testbit_lt (Z.log2 z1)) => [|//||].
-  - apply Z.log2_nonneg.
-  - move => n Hn. rewrite Z.lxor_spec. have [Hzn | Hzn]: (Z.log2 z1 = n \/ Z.log2 z1 < n) by lia.
-    + subst. by rewrite {2}Hlog !Z.bit_log2; try lia.
-    + by rewrite !Z.bits_above_log2; try lia.
-  - apply Z.bit_log2; lia.
-Qed. 
-
-
-(*Now, we can prove the result we want*)
-Lemma xor_modulus_bound: forall (b: byte),
-  2 * Byte.unsigned b >= Byte.modulus ->
-  0 <= Z.lxor (2 * Byte.unsigned b) p256_val < Byte.modulus.
-Proof.
-  move => b Hlarge. rewrite /p256_val. split.
-  - rewrite Z.lxor_nonneg. rep_lia.
-  - pose proof (byte_log2_range b) as [Hpos Hb].
-    have H2b: (Z.log2 (2 * (Byte.unsigned b)) = 1 + Z.log2 (Byte.unsigned b))%Z
-      by rewrite Z.log2_double; rep_lia.
-    have: (Z.log2 256 <= Z.log2 (2 * Byte.unsigned b))%Z. apply Z.log2_le_mono. rep_lia.
-    have->: Z.log2 256 = 8 by [] => H2b'.
-    have Hlog: Z.log2 (2 * Byte.unsigned b) = 8 by lia.
-    have Hmod: Z.log2 285 = 8 by [].
-    have Hxor: (Z.log2 (Z.lxor (2 * Byte.unsigned b) 285) < 8)%Z. rewrite -Hlog. apply Z_lxor_smaller; rep_lia.
-    by apply Z.log2_lt_cancel.
-Qed.
 
 (*We need the crucial step from above (which is also used in the VST proof - when we xor
   the current value with 285, the result fits in a byte*)
@@ -816,20 +709,20 @@ Proof.
         by rewrite GRing.mulr0 size_poly0 size_p256.
     + rewrite Byte.unsigned_repr //. split; try rep_lia. apply Z_shiftl_nonneg'. rep_lia.
   - apply val_inj.
-    have [Hlo Hhi]: 0 <= Z.lxor (Z.shiftl (Byte.unsigned b) 1) p256_val <= Byte.max_unsigned. {
+    have [Hlo Hhi]: 0 <= Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus <= Byte.max_unsigned. {
       move: Hbig. rewrite Zbits.Zshiftl_mul_two_p; try lia. have->: two_p 1 = 2 by [].
-      rewrite Z.mul_comm => Hbig. pose proof (xor_modulus_bound Hbig); rep_lia. }
-    have Hbyte: Byte.unsigned (Byte.repr (Z.lxor (Z.shiftl (Byte.unsigned b) 1) p256_val)) =
-      Z.lxor (Z.shiftl (Byte.unsigned b) 1) p256_val by rewrite Byte.unsigned_repr.
+      rewrite Z.mul_comm => Hbig. pose proof (xor_modulus_bound Hbig). rep_lia. }
+    have Hbyte: Byte.unsigned (Byte.repr (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus)) =
+      Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus by rewrite Byte.unsigned_repr.
     have Hlopoly: Z_to_poly Hlo = (('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + (Poly p256))). {
-      rewrite xor_poly. apply Z_shiftl_nonneg'; rep_lia. rewrite /p256_val; rep_lia.
+      rewrite xor_poly. apply Z_shiftl_nonneg'; rep_lia. rep_lia.
       move => Hshl Hp256. rewrite Z_shiftl_poly. rep_lia. move => Hb0.
-      f_equal. f_equal. by apply Z_to_poly_eq. rewrite -p256_val_poly. by apply Z_to_poly_eq. }
-    rewrite /= /byte_to_poly /= (@Z_to_poly_eq _  (Z.lxor (Z.shiftl (Byte.unsigned b) 1) p256_val)).
+      f_equal. f_equal. by apply Z_to_poly_eq. rewrite -modulus_val_poly. by apply Z_to_poly_eq. }
+    rewrite /= /byte_to_poly /= (@Z_to_poly_eq _  (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus)).
     + rewrite Hlopoly -(@modp_small _ ('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + Poly p256) (Poly p256)).
       * by rewrite modpD modpp GRing.addr0.
       * rewrite -Hlopoly Z_to_poly_size size_p256.
-        case : (Z.eq_dec (Z.lxor (Z.shiftl (Byte.unsigned b) 1) p256_val) 0) => [// | /= Hx0].
+        case : (Z.eq_dec (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus) 0) => [// | /= Hx0].
         apply /ltP. apply Z.log2_le_mono in Hhi. rewrite /= in Hhi. rep_lia.
     + by rewrite Byte.unsigned_repr.
 Qed.
@@ -1115,7 +1008,6 @@ Proof.
   by rewrite GRing.subr_eq0 => /eqP Hx. by rewrite size_poly1 size_p256.
 Qed.
   
-
 (*Inverse calculation is correct (the key part of the inverse proof)*)
 Lemma inv_calc: forall b,
     b <> Byte.zero ->
@@ -1159,14 +1051,6 @@ Proof.
   - by rewrite Hb0 inv_calc_zero.
   - rewrite inv_calc //. apply /eqP. apply GRing.invr_neq0. by apply /eqP.
 Qed. 
-
-(*TODO: move*)
-Lemma byte_unsigned_zero: forall b,
-  Byte.unsigned b = 0%Z -> b = Byte.zero.
-Proof.
-  move => b. have->:0%Z = Byte.unsigned (Byte.zero) by [] => Hzero.
-  by apply byte_unsigned_inj in Hzero.
-Qed.
 
 (*The proof of correctness for [populate_invs] is similar to the log part of the above, but a bit simpler*)
 Lemma populate_invs_aux_invar : forall i base,

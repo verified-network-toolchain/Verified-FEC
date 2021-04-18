@@ -1,4 +1,3 @@
-(*TODO: Where to put this? Need in Common and CommonVST*)
 Require Import VST.floyd.proofauto.
 (*A generic notion of [Forall] for 2D lists. We give 3 equivalent definitions, but the 2nd will likely be
   the most useful for VST proofs*)

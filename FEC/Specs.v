@@ -3,9 +3,11 @@ Require Import VST.floyd.proofauto.
 Require Import fec.
 Require Import ByteField.
 Require Import ZSeq.
-(*
+Require Import ListMatrix.
+
 Require Import Common.
-Require Import CommonVST.
+Require Import ByteFacts.
+(*Require Import CommonVST.
 Require Import VandermondeList.
 Require Import fec.
 Require Import Poly.
@@ -16,22 +18,6 @@ make_compspecs prog. Defined.
 
 Definition Vprog : varspecs.
 mk_varspecs prog. Defined.
-
-(** Constants*)
-
-Definition modulus : Z := proj1_sig (opaque_constant 285).
-Definition modulus_eq : modulus = 285%Z := proj2_sig (opaque_constant _).
-
-Definition fec_max_h : Z := proj1_sig (opaque_constant 128).
-Definition fec_max_h_eq : fec_max_h = 128%Z := proj2_sig (opaque_constant _).
-
-Definition fec_max_cols : Z := proj1_sig (opaque_constant 16000).
-Definition fec_max_cols_eq: fec_max_cols = 16000%Z := proj2_sig(opaque_constant _).
-
-Hint Rewrite fec_n_eq : rep_lia.
-Hint Rewrite fec_max_h_eq : rep_lia.
-Hint Rewrite modulus_eq : rep_lia.
-Hint Rewrite fec_max_cols_eq : rep_lia.
 
 (** Field tables*)
 
@@ -70,25 +56,24 @@ Definition fec_generate_weights_spec :=
     RETURN ()
     SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
-
+*) 
 (*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
   We require that m > 0 since the last loop goes from 0 to m - 1 *)
 Definition fec_matrix_transform_spec :=
   DECLARE _fec_matrix_transform
-  WITH gv: globals, m : Z, n : Z, mx : matrix F, s : val
+  WITH gv: globals, m : Z, n : Z, mx : list (list byte), s : val
   PRE [ tptr tuchar, tuchar, tuchar]
-    PROP (0 < m <= n; n <= Byte.max_unsigned; wf_matrix mx m n; strong_inv_list m n mx 0)
-    PARAMS (s; Vint (Int.repr m); Vint (Int.repr n))
+    PROP (0 < m <= n; n <= Byte.max_unsigned; wf_lmatrix mx m n; strong_inv_list m n mx 0)
+    PARAMS (s; Vubyte (Byte.repr m); Vubyte (Byte.repr n))
     GLOBALS (gv)
     SEP (FIELD_TABLES gv;
-         data_at Ews (tarray tuchar (m * n))(map Vint (map Int.repr (flatten_mx mx))) s)
+         data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx mx)) s)
   POST [tint]
     PROP()
     RETURN (Vint Int.zero)
     SEP(FIELD_TABLES gv;
-        data_at Ews (tarray tuchar (m * n)) 
-          (map Vint (map Int.repr (flatten_mx (gauss_restrict_rows m n mx)))) s).
-*)
+        data_at Ews (tarray tuchar (m * n))(map Vubyte (flatten_mx (gauss_restrict_rows m n mx))) s).
+
 Definition fec_gf_mult_spec :=
   DECLARE _fec_gf_mult
   WITH gv: globals, b1 : byte, b2 : byte
@@ -192,5 +177,5 @@ Definition fec_blk_encode_spec :=
           
 Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
   fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].*)
-Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec].
+Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec; fec_matrix_transform_spec].
 

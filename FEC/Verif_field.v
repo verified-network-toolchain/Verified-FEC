@@ -4,6 +4,8 @@ Require Import Specs.
 Require Import fec.
 Require Import ByteField.
 Require Import ZSeq.
+Require Import ByteFacts.
+Require Import FECTactics.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -15,23 +17,6 @@ start_function.
 forward_if (PROP () LOCAL (temp _modulus (Vint (Int.repr modulus))) SEP ()); try lia.
 - forward. forward. entailer!. f_equal. f_equal. rep_lia.
 - forward.
-Qed.
-
-Lemma zbits_small: forall i,
-  0 <= i < Byte.modulus ->
-  Zbits.Zzero_ext 8 i = i.
-Proof.
-  intros i Hi. rewrite Zbits.Zzero_ext_mod; [|rep_lia]. replace (two_p 8) with (256) by reflexivity.
-  rewrite Zmod_small; rep_lia.
-Qed.
-
-Lemma Int_repr_zero: forall z,
-  0 <= z <= Int.max_unsigned ->
-  Int.repr z = Int.zero <-> z = 0.
-Proof.
-  intros z Hz. split; intros Hzero.
-  - unfold Int.zero in Hzero. apply repr_inj_unsigned in Hzero; rep_lia.
-  - subst. reflexivity.
 Qed.
 
 Ltac simpl_map :=
@@ -97,30 +82,6 @@ Proof.
   rewrite Int.unsigned_repr; rep_lia.
 Qed. 
 
-Lemma byte_shiftl1: forall b: byte,
-  Int.signed (Int.shl (Int.repr (Byte.unsigned b)) (Int.repr 1)) =
-  Z.shiftl (Byte.unsigned b) 1.
-Proof.
-  intros b. unfold Int.shl. rewrite !Int.unsigned_repr by rep_lia.
-  apply Int.signed_repr. rewrite Z.shiftl_mul_pow2; rep_lia.
-Qed.
-
-(*TODO: how to generalize this?*)
-Lemma byte_shiftl1': forall b: byte,
-  Int.unsigned (Int.shl (Int.repr (Byte.unsigned b)) (Int.repr 1)) =
-  Z.shiftl (Byte.unsigned b) 1.
-Proof.
-  intros b. unfold Int.shl. rewrite (Int.unsigned_repr 1) by rep_lia. 
-  rewrite (Int.unsigned_repr (Byte.unsigned b)) by rep_lia.
-  apply Int.unsigned_repr. rewrite Z.shiftl_mul_pow2; rep_lia.
-Qed.
-
-Lemma p256_val_modulus: p256_val = modulus.
-Proof.
-  unfold p256_val. rep_lia.
-Qed.
-
-
 Lemma body_fec_generate_math_tables : semax_body Vprog Gprog f_fec_generate_math_tables fec_generate_math_tables_spec.
 Proof.
 start_function.
@@ -150,22 +111,20 @@ forward_loop (EX (i: Z),
       { entailer!. apply is_int_Vubyte. }
       { forward. rewrite Znth_map by (rewrite populate_pows_logs_length1; rep_lia).
         forward_if; rewrite byte_shiftl1 in H2; forward; entailer!. 
-        { unfold Int.xor. rewrite byte_shiftl1'. rewrite !Int.unsigned_repr by rep_lia.
+        { unfold Int.xor. rewrite byte_shiftl1'. rewrite Int.unsigned_repr by rep_lia.
           rewrite populate_pows_logs_plus_1 by lia. destruct (Z.eq_dec i 0); try lia. unfold proj_sumbool.
           unfold byte_mulX. simpl in *.
           destruct (Z_lt_ge_dec (2 * Byte.unsigned (Znth (i - 1) (fst (populate_pows_logs i)))) Byte.modulus); try rep_lia.
-          simpl. rewrite <- upd_Znth_map. unfold Vubyte. unfold Int.zero_ext.
-          pose proof (xor_modulus_bound H2) as Hbound. rewrite <- p256_val_modulus.
-          rewrite !Int.unsigned_repr by rep_lia. rewrite zbits_small by rep_lia.
-          rewrite Byte.unsigned_repr; [|rep_lia ]. cancel.
+          simpl. rewrite <- upd_Znth_map. unfold Vubyte.
+          pose proof (xor_modulus_bound H2) as Hbound. simpl_repr_byte.
         }
         { unfold Int.zero_ext. rewrite byte_shiftl1'.
           assert (Hnonneg: 0 <= Z.shiftl (Byte.unsigned (Znth (i - 1) (fst (populate_pows_logs i)))) 1). {
-            rewrite Z.shiftl_nonneg. rep_lia. } rewrite zbits_small by rep_lia.
+            rewrite Z.shiftl_nonneg. rep_lia. } simpl_repr_byte.
           rewrite populate_pows_logs_plus_1 by lia. destruct (Z.eq_dec i 0); try lia; simpl.
           unfold byte_mulX; simpl in *.
           destruct (Z_lt_ge_dec (2 * Byte.unsigned (Znth (i - 1) (fst (populate_pows_logs i)))) Byte.modulus); try rep_lia; simpl.
-          rewrite <- upd_Znth_map. unfold Vubyte. rewrite Byte.unsigned_repr by rep_lia. cancel.
+          rewrite <- upd_Znth_map. unfold Vubyte. simpl_repr_byte.
         }
       }
     }
@@ -175,8 +134,7 @@ forward_loop (EX (i: Z),
         forward. Exists (i+1). entailer!. 
         rewrite populate_pows_logs_plus_1 at 2 by lia; simpl. destruct (Z.eq_dec i 0); try lia; simpl.
         { subst. rewrite populate_pows_logs_0. apply derives_refl'. apply data_at_ext_eq; [| auto]. reflexivity. }
-        { rewrite <- upd_Znth_map. unfold Int.zero_ext. rewrite Int.unsigned_repr by rep_lia.
-          rewrite zbits_small by rep_lia. unfold Vubyte. rewrite Byte.unsigned_repr by rep_lia. cancel. }
+        { rewrite <- upd_Znth_map. unfold Vubyte. simpl_repr_byte. }
       }
     }
   }
@@ -200,9 +158,7 @@ forward_loop (EX (i: Z),
       forward; entailer!. unfold INDEX_TABLES. cancel. rewrite populate_invs_plus_1 by lia.
       rewrite byte_logs_Znth by rep_lia. rewrite byte_pows_Znth by rep_lia.
       rewrite <- upd_Znth_map. replace (fec_n -1) with 255%Z by rep_lia.
-      apply derives_refl'. apply data_at_ext_eq; [| reflexivity]. f_equal.
-      unfold Int.zero_ext. rewrite Int.unsigned_repr by rep_lia. rewrite zbits_small by rep_lia.
-      unfold Vubyte. rewrite Byte.unsigned_repr by rep_lia. reflexivity.
+      apply derives_refl'. apply data_at_ext_eq; [| reflexivity]. f_equal. unfold Vubyte. simpl_repr_byte.
     }
   }
   { entailer!. unfold FIELD_TABLES. cancel. replace fec_n with Byte.modulus by rep_lia.
@@ -210,6 +166,4 @@ forward_loop (EX (i: Z),
   }
 }
 Qed.
-
-(*TODO: tactic for unsigned_repr, zbits, unfold Vubyte, etc*)
  

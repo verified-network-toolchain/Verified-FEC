@@ -2,10 +2,11 @@ Require Import VST.floyd.proofauto.
 
 Require Import Common.
 Require Import CommonVST.
-Require Import Poly.
-Require Import VandermondeList.
+(*Require Import Poly.
+Require Import VandermondeList.*)
 Require Import List2D.
-
+Require Import ByteFacts.
+(*
 (*Solves goals of form ?p <> zero*)
 Ltac solve_poly_zero :=
   let N := fresh in intro N;
@@ -48,15 +49,18 @@ Ltac pose_poly_bounds t :=
     | find_power mod_poly ?p => let N1 := fresh in let N2 := fresh in
        pose_power p N1 N2
   end.
-
+*)
 (*Solves goals with Int.unsigned (Int.repr _) and Zbits.Zzero_ext when the value is an integer, not a qpoly (ie,
   rep_lia can prove that z is small enough)*)
-Ltac solve_repr_int :=
+Ltac simpl_repr_byte :=
   repeat match goal with
-  |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
-  |  [ |- context [ Int.unsigned (Int.repr ?x)]] => rewrite unsigned_repr by rep_lia
+  |  [ |- context [ Byte.unsigned (Byte.repr ?b) ]] => rewrite Byte.unsigned_repr by rep_lia
+  |  [ |- context [ Int.unsigned (Int.repr ?x)]] => rewrite Int.unsigned_repr by rep_lia
   |  [ |- context [ Zbits.Zzero_ext 8 ?x]] => rewrite zbits_small by rep_lia
+  |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
   end; try rep_lia; auto.
+
+(*
 
 
 Ltac solve_poly_bounds :=
@@ -89,7 +93,7 @@ Ltac simpl_repr :=
   |  [ |- context [ Int.zero_ext 8 ?x ]] => unfold Int.zero_ext
   end; auto; try rep_lia; try solve_poly_bounds.
 
-
+*)
 (*Simplify an integer expression with zeroes*)
 Ltac simplify_zeroes  :=
   repeat lazymatch goal with
@@ -98,7 +102,7 @@ Ltac simplify_zeroes  :=
     | [ |- context [ 0%Z * ?z ] ] => rewrite Z.mul_0_l
     | [ |- context [ ?z * 0%Z ] ] => rewrite Z.mul_0_r
   end.
-
+(*
 (*Similar to [pose_power], but for [poly_inv mod_poly p/*)
 Ltac pose_inv p H1 H2 :=
   let P := fresh in
@@ -113,25 +117,37 @@ Ltac rewrite_zero:=
   let N := fresh in
   assert (N: poly_of_int 0%Z = zero) by (rewrite poly_of_int_zero; lia); rewrite N in *; clear N.
 
+*)
+(*To make things nicer*)
+Definition B := ByteField.byte_fieldType.
 
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
   repeat(match goal with
-  | [H: _ |- wf_matrix (F:=F) (scalar_mul_row_partial (F:=F) _ _ _ _ _ _) _ _] => apply scalar_mul_row_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (scalar_mul_row (F:=F) _ _ _ _ _) _ _ ] => apply scalar_mul_row_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (all_cols_one_partial (F:=F) _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (add_multiple_partial (F:=F) _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (add_multiple (F:=F) _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (sub_all_rows_partial (F:=F) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (gauss_all_steps_rows_partial (F:=F) _ _ _ _) _ _] => apply gauss_all_steps_rows_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (all_lc_one_rows_partial (F:=F) _ _ _ _) _ _] => apply all_lc_one_rows_partial_wf
-  | [H: _ |- wf_matrix (F:=F) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf
+  | [H: _ |- wf_lmatrix (F:=B) (scalar_mul_row_partial (F:=B)  _ _ _ _ _ _) _ _] => apply scalar_mul_row_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (scalar_mul_row (F:=B) _ _ _ _ _) _ _ ] => apply scalar_mul_row_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (all_cols_one_partial (F:=B) _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (add_multiple_partial (F:=B) _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (add_multiple (F:=B) _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (sub_all_rows_partial (F:=B) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (gauss_all_steps_rows_partial (F:=B) _ _ _ _) _ _] => apply gauss_all_steps_rows_partial_wf
+  | [H: _ |- wf_lmatrix (F:=B) (all_lc_one_rows_partial (F:=B) _ _ _ _) _ _] => apply all_lc_one_rows_partial_wf
+  (*| [H: _ |- wf_lmatrix (F:=B) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf*)
   end; try lia); assumption.
+
+(*Maybe move elsewhere*)
+Lemma byte_int_repr: forall z: Z,
+  0 <= z <= Byte.max_unsigned ->
+  Vubyte (Byte.repr z) = Vint (Int.repr z).
+Proof.
+  intros z Hz. unfold Vubyte. simpl_repr_byte.
+Qed.
 
 (*Solve goals relating to [offset_val], adding/subtracting pointers, showing offsets are equal, and
   relating offsets to array fields*)
 Ltac solve_offset :=
-  repeat (simpl; lazymatch goal with
+  repeat (simpl; simpl_repr_byte; match goal with
+  | [ |- context [ Vubyte (Byte.repr ?z) ]] => rewrite byte_int_repr by rep_lia
   | [ |- context [ sem_sub_pi ?a ?b ?c ?d ]] => rewrite sem_sub_pi_offset; auto; try rep_lia
   | [ |- context [ sem_add_ptr_int ?a ?b ?c ?d ]] => rewrite sem_add_pi_ptr_special; auto; try rep_lia
   | [ |- context [ offset_val ?n (offset_val ?m ?p) ]] => rewrite offset_offset_val
@@ -160,7 +176,7 @@ Ltac solve_offset :=
       (unfold field_compatible; simpl;
        repeat split; try apply H; auto; rep_lia);
      rewrite (field_compatible0_field_address0 _ _ _ (field_compatible_field_compatible0 _ _ _ N))
-  | [ H : ?n <= Byte.max_unsigned |- Int.min_signed <= ?k * ?n <= Int.max_signed ] => 
+  | [ |- Int.min_signed <= ?k * ?n <= Int.max_signed ] => 
       assert (0 <= k * n <= Byte.max_unsigned * Byte.max_unsigned) by nia; rep_lia
   end).
 
@@ -171,6 +187,7 @@ Ltac build_offset op v1 v2 :=
     let one_side va :=
       lazymatch va with
       | Vint (Int.repr ?n) => constr:(n)
+      | Vubyte (Byte.repr ?b) => constr:(b)
       | offset_val ?n ?p => constr:(n)
       | eval_binop ?op1 ?t1 ?t2 ?v3 ?v4 => build_offset' op1 v3 v4
       | ?s => constr:(0%Z)
@@ -246,5 +263,5 @@ Ltac inner_length :=
       let N' := fresh in
       assert (N: 0 <= i < Zlength l) by lia;
       assert (N': 0 <= j < Zlength (Znth i l)) by lia;
-      rewrite Forall2D_Znth in H; specialize (H _ _ N N'); solve_repr_int; clear N; clear N'
+      rewrite Forall2D_Znth in H; specialize (H _ _ N N'); simpl_repr_byte; clear N; clear N'
    end.
