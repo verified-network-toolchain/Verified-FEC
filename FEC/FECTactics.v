@@ -127,7 +127,7 @@ Ltac rewrite_zero:=
 
 *)
 (*To make things nicer*)
-Definition B := ByteField.byte_fieldType.
+Notation B := ByteField.byte_fieldType.
 
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=

@@ -9,7 +9,8 @@ Poly/ByteField.v
 Matrix/Gaussian.v
 Matrix/ListMatrix.v
 Matrix/LinIndep.v
-#Matrix/Vandermonde.v
+Matrix/Vandermonde.v
+Matrix/VandermondeByte.v
 FEC/fec.v
 FEC/List2D.v
 FEC/Common.v
