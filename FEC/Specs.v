@@ -7,6 +7,7 @@ Require Import ListMatrix.
 
 Require Import Common.
 Require Import ByteFacts.
+Require Import VandermondeByte.
 (*Require Import CommonVST.
 Require Import VandermondeList.
 Require Import fec.
@@ -40,7 +41,8 @@ Definition INDEX_TABLES gv :=
 Definition FIELD_TABLES gv :=
   (INDEX_TABLES gv * 
       data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec))%logic.
-
+*)
+(*Eval compute in *)
 Definition fec_generate_weights_spec :=
   DECLARE _fec_generate_weights
   WITH gv : globals
@@ -50,13 +52,14 @@ Definition fec_generate_weights_spec :=
     GLOBALS (gv)
     SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
-            (list_repeat (Z.to_nat fec_max_h) (list_repeat (Z.to_nat (fec_n -1)) (Vint Int.zero))) (gv _fec_weights))
+            (zseq fec_max_h (zseq (fec_n - 1) (Vubyte Byte.zero))) (gv _fec_weights))
   POST [tvoid]
     PROP ()
     RETURN ()
     SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
-*) 
+
+
 (*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
   We require that m > 0 since the last loop goes from 0 to m - 1 *)
 Definition fec_matrix_transform_spec :=
@@ -177,5 +180,6 @@ Definition fec_blk_encode_spec :=
           
 Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
   fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].*)
-Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec; fec_matrix_transform_spec].
+Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec; fec_matrix_transform_spec;
+  fec_generate_weights_spec].
 

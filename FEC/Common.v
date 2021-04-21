@@ -676,13 +676,48 @@ Proof.
   intros. unfold rev_mx_val. apply map_2d_rev_Znth; assumption. 
 Qed.
 
-Lemma rev_mx_Znth: forall l i j,
+Lemma mx_val_Znth: forall l i j,
   0 <= i < Zlength l ->
   0 <= j < Zlength (Znth i l) ->
   Znth j (Znth i (mx_val l)) =  Vubyte (Znth j (Znth i l)).
 Proof.
   intros. apply map_2d_Znth; assumption.
 Qed.
+
+Lemma mx_val_upd_Znth: forall l i j b,
+  0 <= i < Zlength l ->
+  upd_Znth i (mx_val l) (upd_Znth j (Znth i (mx_val l)) (Vubyte b)) =
+    mx_val (set l i j b).
+Proof.
+  intros l i j b Hi. unfold set.  unfold mx_val. unfold map_2d.
+  rewrite <- !upd_Znth_map. f_equal. f_equal. rewrite Znth_map by assumption. reflexivity.
+Qed.
+
+Lemma concat_rev_mx: forall mx,
+  concat (rev_mx_val mx) = map Vubyte (flatten_mx mx).
+Proof.
+  intros mx. unfold flatten_mx. rewrite concat_map. unfold rev_mx_val.
+  f_equal. unfold map_2d_rev. rewrite !map_map. apply map_ext.
+  intros b. rewrite map_rev. rewrite map_id. reflexivity.
+Qed. 
+
+Lemma rev_mx_val_wf: forall mx m n,
+  wf_lmatrix mx m n ->
+  Zlength (rev_mx_val mx) = m /\ Forall (fun l => Zlength l = n) (rev_mx_val mx).
+Proof.
+  intros mx m n [Hlen [_ Hall]]. split.
+  rewrite rev_mx_val_length1. apply Hlen. revert Hall.
+  rewrite !Forall_Znth. rewrite rev_mx_val_length1. rewrite !Hlen. intros Hall i Hi.
+  rewrite rev_mx_val_length2. apply Hall; assumption.
+Qed.
+  
+Require Import ZSeq.
+
+Lemma mx_val_zseq: forall x y b,
+  mx_val (zseq x (zseq y b)) = zseq x (zseq y (Vubyte b)).
+Proof.
+  intros x y b. unfold mx_val. unfold map_2d. rewrite !zseq_map. reflexivity.
+Qed. 
 
 (*
 

@@ -22,12 +22,13 @@ Require Import Gaussian.
 
 (** Results about the Weight Matrix*)
 
+Notation B := byte_fieldType.
+
 
 Section PrimitiveVandermonde.
 
 Local Open Scope ring_scope.
 
-Notation B := byte_fieldType.
 
 Definition bx : byte := qpoly_to_byte (qx p256_geq_2).
 
@@ -193,7 +194,7 @@ Qed.
 
 Lemma qx_not_zero: bx != 0%R.
 Proof.
-  case Hx: (bx == 0) => [|//]. apply (elimT eqP) in Hx. move: Hx.
+  case: (bx == 0) /eqP => [ |//].
   rewrite /bx. have->:0%R = Byte.zero by []. move => Hx.
   apply (congr1 byte_to_qpoly) in Hx. move: Hx. rewrite qpoly_byte_cancel byte_zero_qpoly => Hx0.
   pose proof (qx_0 p256_irred p256_geq_2) as Hxnot0. move: Hxnot0. by rewrite Hx0 eq_refl.
@@ -285,8 +286,7 @@ Proof.
   apply vandermonde_unitmx.
   - rewrite cats1 rcons_uniq.
     have->: (bx ^+ j \notin [seq (bx ^+ i) | i <- iota 0 r]). {
-      case Hin: (bx ^+ j \in [seq bx ^+ i | i <- iota 0 r]) =>[|//]. 
-      apply (elimT mapP) in Hin. move : Hin => [i Hi Heq].
+      case: (bx ^+ j \in [seq bx ^+ i | i <- iota 0 r]) /mapP =>[[i Hi Heq]|//]. 
       move : Hi; rewrite mem_iota add0n => /andP[H{H} Hir].
       have Hjbound: (j < 255)%N. have Hjm: (j < m)%N by []. have Hjn: (j < n)%N by apply (ltn_leq_trans Hjm Hmn).
         apply (ltn_leq_trans Hjn Hn).
@@ -313,3 +313,178 @@ Proof.
 Qed.
 
 End PrimitiveVandermonde.
+
+Require Import ListMatrix.
+Require Import ZSeq.
+Require Import Common.
+
+(*Weight matrix definition*)
+Section WeightMx.
+
+Local Open Scope ring_scope.
+
+(*TODO: use mod, so we dont need to prove in VST*)
+Definition weight_mx_list (m n : Z) : lmatrix B :=
+  mk_lmatrix m n (fun i j => bx ^+  Z.to_nat (i * (n - j - 1))).
+
+Lemma weight_matrix_wf: forall m n, 0 <= n -> 0 <= m -> wf_lmatrix (weight_mx_list m n) m n.
+Proof.
+  move => m n Hn Hm. by apply mk_lmatrix_wf.
+Qed.
+
+Lemma weight_mx_list_spec: forall m n, 
+  0 <= m ->
+  0 <= n ->
+  lmatrix_to_mx m n (weight_mx_list m n) = vandermonde_powers (Z.to_nat m) (Z.to_nat n).
+Proof.
+  move => m n Hm Hn. rewrite -matrixP => x y. 
+  have Hx: 0 <= Z.of_nat x < m by apply (Z_ord_bound).
+  have Hy: 0 <= Z.of_nat y < n by apply (Z_ord_bound). 
+  rewrite vandermonde_powers_val mxE mk_lmatrix_get //=. f_equal.
+  have->: (x * (Z.to_nat n - y - 1))%N = (x * (Z.to_nat n - y - 1))%coq_nat by []. (*lia and nia not enough*)
+  rewrite Z2Nat.inj_mul; try lia. rewrite Nat2Z.id Z2Nat.inj_sub; try lia.
+  rewrite Z2Nat.inj_sub; try lia. by rewrite Nat2Z.id Nat.mul_sub_distr_l.
+Qed. 
+
+Definition weight_mx := (gauss_restrict_rows fec_max_h (fec_n -1)
+            (weight_mx_list fec_max_h  (fec_n - 1))).
+
+Lemma weight_mx_wf: wf_lmatrix weight_mx (fec_max_h) (fec_n - 1).
+Proof.
+  apply gauss_restrict_rows_wf. apply weight_matrix_wf; rep_lia.
+Qed.
+
+(*The function that populates the weight matrix - we define it here to make the VST code a bit cleaner*)
+Definition pop_weight_mx (i j : Z) : lmatrix B :=
+  mk_lmatrix fec_max_h (fec_n - 1) (fun x y => if Z_lt_le_dec x i then (byte_pow_map (Byte.repr ((x * y) mod 255)))
+                    else if Z.eq_dec x i then if Z_lt_le_dec y j then (byte_pow_map (Byte.repr ((x * y) mod 255))) 
+                    else 0 else 0).
+
+Lemma pop_weight_mx_wf: forall i j,
+  wf_lmatrix (pop_weight_mx i j) fec_max_h (fec_n - 1).
+Proof.
+  move => i j. apply mk_lmatrix_wf; rep_lia.
+Qed.
+
+(*Lemmas we need for the VST proof*)
+(*TODO: may need to be more general*)
+Lemma byte_pow_map_field_size: forall i,
+  byte_pow_map (Byte.repr ((i * (fec_n - 1)) mod 255)) = byte_pow_map (Byte.repr (((i + 1) * 0) mod 255)).
+Proof.
+  move => i.  
+  have->: ((i + 1) * 0)%Z = 0%Z by lia. have->: 0 mod 255 = 0%Z by [].
+  rewrite /byte_pow_map. apply byte_to_qpoly_inj. rewrite !qpoly_byte_cancel /qpow_map_full /=.
+  rewrite !Byte.unsigned_repr; try rep_lia. 2: { pose proof (Z.mod_pos_bound (i * (fec_n - 1)) 255). rep_lia. }
+  apply powX_eq_mod. have->: (fec_n - 1)%Z = 255%Z by rep_lia. 
+  by rewrite -Zmult_mod_idemp_r Z_mod_same_full Z.mul_0_r.
+Qed.
+
+Lemma pop_weight_mx_row_finish: forall i,
+  pop_weight_mx i (fec_n - 1) = pop_weight_mx (i+1) 0.
+Proof.
+  move => i. apply (lmatrix_ext_eq (pop_weight_mx_wf _ _) (pop_weight_mx_wf _ _)).
+  move => i' j' Hi' Hj'.
+  rewrite !mk_lmatrix_get; try rep_lia.
+  case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
+  - by case : (Z_lt_le_dec i' (i + 1)); try rep_lia. 
+  - case : (Z.eq_dec i' i) => [Hiieq /= | Hiineq /=].
+    + subst. case : (Z_lt_le_dec i (i + 1)) => [ /=_ | ]; try rep_lia.
+      case : (Z_lt_le_dec j' (fec_n - 1)) => [//|]. move => Hj''. have: j' < j'.  rep_lia. lia. 
+    + case : (Z_lt_le_dec i' (i + 1)) => [| /= _]; try rep_lia.
+      case : (Z.eq_dec i' (i + 1)) => [Hi1 /= | //].
+      by case : (Z_lt_le_dec j' 0); try rep_lia.
+Qed.
+
+Lemma pop_weight_mx_zero:
+  pop_weight_mx 0 0 = (zseq fec_max_h (zseq (fec_n - 1) Byte.zero)).
+Proof.
+  apply (@lmatrix_ext_eq B fec_max_h (fec_n - 1)).
+  - apply pop_weight_mx_wf.
+  - rewrite /wf_lmatrix; repeat split; [| rep_lia |].
+    + rewrite zseq_Zlength; rep_lia.
+    + rewrite Forall_Znth => i. rewrite zseq_Zlength; try rep_lia. move => Hi.
+      rewrite zseq_Znth; try rep_lia. rewrite zseq_Zlength; rep_lia.
+  - move => i' j' Hi' Hj'.
+    rewrite mk_lmatrix_get; try rep_lia. rewrite /get !zseq_Znth; try rep_lia.
+    case :  (Z_lt_le_dec i' 0) => [| /= _]; try rep_lia.
+    case : (Z.eq_dec i' 0) => [/= Hi0 | //]. subst. 
+    by case : (Z_lt_le_dec j' 0); try rep_lia.
+Qed. 
+
+(*The update lemma*)
+Lemma pop_weight_mx_set: forall i j,
+  0 <= i < fec_max_h ->
+  0 <= j < fec_n - 1 ->
+  set (pop_weight_mx i j) i j (byte_pow_map (Byte.repr ((i * j) mod 255))) =
+  pop_weight_mx i (j + 1).
+Proof.
+  move => i j Hi Hj. apply (@lmatrix_ext_eq B fec_max_h (fec_n - 1)).
+  - apply set_wf. apply pop_weight_mx_wf.
+  - apply pop_weight_mx_wf.
+  - move => i' j' Hi' Hj'. rewrite (@get_set _ fec_max_h (fec_n - 1)); try rep_lia; last first.
+    apply pop_weight_mx_wf. rewrite !mk_lmatrix_get; try rep_lia. 
+    case: (i' =? i) /(Z.eqb_spec _ _) => [ Hiieq /= | Hiineq /=].
+    + subst. case : (Z_lt_le_dec i i) => [| /= _]; try rep_lia.
+      case : (Z.eq_dec i i) => [/= _|]; try rep_lia.
+      case: (j' =? j) /(Z.eqb_spec _ _) => [Hjjeq //= | Hjjeq //=].
+      * subst. by case : (Z_lt_le_dec j (j + 1)); try rep_lia.
+      * case : (Z_lt_le_dec j' j) => [Hjj' /= | Hjj/=];  by case : (Z_lt_le_dec j' (j + 1)); try rep_lia.
+    + case : (Z_lt_le_dec i' i) => [// | Hii' /=].
+      by case : (Z.eq_dec i' i); try rep_lia.
+Qed.
+
+(*Because folding doesnt work great*)
+Lemma get_fold: forall mx i j,
+  Znth j (Znth i mx) = get mx i j.
+Proof.
+  by [].
+Qed.
+
+(*Relate [modn] to Z.modulo*)
+
+(*TODO: move to commonssr*)
+Lemma modn_mod_nat: forall (n1 n2 : nat),
+  (0 < n2)%N ->
+  (n1 %% n2)%N = (n1 mod n2)%N.
+Proof.
+  move => n1 n2 Hn2. apply (Nat.mod_unique _ _ (n1 %/ n2)).
+  - apply /ltP. by rewrite ltn_mod.
+  - have->:(n2 * (n1 %/ n2))%coq_nat = (n2 * (n1 %/ n2))%N by [].
+    have->:(n2 * (n1 %/ n2) + n1 %% n2)%coq_nat = (n2 * (n1 %/ n2) + n1 %% n2)%N by [].
+    by rewrite mulnC -divn_eq.
+Qed.
+
+Lemma modn_mod_Z: forall (z1 z2: Z),
+  0 <= z1 ->
+  0 < z2 ->
+  Z.to_nat (z1 mod z2) = ((Z.to_nat z1) %% (Z.to_nat z2))%N.
+Proof.
+  move => z1 z2 Hz1 Hz2. rewrite modn_mod_nat; last first. apply /ltP; lia.
+  apply Nat2Z.inj. rewrite mod_Zmod; try lia. rewrite !Z2Nat.id; try lia.
+  by apply Z.mod_pos_bound.
+Qed.
+
+(*Finally, this construction is correct*)
+Lemma pop_weight_weight_done: forall j,
+  mx_val (pop_weight_mx fec_max_h j) = rev_mx_val (weight_mx_list fec_max_h  (fec_n - 1)).
+Proof.
+  move => j. pose proof (pop_weight_mx_wf fec_max_h j) as [Hplen [_ Hinplen]].
+  pose proof (@weight_matrix_wf fec_max_h (fec_n - 1)) as [Hwlen [_ Hinwlen]]; try rep_lia.
+  apply Znth_eq_ext.
+  - rewrite mx_val_length1 rev_mx_val_length1. lia.
+  - move => i. rewrite mx_val_length1 Hplen => Hi. move: Hinplen Hinwlen. 
+    rewrite !Forall_Znth Hplen Hwlen => /(_ i Hi) Hpilen /(_ i Hi) Hwilen.
+    apply Znth_eq_ext.
+    + rewrite mx_val_length2 rev_mx_val_length2. lia.
+    + move => k. rewrite mx_val_length2 Hpilen => Hk.
+      rewrite mx_val_Znth; try rep_lia.
+      rewrite rev_mx_val_Znth; try rep_lia. f_equal. rewrite Hwilen !get_fold !mk_lmatrix_get; try rep_lia.
+      case : (Z_lt_le_dec i fec_max_h) => [/= _ | /= Hcon]; last first. rep_lia.
+      have->:(fec_n - 1 - (fec_n - 1 - k - 1) - 1)%Z = k by lia.
+      rewrite /byte_pow_map /bx -qpoly_to_byte_pow. f_equal. rewrite /qpow_map_full /=.
+      apply powX_eq_mod. rewrite Byte.unsigned_repr; last first.
+      pose proof (Z.mod_pos_bound (i * k) 255); rep_lia. rewrite modn_mod_Z; try lia.
+      have->: Z.to_nat 255 = 255%N by []. by rewrite modn_mod.
+Qed.
+
+End WeightMx.
