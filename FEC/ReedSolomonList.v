@@ -7,14 +7,19 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-Require Import Vandermonde.
+(*Require Import Vandermonde.
 Require Import Common.
 Require Import List2D.
 Require Import ListMatrix.
 Require Import ReedSolomon.
 Require Import VandermondeList.
 Require Import Gaussian.
-Require Import CommonSSR.
+Require Import CommonSSR.*)
+Require Import VandermondeByte.
+Require Import ListMatrix.
+Require Import ByteFacts.
+Require Import ReedSolomon.
+Require Import ZSeq.
 
 Lemma NoDup_app: forall {A: Type} (l1 l2:list A),
   NoDup l1 ->
@@ -33,30 +38,82 @@ Qed.
 Section Encoder.
 
 (* The ListMatrix version of the encoder*)
-Definition encode_list_mx (h k c : Z) (packets : list (list Z)) : matrix (Common.F) :=
-  list_matrix_multiply h k c (submatrix (fec_n - 1) weight_mx h k) 
-      (extend_mx k c (int_to_poly_mx packets)).
+Definition encode_list_mx (h k c : Z) (packets : lmatrix B) : lmatrix B :=
+  list_lmatrix_multiply h k c (submatrix (fec_n - 1) weight_mx h k) 
+      (extend_mx k c packets).
 
 (*Lift the above into ssreflect matrices and operations*)
-Lemma encoder_spec : forall (h k c : Z) (packets: list (list Z)) (Hh: h <= fec_max_h) (Hk: k <= fec_n - 1),
+Lemma encoder_spec : forall (h k c : Z) (packets: lmatrix B) (Hh: h <= fec_max_h) (Hk: k <= fec_n - 1),
   0 <= h ->
   0 <= k ->
   0 <= c ->
   Zlength packets = k ->
   Forall (fun x => Zlength x <= c) packets ->
-  matrix_to_mx h c (encode_list_mx h k c packets) = encoder (le_Z_N Hh) (le_Z_N Hk)
-    (matrix_to_mx fec_max_h (fec_n - 1) weight_mx) 
-    (matrix_to_mx k c (extend_mx k c (int_to_poly_mx packets))).
+  lmatrix_to_mx h c (encode_list_mx h k c packets) = encoder (le_Z_N Hh) (le_Z_N Hk)
+    (lmatrix_to_mx fec_max_h (fec_n - 1) weight_mx) 
+    (lmatrix_to_mx k c (extend_mx k c packets)).
 Proof.
   move => h k c packets Hh Hk Hn0 Hk0 Hc0 Hlen Hin. rewrite /encode_list_mx /encoder.
-  have Hwf: wf_matrix weight_mx fec_max_h (fec_n - 1). apply weight_mx_wf. 
-  rewrite list_matrix_multiply_correct.
+  have Hwf: wf_lmatrix weight_mx fec_max_h (fec_n - 1) by apply weight_mx_wf. 
+  rewrite list_lmatrix_multiply_correct.
   by rewrite (@submatrix_to_mx _ (fec_max_h) (fec_n - 1) _ _ _ Hh Hk).
   by apply submatrix_wf.
   by apply extend_mx_wf. 
 Qed.
 
+(*TODO: maybe move to [ListMatrix]*)
+(*Fill in a matrix for matrix multiplication*)
+
+(*Input matrices are m x k and k x n, so output is m x n*)
+Definition pop_mx_mult m n k (mx1 mx2: lmatrix B) (i j: Z): lmatrix B :=
+  pop_2d_mx m n (fun x y => dot_prod mx1 mx2 x y k) i j.
+
+Lemma pop_mx_mult_wf: forall m n k mx1 mx2 i j,
+  0 <= m ->
+  0 <= n ->
+  wf_lmatrix (pop_mx_mult m n k mx1 mx2 i j) m n.
+Proof. 
+  move => m n k mx1 mx2 i j. apply pop_2d_mx_wf.
+Qed.
+
+Lemma pop_mx_mult_row_finish: forall m n k mx1 mx2 i,
+  0 <= m ->
+  0 <= n ->
+  pop_mx_mult m n k mx1 mx2 i n = pop_mx_mult m n k mx1 mx2 (i+1) 0.
+Proof. 
+  move => m n k mx1 mx2 i. apply pop_2d_mx_row_finish. 
+Qed.
+
+Lemma pop_mx_mult_zero: forall m n k mx1 mx2,
+  0 <= m ->
+  0 <= n ->
+  pop_mx_mult m n k mx1 mx2 0 0 = zseq m (zseq n Byte.zero).
+Proof.
+  move => m n k mx1 mx2. apply pop_2d_mx_zero.
+Qed.
+
+Lemma pop_mx_mult_set: forall m n k mx1 mx2 i j,
+  0 <= i < m ->
+  0 <= j < n ->
+  set (pop_mx_mult m n k mx1 mx2 i j) i j (dot_prod mx1 mx2 i j k) =
+  pop_mx_mult m n k mx1 mx2 i (j+1).
+Proof.
+  move => m n k mx1 mx2 i j Hi Hj. by rewrite pop_2d_mx_set.
+Qed. 
+
+Lemma pop_mx_mult_done: forall m n k mx1 mx2 j,
+  0 <= m ->
+  0 <= n ->
+  pop_mx_mult m n k mx1 mx2 m j = list_lmatrix_multiply m k n mx1 mx2.
+Proof.
+  move => m n k mx1 mx2 j Hm Hn. apply (@lmatrix_ext_eq _ m n).
+  - by apply pop_mx_mult_wf.
+  - by apply list_lmatrix_multiply_wf.
+  - move => x y Hx Hy. by rewrite pop_2d_mx_done // mk_lmatrix_get.
+Qed.
+
 End Encoder.
+(*
 
 Section Decoder.
 
@@ -1995,4 +2052,4 @@ Proof.
   - apply extend_mx_wf; lia.
 Qed.
 
-End Decoder.
+End Decoder.*)

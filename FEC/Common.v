@@ -11,8 +11,41 @@ Require Export PolyField.*)
 Require Import ByteField.
 Require Export ListMatrix.
 Require Import ZSeq.
+Require Import ByteFacts (*for xor only*).
 
 Set Bullet Behavior "Strict Subproofs".
+
+(*TODO: is this the right place?*)
+(*Need because "forward" gives some weird defaults for Znth*)
+Lemma Znth_default: forall {A: Type} (H2 H1: Inhabitant A) (l: list A) (i: Z),
+  0 <= i < Zlength l ->
+  @Znth _ H1 i l = @Znth _ H2 i l.
+Proof.
+  intros A Hin1 Hin2 l i Hi. unfold Znth. destruct (zlt i 0); try lia.
+  apply nth_indep. rewrite <-ZtoNat_Zlength. lia.
+Qed.
+
+(*TODO: maybe put this in [ByteFacts] and remove import*)
+Lemma byte_xor_size: forall b1 b2,
+  0 <= Z.lxor (Byte.unsigned b1) (Byte.unsigned b2) <= Byte.max_unsigned.
+Proof.
+  intros b1 b2. split.
+  - apply Z.lxor_nonneg; rep_lia.
+  - pose proof (@Byte_unsigned_nonneg b1) as Hb1.
+    pose proof (@Byte_unsigned_nonneg b2) as Hb2.
+    pose proof (Z.log2_lxor (Byte.unsigned b1) (Byte.unsigned b2) Hb1 Hb2) as Hlog.
+    assert (Hxorlog: Z.log2 (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) <= 7). {
+      apply (Z.le_trans _ _ _ Hlog). apply Z.max_lub; apply byte_log2_range. }
+    assert (Hxorlt: Z.log2 (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) < 8) by lia.
+    replace 8 with (Z.log2 Byte.modulus) in Hxorlt by reflexivity. 
+    apply Z.log2_lt_cancel in Hxorlt. rep_lia.
+Qed.
+
+Lemma byte_xor_fold: forall b1 b2,
+  (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) = Byte.unsigned  (Byte.xor b1 b2).
+Proof.
+  intros b1 b2. unfold Byte.xor. rewrite Byte.unsigned_repr; [ reflexivity | apply byte_xor_size].
+Qed.
 
 (** Facts about Integer Representations and Bounds*)
 (*
@@ -711,6 +744,25 @@ Proof.
   rewrite rev_mx_val_length2. apply Hall; assumption.
 Qed.
   
+(*Move between [map_2d] and [map_2d_rev]. This holds in general, but we only prove it
+  for byte lists because we have useful abbreviations such as "get" and "wf_lmatrix"*)
+Lemma map_2d_rev_equiv: forall {A} `{Inhabitant A} m n (mx1 mx2: bytemx) (f: byte -> A) ,
+  wf_lmatrix mx1 m n ->
+  wf_lmatrix mx2 m n ->
+  (forall i j, 0 <= i < m -> 0 <= j < n -> get mx1 i j = get mx2 i (n - j - 1)) ->
+  map_2d f mx1 = map_2d_rev f mx2.
+Proof.
+  intros A Hinhab m n mx1 mx2 f [Hlen1 [_ Hinlen1]] [Hlen2 [_ Hinlen2]] Hall. simpl in *. apply Znth_eq_ext;
+  rewrite map_2d_Zlength1; rewrite Hlen1.
+  - rewrite map_2d_rev_Zlength1. lia.
+  - intros i Hi. revert Hinlen1 Hinlen2. rewrite !Forall_Znth. rewrite Hlen1. rewrite Hlen2. intros Hin1 Hin2.
+    specialize (Hin1 _ Hi). specialize (Hin2 _ Hi).
+    apply Znth_eq_ext; rewrite map_2d_Zlength2; rewrite Hin1.
+    + rewrite map_2d_rev_Zlength2. lia.
+    + intros j Hj. rewrite map_2d_Znth by lia. rewrite map_2d_rev_Znth by lia.
+      unfold get in Hall. rewrite Hall by lia. f_equal. f_equal. lia.
+Qed.
+
 Require Import ZSeq.
 
 Lemma mx_val_zseq: forall x y b,

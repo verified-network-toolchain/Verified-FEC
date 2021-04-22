@@ -143,6 +143,8 @@ Ltac solve_wf :=
   (*| [H: _ |- wf_lmatrix (F:=B) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf*)
   end); try lia; try assumption.
 
+(*These lemmas are easy to prove with [simpl_repr_byte]. TODO: move tactic and these to Common or keep here?*)
+
 (*Maybe move elsewhere*)
 Lemma byte_int_repr: forall z: Z,
   0 <= z <= Byte.max_unsigned ->
@@ -150,6 +152,13 @@ Lemma byte_int_repr: forall z: Z,
 Proof.
   intros z Hz. unfold Vubyte. simpl_repr_byte.
 Qed.
+
+(*For some reason it unfold [byte_inv] even though it shouldn't so we need separate lemma*)
+Lemma force_val_byte: forall (b: byte),
+  force_val (sem_cast tuchar tuchar (Vubyte b)) = Vubyte b.
+Proof.
+  intros b. simpl. simpl_repr_byte.
+Qed. 
 
 (*Solve goals relating to [offset_val], adding/subtracting pointers, showing offsets are equal, and
   relating offsets to array fields*)
@@ -249,10 +258,10 @@ Ltac pointer_to_offset_with p e :=
     by (entailer!; solve_offset); rewrite N; clear N; rewrite Eq; clear Eq
   end.
 
-(*To fold and unfold abbreviations for LOCALx and SEPx*)
+(*To fold and unfold abbreviations for LOCALx and SEPx. This is super hacky*)
 Ltac rewrite_eqs :=
   repeat match goal with
-    | [H : ?x = ?y |- context [ ?x ]] => rewrite H
+    | [H : ?x = cons ?y ?z |- context [ ?x ]] => rewrite H 
     end.
 
 

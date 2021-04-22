@@ -390,20 +390,20 @@ Qed.
 (*Represents the fact that there is a list of pointers (ptrs), and the contents of those pointers
   are described by contents - in essence, a 2D array with possibly different lengths*)
 (*For now, only defined for tuchar, could extend to other int types*)
-Definition iter_sepcon_arrays (ptrs : list val) (contents: list (list Z)) := 
-  iter_sepcon (fun (x: (list Z * val)) => let (l, ptr) := x in 
-            data_at Ews (tarray tuchar (Zlength l)) (map Vint (map Int.repr l)) ptr) (combine contents ptrs).
+Definition iter_sepcon_arrays (ptrs : list val) (contents: list (list byte)) := 
+  iter_sepcon (fun (x: (list byte * val)) => let (l, ptr) := x in 
+            data_at Ews (tarray tuchar (Zlength l)) (map Vubyte l) ptr) (combine contents ptrs).
 
 Lemma iter_sepcon_arrays_Znth: forall ptrs contents i,
   Zlength ptrs = Zlength contents ->
   0 <= i < Zlength contents ->
   iter_sepcon_arrays ptrs contents |-- 
-    data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vint (map Int.repr (Znth i contents))) (Znth i ptrs) * TT.
+    data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vubyte (Znth i contents)) (Znth i ptrs) * TT.
 Proof.
   intros ptrs contents i Hlen Hi. unfold iter_sepcon_arrays. 
-  sep_apply (iter_sepcon_in_true (fun x : list Z * val => let (l, ptr) := x in 
-    data_at Ews (tarray tuchar (Zlength l)) (map Vint (map Int.repr l)) ptr) (combine contents ptrs) 
-    (Znth i contents, Znth i ptrs)). 2: cancel.
+  sep_apply (iter_sepcon_in_true (fun x : list byte * val => let (l, ptr) := x in 
+    data_at Ews (tarray tuchar (Zlength l)) (map Vubyte l) ptr) (combine contents ptrs) 
+    (Znth i contents, Znth i ptrs)); [|cancel].
   rewrite In_Znth_iff. exists i. split. rewrite combine_Zlength; lia.
   apply combine_Znth; lia.
 Qed.
@@ -414,22 +414,23 @@ Proof.
   intros. tauto.
 Qed.
 
-(*We need a [local_facts] so that entailer! does not throw away iter_sepcon info*)
+(*We don't actually use this, but we prove a [local_facts] so that we could use this with entailer! if we wanted*)
 Lemma iter_sepcon_arrays_local_facts: forall ptrs contents,
   iter_sepcon_arrays ptrs contents |-- !! (Zlength ptrs = Zlength contents -> 
         forall i, 0 <= i < Zlength contents ->
          field_compatible (tarray tuchar (Zlength (Znth i contents))) [] (Znth i ptrs) /\
-         Forall (value_fits tuchar) (map Vint (map Int.repr (Znth i contents)))).
+         Forall (value_fits tuchar) (map Vubyte (Znth i contents))).
 Proof.
-  intros ptrs contents. assert (Zlength ptrs = Zlength contents \/ Zlength ptrs <> Zlength contents) by lia.
-  destruct H as [Heq | Hneq]. 2: entailer!. rewrite Heq. rewrite remove_lead_eq. eapply derives_trans. 2:
+  intros ptrs contents. 
+  assert (Zlength ptrs = Zlength contents \/ Zlength ptrs <> Zlength contents) as [Heq | Hneq] by lia; 
+  [ | entailer!]. rewrite Heq. rewrite remove_lead_eq. eapply derives_trans. 2:
   apply (@allp_prop_left _ _ Z (fun (i: Z) => 0 <= i < Zlength contents ->
         field_compatible (tarray tuchar (Zlength (Znth i contents))) [] (Znth i ptrs) /\
-        Forall (value_fits tuchar) (map Vint (map Int.repr (Znth i contents))))).
+        Forall (value_fits tuchar) (map Vubyte (Znth i contents)))).
   apply allp_right. intros i.
   (*This is not particularly elegant; is there a way to get an implication out directly?*)
-  assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) by lia.
-  destruct H as [Hlt | Hgt]. 2: entailer. (*why doesn't entailer! work?*)
+  assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) as [Hlt | Hgt] by lia; [| entailer ].
+  (*why doesn't entailer! work?*)
   sep_apply (iter_sepcon_arrays_Znth _ _ _ Heq Hlt).
   assert (forall m P Q, P -> (m |-- !! Q) -> (m |-- !! (P -> Q))). { intros. sep_apply H. entailer!. }
   apply H. assumption. entailer!.
@@ -467,7 +468,7 @@ Lemma iter_sepcon_arrays_remove_one: forall ptrs contents i,
   Zlength ptrs = Zlength contents ->
   0 <= i < Zlength contents ->
   iter_sepcon_arrays ptrs contents = 
-    (data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vint (map Int.repr (Znth i contents))) (Znth i ptrs) *
+    (data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vubyte (Znth i contents)) (Znth i ptrs) *
     iter_sepcon_arrays (remove_nth i ptrs) (remove_nth i contents))%logic.
 Proof.
   intros ptrs contents i Hlens Hi. unfold iter_sepcon_arrays. rewrite (iter_sepcon_remove_one _ _ i).

@@ -11,6 +11,8 @@ Matrix/ListMatrix.v
 Matrix/LinIndep.v
 Matrix/Vandermonde.v
 Matrix/VandermondeByte.v
+FEC/ReedSolomon.v
+FEC/ReedSolomonList.v
 FEC/fec.v
 FEC/List2D.v
 FEC/Common.v
@@ -24,3 +26,4 @@ FEC/FECTactics.v
 #FEC/Verif_encode.v
 FEC/Verif_field.v
 FEC/Verif_matrix.v
+FEC/Verif_encode.v

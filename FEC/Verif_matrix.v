@@ -3,32 +3,20 @@ Require Import VST.floyd.proofauto.
 Require Import fec.
 Require Import Common.
 Require Import CommonVST.
-(*Require Import VandermondeList.*)
 Require Import Specs.
-(*Require Import Poly.*)
 Require Import FECTactics.
 Require Import ByteFacts.
 Require Import ByteField.
 Require Import VandermondeByte.
 
 Set Bullet Behavior "Strict Subproofs".
-(*
+
 (** Verification of [rse_init]*)
 (*This is an extremely simple function that just calls fec_generate_math_tables and fec_generate_weights*)
 Lemma body_rse_init : semax_body Vprog Gprog f_rse_init rse_init_spec.
 Proof.
   start_function. forward_call. forward_call. entailer!.
-Qed.*)
-
-(*TODO: move*)
-(*Need because "forward" gives some weird defaults for Znth*)
-Lemma Znth_default: forall {A: Type} (H2 H1: Inhabitant A) (l: list A) (i: Z),
-  0 <= i < Zlength l ->
-  @Znth _ H1 i l = @Znth _ H2 i l.
-Proof.
-  intros A Hin1 Hin2 l i Hi. unfold Znth. destruct (zlt i 0); try lia.
-  apply nth_indep. rewrite <-ZtoNat_Zlength. lia.
-Qed. 
+Qed.
 
 (** Verification of [fec_generate_weights]*)
 Lemma body_fec_generate_weights : semax_body Vprog Gprog f_fec_generate_weights fec_generate_weights_spec.
@@ -121,36 +109,6 @@ Proof.
 Qed.
 
 (** Verification of [fec_matrix_transform]*)
-
-
-(*For some reason it unfold [byte_inv] even though it shouldn't so we need separate lemma*)
-Lemma force_val_byte: forall (b: byte),
-  force_val (sem_cast tuchar tuchar (Vubyte b)) = Vubyte b.
-Proof.
-  intros b. simpl. simpl_repr_byte.
-Qed.
-
-(*Maybe move this*)
-Lemma byte_xor_size: forall b1 b2,
-  0 <= Z.lxor (Byte.unsigned b1) (Byte.unsigned b2) <= Byte.max_unsigned.
-Proof.
-  intros b1 b2. split.
-  - apply Z.lxor_nonneg; rep_lia.
-  - pose proof (@Byte_unsigned_nonneg b1) as Hb1.
-    pose proof (@Byte_unsigned_nonneg b2) as Hb2.
-    pose proof (Z.log2_lxor (Byte.unsigned b1) (Byte.unsigned b2) Hb1 Hb2) as Hlog.
-    assert (Hxorlog: Z.log2 (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) <= 7). {
-      apply (Z.le_trans _ _ _ Hlog). apply Z.max_lub; apply byte_log2_range. }
-    assert (Hxorlt: Z.log2 (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) < 8) by lia.
-    replace 8 with (Z.log2 Byte.modulus) in Hxorlt by reflexivity. 
-    apply Z.log2_lt_cancel in Hxorlt. rep_lia.
-Qed.
-
-Lemma byte_xor_fold: forall b1 b2,
-  (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2)) = Byte.unsigned  (Byte.xor b1 b2).
-Proof.
-  intros b1 b2. unfold Byte.xor. rewrite Byte.unsigned_repr; [ reflexivity | apply byte_xor_size].
-Qed.
 
 Opaque byte_inv.
 Opaque byte_mul.
