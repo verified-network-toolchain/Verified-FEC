@@ -280,8 +280,11 @@ Section RowRedVandermonde.
   length properties to use this*)
 Definition submx_rows_cols {m n : nat} (m' n': nat) (A: 'M[F]_(m, n)) (rows: seq 'I_m) (cols: seq 'I_n)
   (xm: 'I_m) (xn : 'I_n) := mxsub (fun (x : 'I_m') => nth xm rows x) (fun x : 'I_n' => nth xn cols x) A.
-(*Definition submx_rows_cols {m n} z (A: 'M[F]_(m, n)) (rows: list 'I_m) (cols: list 'I_n) (xm : 'I_m) (xn: 'I_n) :=
-  mxsub (fun (x: 'I_z) => nth xm rows x) (fun (x: 'I_z) => nth xn cols x) A.*)
+
+(*Take columns from the end instead of beginning (because the weight matrix is backwards)*)
+Definition submx_rows_cols_rev {m n : nat} (m' n': nat) (A: 'M[F]_(m, n)) (rows: seq 'I_m) (cols: seq 'I_n)
+  (xm: 'I_m) (xn : 'I_n) := submx_rows_cols m' n' A rows (map (fun x => rev_ord x) cols) xm xn.
+
 (*The default doesn't matter as long as our lists are long enough*)
 Lemma submx_rows_cols_default: forall m n m' n' (A: 'M[F]_(m, n)) rows cols xm xn xm' xn',
   m' <= size rows ->
@@ -295,8 +298,6 @@ Proof.
 Qed.
 
 (*First, we give an alternate definition for [strong_inv] based on this*)
-
-
 
 (*TODO: we can use this in a bunch of places, or can delte*)
 Lemma nth_ord_enum_nat: forall n (x: 'I_n) (i: nat),
@@ -422,6 +423,27 @@ Proof.
     + apply nat_comp_bound in Hcon. by rewrite ltnn in Hcon.
     + by [].
 Qed. 
+
+Lemma nat_comp_app_notin: forall n l1 l2,
+  (forall x, x \in l2 -> (n <= x)%N) ->
+  nat_comp n l1 =
+  nat_comp n (l1 ++ l2).
+Proof.
+  move => n l1 l2. elim : n => [//= | n /= IH Hin].
+  rewrite !nat_comp_plus_one mem_cat.
+  have->:n \in l2 = false. 
+  case Hn: (n \in l2) =>[//|//]. apply Hin in Hn.
+  by rewrite ltnn in Hn. rewrite orbF !IH //. move => x Hin'.
+  apply ltnW. by apply Hin.
+Qed.
+
+Lemma nat_comp_app: forall n l1,
+  nat_comp n (l1 ++ [:: n]) =
+  nat_comp n l1.
+Proof.
+  move => n l1. rewrite -nat_comp_app_notin //. move => x. rewrite in_cons => /orP[/eqP Hxn | Hinf].
+  subst. by rewrite leqnn. by [].
+Qed.
 
 (*Now, we need to wrap this in Ordinals*)
 Definition ord_comp {n: nat} (l: list 'I_n) : list 'I_n :=

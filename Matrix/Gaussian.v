@@ -22,38 +22,6 @@ Proof.
 move => n x y; rewrite /scalar_mx mxE; by case : (x == y). 
 Qed.
 
-(*Working with enums of ordinals*)
-Lemma ordinal_enum_size: forall n,
-  size (Finite.enum (ordinal_finType n)) = n.
-Proof.
-  move => n. have: size ([seq val i | i <- enum 'I_n]) = n. rewrite val_enum_ord. by apply: size_iota.
-  rewrite size_map. unfold enum. rewrite size_map //.
-Qed.
-
-Lemma ordinal_enum: forall {n: nat} (x: 'I_n) y,
-  nth y (Finite.enum (ordinal_finType n)) x = x.
-Proof.
-  move => n x y. have nth_ord := (nth_ord_enum y x). unfold enum in nth_ord. move: nth_ord.
-  rewrite (@nth_map _ y) //. by rewrite ordinal_enum_size.
-Qed. 
-
-Lemma size_ord_enum: forall n, size (ord_enum n) = n.
-Proof.
-  move => n. 
-  have : size (ord_enum n) = size ([seq val i | i <- ord_enum n]) by rewrite size_map.
-  by rewrite val_ord_enum size_iota.
-Qed.
-
-Lemma nth_ord_enum: forall n (i: 'I_n) x, nth x (ord_enum n) i = i.
-Proof.
-  move => n i x. have Hv := val_ord_enum n.  have Hmap :=  @nth_map 'I_n x nat x val i (ord_enum n).
-  move : Hmap. rewrite Hv size_ord_enum nth_iota =>[//=|//]. rewrite add0n. move => H.
-  (*some annoying stuff about equality of ordinals vs nats*)
-  have : nat_of_ord ( nth x (ord_enum n) i) == nat_of_ord i. rewrite {2}H. by []. by [].
-  move => Hnatord. have : nth x (ord_enum n) i == i by []. 
-  by move => /eqP Heq.
-Qed.
-
 (*Some closed form summations we will use*)
 Lemma sum_if: forall {n} (x : 'I_n) (f1 : 'I_n -> F),
   \sum_(i < n) (if x == i then f1 i else 0) = f1 x.
@@ -2144,6 +2112,335 @@ Proof.
   move: Hre => [E /andP[He /eqP Hmul]]. move: Hmul.
   rewrite mul_mx_row => Hrow. apply eq_row_mx in Hrow. case: Hrow => [Hea Hce].
   symmetry in Hea. apply invmx_uniq in Hea. rewrite mulmx1 in Hce. by subst.
+Qed.
+
+(** Casting Matrices*)
+
+(*We need to "push" a cast through Gaussian elimination (ie, castmx (gauss_elim A) = gauss_elim (castmx A)).
+  This requires a lot of work*)
+
+Lemma cast_eq: forall m n m' n' (A: 'M[F]_(m, n)) (B: 'M[F]_(m', n')) (Heq: (m = m') * (n = n')),
+  (forall (x: 'I_m) (y: 'I_n), A x y = B (cast_ord (fst Heq) x) (cast_ord (snd Heq) y)) ->
+  castmx Heq A = B.
+Proof.
+  move => m n m' n' A B Heq Hab. rewrite -matrixP => x y.
+  rewrite castmxE Hab /=. f_equal; by apply ord_inj.
+Qed.
+
+Definition cast_seq n n' (H: n = n') (s: seq 'I_n)  : seq 'I_n' :=
+  map (cast_ord H) s.
+
+Lemma foldr_castmx: forall m n m' n' (A: 'M[F]_(m, n)) (Heq: (m = m') * (n = n')) 
+  (f: 'I_m -> 'M[F]_(m, n) -> 'M[F]_(m, n)) (g: 'I_m' -> 'M[F]_(m', n') -> 'M[F]_(m', n')) (l: seq 'I_m),
+  (forall (x: 'I_m) (A: 'M[F]_(m, n)), castmx Heq (f x A) = g (cast_ord (fst Heq) x) (castmx Heq A)) ->
+  castmx Heq (foldr f A l) = foldr g (castmx Heq A) (cast_seq (fst Heq) l).
+Proof.
+  move => m n m' n' A Heq f g l Hfg. elim : l => [//= | h t IH /=].
+  by rewrite Hfg IH.
+Qed.
+
+(*Probably can abstract this as functor or monad or something*)
+Definition cast_option n n' (H: n = n')  (o: option 'I_n) : option 'I_n' :=
+  match o with
+  | None => None
+  | Some x => Some ((cast_ord H) x)
+  end.
+
+Lemma cast_option_none: forall n n' (H: n = n') (o: option 'I_n),
+  (cast_option H o == None) = (o == None).
+Proof.
+  move => n n' H o. by case : o.
+Qed.
+
+Lemma cast_option_some: forall n n' (H: n = n') (o: option 'I_n) c,
+  cast_option H o = Some c ->
+  exists d, o = Some d /\ (cast_ord H) d = c.
+Proof.
+  move => n n' H o c. case : o =>[d //= Hsome | //=]. exists d. case: Hsome. by move ->.
+Qed.
+
+(*Working with casts is very annoying*)
+Lemma lead_coef_cast: forall m n m' n' (H: (m = m') * (n = n')) (A: 'M[F]_(m, n)) (r: 'I_m),
+  lead_coef A r = cast_option (esym (snd H)) (lead_coef (castmx H A) (cast_ord (fst H) r)).
+Proof.
+  move => m n m' n' H A r.
+  case Hlc: (lead_coef A r) =>[c /= | //=].
+  - move: Hlc. rewrite lead_coef_some_iff => [[Hrc Hbefore]].
+    symmetry. case Hlc : (lead_coef (castmx H A) (cast_ord H.1 r)) => [d /= | //=].
+    + move : Hlc. rewrite lead_coef_some_iff => [[Hrd Hbef]].
+      move : Hrd; rewrite castmxE /= => Hrd.
+      case (orP (ltn_total c  (cast_ord (esym (snd H)) d))).
+      * move => /orP[Hlt | Heq].
+        -- have: A r c == 0%R. apply /eqP.  move: Hbef => /(_ (cast_ord (snd H) c)).
+           rewrite castmxE !cast_ordK => Hzero. by apply Hzero.
+            move : Hrc; by case : (A r c == 0%R).
+        -- apply (elimT eqP) in Heq. f_equal. by apply ord_inj.
+      * move => Hdc. have:  A (cast_ord (esym H.1) (cast_ord H.1 r)) (cast_ord (esym H.2) d) == 0%R.
+        apply /eqP. move : Hbefore => /(_ _ Hdc). by rewrite !cast_ordK.
+        move: Hrd. by case : (A (cast_ord (esym H.1) (cast_ord H.1 r)) (cast_ord (esym H.2) d) == 0%R).
+    + move: Hlc. rewrite lead_coef_none_iff => /(_ (cast_ord (snd H) c)). rewrite castmxE !cast_ordK => Hrc'. move: Hrc.
+      by rewrite Hrc' eq_refl.
+  - move: Hlc. rewrite lead_coef_none_iff => [Hall]. symmetry. apply /eqP. rewrite cast_option_none. apply /eqP.
+    rewrite lead_coef_none_iff. move => x. rewrite castmxE !cast_ordK. apply Hall.
+Qed.
+
+Lemma cast_leq: forall m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N),
+  (m' <= n')%N.
+Proof.
+  move => m n m' n' [Hm Hn]. by rewrite Hm Hn.
+Qed.
+
+Lemma cast_seq_pmap: forall n n' (H: n = n') (l: list nat),
+  cast_seq H (pmap insub l) = pmap insub l.
+Proof.
+  move => n n' H l. elim : l => [//= | h t Ih /=].
+  case Hh: (h < n)%N.
+  - rewrite !insubT /=. by rewrite -H. move => Hn'. rewrite Ih /=. f_equal.
+    by apply ord_inj.
+  - by rewrite !insubF // -H.
+Qed.  
+
+Lemma cast_ord_enum: forall n n' (H: n = n'),
+  cast_seq H (ord_enum n) = ord_enum n'.
+Proof.
+  move => n n' H. rewrite /ord_enum. by rewrite cast_seq_pmap H.
+Qed.
+
+Lemma cast_ord_switch: forall n n' (H: n = n') x y,
+  (cast_ord (esym H) x == y) = (x == cast_ord H y).
+Proof.
+  move => n n' H x y.
+  case : (x == cast_ord H y) /eqP => Hx.
+  - rewrite Hx /=. by rewrite cast_ordK eq_refl.
+  - apply /eqP. move => C. move: Hx. by rewrite -C cast_ordKV.
+Qed.
+
+(*Push the cast through each intermediate function*)
+
+Lemma sc_mul_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (A: 'M[F]_(m, n)) c (r: 'I_m),
+  castmx Heq (sc_mul A c r) = sc_mul (castmx Heq A) c (cast_ord (fst Heq) r).
+Proof.
+  move => m n m' n' Heq A c r. rewrite -matrixP => x y.
+  by rewrite castmxE !mxE cast_ord_switch !castmxE.
+Qed.
+
+Lemma mk_identity_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) (A: 'M[F]_(m, n)) x,
+  castmx Heq (mk_identity A Hmn x) = mk_identity (castmx Heq A) (cast_leq Heq Hmn) x.
+Proof.
+  move => m n m' n' Heq Hmn A x. rewrite /mk_identity -(cast_seq_pmap (fst Heq)).
+  apply foldr_castmx. move => x' A'. rewrite sc_mul_castmx. f_equal.
+  rewrite castmxE /= !cast_ordK. f_equal. f_equal. by apply ord_inj.
+Qed.
+
+Lemma add_mul_castmx: forall m n m' n' (Heq: (m = m') * (n = n'))
+  (A: 'M[F]_(m, n)) c (r1 r2: 'I_m),
+  castmx Heq (add_mul A c r1 r2) =
+  add_mul (castmx Heq A) c (cast_ord Heq.1 r1) (cast_ord Heq.1 r2).
+Proof.
+  move => m n m' n' Heq A c r1 r2. rewrite -matrixP => x y.
+  by rewrite castmxE !mxE cast_ord_switch !castmxE !cast_ordK.
+Qed.
+
+Lemma sub_all_rows_noif_castmx: forall  m n m' n' (Heq: (m = m') * (n = n'))
+  (A: 'M[F]_(m, n)) (x: 'I_m),
+  castmx Heq (sub_all_rows_noif A x) = sub_all_rows_noif (castmx Heq A) (cast_ord Heq.1 x).
+Proof.
+  move => m n m' n' Heq A x. rewrite /sub_all_rows_noif -(cast_ord_enum (fst Heq)).
+  apply foldr_castmx => x' A'.
+  case: (x' == x) /eqP => Hx.
+  - by have->: cast_ord Heq.1 x' == cast_ord Heq.1 x by rewrite Hx.
+  - have->: cast_ord Heq.1 x' == cast_ord Heq.1 x = false.
+    case Hx': (cast_ord Heq.1 x' == cast_ord Heq.1 x) =>[|//]. apply (elimT eqP) in Hx'.
+    by apply cast_ord_inj in Hx'.
+    apply add_mul_castmx.
+Qed.
+
+Lemma all_cols_one_noif_castmx: forall  m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) 
+  (A: 'M[F]_(m, n)) (x: 'I_n),
+  castmx Heq (all_cols_one_noif A x) =
+  all_cols_one_noif (castmx Heq A) (cast_ord Heq.2 x).
+Proof.
+  move => m n m' n' Heq Hmn A x. rewrite /all_cols_one_noif -(cast_ord_enum (fst Heq)).
+  apply foldr_castmx => x' A'. by rewrite sc_mul_castmx castmxE !cast_ordK.
+Qed. 
+
+Lemma gauss_one_step_restrict_castmx: forall  m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) 
+  (A: 'M[F]_(m, n)) (x: 'I_m),
+  castmx Heq (gauss_one_step_restrict A x Hmn) =
+  gauss_one_step_restrict (castmx Heq A) (cast_ord Heq.1 x) (cast_leq Heq Hmn).
+Proof.
+  move => m n m' n' Heq Hmn A x. rewrite /gauss_one_step_restrict sub_all_rows_noif_castmx
+  all_cols_one_noif_castmx //=. f_equal. f_equal. by apply ord_inj.
+Qed.
+ 
+
+(*foldl version, this time with a nat function for [gauss_all_steps_restrict]*)
+Lemma foldl_castmx: forall m n m' n' (A: 'M[F]_(m, n)) (Heq: (m = m') * (n = n')) 
+  (f: 'M[F]_(m, n) -> nat -> 'M[F]_(m, n)) (g:  'M[F]_(m', n') -> nat -> 'M[F]_(m', n')) (l: seq nat),
+  (forall (x: nat) (A: 'M[F]_(m, n)), castmx Heq (f A x) = g (castmx Heq A) x) ->
+  castmx Heq (foldl f A l) = foldl g (castmx Heq A)  l.
+Proof.
+  move => m n m' n' A Heq f g l Hfg. move : A. elim : l => [//= | h t IH A /=].
+  by rewrite IH Hfg. 
+Qed.
+
+Lemma gauss_all_steps_restrict_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) (A: 'M[F]_(m, n)) x y,
+  castmx Heq (gauss_all_steps_restrict_aux A Hmn x y) =
+  gauss_all_steps_restrict_aux (castmx Heq A) (cast_leq Heq Hmn) x y.
+Proof.
+  move => m n m' n' Heq Hmn A x y. apply foldl_castmx => x' A'.
+  case Hx': (x' < m)%N.
+  - rewrite !insubT. by rewrite -(fst Heq). move => Hxm'.
+    rewrite gauss_one_step_restrict_castmx /=. f_equal. by apply ord_inj.
+  - rewrite !insubF //. by rewrite -Heq.1.
+Qed.
+
+(*The final result we need*)
+Lemma castmx_gaussian_restrict: forall m n m' n' (A: 'M[F]_(m, n)) (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N),
+  castmx Heq (gaussian_elim_restrict A Hmn) = gaussian_elim_restrict (castmx Heq A) (cast_leq Heq Hmn).
+Proof.
+  move => m n m' n' A Heq Hmn. rewrite /gaussian_elim_restrict. rewrite -matrixP => x y.
+  rewrite mk_identity_castmx. f_equal. f_equal. 2: by rewrite (fst Heq).
+  rewrite /gauss_all_steps_restrict_end. rewrite gauss_all_steps_restrict_castmx. f_equal.
+  by rewrite Heq.1.
+Qed.
+
+(*We need a few other general results to show that inverses do not change under casting*)
+
+Lemma mulmx_castmx: forall n n' (H: n = n') (A B: 'M[F]_n),
+  castmx (H, H) (A *m B)%R = ((castmx (H, H) A) *m (castmx (H, H) B))%R.
+Proof.
+  move => n n' H A B. rewrite -matrixP => x y.
+  rewrite castmxE !mxE. have Hn: (n <= n')%N by rewrite H leqnn.
+  rewrite (big_nth x) (big_nth (cast_ord (esym H) x)) /=.
+  rewrite !index_ord_enum !size_ord_enum.
+  rewrite (big_nat_widen _ _ _ _ _ Hn) big_nat_cond (big_nat_cond _ _ _ _ (fun x => true)).
+  apply eq_big.
+  - move => i. by rewrite /= H andbb andbT.
+  - rewrite /=. move => i /andP[Hi' Hi].
+    rewrite !castmxE /=. 
+    have Hii: i = nat_of_ord (Ordinal Hi) by []. 
+    have Hii': i = nat_of_ord (Ordinal Hi') by []. 
+    have->: (nth x (ord_enum n') i) = (nth x (ord_enum n') (Ordinal Hi')) by f_equal.
+    have->: (nth (cast_ord (esym H) x) (ord_enum n) i) = (nth (cast_ord (esym H) x) (ord_enum n) (Ordinal Hi)) by f_equal.
+    rewrite !nth_ord_enum. by f_equal; f_equal; apply ord_inj.
+Qed.
+
+Lemma id_castmx: forall n n' (H: n = n'),
+  castmx (R:=F) (H, H) (1%:M)%R = (1%:M)%R.
+Proof.
+  move => n n' H. rewrite -matrixP => x y.
+  by rewrite castmxE !id_A cast_ord_switch cast_ordKV.
+Qed.
+
+Lemma unitmx_castmx: forall n n' (H: n = n') (A: 'M[F]_n),
+  ((castmx (H, H) A) \in unitmx) = (A \in unitmx).
+Proof.
+  move => n n' H A. case Hun: (A \in unitmx).
+  - have Hmul: (A *m (invmx A))%R = (1%:M)%R by apply mulmxV.
+    have: castmx (H, H) (A *m invmx A)%R = castmx (H, H) (1%:M)%R by rewrite Hmul.
+    rewrite mulmx_castmx id_castmx => Hcast. apply mulmx1_unit in Hcast. apply Hcast.
+  - case Hcastun: (castmx (H, H) A \in unitmx) => [|//].
+    have Hmul: ((castmx (H, H) A) *m (invmx (castmx (H, H) A)))%R = (1%:M)%R by apply mulmxV.
+    have: castmx (esym H, esym H) (castmx (H, H) A *m invmx (castmx (H, H) A))%R =
+          castmx (esym H, esym H) (1%:M)%R by rewrite Hmul.
+    rewrite mulmx_castmx castmxK id_castmx => Ha.
+    apply mulmx1_unit in Ha. case : Ha => [Ha  Hc]. by rewrite Ha in Hun.
+Qed.
+
+Lemma castmx_twice: forall m1 m2 m3 n1 n2 n3 (A: 'M[F]_(m1, n1)) 
+  (Hm12: m1 = m2) (Hm23: m2 = m3) (Hn12: n1 = n2) (Hn23: n2 = n3),
+  castmx (Hm23, Hn23) (castmx (Hm12, Hn12) A) =
+  castmx (etrans Hm12 Hm23, etrans Hn12 Hn23) A.
+Proof.
+  move => m1 m2 m3 n1 n2 n3 A Hm12 Hm23 Hn12 Hn23. rewrite -matrixP => x y.
+  rewrite !castmxE /=. by f_equal; apply ord_inj.
+Qed.
+
+(** [strong_inv] for [rowmx]*)
+
+(*We want to show that if strong_inv A holds, then strong_inv (row_mx A) holds*)
+
+Lemma submx_remove_col_rowmx: forall m n (A B: 'M[F]_(m, n)) (Hmn: (m <= n)%N) (Hmn' : (m <= n + n)%N) r j,
+  submx_remove_col A Hmn r j =
+  submx_remove_col (row_mx A B) Hmn' r j.
+Proof.
+  move => m n A B Hmn Hmn' r j. rewrite -matrixP => x y.
+  rewrite !mxE /=. case Hyj: (y < j)%N.
+  - pose proof (splitP (widen_ord (ltnW (ltn_leq_trans (ltn_ord r) Hmn')) y)).
+    case : X => [j' /= Hj' | k /= Hk].
+    + f_equal. by apply ord_inj.
+    + have Hny: (n <= y)%N by rewrite Hk leq_addr.
+      have: (y < n)%N. have Hyr : (y < r)%N by [].
+        have Hym: (y < m)%N by apply (ltn_trans Hyr). by apply (ltn_leq_trans Hym).
+      by rewrite ltnNge Hny.
+  - pose proof (splitP (ord_widen_succ (ltn_leq_trans (ltn_ord r) Hmn') y)).
+    case : X => [j' /= Hj' | k /= Hk].
+    + f_equal. by apply ord_inj.
+    + have: (y.+1 < n)%N. have Hyr: (y < r)%N by [].
+      have Hym: (y.+1 < m)%N by apply (leq_ltn_trans Hyr). by apply (ltn_leq_trans Hym).
+      have: (n <= y.+1)%N. by rewrite Hk leq_addr. rewrite ltnNge. by move ->.
+Qed. 
+
+Lemma submx_add_row_rowmx: forall m n (A B: 'M[F]_(m, n)) (Hmn: (m <= n)%N) (Hmn' : (m <= n + n)%N) r j,
+  submx_add_row A Hmn r j =
+  submx_add_row (row_mx A B) Hmn' r j.
+Proof.
+  move => m n A B Hmn Hmn' r j. rewrite -matrixP => x y.
+  rewrite !mxE /=. 
+  pose proof (splitP (widen_ord (leq_trans (ltn_ord r) Hmn') y)).
+  case : X => [j' /= Hj' | k /= Hk].
+  - f_equal. by apply ord_inj.
+  - have Hyr: (y < r.+1)%N by []. have Hrn : (r.+1 <= n)%N.
+    have Hrm: (r.+1 <= m)%N by []. by apply (ltn_leq_trans Hrm).
+    have Hyn: (y < n)%N. have Hyr': (y < r.+1)%N by []. by apply (ltn_leq_trans Hyr').
+    have : (n <= y)%N by rewrite Hk leq_addr. by rewrite leqNgt Hyn.
+Qed. 
+
+Lemma strong_inv_row_mx: forall m n (A B: 'M[F]_(m, n)) (Hmn: (m <= n)%N) (Hmn' : (m <= n + n)%N) (r: 'I_m),
+  strong_inv A Hmn r ->
+  strong_inv (row_mx A B) Hmn' r.
+Proof.
+  move => m n A B Hmn Hmn' r. rewrite /strong_inv => Hstr r' Hr'. split.
+  - move => j Hj. rewrite -submx_remove_col_rowmx. move : Hstr => /(_ r' Hr') => [[Hcol Hrow]].
+    by apply Hcol.
+  - move => j Hj. rewrite -submx_add_row_rowmx. move : Hstr => /(_ r' Hr') => [[Hcol Hrow]].
+    by apply Hrow.
+Qed.
+
+(*Finally, [srong_inv] is actually a stronger condition than invertibility*)
+
+Lemma lt_subst: forall (n m p: nat),
+  (n < m)%N ->
+  m = p ->
+  (n < p)%N.
+Proof.
+  move => n m p Hn Hmp. by rewrite -Hmp.
+Qed.
+
+(*TODO: move this too*)
+Lemma strong_inv_unitmx: forall {n} (A: 'M[F]_n) (H: (n <= n)%N) (r: 'I_n),
+  strong_inv A H r ->
+  A \in unitmx.
+Proof.
+  move => n A H r. rewrite /strong_inv.
+  have: (0 <= n)%N by []. rewrite leq_eqVlt => /orP[/eqP H0n | Hn].
+  -  move => Hstr. (*i guess the empty matrix is invertible?*)
+     have->: A = (1%:M)%R. subst. apply matrix_zero_rows. apply unitmx1.
+  - have Hr: (r <= (pred_ord Hn))%N by rewrite /= -ltn_pred. 
+    move => /(_ (pred_ord Hn) Hr) => [[Hrow Hcol]].
+    move : Hcol => /(_ (pred_ord Hn) (leqnn _)).
+    have Hpred: n = (pred_ord Hn).+1 by rewrite /= (ltn_predK Hn).
+    have->: submx_add_row A H (pred_ord Hn) (pred_ord Hn) = (castmx (Hpred, Hpred) A) .
+    { rewrite -matrixP => x y. rewrite !mxE castmxE /=. f_equal. 2: by apply ord_inj.
+      case Hx: (x < n.-1)%N.
+      - by apply ord_inj.
+      - have Hxn: (x < (pred_ord Hn).+1)%N by [].
+        have {}Hxn: (x < n)%N. apply (lt_subst Hxn). by []. (*no idea why rewriting directly gives dep type error*)
+        have: (x <= n.-1)%N by rewrite -ltn_pred. rewrite leq_eqVlt => /orP[/eqP Hxn1 | Hcon].
+        + by apply ord_inj.
+        + by rewrite Hcon in Hx. }
+    by rewrite unitmx_castmx.
 Qed.
 
 End Gauss.

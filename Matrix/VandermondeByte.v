@@ -323,7 +323,6 @@ Section WeightMx.
 
 Local Open Scope ring_scope.
 
-(*TODO: use mod, so we dont need to prove in VST*)
 Definition weight_mx_list (m n : Z) : lmatrix B :=
   mk_lmatrix m n (fun i j => bx ^+  Z.to_nat (i * (n - j - 1))).
 
@@ -354,93 +353,7 @@ Proof.
   apply gauss_restrict_rows_wf. apply weight_matrix_wf; rep_lia.
 Qed.
 
-(*TODO: maybe move*)
-(*At several places in the C code, a 2d array is populated by filling in each element, in order. We abstract that out
-  to make the VST proof simpler and to reduce duplication*)
-(*This is a matrix where the first i rows are filled, and the (i+1)st row is filled up to j*)
-Definition pop_2d_mx m n (f: Z -> Z -> B) (i j : Z) : lmatrix B :=
-  mk_lmatrix m n (fun x y => if Z_lt_le_dec x i then f x y
-                    else if Z.eq_dec x i then if Z_lt_le_dec y j then f x y
-                    else 0 else 0).
-
-Lemma pop_2d_mx_wf: forall m n f i j,
-  0 <= m ->
-  0 <= n ->
-  wf_lmatrix (pop_2d_mx m n f i j) m n.
-Proof.
-  move => m n f i j Hm Hn. by apply mk_lmatrix_wf.
-Qed. 
-
-(*At the start, this is the zero 2D array*)
-Lemma pop_2d_mx_zero: forall m n f,
-  0 <= m ->
-  0 <= n ->
-  pop_2d_mx m n f 0 0 = (zseq m (zseq n Byte.zero)).
-Proof.
-  move => m n f Hm Hn. apply (@lmatrix_ext_eq B m n).
-  - by apply pop_2d_mx_wf.
-  - rewrite /wf_lmatrix; repeat split; [| rep_lia |].
-    + rewrite zseq_Zlength; rep_lia.
-    + rewrite Forall_Znth => i. rewrite zseq_Zlength; try rep_lia. move => Hi.
-      rewrite zseq_Znth; try rep_lia. rewrite zseq_Zlength; rep_lia.
-  - move => i' j' Hi' Hj'.
-    rewrite mk_lmatrix_get; try rep_lia. rewrite /get !zseq_Znth; try rep_lia.
-    case :  (Z_lt_le_dec i' 0) => [| /= _]; try rep_lia.
-    case : (Z.eq_dec i' 0) => [/= Hi0 | //]. subst. 
-    by case : (Z_lt_le_dec j' 0); try rep_lia.
-Qed.
-
-(*Finishing a row*)
-Lemma pop_2d_mx_row_finish: forall m n f i,
-  0 <= m ->
-  0 <= n ->
-  pop_2d_mx m n f i n = pop_2d_mx m n f (i+1) 0.
-Proof.
-  move => m n f i Hm Hn. apply (lmatrix_ext_eq (pop_2d_mx_wf _ _ _ Hm Hn) (pop_2d_mx_wf _ _ _ Hm Hn)).
-  move => i' j' Hi' Hj'.
-  rewrite !mk_lmatrix_get; try rep_lia.
-  case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
-  - by case : (Z_lt_le_dec i' (i + 1)); try rep_lia. 
-  - case : (Z.eq_dec i' i) => [Hiieq /= | Hiineq /=].
-    + subst. case : (Z_lt_le_dec i (i + 1)) => [ /=_ | ]; try rep_lia.
-      case : (Z_lt_le_dec j' n) => [//|]. lia. 
-    + case : (Z_lt_le_dec i' (i + 1)) => [| /= _]; try rep_lia.
-      case : (Z.eq_dec i' (i + 1)) => [Hi1 /= | //].
-      by case : (Z_lt_le_dec j' 0); try rep_lia.
-Qed.
-
-(*Update an element*)
-Lemma pop_2d_mx_set: forall m n f i j,
-  0 <= i < m ->
-  0 <= j < n ->
-  set (pop_2d_mx m n f i j) i j (f i j) = pop_2d_mx m n f i (j + 1).
-Proof.
-  move => m n f i j Hi Hj. apply (@lmatrix_ext_eq B m n).
-  - apply set_wf. apply pop_2d_mx_wf; lia.
-  - apply pop_2d_mx_wf; lia.
-  - move => i' j' Hi' Hj'. rewrite (@get_set _ m n); try rep_lia; last first.
-    apply pop_2d_mx_wf; lia. rewrite !mk_lmatrix_get; try rep_lia. 
-    case: (i' =? i) /(Z.eqb_spec _ _) => [ Hiieq /= | Hiineq /=].
-    + subst. case : (Z_lt_le_dec i i) => [| /= _]; try rep_lia.
-      case : (Z.eq_dec i i) => [/= _|]; try rep_lia.
-      case: (j' =? j) /(Z.eqb_spec _ _) => [Hjjeq //= | Hjjeq //=].
-      * subst. by case : (Z_lt_le_dec j (j + 1)); try rep_lia.
-      * case : (Z_lt_le_dec j' j) => [Hjj' /= | Hjj/=];  by case : (Z_lt_le_dec j' (j + 1)); try rep_lia.
-    + case : (Z_lt_le_dec i' i) => [// | Hii' /=].
-      by case : (Z.eq_dec i' i); try rep_lia.
-Qed.
-
-(*Finish - prove a postcondition*)
-Lemma pop_2d_mx_done: forall m n f j x y,
-  0 <= x < m ->
-  0 <= y < n ->
-  get (pop_2d_mx m n f m j) x y = f x y.
-Proof.
-  move => m n f j x y Hx Hy. rewrite mk_lmatrix_get //.
-  by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
-Qed.
-
-(*Specialize this definition to populating the weight matrix*)
+(*Fill in the weight matrix in order, using [pop_2d_mx]*)
 Definition pop_weight_mx (i j : Z) : lmatrix B := pop_2d_mx fec_max_h (fec_n -1) 
   (fun x y => (byte_pow_map (Byte.repr ((x * y) mod 255)))) i j.
 

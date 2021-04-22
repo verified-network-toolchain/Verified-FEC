@@ -1,6 +1,5 @@
 Require Import VST.floyd.proofauto.
 Require Import VST.msl.iter_sepcon.
-Require Import List2D.
 (*Functions for working with arrays and memory in VST that are generic*)
 
 (*These first two are not directly related to VST but are used in the later proofs*)

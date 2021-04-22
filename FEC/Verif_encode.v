@@ -97,7 +97,8 @@ Proof.
         :: SEPS))))
       break: 
       (PROP ()  (LOCALx LOCALS (SEPx ((iter_sepcon_arrays parity_ptrs (encode_list_mx h k c packets)) :: SEPS)))).
-    { rewrite_eqs. forward. Exists (0%Z).  rewrite_eqs. entailer!. rewrite pop_mx_mult_zero by lia. cancel. }
+    { rewrite_eqs. forward. Exists (0%Z).  rewrite_eqs. entailer!. rewrite pop_mx_mult_zero by lia.
+      apply derives_refl'. reflexivity. }
     { (*loop body*) Intros i. rewrite_eqs.
       remember (pop_mx_mult h c k (submatrix (F:=B) (fec_n - 1) weight_mx h k) (extend_mx (F:=B) k c packets)i 0)
             as mx.

@@ -4,7 +4,7 @@ Require Import Common.
 Require Import CommonVST.
 (*Require Import Poly.
 Require Import VandermondeList.*)
-Require Import List2D.
+(*Require Import List2D.*)
 Require Import ByteFacts.
 (*
 (*Solves goals of form ?p <> zero*)
@@ -275,10 +275,10 @@ Ltac inner_length :=
       let N := fresh in
       assert (N: 0 <= i < Zlength l) by lia;
       rewrite Forall_Znth in H; specialize (H _ N); rep_lia
-    | [ H: Forall2D (fun x => ?a <= x <= ?c) ?l |- context [ (Znth ?j (Znth ?i ?l))]] =>
+    (*| [ H: Forall2D (fun x => ?a <= x <= ?c) ?l |- context [ (Znth ?j (Znth ?i ?l))]] =>
       let N := fresh in
       let N' := fresh in
       assert (N: 0 <= i < Zlength l) by lia;
       assert (N': 0 <= j < Zlength (Znth i l)) by lia;
-      rewrite Forall2D_Znth in H; specialize (H _ _ N N'); simpl_repr_byte; clear N; clear N'
+      rewrite Forall2D_Znth in H; specialize (H _ _ N N'); simpl_repr_byte; clear N; clear N'*)
    end.

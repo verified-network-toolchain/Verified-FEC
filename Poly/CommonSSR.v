@@ -89,6 +89,51 @@ Qed.
 
 (** Lemmas about Ordinals*)
 
+Definition pred_ord (n: nat) (Hn: 0 < n) : 'I_n := Ordinal (pred_lt Hn).
+
+(*Working with enums of ordinals*)
+Lemma ordinal_enum_size: forall n,
+  size (Finite.enum (ordinal_finType n)) = n.
+Proof.
+  move => n. have: size ([seq val i | i <- enum 'I_n]) = n. rewrite val_enum_ord. by apply: size_iota.
+  rewrite size_map. unfold enum. rewrite size_map //.
+Qed.
+
+Lemma ordinal_enum: forall {n: nat} (x: 'I_n) y,
+  nth y (Finite.enum (ordinal_finType n)) x = x.
+Proof.
+  move => n x y. have nth_ord := (nth_ord_enum y x). unfold enum in nth_ord. move: nth_ord.
+  rewrite (@nth_map _ y) //. by rewrite ordinal_enum_size.
+Qed. 
+
+Lemma size_ord_enum: forall n, size (ord_enum n) = n.
+Proof.
+  move => n. 
+  have : size (ord_enum n) = size ([seq val i | i <- ord_enum n]) by rewrite size_map.
+  by rewrite val_ord_enum size_iota.
+Qed.
+
+Lemma nth_ord_enum: forall n (i: 'I_n) x, nth x (ord_enum n) i = i.
+Proof.
+  move => n i x. have Hv := val_ord_enum n.  have Hmap :=  @nth_map 'I_n x nat x val i (ord_enum n).
+  move : Hmap. rewrite Hv size_ord_enum nth_iota =>[//=|//]. rewrite add0n. move => H.
+  (*some annoying stuff about equality of ordinals vs nats*)
+  have : nat_of_ord ( nth x (ord_enum n) i) == nat_of_ord i. rewrite {2}H. by []. by [].
+  move => Hnatord. have : nth x (ord_enum n) i == i by []. 
+  by move => /eqP Heq.
+Qed.
+
+Lemma index_ord_enum: forall (n: nat), (index_enum (ordinal_finType n)) = ord_enum n.
+Proof.
+  move => n. have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP Hn0 | Hnpos].
+  - subst. rewrite /ord_enum /= /index_enum /=. apply size0nil. apply ordinal_enum_size.
+  - apply (eq_from_nth (x0:=pred_ord Hnpos)).
+    + by rewrite ordinal_enum_size size_ord_enum.
+    + move => i. rewrite ordinal_enum_size => Hi.
+      have->: i = nat_of_ord (Ordinal Hi) by [].
+      by rewrite ordinal_enum nth_ord_enum.
+Qed.
+
 (*If an 'I_m exists, then 0 < m*)
 Lemma ord_nonzero {m} (r: 'I_m) : 0 < m.
 Proof.
@@ -103,8 +148,6 @@ Lemma remove_widen: forall {m n} (x: 'I_m) (H: m <= n),
 Proof.
   by [].
 Qed.
-
-Definition pred_ord (n: nat) (Hn: 0 < n) : 'I_n := Ordinal (pred_lt Hn).
 
 Lemma widen_ord_inj: forall {m n: nat} (H: m <= n) x y, widen_ord H x = widen_ord H y -> x = y.
 Proof.

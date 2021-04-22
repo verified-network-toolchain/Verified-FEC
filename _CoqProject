@@ -1,4 +1,5 @@
 -R . lib
+#Pure mathcomp/functional model
 Poly/CommonSSR.v
 Poly/PolyField.v
 Poly/BoolField.v
@@ -7,19 +8,16 @@ Poly/ZSeq.v
 ByteFacts.v
 Poly/ByteField.v
 Matrix/Gaussian.v
-Matrix/ListMatrix.v
 Matrix/LinIndep.v
 Matrix/Vandermonde.v
-Matrix/VandermondeByte.v
 FEC/ReedSolomon.v
-FEC/ReedSolomonList.v
-FEC/fec.v
-FEC/List2D.v
+#Intermediate layer (VST + mathcomp)
+Matrix/ListMatrix.v
 FEC/Common.v
-#can move earlier
-#FEC/ReedSolomon.v
-#Matrix/VandermondeList.v
-#FEC/ReedSolomonList.v
+Matrix/VandermondeByte.v
+FEC/ReedSolomonList.v
+#VST
+FEC/fec.v
 FEC/CommonVST.v
 FEC/Specs.v
 FEC/FECTactics.v
