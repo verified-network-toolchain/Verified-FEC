@@ -1,7 +1,7 @@
 Require Import VST.floyd.proofauto.
 
 Require Import fec.
-Require Import Common.
+Require Import MatrixTransform.
 Require Import CommonVST.
 Require Import Specs.
 Require Import FECTactics.
@@ -21,8 +21,6 @@ Qed.
 (** Verification of [fec_generate_weights]*)
 Lemma body_fec_generate_weights : semax_body Vprog Gprog f_fec_generate_weights fec_generate_weights_spec.
 Proof.
-  (*pose proof (mod_poly_PosPoly) as Hpospoly.
-  pose proof (mod_poly_PrimPoly) as Hprimpoly.*)
  start_function. freeze Ftrace := (data_at _ _ _ (gv _trace)).
  forward_loop (EX (i : Z),
   PROP (0 <= i <= fec_max_h)

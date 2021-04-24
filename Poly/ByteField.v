@@ -563,8 +563,6 @@ Qed.
 
 Definition byte_to_ord (b: byte) : 'I_#|byte_finType| := Ordinal (byte_ord_bound b).
 
-(*TODO: maybe will need cancel for these, not sure*)
-
 (*Now, we can define the power and inverse power (log) maps*)
 
 Lemma p256_geq_2: (2 < size (Poly p256))%N.
@@ -576,16 +574,6 @@ Lemma byte_qpoly_size: #|byte_finType| = (#|finalg.FinRing.Field.eqType bool_fin
 Proof.
   by rewrite card_bool size_p256 card_byte.
 Qed.
-
-(*TODO; move to commonssr*)
-Lemma eq_leqn: forall m n,
-  m = n ->
-  (m <= n)%N.
-Proof.
-  move => m n ->. by rewrite leqnn.
-Qed. 
-
-Definition eq_ord m n (Hmn: m = n) (x: 'I_m) : 'I_n  := widen_ord (eq_leqn Hmn) x.
 
 (*We don't want to use Byte.modulus directly because it will simplify*)
 
@@ -809,7 +797,7 @@ Proof.
   move => i Hi. rewrite {1}/populate_pows_logs. by rewrite populate_pows_logs_iota_aux_plus_1.
 Qed.
 
-(*TODO: why do we need this*)
+(*TODO: why do we need these? Why doesn't lia work*)
 Lemma nat_leq_1: forall n,
   Z.of_nat n < 1 ->
   n = 0%N.
@@ -817,7 +805,6 @@ Proof.
   move => n Hn. lia.
 Qed.
 
-(*TODO: why do we need this too. Why doesn't lia work directly?*)
 Lemma z_leq_n_1: forall z n,
   z < n + 1 ->
   z < n \/ z = n.
@@ -1136,9 +1123,6 @@ Lemma nat_eq_ord: forall n m (Hmn: m = n) (x: 'I_m),
 Proof.
   move => m n Hmn x. by [].
 Qed.
-
-(*TODO: fix this*)
-Hint Rewrite fec_n_eq : rep_lia.
 
 (*A key result, needed in a few places: if a and b are equal mod 255, then x ^+ a = x^+ b*)
 Lemma powX_eq_mod: forall a b,

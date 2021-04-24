@@ -5,17 +5,12 @@ Require Import ByteField.
 Require Import ZSeq.
 Require Import ListMatrix.
 
-Require Import Common.
+Require Import MatrixTransform.
 Require Import ByteFacts.
 Require Import VandermondeByte.
 Require Import CommonVST.
 Require Import ReedSolomonList.
-(*Require Import CommonVST.
-Require Import VandermondeList.
-Require Import fec.
-Require Import Poly.
-Require Import List2D.
-*)
+
 Instance CompSpecs : compspecs.
 make_compspecs prog. Defined.
 
@@ -32,19 +27,6 @@ Definition FIELD_TABLES gv :=
   (INDEX_TABLES gv *
    data_at Ews (tarray tuchar fec_n) (map Vubyte byte_invs) (gv _fec_invefec))%logic.
 
-(*
-(*For multiplication, we do not need the inverse table*)
-Definition INDEX_TABLES gv :=
-   (data_at Ews (tarray tuchar fec_n) (power_to_index_contents fec_n) (gv _fec_2_index) *
-      data_at Ews (tarray tuchar fec_n) index_to_power_contents (gv _fec_2_power))%logic.
-
-
-(*In most of the functions, we need the three field tables to be populated*)
-Definition FIELD_TABLES gv :=
-  (INDEX_TABLES gv * 
-      data_at Ews (tarray tuchar fec_n) (inverse_contents fec_n) (gv _fec_invefec))%logic.
-*)
-(*Eval compute in *)
 Definition fec_generate_weights_spec :=
   DECLARE _fec_generate_weights
   WITH gv : globals
@@ -175,9 +157,7 @@ Definition fec_blk_encode_spec :=
          data_at Ews (tarray tschar k) (zseq fec_n (Vint Int.zero)) ps;
          INDEX_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
-          (*
-Definition Gprog := [fec_find_mod_spec; fec_generate_math_tables_spec; fec_matrix_transform_spec; fec_gf_mult_spec; 
-  fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].*)
+
 Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec; fec_matrix_transform_spec;
   fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].
 

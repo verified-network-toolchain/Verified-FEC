@@ -116,28 +116,6 @@ Proof.
   by rewrite size_map.
 Qed.
 
-(*TODO: move these 2 lemmas to CommonSSR*)
-
-Lemma nth_pmap: forall (aT rT: eqType) (f: aT -> option rT) (s: seq aT) (i: nat) (a: aT) (r: rT),
-  all f s ->
-  (i < size s)%N ->
-  Some (nth r (pmap f s) i) = f (nth a s i).
-Proof.
-  move => aT rT f s i a r. move: i. elim : s =>[//= | h t /= IH i /andP[Hh Hall]]. rewrite ltnS => Hi.
-  move : Hh. case Hh: (f h) => [h' /= | //=]. move => Htriv. 
-  have: (0 <= i)%N by []. rewrite leq_eqVlt => /orP[/eqP Hi0 | Hi'].
-  - subst. by rewrite /= Hh.
-  - have->: (i = (i.-1).+1)%N by rewrite (ltn_predK Hi'). rewrite /=. rewrite IH //.
-    have Hi1: (i.-1 < i)%N by apply pred_lt. by apply (ltn_leq_trans Hi1).
-Qed.
-
-(*The lemma in the ssreflect library is not generic enough*)
-Lemma some_inj: forall {A: Type},
-  injective (@Some A).
-Proof.
-  move => A x y Hop. by case : Hop.
-Qed.
-
 Lemma Z_ord_list_Znth': forall (l: seq Z) n i `{Inhabitant 'I_(Z.to_nat n)} (Hi: 0 <= i < Zlength l)
   (Hall: Forall (fun x => 0 <= x < n) l),
   0 <= n ->
@@ -1495,7 +1473,6 @@ Section Decoder.
 Definition submx_rows_cols_list (mx: lmatrix) m n (rows: list Z) (cols: list Z) : lmatrix :=
   mk_lmatrix m n (fun x y => get mx (Znth x rows) (Znth y cols)) .
 
-(*TODO: definition move*)
 Lemma submx_rows_cols_list_wf: forall mx m n rows cols,
   0 <= m ->
   0 <= n ->

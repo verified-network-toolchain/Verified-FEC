@@ -459,14 +459,6 @@ Proof.
     rewrite !bool_lc; last first. by rewrite Hq. by rewrite !GRing.expr1n !GRing.invr1 !lpoly_sc_mul_1.
 Qed.
 
-(*Test for computability*)
-(*x^4+x^3+1 = (x^2+1) * (x^2 + x + 1) + x in GF(2)*)
-(*
-Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
-  (seq_to_lpoly [:: true; false; true])).1).
-Eval compute in (lpoly_to_seq (bool_edivp (seq_to_lpoly [:: true; false; false; true; true]) 
-  (seq_to_lpoly [:: true; false; true])).2).*)
-
 (*We need to enumerate all polynomials up to a certain length. This takes a bit of work due to the dependent types*)
 Fixpoint seq_of_polyseqs (n: nat) : (seq (seq F)) * (seq (seq F)) :=
   match n with
@@ -582,9 +574,6 @@ Proof.
   move => n l. rewrite sub_seq_in /= in_seq_of_polyseqs_fst /=.
   case : l => [s Hs /=]. by rewrite Hs.
 Qed.
-(*
-Eval compute in (map (@lpoly_to_seq F) (seq_of_lpoly 2)).
-*)
 
 (*Test for irreducibility*)
 
@@ -706,7 +695,6 @@ Proof.
   case : t =>[//= | //=]. by case : t.
 Qed.
 
-(*TODO: move above*)
 Definition bool_modp (p q: lpoly F) : lpoly F :=
   (bool_edivp p q).2.
 
@@ -870,7 +858,6 @@ Qed.
 
 (*The following are the polynomials that appear in the FEC code. Only p256 is used, but the 
   others could be in theory if some flags are changed*)
-(*NOTE: Checking that p128 and p256 are primitive takes a long time - there is a lot to check*)
 
 (*1011*)
 Definition p8 := seq_to_lpoly [:: true; true; false; true].
@@ -913,7 +900,6 @@ Proof.
   apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
-(*Takes about 40 seconds*)
 Lemma p128_primitive: primitive_poly p128.
 Proof.
   have Hsz: 1 < size p128 by [].
@@ -921,7 +907,6 @@ Proof.
   apply (elimT (find_primP Hsz Hn)). by vm_compute.
 Qed.
 
-(*Takes about 12 minutes*)
 Lemma p256_primitive: primitive_poly p256.
 Proof.
   have Hsz: 1 < size p256 by [].

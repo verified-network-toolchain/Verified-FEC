@@ -5,11 +5,10 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-
 Require Import Vandermonde.
 Require Import Gaussian.
 Require Import CommonSSR.
-Require Import LinIndep. (*for summation - TODO move*)
+Require Import LinIndep. (*for summation*)
 
 Section RS.
 
@@ -26,7 +25,6 @@ Definition encoder (h k c max_h max_n : nat) (Hh: h <= max_h) (Hk: k <= max_n)
 
 Section Decoder.
 
-(*TODO: move (name collision with submx)*)
 Definition minusmx {m n} (A B: 'M[F]_(m, n)) := 
   \matrix_(i < m, j < n) (A i j - B i j).
 
@@ -305,7 +303,7 @@ Proof.
   apply size0nil in Hsz. by rewrite Hsz.
 Qed.
 
-(*TODO: move, separate out summation stuff*)
+(*TODO: maybe separate out summation stuff*)
 Lemma big_nat_widen_lt m1 m2 n (P : pred nat) (C: nat -> F) :
      m1 <= m2 ->
   \sum_(m2 <= i < n | P i) C i
@@ -323,15 +321,6 @@ Proof.
     + rewrite big_nat_cond (big_nat_cond _ _ m2 n (fun i => P i && (m2 <= i))).
       apply eq_big =>[x |//]. case Hbound: (m2 <= x < n) =>[|//].
       rewrite !andTb. move : Hbound => /andP[Hm2 Hn]. by rewrite Hm2 andbT.
-Qed.
-(*TODO: move*)
-Lemma nat_of_ord_eq: forall n (x y : 'I_n),
-  (nat_of_ord x == nat_of_ord y) = (x == y).
-Proof.
-  move => n x y. case Hxy: (x == y).
-  apply (elimT eqP) in Hxy. by rewrite Hxy eq_refl.
-  case Hxynat: (nat_of_ord x == nat_of_ord y) =>[|//]. apply (elimT eqP) in Hxynat.
-  have: x == y by (apply /eqP; apply ord_inj). by rewrite Hxy.
 Qed.
 
 (*As long as the missing and found lists are unique and have size xh, the two decoders are equivalent

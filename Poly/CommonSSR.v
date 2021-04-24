@@ -8,8 +8,6 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
-Ltac eq_subst H := move : H => /eqP H; subst.
-
 (*Used only for other tactics*)
 Ltac case_view E P H :=
   destruct E eqn : H; [ apply (elimT P) in H | apply (elimF P) in H].
@@ -26,27 +24,9 @@ Proof.
     by rewrite orbT orTb. by rewrite Hlt !orbT.
 Qed. 
 
-(*TODO: remove this, this is [eqn_leq]*)
-(*exists in the library but this version is move convenient*)
-(*
-Lemma leq_both_eq: forall m n,
-  ((m <= n) && (n <= m)) = (m == n).
-Proof.
-  move => m n. case (orP (ltn_total m n)) => [/orP[Hlt | Heq] | Hgt].
-  - have : ( m == n = false). rewrite ltn_neqAle in Hlt. move : Hlt.
-    by case: (m == n). move ->. 
-    have: (n <= m = false). rewrite ltnNge in Hlt. move : Hlt.
-    by case : (n <= m). move ->. by rewrite andbF.
-  - by rewrite Heq leq_eqVlt Heq orTb leq_eqVlt eq_sym Heq orTb.
-  - have : ( m == n = false). rewrite ltn_neqAle in Hgt. move : Hgt.
-    rewrite eq_sym. by case: (m == n). move ->. 
-    have: (m <= n = false). rewrite ltnNge in Hgt. move : Hgt.
-    by case : (m <= n). move ->. by rewrite andFb.
-Qed.*)
-
 Lemma ltn_leq_trans: forall [n m p : nat], m < n -> n <= p -> m < p.
 Proof.
-  move => m n p Hmn. rewrite leq_eqVlt => /orP[Hmp | Hmp]. eq_subst Hmp. by [].
+  move => m n p Hmn. rewrite leq_eqVlt => /orP[/eqP Hmp | Hmp]. by subst.
   move : Hmn Hmp. apply ltn_trans.
 Qed.
 
@@ -137,10 +117,8 @@ Qed.
 (*If an 'I_m exists, then 0 < m*)
 Lemma ord_nonzero {m} (r: 'I_m) : 0 < m.
 Proof.
-  case : r. move => m'. case (orP (ltn_total m 0)) => [/orP[Hlt | Heq] | Hgt].
-  - by [].
-  - by eq_subst Heq.
-  - by [].
+  case : r. move => m'. case (orP (ltn_total m 0)) => [/orP[Hlt // | /eqP Heq] | Hgt //].
+  by subst.
 Qed.
 
 Lemma remove_widen: forall {m n} (x: 'I_m) (H: m <= n),
@@ -154,6 +132,24 @@ Proof.
   move => m n H x y Hw. apply (elimT eqP).
   have: nat_of_ord (widen_ord H x) == x by []. have: nat_of_ord (widen_ord H y) == y by [].
   move => /eqP Hy /eqP Hx. rewrite Hw in Hx. have: nat_of_ord x == nat_of_ord y by rewrite -Hx -Hy. by [].
+Qed.
+
+Lemma eq_leqn: forall m n,
+  m = n ->
+  (m <= n)%N.
+Proof.
+  move => m n ->. by rewrite leqnn.
+Qed. 
+
+Definition eq_ord m n (Hmn: m = n) (x: 'I_m) : 'I_n  := widen_ord (eq_leqn Hmn) x.
+
+Lemma nat_of_ord_eq: forall n (x y : 'I_n),
+  (nat_of_ord x == nat_of_ord y) = (x == y).
+Proof.
+  move => n x y. case Hxy: (x == y).
+  apply (elimT eqP) in Hxy. by rewrite Hxy eq_refl.
+  case Hxynat: (nat_of_ord x == nat_of_ord y) =>[|//]. apply (elimT eqP) in Hxynat.
+  have: x == y by (apply /eqP; apply ord_inj). by rewrite Hxy.
 Qed.
 
 (** Lemmas about [iota]*)
@@ -195,6 +191,13 @@ Proof.
   move => T o. by case : o.
 Qed.
 
+(*The lemma in the ssreflect library is not generic enough*)
+Lemma some_inj: forall {A: Type},
+  injective (@Some A).
+Proof.
+  move => A x y Hop. by case : Hop.
+Qed.
+
 (** Lemmas about [find] *)
 
 (*Results about [find] that mostly put the library lemmas into a more convenient form*)
@@ -213,9 +216,9 @@ Proof.
       have: (exists2 x : T, x \in s & a x) by exists (nth t s r). by [].
     + move => i Hisz Hanth Hprev.
       have Hlt := ltn_total i r. move : Hlt => /orP[H1 | Hgt].
-      move : H1 => /orP[Hlt | Heq].
+      move : H1 => /orP[Hlt | /eqP Heq].
       * have : a (nth t s i) by apply Hanth. by rewrite Hbef.
-      * by eq_subst Heq.
+      * by subst.
       * have : a (nth t s r) by apply Ha. by rewrite Hprev.
 Qed.
 
@@ -310,6 +313,32 @@ Proof.
   by subst. by apply IH.
   move => Hall. rewrite Hall. rewrite IH. move => x Hint. apply Hall. by rewrite in_cons Hint orbT.
   by rewrite in_cons eq_refl.
+Qed.
+
+(** Lemmas about [rem]*)
+Lemma rem_in_neq: forall {A: eqType} (l : seq A) (y: A) (x: A),
+  x != y ->
+  (x \in (rem y l)) = (x \in l).
+Proof.
+  move => A l y x Hxy. elim : l => [//= | h t IH /=].
+  case: (h == y) /eqP => Hhy.
+  - rewrite in_cons. subst. have->: (x == y = false). move : Hxy. by case (x == y).
+    by [].
+  - rewrite !in_cons. by rewrite IH.
+Qed. 
+
+(** Lemmas about [pmap]*)
+Lemma nth_pmap: forall (aT rT: eqType) (f: aT -> option rT) (s: seq aT) (i: nat) (a: aT) (r: rT),
+  all f s ->
+  (i < size s)%N ->
+  Some (nth r (pmap f s) i) = f (nth a s i).
+Proof.
+  move => aT rT f s i a r. move: i. elim : s =>[//= | h t /= IH i /andP[Hh Hall]]. rewrite ltnS => Hi.
+  move : Hh. case Hh: (f h) => [h' /= | //=]. move => Htriv. 
+  have: (0 <= i)%N by []. rewrite leq_eqVlt => /orP[/eqP Hi0 | Hi'].
+  - subst. by rewrite /= Hh.
+  - have->: (i = (i.-1).+1)%N by rewrite (ltn_predK Hi'). rewrite /=. rewrite IH //.
+    have Hi1: (i.-1 < i)%N by apply pred_lt. by apply (ltn_leq_trans Hi1).
 Qed.
 
 (** Relating ssreflect and standard library functions*)

@@ -23,8 +23,6 @@ Variable F : finFieldType.
 
 Variable p : {poly F}.
 Variable Hirred: irreducible_poly p.
-(*Don't want p to be a constant*)
-(*Variable Hnonconst: 1 < size p.*)
 
 (*The type of polynomials of degree less than p*)
 Inductive qpoly : predArgType := Qpoly (qp : {poly F}) of (size qp < size p).

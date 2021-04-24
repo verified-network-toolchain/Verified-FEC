@@ -1,7 +1,7 @@
 Require Import VST.floyd.proofauto.
 
 Require Import fec.
-Require Import Common.
+Require Import MatrixTransform.
 Require Import CommonVST.
 Require Import VandermondeByte.
 Require Import Specs.
@@ -12,7 +12,7 @@ Require Import ReedSolomonList.
 
 Set Bullet Behavior "Strict Subproofs".
 
-(*Due to bug in VST *)
+(*Due to bug in VST (TODO: remove this once I change to master branch or update VST) *)
 Ltac no_loads_expr e as_lvalue ::=
  match e with
  | Econst_int _ _ => idtac
@@ -32,14 +32,6 @@ Ltac no_loads_expr e as_lvalue ::=
  | Esizeof _ _ => idtac
  | Ealignof _ _ => idtac
 end.
-
-Lemma remove_upd_Znth: forall {A: Type} (l: list A) (i : Z) (x: A),
-  0 <= i < Zlength l ->
-  remove_nth i (upd_Znth i l x) = remove_nth i l.
-Proof. 
-  intros. unfold remove_nth. list_solve.
-Qed. 
-
 
 Section Encoder.
 

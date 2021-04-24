@@ -3,14 +3,13 @@ Require Import mathcomp.algebra.matrix.
 Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.poly.
 Require Import LinIndep.
-Require Import Gaussian. (*TODO: maybe move summation things to common file*)
+Require Import Gaussian.
 Require Import CommonSSR.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
-(*TODO: maybe move to CommonSSR*)
 Section RemNth.
 
 (*Remove the (n+1)st position from a list*)
@@ -155,7 +154,6 @@ Local Open Scope ring_scope.
 Definition vandermonde (m n: nat) (l: list F) : 'M[F]_(m, n) :=
   \matrix_(i < m, j < n) (nth 0 l j) ^+ i.
 
-
 (*Proof idea: suffices to show rows linearly independent. If c1r1 + c2r2 +... + cnrn = 0,
   then poly c1 + c2x + ... + cnx^(n-1) has roots at each elt in column. Since there are n columns,
   poly has n roots => identically zero*)
@@ -298,16 +296,6 @@ Proof.
 Qed.
 
 (*First, we give an alternate definition for [strong_inv] based on this*)
-
-(*TODO: we can use this in a bunch of places, or can delte*)
-Lemma nth_ord_enum_nat: forall n (x: 'I_n) (i: nat),
-  i < n ->
-  nat_of_ord (nth x (ord_enum n) i) = i.
-Proof.
-  move => n x i Hi.
-  have->: nth x (ord_enum n) i = nth x (ord_enum n) (Ordinal Hi) by [].
-  by rewrite nth_ord_enum.
-Qed.
 
 (*The general case is not as useful, we show the result only when the underlying matrix is [submx_rows_cols]*)
 Lemma submx_remove_col_list: forall {m n} m' n' (Hmn': m' <= n') (A: 'M[F]_(m, n)) (rows: seq 'I_m) 
@@ -502,19 +490,6 @@ Proof.
   have<-: ((size (ord_comp l) + size l) - size l)%N = (n - size l)%N by rewrite Hsz.
   rewrite -subnBA. by rewrite subnn subn0. by rewrite leqnn.
 Qed.
-
-
-(*TODO: move*)
-Lemma rem_in_neq: forall {A: eqType} (l : seq A) (y: A) (x: A),
-  x != y ->
-  (x \in (rem y l)) = (x \in l).
-Proof.
-  move => A l y x Hxy. elim : l => [//= | h t IH /=].
-  case Hhy: (h == y).
-  - eq_subst Hhy. rewrite in_cons. have->: (x == y = false). move : Hxy. by case (x == y).
-    by [].
-  - rewrite !in_cons. by rewrite IH.
-Qed. 
 
 (*The first main piece:
   Proof idea: we will show that the [submx_rows_cols] we care about is invertible iff an expanded submatrix

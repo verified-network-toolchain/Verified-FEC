@@ -47,12 +47,6 @@ Proof.
   by rewrite GRing.exprAC GRing.exprM.
 Qed.
 
-(*TODO: see exact form we need, then prove this*)(*
-Lemma vandermonde_powers_val_mod: forall (m n: nat) (i: 'I_m) (j: 'I_n),
-  vandermonde_powers m n i j = (bx ^+ ( i * (n - j - 1) mod 256)).
-Proof.
-Admitted. *)
-
 (*Now we need to prove [strong_inv] for this matrix*)
 
 Lemma qpoly_to_byte_mul: forall q1 q2,
@@ -316,7 +310,7 @@ End PrimitiveVandermonde.
 
 Require Import ListMatrix.
 Require Import ZSeq.
-Require Import Common.
+Require Import MatrixTransform.
 
 (*Weight matrix definition*)
 Section WeightMx.
@@ -386,7 +380,6 @@ Qed.
 
 (*Relate [modn] to Z.modulo*)
 
-(*TODO: move to commonssr*)
 Lemma modn_mod_nat: forall (n1 n2 : nat),
   (0 < n2)%N ->
   (n1 %% n2)%N = (n1 mod n2)%N.

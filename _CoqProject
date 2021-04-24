@@ -13,7 +13,7 @@ Matrix/Vandermonde.v
 FEC/ReedSolomon.v
 #Intermediate layer (VST + mathcomp)
 Matrix/ListMatrix.v
-FEC/Common.v
+FEC/MatrixTransform.v
 Matrix/VandermondeByte.v
 FEC/ReedSolomonList.v
 #VST

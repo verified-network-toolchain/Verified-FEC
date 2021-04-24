@@ -7,14 +7,6 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-(*Require Import Vandermonde.
-Require Import Common.
-Require Import List2D.
-Require Import ListMatrix.
-Require Import ReedSolomon.
-Require Import VandermondeList.
-Require Import Gaussian.
-Require Import CommonSSR.*)
 Require Import VandermondeByte.
 Require Import ListMatrix.
 Require Import ByteFacts.
@@ -142,7 +134,6 @@ Proof.
   by move: Hall; rewrite Forall_forall => /(_ _ Hin).
 Qed.
 
-(*TODO: move*)
 Lemma find_lost_found_aux_in_spec: forall f base pack l x,
   In x (find_lost_found_aux f id base pack l) <-> In x base \/ (In x l /\ f (Znth x pack)).
 Proof.
@@ -444,7 +435,6 @@ Proof.
   move => par c max_n i Hi. by rewrite -find_parity_rows_found_map Znth_map.
 Qed.
 
-(*TODO: move*)
 Lemma forall_lt_leq_trans: forall n m (l: list Z),
   n <= m ->
   Forall (fun x : Z => 0 <= x < n) l ->
@@ -482,7 +472,7 @@ Qed.
 
 (** The Decoder  *)
 
-(*First, we will do everything in terms of list matrices, then bring back to Z*)
+(*First, we will do everything in terms of list matrices, then bring back to packets of variable length*)
 Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (option (list byte))) 
   (stats: list Z) : lmatrix B :=
   (*populate all of the "arrays"*)

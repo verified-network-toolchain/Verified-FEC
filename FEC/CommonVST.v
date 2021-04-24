@@ -475,4 +475,11 @@ Proof.
   rewrite combine_Zlength; lia.
 Qed.
 
+Lemma remove_upd_Znth: forall {A: Type} (l: list A) (i : Z) (x: A),
+  0 <= i < Zlength l ->
+  remove_nth i (upd_Znth i l x) = remove_nth i l.
+Proof. 
+  intros. unfold remove_nth. list_solve.
+Qed. 
+
 End VSTFacts.

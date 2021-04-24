@@ -7,6 +7,8 @@ Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import CommonSSR.
 
+Ltac eq_subst H := apply (elimT eqP) in H; subst.
+
 Section Gauss.
 
 Variable F : fieldType.
@@ -82,9 +84,9 @@ Lemma xrow_val: forall {m n} (A: 'M[F]_(m,n)) (r1 r2 : 'I_m) x y,
   (xrow r1 r2 A) x y = if x == r1 then A r2 y else if x == r2 then A r1 y else A x y.
 Proof. 
   rewrite /xrow /row_perm //= => m n A r1 r2 x y. rewrite mxE.
-  case Hxr1 : (x == r1). eq_subst Hxr1. by rewrite perm.tpermL.
-  case Hxr2 : (x == r2). eq_subst Hxr2. by rewrite perm.tpermR.
-  rewrite perm.tpermD. by []. by rewrite eq_sym Hxr1. by rewrite eq_sym Hxr2.
+  case : (x == r1) /eqP => [-> | Hxr1]. by rewrite perm.tpermL.
+  case : (x == r2) /eqP => [ -> | Hxr2]. by rewrite perm.tpermR.
+  rewrite perm.tpermD //. all: by rewrite eq_sym; apply /eqP.
 Qed. 
 
 (*scalar multiply row r in matrix A by scalar c*)
@@ -153,9 +155,9 @@ case : (eq_op x r2).
       have: (nat_of_ord r1 != nat_of_ord r2) by [].
       rewrite /negb. by rewrite Heq.
     + rewrite (@eq_big_seq _ _ _ _ _ _ (fun z => ((if z == r2 then A z y else if z == r1 then c * A z y else 0)))).
-      rewrite sum_if_twice //. move => z Hz. case Hzr1 : (z == r1). eq_subst Hzr1. 
-      case Hzr2 : (r1 == r2). eq_subst Hzr2. by rewrite ltnn in Hgt. by []. by [].
-    + move => z Hz. case Hzeq : (z == r1). by []. case Hze: (z == r2).  by apply GRing.mul1r. by apply GRing.mul0r.
+      rewrite sum_if_twice //. move => z Hz. case : (z == r1) /eqP => [-> | //]. move: Hgt. 
+      case : (r1 == r2) /eqP =>[ -> | //]. by rewrite ltnn.
+    + move => z Hz. case Hzeq : (z == r1) => //=. case Hze: (z == r2) => //=.  by apply GRing.mul1r. by apply GRing.mul0r.
   - rewrite (@eq_big_seq _ _ _ _ _ _ (fun z => (if x == z then A z y else 0))). by rewrite sum_if.
     move => z Hz. case Heqz : (x == z). by apply GRing.mul1r. by apply GRing.mul0r.
 Qed.
@@ -165,10 +167,9 @@ Lemma add_mul_mx_inv: forall {m : nat} (c: F) (r1 r2: 'I_m),
   (add_mul_mx c r1 r2) *m (add_mul_mx (- c) r1 r2) = 1%:M.
 Proof.
   move => m c r1 r2 Hr12. rewrite -add_mulE //. rewrite !/add_mul_mx /add_mul.
-  rewrite -matrixP /eqrel => x y. rewrite !mxE eq_refl. have: r1 == r2 = false. move : Hr12. rewrite /negb.
-  by case (r1 == r2). move ->. case Hxr2 : (x == r2). eq_subst Hxr2. 
-  rewrite eq_sym. case Hyr1 : (r1 == y). eq_subst Hyr1. 
-  rewrite GRing.mulr1 GRing.addNr eq_sym. move : Hr12. rewrite /negb. by case H : (y == r2).
+  rewrite -matrixP /eqrel => x y. rewrite !mxE eq_refl. rewrite (negbTE Hr12).
+  case : (x == r2) /eqP => [-> |]. rewrite eq_sym. case : (r1 == y) /eqP => [<-|]. 
+  rewrite GRing.mulr1 GRing.addNr eq_sym. by rewrite (negbTE Hr12).
   rewrite eq_sym GRing.mulr0 GRing.addr0. by case H : (r2 == y). by case H : (x == y).
 Qed.
 
@@ -208,13 +209,9 @@ Lemma ero_sym: forall {m n} (A B : 'M[F]_(m, n)),
 Proof.
   move => m n A B Hero. case: Hero.
   - move => m' n' r1 r2 A'. have HA': A' = xrow r1 r2 (xrow r1 r2 A'). { rewrite -matrixP => x y.
-    rewrite !xrow_val !eq_refl.  case Hxr1 : (x == r1).
-    + eq_subst Hxr1. case Hr12: (r2 == r1).
-      * by eq_subst Hr12.
-      * by [].
-    + case Hxr2: (x == r2).
-      * by eq_subst Hxr2. 
-      * by []. }
+    rewrite !xrow_val !eq_refl.  case : (x == r1) /eqP => [-> |].
+    + by case Hr12: (r2 == r1) /eqP => [-> |].
+    + by case Hr12: (x == r2) /eqP => [-> |]. }
     rewrite {2}HA'. apply ero_swap.
   - move => m' n' r c A' Hc0. have HA': A' = sc_mul (sc_mul A' c r) c^-1 r. {
       rewrite !sc_mulE mulmxA mulmx1C. by rewrite mul1mx. by rewrite sc_mul_mx_inv. }
@@ -299,13 +296,12 @@ Proof.
   have Href: reflect (exists x, f x == r) ([exists x, f x == r]). apply existsPP. 
   move => x. apply idP. case Hex : ([exists x, f x == r]).
   - have: exists x, f x == r. by apply (elimT Href). move {Hex} => [x Hfx].
-    have: (mxsub f g (sc_mul A c r)) = sc_mul (mxsub f g A) c x.
+    have->: (mxsub f g (sc_mul A c r)) = sc_mul (mxsub f g A) c x.
     rewrite /mxsub /sc_mul -matrixP /eqrel => i j. rewrite !mxE. 
-    case Heq : (i == x). eq_subst Heq. by rewrite Hfx.
-    have->: f i == r = false. case Hf : (f  i == r). move : Hinj. rewrite /injective => /(_ x i).
-    eq_subst Hfx. eq_subst Hf. move : Hf -> => H.  rewrite H in Heq. move : Heq; by rewrite eq_refl.
-    by []. by []. by [].
-    move ->. apply ero_row_equiv. by constructor.
+    case : (i == x) /eqP => [-> | Heq]. by rewrite Hfx.
+    have->: f i == r = false. case : (f i == r) /eqP => [Hf | //]. move : Hinj. rewrite /injective => /(_ x i).
+    apply (elimT eqP) in Hfx. subst. move : Hf -> => H. by rewrite H in Heq. by [].
+    apply ero_row_equiv. by constructor.
   - have : (~ exists x, f x == r) by rewrite (rwN Href) Hex. move {Hex} => Hex. 
     have: (mxsub f g (sc_mul A c r)) = mxsub f g A. rewrite /mxsub /sc_mul -matrixP /eqrel.
     move => i j; rewrite !mxE. case Fir : (f i == r). 
@@ -325,18 +321,19 @@ Proof.
   have Href: reflect (exists x, f x == r2) ([exists x, f x == r2]). apply existsPP. 
   move => x. apply idP. case Hex : ([exists x, f x == r2]).
   - have: exists x, f x == r2. by apply (elimT Href). move {Hex} => [x Hfx].
-    have: (mxsub f g (add_mul A c r1 r2)) = add_mul (mxsub f g A) c i x.
-    rewrite /mxsub /add_mul -matrixP. move => i' j'. rewrite !mxE.
-    case Hix : (i' == x). eq_subst Hix. rewrite Hfx. eq_subst Hfx. by eq_subst Hfi.
-    case Hfir2 : (f i' == r2). have : (i' = x). apply Hinj. eq_subst Hfx. by eq_subst Hfir2.
-    move => H; subst. move : Hix; by rewrite eq_refl. by []. move ->.
-    apply ero_row_equiv. constructor. case Hix : (i == x). eq_subst Hix.
-    eq_subst Hfi. eq_subst Hfx. by move : Hr12; rewrite eq_refl. by [].
+    have->: (mxsub f g (add_mul A c r1 r2)) = add_mul (mxsub f g A) c i x. {
+      rewrite /mxsub /add_mul -matrixP. move => i' j'. rewrite !mxE.
+      case : (i' == x) /eqP => [-> | Hix].
+      - rewrite Hfx. eq_subst Hfx. by eq_subst Hfi.
+      - case Hfir2 : (f i' == r2) => [|//]. have : (i' = x). apply Hinj. eq_subst Hfx. 
+        by eq_subst Hfir2. by []. }
+    apply ero_row_equiv. constructor. case: (i == x) /eqP => [Hix |//]. subst. 
+    move: Hr12. eq_subst Hfi. by rewrite Hfx.
   - have : (~ exists x, f x == r2) by rewrite (rwN Href) Hex. move {Hex} => Hex.
-    have:  (mxsub f g (add_mul A c r1 r2)) = mxsub f g A.
+    have->:  (mxsub f g (add_mul A c r1 r2)) = mxsub f g A.
     rewrite /mxsub /add_mul -matrixP. move => i' j'. rewrite !mxE.
     case Hfir : (f i' == r2). have : (exists x, f x == r2) by (exists i'; by rewrite Hfir). by [].
-    by []. move ->. by constructor.
+    by []. by constructor.
 Qed.
 
 (*We need another similar result for swaps for the Vandermonde proofs (not needed for gaussian elimination directly)*)
@@ -416,14 +413,13 @@ Proof.
   - apply r.
   - by rewrite size_ord_enum. 
   - move ->. rewrite /fst_nonzero. have Hbound := (fst_nonzero_nat_bound A col r).
-    move : Hbound => /orP[Heq | Hlt].
-    + rewrite insubF. split. by []. eq_subst Heq. rewrite Heq. move => Hmf. 
-      have: (f < m) by []. move => Hfmlt. rewrite -Hmf in Hfmlt.
-      rewrite ltnn in Hfmlt. by []. eq_subst Heq. rewrite Heq. apply ltnn. 
+    move : Hbound => /orP[/eqP Heq | Hlt].
+    + rewrite insubF. split. by []. rewrite Heq => Hmf.
+      have: (f < m) by []. by rewrite -Hmf ltnn. by rewrite Heq ltnn.  
     + rewrite insubT. split. move => Hs. case : Hs. move => Hf. rewrite -Hf. by [].
       move => Hfst. f_equal. have : (nat_of_ord (Sub (fst_nonzero_nat A col r) Hlt) == nat_of_ord f).
       by rewrite -Hfst. move => Hnatord. have : (Sub (fst_nonzero_nat A col r) Hlt  == f).
-      by []. move => Hsub. by eq_subst Hsub.
+      by []. move => Hsub. by apply /eqP.
 Qed. 
 
 Lemma fst_nonzero_none: forall {m n} (A: 'M[F]_(m, n)) (col: 'I_n) (r: 'I_m),
@@ -467,15 +463,14 @@ Proof.
     move => /eqP Hnth. by rewrite Hnth nth_ord_enum.
   - move => [Harc Hprev]. move : Harc => /(_ c). rewrite nth_ord_enum. move : Hprev => /(_ c) Hprev Harc.
     split. by []. move => x Hxc. move : Hprev => /(_ x). rewrite Hxc nth_ord_enum.
-    case Heq : ( A row x == 0). eq_subst Heq. rewrite Heq. by [].
-    rewrite //=. move => Hcon. have: true = false by rewrite Hcon. by [].
+    case : (A row x == 0) /eqP => [ Heq|//]. by rewrite Heq.
+    move => Hcon Hf. by have: (~~false = false) by apply Hf. 
   - apply c.
   - by rewrite size_ord_enum.
   - move ->. rewrite /lead_coef. have Hbound := (lead_coef_nat_bound A row).
-    move : Hbound => /orP[Heq | Hlt].
-    + rewrite insubF. split. by []. eq_subst Heq. rewrite Heq. move => Hnc. 
-      have: (c < n) by []. move => Hcnlt. rewrite -Hnc in Hcnlt.
-      by rewrite ltnn in Hcnlt. eq_subst Heq. rewrite Heq. apply ltnn. 
+    move : Hbound => /orP[/eqP Heq | Hlt].
+    + rewrite insubF. split => [//|]. rewrite Heq => Hnc.
+      have: (c < n) by []. by rewrite -Hnc ltnn. by rewrite Heq ltnn.
     + rewrite insubT. split. move => Hs. case : Hs. move => Hf. rewrite -Hf. by [].
       move => Hfst. f_equal. have : (nat_of_ord (Sub (lead_coef_nat A row) Hlt) == nat_of_ord c)
       by rewrite -Hfst. move => Hnatord. 
@@ -490,10 +485,9 @@ Proof.
   move ->. rewrite find_none_iff. split.
   move => Hc x Hin. rewrite negbK. apply (introT eqP). apply Hc.
   move => Hc x. apply (elimT eqP). move : Hc => /(_ x); rewrite negbK. move ->. by []. by apply mem_ord_enum.
-  move ->. rewrite /lead_coef. case (orP(lead_coef_nat_bound A row)) => [Heq | Hlt] .
-  - rewrite insubF. split; try by []. move => H{H}. by apply (elimT eqP).
-    eq_subst Heq. by rewrite Heq ltnn.
-  - rewrite insubT. split; try by []. move => Heq. have: n < n by rewrite -{1}Heq. by rewrite ltnn.
+  move ->. rewrite /lead_coef. case (orP(lead_coef_nat_bound A row)) => [/eqP Heq | Hlt].
+  - rewrite insubF. by []. by rewrite Heq ltnn. 
+  - rewrite insubT. split => [//| Heq /=]. have: n < n by rewrite -{1}Heq. by rewrite ltnn.
 Qed. 
 
 (*Fold a function over the rows of a matrix that are contained in a list.
@@ -630,8 +624,7 @@ Lemma remAll_in: forall {A: eqType} (x y : A) (l: seq A),
   x \in (remAll y l).
 Proof.
   move => A x y l. elim : l => [//| h t IH Hneq /=].
-  rewrite in_cons; move /orP => [Hxh | Ht]. eq_subst Hxh. rewrite Hneq.
-  by rewrite in_cons eq_refl.
+  rewrite in_cons; move /orP => [/eqP Hxh | Ht]. subst. by rewrite Hneq in_cons eq_refl.
   have: x \in remAll y t. by apply IH. case : (h != y) => [|//].
   rewrite in_cons. move ->. by rewrite orbT.
 Qed. 
@@ -653,8 +646,8 @@ Lemma sub_all_rows_val: forall {m n} (A: 'M[F]_(m,n)) r c i j,
   (sub_all_rows A r c) i j = if i == r then A i j else
                             if A i c == 0 then A i j else A i j - A r j.
 Proof.
-  move => m n A r c i j. rewrite /sub_all_rows. rewrite foldr_remAll. case Hir : (i == r).
-  eq_subst Hir. rewrite mx_row_transform_notin. by []. move => A' i' j' r'.
+  move => m n A r c i j. rewrite /sub_all_rows. rewrite foldr_remAll. case : (i == r) /eqP => [-> | Hir].
+  rewrite mx_row_transform_notin. by []. move => A' i' j' r'.
   case : (A r' c == 0). by []. rewrite /add_mul mxE //= /negb. by case : (i' == r').
   apply remAll_notin. 
   rewrite mx_row_transform.
@@ -665,7 +658,7 @@ Proof.
     rewrite !/add_mul !mxE !eq_refl !Hin.
     rewrite Hout => [//|]. apply remAll_notin.
   - rewrite -rem_remAll. apply rem_uniq. all: apply ord_enum_uniq.
-  - apply remAll_in. by rewrite Hir. by rewrite mem_ord_enum.
+  - apply remAll_in. by apply /eqP. by rewrite mem_ord_enum.
 Qed.
 
 Lemma sub_all_rows_row_equiv: forall {m n} (A: 'M[F]_(m,n)) r c,
@@ -726,7 +719,7 @@ Proof.
     have: forall z, xrow k r A r z = A k z. move => z. rewrite xrow_val.
     case H: (r==k). by eq_subst H. by rewrite eq_refl. move => Hxrow. rewrite !Hxrow.
     have: A k y == 0. by rewrite Hinv. move => H; eq_subst H. rewrite H.
-    case: (A k c == 0). by []. by rewrite GRing.mul0r.
+    case: (A k c == 0) =>[//|]. by rewrite GRing.mul0r.
     move => /eqP Hallry. by rewrite Hallry GRing.subr0.
 Qed.
 
@@ -737,19 +730,17 @@ Lemma gauss_one_step_col_c: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) (
 Proof.
   move => m n A r c k Hkc x. rewrite sub_all_rows_val.
    have: xrow k r A r c = A k c. rewrite xrow_val.
-    case H : (r==k). by eq_subst H. by rewrite eq_refl.
-  case Hxr : (x == r).
-  - rewrite all_cols_one_val /=. eq_subst Hxr.
-    move ->. move : Hkc. rewrite /negb. case Hkc : (A k c == 0) => [//|//=].
-    rewrite GRing.mulfV => [//|]. move : Hkc. rewrite /negb. by move ->.
+    case : (r==k) /eqP => [-> //|]. by rewrite eq_refl.
+  case : (x == r) /eqP => [-> //= | Hxr].
+  - rewrite all_cols_one_val /=.
+    move ->. by rewrite (negbTE Hkc) GRing.mulfV.
   - move => Hxrow. 
-    have: all_cols_one (xrow k r A) c r c == 1. rewrite all_cols_one_val //= !Hxrow.
-    move : Hkc. rewrite /negb. case Heq : (A k c == 0) => [//|].
-    rewrite GRing.mulfV => [//|]. move : Heq. rewrite /negb. by move ->. move => /eqP Hrc1.
-    rewrite Hrc1. case Hallcol : (all_cols_one (xrow k r A) c x c == 0). apply (elimT eqP). 
-    by rewrite Hallcol. move : Hallcol. rewrite all_cols_one_val /=.
-    case Hxc : (xrow k r A x c == 0 ). by rewrite Hxc. move => H{H}.
-    rewrite GRing.mulfV. apply (elimT eqP). by rewrite GRing.subr_eq0 eq_refl. move : Hxc. rewrite /negb. by move ->.
+    have /eqP Hrc1: all_cols_one (xrow k r A) c r c == 1 
+      by rewrite all_cols_one_val //= !Hxrow (negbTE Hkc) GRing.mulfV. 
+    rewrite Hrc1. case : (all_cols_one (xrow k r A) c x c == 0) /eqP => [// |].
+    move => /eqP Hneq; move: Hneq. rewrite all_cols_one_val /=.
+    case Hxc : (xrow k r A x c == 0). by rewrite Hxc. move => _.
+    rewrite GRing.mulfV. apply /eqP. by rewrite GRing.subr_eq0 eq_refl. apply (negbT Hxc).
 Qed. 
 
 (*Third - all entries with row >=r and col < c are still zero*)
@@ -762,26 +753,25 @@ Proof.
   move => m n A r c k Hinv Hfst x y Hrx Hyc. move : Hfst. rewrite fst_nonzero_some_iff. move => [Hrk [Hakc Hprev]].
   rewrite sub_all_rows_val. move : Hrx.
   have: forall z, xrow k r A r z = A k z. move => z. rewrite xrow_val.
-    case H : (r == k). by eq_subst H. by rewrite eq_refl. move => Hxrow.
- rewrite leq_eqVlt eq_sym =>
+    case: (r == k) /eqP => [-> //|]. by rewrite eq_refl.
+ move => Hxrow. rewrite leq_eqVlt eq_sym =>
   /orP[Hrx | Hrx]. 
-  - have Hxr' : (x == r) by []. rewrite Hxr'. eq_subst Hxr'.
-    rewrite all_cols_one_val /=. rewrite !Hxrow.
-    case (A k c == 0). by apply Hinv.  rewrite Hinv. by rewrite GRing.mul0r. all: by [].
+  - have /eqP Hxr' : (x == r) => [//|]. subst. rewrite eq_refl all_cols_one_val /= !Hxrow.
+    case (A k c == 0). by apply Hinv. by rewrite Hinv // GRing.mul0r.
   - have : x == r = false by apply gtn_eqF. move => Hxrneq. rewrite Hxrneq.
     have: all_cols_one (xrow k r A) c r y = 0. rewrite all_cols_one_val /=.
     rewrite ! Hxrow. have: A k y = 0 by apply Hinv. move ->.
     case (A k c == 0). by []. by rewrite GRing.mul0r. move ->. rewrite GRing.subr0.
-    have: all_cols_one (xrow k r A) c x y = 0. rewrite all_cols_one_val /=.
-    case Hxk : (x == k). eq_subst Hxk. 
-    have: forall z, xrow k r A k z = A r z. move => z. by rewrite xrow_val eq_refl.
-    move ->. rewrite Hprev. rewrite xrow_val eq_refl. apply Hinv. apply leqnn.
+    have->: all_cols_one (xrow k r A) c x y = 0. rewrite all_cols_one_val /=. move: Hrx.
+    case : (x == k) /eqP => [-> // Hrx | /eqP Hxk Hrx]. 
+    have->: forall z, xrow k r A k z = A r z. move => z. by rewrite xrow_val eq_refl.
+    rewrite Hprev. rewrite xrow_val eq_refl. apply Hinv. by apply leqnn.
     by []. by rewrite Hrx leqnn.
     have: forall z, xrow k r A x z = A x z. move => z. rewrite xrow_val.
-    rewrite Hxk Hxrneq. by []. move => Hx. rewrite !Hx.
-    have : A x y = 0. apply Hinv. by rewrite leq_eqVlt Hrx orbT. by [].
-    move ->. case : (A x c == 0) => [//|]. by rewrite GRing.mul0r.
-    move ->. by case (all_cols_one (xrow k r A) c x c == 0).
+    by rewrite (negbTE Hxk) Hxrneq. move => Hx. rewrite !Hx.
+    have->: A x y = 0. apply Hinv. by rewrite leq_eqVlt Hrx orbT. by [].
+    case : (A x c == 0) => [//|]. by rewrite GRing.mul0r.
+    by case (all_cols_one (xrow k r A) c x c == 0).
 Qed.
 
 (*Fourth - for all rows < r, the leading coefficient has not changed (this follows from the others)*)
@@ -861,8 +851,8 @@ Proof.
         (*need to show that if leading coefficient of r' is c, then r' = r*)
         case Hrr' : (r' == r).
         -- move => H{H} x Hxr. rewrite gauss_one_step_col_c.
-           have : x == r = false. have Hreq : (r' == r) by []. eq_subst Hreq.
-           move: Hxr. by case : (x == r). move ->. by []. move : Fz.
+           have ->: x == r = false. have Hreq : (r' == r) by []. eq_subst Hreq.
+           by rewrite (negbTE Hxr). by []. move : Fz.
            rewrite fst_nonzero_some_iff. by move => [Hrk [Hakc H]].
         -- rewrite lead_coef_some_iff. move => [Hnonz Hbef]. move : Hnonz.
            rewrite gauss_one_step_col_c. by rewrite Hrr' eq_refl. move: Fz.
@@ -1373,22 +1363,21 @@ Lemma gauss_invar_lead_coef_geq: forall {m n} (A: 'M[F]_(m, n)) r c,
   (forall (r' : 'I_m), r' < r -> exists c', lead_coef A r' = Some c' /\ r' <= c').
 Proof.
   move => m n A r c Hrm. rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-  case Hr0 : (r == 0)%N.
-  - eq_subst Hr0. move => r'. by rewrite ltn0.
-  - have: 0 < r. case (orP (ltn_total r 0)) => [/orP[Hlt | Heq] | Hgt]. by []. rewrite Heq in Hr0. by [].
-    by []. move => {} Hr0. have Hr1m: r.-1 < m by rewrite prednK.
-    have: (forall (r' : 'I_m), r' <= Ordinal Hr1m -> exists c' : 'I_n, lead_coef A r' = Some c' /\ r' <= c').
-    apply ord_ind_bound.
-    + move : Hleadbefore. move => /(_ (Ordinal (ord_nonzero (Ordinal Hr1m))) Hr0) [c' [Hlc Hbound]].
-      exists c'. by [].
-    + move => n' Hnr' [c' [Hlc Hcbound]].
-      have Hb : (Ordinal (ltn_succ (ltn_ord (Ordinal Hr1m)) Hnr')) < r. 
-      have Hnrsuc: n'.+1 < r. have Hnrpred: n' < r.-1 by []. by rewrite -ltn_predRL. by [].
-      move : Hleadbefore. move => /(_ _ Hb) [c'' [Hlc' Hbound']].
-      exists c''. split. by []. 
-      have Hcc': c' < c''. eapply Hincr. 3: apply Hlc. 3: apply Hlc'. by []. by [].
-      have Hnc': n' < c'' by apply (leq_ltn_trans Hcbound Hcc'). by [].
-    + move => Halt r' Hrr'. apply Halt. by rewrite -ltn_pred.
+  case: (r == 0)%N /eqP => [-> //| /eqP Hr0] .
+  have: 0 < r. case (orP (ltn_total r 0)) => [/orP[Hlt // | Heq] | Hgt //]. by rewrite Heq in Hr0. 
+  move => {} Hr0. have Hr1m: r.-1 < m by rewrite prednK.
+  have: (forall (r' : 'I_m), r' <= Ordinal Hr1m -> exists c' : 'I_n, lead_coef A r' = Some c' /\ r' <= c').
+  apply ord_ind_bound.
+  + move : Hleadbefore. move => /(_ (Ordinal (ord_nonzero (Ordinal Hr1m))) Hr0) [c' [Hlc Hbound]].
+    exists c'. by [].
+  + move => n' Hnr' [c' [Hlc Hcbound]].
+    have Hb : (Ordinal (ltn_succ (ltn_ord (Ordinal Hr1m)) Hnr')) < r. 
+    have Hnrsuc: n'.+1 < r. have Hnrpred: n' < r.-1 by []. by rewrite -ltn_predRL. by [].
+    move : Hleadbefore. move => /(_ _ Hb) [c'' [Hlc' Hbound']].
+    exists c''. split. by []. 
+    have Hcc': c' < c''. eapply Hincr. 3: apply Hlc. 3: apply Hlc'. by []. by [].
+    have Hnc': n' < c'' by apply (leq_ltn_trans Hcbound Hcc'). by [].
+  + move => Halt r' Hrr'. apply Halt. by rewrite -ltn_pred.
 Qed.
 
 (*If [gauss_invar r r] holds, then for all r' < r, r' == lead_coef r'*)
@@ -1398,33 +1387,32 @@ Lemma gauss_invar_square_lc: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: n
   (forall (r': 'I_m), r' < r -> lead_coef A r' = Some (widen_ord Hmn r')).
 Proof.
   move => m n A Hmn r Hrm Hinv.
-  case Hr0 : (r == 0)%N.
-  - eq_subst Hr0. move => r'. by rewrite ltn0.
-  - have: 0 < r. case (orP (ltn_total r 0)) => [/orP[Hlt | Heq] | Hgt]. by []. rewrite Heq in Hr0. by [].
-    by []. move => {} Hr0. have Hr1m: r.-1 < m by rewrite prednK.
-    have Halt: (forall (r' : 'I_m), r' <= Ordinal Hr1m -> lead_coef A r' = Some (widen_ord Hmn r')).
-    + have Hrpred: (Ordinal Hr1m) < r by rewrite ltn_predL.  apply ord_ind_bound_rev.
-      * have: (exists c', lead_coef A (Ordinal Hr1m) = Some c' /\ (Ordinal Hr1m) <= c'). 
-        by apply (gauss_invar_lead_coef_geq Hrm Hinv).
-        move => [c' [Hlc Hlb]]. rewrite Hlc. f_equal.  
-        move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-        move : Hleadbefore. move => /(_ _ Hrpred) [c'' [Hlc' Hcr]].
-        have: (c' = c''). rewrite Hlc in Hlc'. by case: Hlc'. move => Hcc'; subst. move {Hlc'}.
-        rewrite ltn_pred in Hcr => [| //]. apply (elimT eqP).
-        have: (nat_of_ord c'') == r.-1. rewrite eqn_leq. have: r.-1 <= c'' by []. have: c'' <= r.-1 by [].
-        move ->. by move ->. by [].
-      * move => n' Hnr1 Hlc. remember (Ordinal (ltn_succ (ltn_ord (Ordinal Hr1m)) Hnr1)) as on1 eqn : Hon1.
-        have Hnr' : n' < r by apply (ltn_trans Hnr1 Hrpred). 
-        have: (exists c', lead_coef A n' = Some c' /\ n' <= c').
-        by apply (gauss_invar_lead_coef_geq Hrm Hinv). move => [c' [Hlc' Hb]].
-        move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-        have: c' < widen_ord Hmn on1. apply (Hincr n' on1). by rewrite Hon1 ltnSn.
-        rewrite Hon1. have: n'.+1 < r. have H: n' < r.-1 by []. by rewrite -ltn_predRL. by [].
-        by []. by []. move => Hcub. have: c' < n'.+1 by rewrite Hon1 in Hcub. move => Hcn'.
-        have: c' <= n' by []. move => {Hcn'} Hcub.
-        have: nat_of_ord c' == n' by rewrite eqn_leq Hcub Hb. rewrite Hlc'. 
-        move => Hcn. f_equal. have: c' == widen_ord Hmn n' by []. by move => /eqP H.
-    + move => r' Hrr'. apply Halt. by rewrite -ltn_pred.
+  case: (r == 0)%N /eqP => [-> //| /eqP Hr0] .
+  have: 0 < r. case (orP (ltn_total r 0)) => [/orP[Hlt // | Heq] | Hgt //]. by rewrite Heq in Hr0.
+  move => {} Hr0. have Hr1m: r.-1 < m by rewrite prednK.
+  have Halt: (forall (r' : 'I_m), r' <= Ordinal Hr1m -> lead_coef A r' = Some (widen_ord Hmn r')).
+  + have Hrpred: (Ordinal Hr1m) < r by rewrite ltn_predL.  apply ord_ind_bound_rev.
+    * have: (exists c', lead_coef A (Ordinal Hr1m) = Some c' /\ (Ordinal Hr1m) <= c'). 
+      by apply (gauss_invar_lead_coef_geq Hrm Hinv).
+      move => [c' [Hlc Hlb]]. rewrite Hlc. f_equal.  
+      move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+      move : Hleadbefore. move => /(_ _ Hrpred) [c'' [Hlc' Hcr]].
+      have: (c' = c''). rewrite Hlc in Hlc'. by case: Hlc'. move => Hcc'; subst. move {Hlc'}.
+      rewrite ltn_pred in Hcr => [| //]. apply (elimT eqP).
+      have: (nat_of_ord c'') == r.-1. rewrite eqn_leq. have: r.-1 <= c'' by []. have: c'' <= r.-1 by [].
+      move ->. by move ->. by [].
+    * move => n' Hnr1 Hlc. remember (Ordinal (ltn_succ (ltn_ord (Ordinal Hr1m)) Hnr1)) as on1 eqn : Hon1.
+      have Hnr' : n' < r by apply (ltn_trans Hnr1 Hrpred). 
+      have: (exists c', lead_coef A n' = Some c' /\ n' <= c').
+      by apply (gauss_invar_lead_coef_geq Hrm Hinv). move => [c' [Hlc' Hb]].
+      move : Hinv; rewrite /gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
+      have: c' < widen_ord Hmn on1. apply (Hincr n' on1). by rewrite Hon1 ltnSn.
+      rewrite Hon1. have: n'.+1 < r. have H: n' < r.-1 by []. by rewrite -ltn_predRL. by [].
+      by []. by []. move => Hcub. have: c' < n'.+1 by rewrite Hon1 in Hcub. move => Hcn'.
+      have: c' <= n' by []. move => {Hcn'} Hcub.
+      have: nat_of_ord c' == n' by rewrite eqn_leq Hcub Hb. rewrite Hlc'. 
+      move => Hcn. f_equal. have: c' == widen_ord Hmn n' by []. by move => /eqP H.
+  + move => r' Hrr'. apply Halt. by rewrite -ltn_pred.
 Qed.
 
 (*What we really want to show: when we are at step r in Gaussian elimination, the first r x r matrix
@@ -1471,14 +1459,13 @@ Proof.
     (*If x >= r and A x r = 0, then the submatrix with the added row x has a row of all zeroes, so
       it is not invertible*)
     have Hrsuc : r < r.+1 by [].
-    case Hcontra : (A x (widen_ord Hmn r) == 0) => [|//].
+    case : (A x (widen_ord Hmn r) == 0) /eqP => [Hcontra|//].
     have Hallzero : (forall (c: 'I_(r.+1)), (submx_add_row A Hmn r x) (Ordinal Hrsuc) c = 0).
     move => c. rewrite /submx_add_row mxE. rewrite ltnn.
-    have : c <= r. have : c < r.+1 by []. by []. rewrite leq_eqVlt. move => /orP[Hcr | Hcr].
-    have Heqord : (widen_ord (leq_trans (ltn_ord r) Hmn) c) == (widen_ord Hmn r) by [].
-    eq_subst Heqord. rewrite Heqord. eq_subst Hcontra. by [].
-    apply Hzero. by []. by [].
-    have : submx_add_row A Hmn r x \notin unitmx. apply (row_zero_not_unitmx Hallzero).
+    have : c <= r by have : c < r.+1 by []. rewrite leq_eqVlt => /orP[Hcr | Hcr].
+    have /eqP Heqord : (widen_ord (leq_trans (ltn_ord r) Hmn) c) == (widen_ord Hmn r) by [].
+    by rewrite Heqord Hcontra. by apply Hzero.
+    have : submx_add_row A Hmn r x \notin unitmx by apply (row_zero_not_unitmx Hallzero).
     move : Hrow. by move => /(_ x Hge) ->.
   - (*If x < r and A x r = 0, then the submatrix with column x removed has a row of all zeroes, so it
       is not invertible*)
@@ -1495,8 +1482,8 @@ Proof.
         have: ((ord_widen_succ (ltn_leq_trans (ltn_ord r) Hmn) c) = widen_ord Hmn r) by apply (elimT eqP).
         move ->. by apply (elimT eqP).
       * apply (elimT eqP). rewrite (gauss_invar_square_id Hmn _ Hinv). rewrite !remove_widen.
-        have: nat_of_ord x != c.+1. case Hx : (nat_of_ord x == c.+1) => [|//].
-        eq_subst Hx. rewrite Hx in Hcx. rewrite ltnSn in Hcx. by []. by [].
+        have: nat_of_ord x != c.+1. case : (nat_of_ord x == c.+1) /eqP => [Hx|//].
+        move: Hcx. by rewrite Hx ltnSn. by []. 
         by (apply ltnW). by []. have: c.+1 < r.
         case (orP (ltn_total (c.+1) r)) => [/orP[Hlt' | Heq] | Hgt]. by []. by move: Heq Hcr1 ->.
         have Hcr: c < r by []. rewrite leqNgt in Hcr. by move : Hgt Hcr ->. by [].
@@ -1515,11 +1502,11 @@ Proof.
   have: fst_nonzero A (widen_ord Hmn r) r = Some r. rewrite fst_nonzero_some_iff.
   split. by rewrite leqnn. split. apply Hnz. move => x. by rewrite ltnNge andbN. move ->.
   rewrite all_cols_one_equiv. rewrite (@sub_all_rows_equiv _ _ _ _ (widen_ord Hmn r)). 
-  have: xrow r r A = A. rewrite -matrixP /eqrel. move => x y. rewrite xrow_val. 
-  case Hxr: (x == r). by eq_subst Hxr. by []. by move ->. 2 : by [].
+  have->: xrow r r A = A. rewrite -matrixP /eqrel. move => x y. rewrite xrow_val. 
+  by case: (x == r) /eqP => [->|]. by [].
   move => x. rewrite all_cols_one_val /=.
-  have:  A x (widen_ord Hmn r) == 0 = false. have:  A x (widen_ord Hmn r) != 0 by apply Hnz.
-  by case : ( A x (widen_ord Hmn r) == 0). move ->. rewrite GRing.mulfV. by rewrite GRing.oner_neq0.
+  have Haxr: A x (widen_ord Hmn r) == 0 = false. apply negbTE. by apply Hnz. rewrite Haxr.
+  rewrite GRing.mulfV. by rewrite GRing.oner_neq0. apply (negbT Haxr).
   apply Hnz.
 Qed.
 
@@ -1528,8 +1515,6 @@ Qed.
 (*Now we want to show that [strong_inv] is preserved through [gauss_one_step_simpl]. We will make heavy use
   of [row_equivalent_unitmx_iff], so we need to know when submatrices are row equivalent. We do this in
   the following few lemmas*)
-
-
 
 Lemma mxsub_row_transform_equiv: forall {m n m' n'} (A: 'M[F]_(m,n)) (f : 'I_m' -> 'I_m) (g : 'I_n' -> 'I_n)
    (h: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)) (l: seq 'I_m),
@@ -1999,10 +1984,9 @@ Proof.
           move => r'.  rewrite (gauss_invar_square_lc (leqnn m) (leqnn m) Hinv). f_equal.
           by apply ord_inj. by []. left.
         rewrite -matrixP => x y. rewrite mxE id_A.
-        case Hxy : (x == y).
-        -- eq_subst Hxy. move : Hlcs => /(_ y) Hlcs.
-          apply Hlc. by apply lead_coef_colsub.
-        -- move: Hlcs => /(_ y) Hlcs. apply (Hcols y). by apply lead_coef_colsub. by rewrite Hxy.
+        case : (x == y) /eqP => [-> // | Hxy].
+        -- move : Hlcs => /(_ y) Hlcs. apply Hlc. by apply lead_coef_colsub.
+        -- move: Hlcs => /(_ y) Hlcs. apply (Hcols y). by apply lead_coef_colsub. by apply /eqP.
     + right. move: Hlcm; rewrite lead_coef_none_iff => Hzero. exists (pred_ord Hmgt). move => c Hc. apply Hzero.
 Qed.
 
@@ -2418,7 +2402,6 @@ Proof.
   move => n m p Hn Hmp. by rewrite -Hmp.
 Qed.
 
-(*TODO: move this too*)
 Lemma strong_inv_unitmx: forall {n} (A: 'M[F]_n) (H: (n <= n)%N) (r: 'I_n),
   strong_inv A H r ->
   A \in unitmx.
