@@ -5,23 +5,10 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-
 Require Import Vandermonde.
 Require Import Gaussian.
 Require Import CommonSSR.
-Require Import LinIndep. (*for summation - TODO move*)
-
-(*TODO: move*)
-Lemma index_ord_enum: forall (n: nat), (index_enum (ordinal_finType n)) = ord_enum n.
-Proof.
-  move => n. have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP Hn0 | Hnpos].
-  - subst. rewrite /ord_enum /= /index_enum /=. apply size0nil. apply ordinal_enum_size.
-  - apply (eq_from_nth (x0:=pred_ord Hnpos)).
-    + by rewrite ordinal_enum_size size_ord_enum.
-    + move => i. rewrite ordinal_enum_size => Hi.
-      have->: i = nat_of_ord (Ordinal Hi) by [].
-      by rewrite ordinal_enum nth_ord_enum.
-Qed.
+Require Import LinIndep. (*for summation*)
 
 Section RS.
 
@@ -38,13 +25,8 @@ Definition encoder (h k c max_h max_n : nat) (Hh: h <= max_h) (Hk: k <= max_n)
 
 Section Decoder.
 
-(*TODO: move (name collision with submx)*)
 Definition minusmx {m n} (A B: 'M[F]_(m, n)) := 
   \matrix_(i < m, j < n) (A i j - B i j).
-
-(*Take columns from the end instead of beginning (because the weight matrix is backwards)*)
-Definition submx_rows_cols_rev {m n : nat} (m' n': nat) (A: 'M[F]_(m, n)) (rows: seq 'I_m) (cols: seq 'I_n)
-  (xm: 'I_m) (xn : 'I_n) := submx_rows_cols m' n' A rows (map (fun x => rev_ord x) cols) xm xn.
 
 (*"Fill in" a matrix with missing data: let D be the original k x c matrix, let R be the recovered data, an 
   xh x c matrix (where xh < k), and let locs be a list of 'I_k of length xh that has the missing locations.
@@ -321,7 +303,7 @@ Proof.
   apply size0nil in Hsz. by rewrite Hsz.
 Qed.
 
-(*TODO: move, separate out summation stuff*)
+(*TODO: maybe separate out summation stuff*)
 Lemma big_nat_widen_lt m1 m2 n (P : pred nat) (C: nat -> F) :
      m1 <= m2 ->
   \sum_(m2 <= i < n | P i) C i
@@ -339,15 +321,6 @@ Proof.
     + rewrite big_nat_cond (big_nat_cond _ _ m2 n (fun i => P i && (m2 <= i))).
       apply eq_big =>[x |//]. case Hbound: (m2 <= x < n) =>[|//].
       rewrite !andTb. move : Hbound => /andP[Hm2 Hn]. by rewrite Hm2 andbT.
-Qed.
-(*TODO: move*)
-Lemma nat_of_ord_eq: forall n (x y : 'I_n),
-  (nat_of_ord x == nat_of_ord y) = (x == y).
-Proof.
-  move => n x y. case Hxy: (x == y).
-  apply (elimT eqP) in Hxy. by rewrite Hxy eq_refl.
-  case Hxynat: (nat_of_ord x == nat_of_ord y) =>[|//]. apply (elimT eqP) in Hxynat.
-  have: x == y by (apply /eqP; apply ord_inj). by rewrite Hxy.
 Qed.
 
 (*As long as the missing and found lists are unique and have size xh, the two decoders are equivalent

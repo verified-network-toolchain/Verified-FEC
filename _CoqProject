@@ -1,34 +1,27 @@
-#-R ./Poly Poly 
 -R . lib
-Helper.v
-Poly/GF2.v
-Poly/PolyDefs.v
-Poly/PolyDiv.v
-Poly/Poly.v
-Poly/PolyMod.v
-Poly/ConcretePolys.v
-# - takes about 20 mins
-InjectiveSurjective.v
-Poly/PrimitiveFacts.v
-IntFacts.v
-Poly/IntPoly.v
-PropList.v
-Matrix/CommonSSR.v
+#Pure mathcomp/functional model
+Poly/CommonSSR.v
+Poly/PolyField.v
+Poly/BoolField.v
+Poly/ListPoly.v
+Poly/ZSeq.v
+ByteFacts.v
+Poly/ByteField.v
 Matrix/Gaussian.v
-Matrix/ListMatrix.v
-Matrix/PolyField.v
 Matrix/LinIndep.v
 Matrix/Vandermonde.v
-FEC/fec.v
-FEC/List2D.v
-FEC/Common.v
-#can move earlier
 FEC/ReedSolomon.v
-Matrix/VandermondeList.v
+#Intermediate layer (VST + mathcomp)
+Matrix/ListMatrix.v
+FEC/MatrixTransform.v
+Matrix/VandermondeByte.v
 FEC/ReedSolomonList.v
+#VST
+FEC/fec.v
 FEC/CommonVST.v
 FEC/Specs.v
 FEC/FECTactics.v
-FEC/Verif_encode.v
+#FEC/Verif_encode.v
 FEC/Verif_field.v
 FEC/Verif_matrix.v
+FEC/Verif_encode.v

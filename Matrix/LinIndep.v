@@ -119,13 +119,12 @@ Proof.
     \sum_(i < m) (fun (j: 'I_m) => if j == r1 then c r2 else if j == r2 then c r1 else c j) i * A i j). {
   move => c j. rewrite (@sum_remove_one _ _ _ r1) => [|//]. rewrite xrow_val eq_refl.
   rewrite (@sum_remove_one _ (fun _ => true) _ r1) =>[|//]. rewrite eq_refl.
-  case Hr12: (r1 == r2).
-  - eq_subst Hr12. f_equal. apply eq_big. by []. move => i /andP[H{H} Hir2].
+  case: (r1 == r2) /eqP => [ -> // | /eqP Hr12].
+  - f_equal. apply eq_big. by []. move => i /andP[H{H} Hir2].
     rewrite xrow_val. move: Hir2; by case: (i == r2).
   - have Hr12': (r2 != r1) by rewrite eq_sym Hr12. rewrite (@sum_remove_one _ _ _ r2) =>[|//].
-    rewrite (@sum_remove_one _ (fun x => true && (x != r1)) _ r2) => [|//]. rewrite !eq_refl !xrow_val.
-    have ->: (r2 == r1 = false) by rewrite eq_sym in Hr12. rewrite eq_refl.
-    rewrite -!GRing.addrA (GRing.addrC (c r2 * A r1 j)). f_equal.
+    rewrite (@sum_remove_one _ (fun x => true && (x != r1)) _ r2) => [|//]. 
+    rewrite !eq_refl !xrow_val (negbTE Hr12') eq_refl -!GRing.addrA (GRing.addrC (c r2 * A r1 j)). f_equal.
     apply eq_big. by []. move => i /andP[/andP[H{H} Hir1] Hir2].
     move: Hir1 Hir2. rewrite xrow_val. by case (i == r1); case: (i == r2). }
   split.
@@ -134,22 +133,22 @@ Proof.
     have Hcond: (forall j : 'I_n,
         \sum_(i < m) (if i == r1 then c r2 else if i == r2 then c r1 else c i) * A i j = 0). move => j.
     by rewrite -Hinner Hprod. move: Hlin => /(_ Hcond).
-    case Hxr1: (x == r1).
-    + eq_subst Hxr1. move => /(_ r2). case Hr12: (r2 == r1). by eq_subst Hr12. by rewrite eq_refl.
-    + case Hxr2 : (x == r2). eq_subst Hxr2. move => /(_ r1). by rewrite eq_refl.
-      move /(_ x). by rewrite Hxr1 Hxr2.
+    case: (x == r1) /eqP => [-> // | /eqP Hxr1].
+    + move => /(_ r2). case: (r2 == r1) /eqP => [-> // | //]. by rewrite eq_refl.
+    + case: (x == r2) /eqP => [-> // | /eqP Hxr2]. move => /(_ r1). by rewrite eq_refl.
+      move /(_ x). by rewrite (negbTE Hxr1) (negbTE Hxr2).
   - move => Hlin c. move: Hlin => /(_ (fun (j: 'I_m) => if j == r1 then c r2 else if j == r2 then c r1 else c j)) 
     Hlin Hprod x. 
     have Hcond: (forall j : 'I_n,
         \sum_(i < m) (if i == r1 then c r2 else if i == r2 then c r1 else c i) * xrow r1 r2 A i j = 0). { move => j.
-    rewrite Hinner -{2}(Hprod j). apply eq_big. by []. move => i H{H}. case Hir1: (i == r1).
-    - eq_subst Hir1. rewrite eq_refl. case Hr21: (r2 == r1) =>[|//]. by eq_subst Hr21.
-    - case Hir2: (i == r2). eq_subst Hir2. by rewrite eq_refl. by []. }
+    rewrite Hinner -{2}(Hprod j). apply eq_big. by []. move => i H{H}. case: (i == r1) /eqP => [-> // | /eqP Hir1].
+    - rewrite eq_refl. by case: (r2 == r1) /eqP =>[->|].
+    - case: (i == r2) /eqP => [-> //|//]. by rewrite eq_refl. }
     move: Hlin => /(_ Hcond).
-    case Hxr1: (x == r1).
-    + eq_subst Hxr1. move => /(_ r2). case Hr12: (r2 == r1). by eq_subst Hr12. by rewrite eq_refl.
-    + case Hxr2 : (x == r2). eq_subst Hxr2. move => /(_ r1). by rewrite eq_refl.
-      move /(_ x). by rewrite Hxr1 Hxr2.
+    case: (x == r1) /eqP => [-> //|/eqP Hxr1 ].
+    + move => /(_ r2). case: (r2 == r1) /eqP => [-> // | //]. by rewrite eq_refl.
+    + case: (x == r2) /eqP => [->//|/eqP Hxr2]. move => /(_ r1). by rewrite eq_refl.
+      move /(_ x). by rewrite (negbTE Hxr1) (negbTE Hxr2).
 Qed.
 
 (*Adding multiple of one row to another preserves linear independence*)
@@ -183,19 +182,18 @@ Proof.
       by rewrite eq_refl in Hr12f. by []. rewrite -GRing.addrA (GRing.addrN (k * c r2)) GRing.addr0. by eq_subst Hir1.
       by rewrite /add_mul mxE. }
     move : Hlin => /(_ Hcond).
-    case Hcr2: (c r2 == 0).
-    + eq_subst Hcr2. move => /(_ x). rewrite Hcr2 GRing.mulr0 GRing.addr0. by case Hxr1 : (x == r1); eq_subst Hxr1.
-    + move /(_ r2). have ->: (r2 == r1 = false) by move: Hr12; rewrite eq_sym; by case (r2 == r1).
-      move => Hcr2'. rewrite Hcr2' in Hcr2. by rewrite eq_refl in Hcr2.
+    case: (c r2 == 0) /eqP => [-> //| /eqP Hcr2].
+    + move => /(_ x). rewrite GRing.mulr0 GRing.addr0. by case: (x == r1) /eqP => [->|].
+    + move /(_ r2). rewrite eq_sym (negbTE Hr12).
+      move => Hcr2'. move: Hcr2' Hcr2 ->. by rewrite eq_refl.
   - move => Hlin c. move: Hlin => /(_ (fun (j: 'I_m) => if j == r1 then c r1 - k * c r2 else c j)) 
     Hlin Hprod x.
     have Hcond:  (forall j : 'I_n,
         \sum_(i < m) (if i == r1 then c r1 - k * c r2 else c i) * add_mul A k r1 r2 i j = 0).
     move => j. by rewrite Hinner Hprod. move : Hlin => /(_ Hcond).
-    case Hcr2: (c r2 == 0).
-    + eq_subst Hcr2. move => /(_ x). rewrite Hcr2 GRing.mulr0 GRing.subr0. by case Hxr1 : (x == r1); eq_subst Hxr1.
-    + move /(_ r2). have ->: (r2 == r1 = false) by move: Hr12; rewrite eq_sym; by case (r2 == r1).
-      move => Hcr2'. rewrite Hcr2' in Hcr2. by rewrite eq_refl in Hcr2.
+    case: (c r2 == 0) /eqP => [-> // | /eqP Hcr2].
+    + move => /(_ x). rewrite GRing.mulr0 GRing.subr0.  by case: (x == r1) /eqP => [-> |].
+    + move /(_ r2). rewrite eq_sym (negbTE Hr12). move => Hcr2'. move: Hcr2' Hcr2 ->. by rewrite eq_refl.
 Qed.
 
 (*We can put these together in the following results*)
