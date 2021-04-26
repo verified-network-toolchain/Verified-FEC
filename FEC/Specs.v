@@ -158,6 +158,41 @@ Definition fec_blk_encode_spec :=
          INDEX_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
+
+(*We still include h to make the spec nicer; it is not an input the function, but we can always pass in
+  Zlength parities when using the spec*)
+Definition fec_blk_decode_spec :=
+  DECLARE _fec_blk_decode
+  WITH gv: globals, k : Z, h : Z, c : Z, pd: val, pl : val, ps: val, packets: list (list byte), 
+       parities: list (option (list byte)), lengths : list Z, stats: list byte, packet_ptrs: list val, 
+       parity_ptrs: list val
+  PRE [ tint, tint, tptr (tptr tuchar), tptr (tint), tptr (tschar) ]
+    PROP (0 < k < fec_n - fec_max_h; 0 <= h <= fec_max_h; 0 < c <= fec_max_cols; (*bounds for int inputs*)
+          Zlength packets = k; Zlength packet_ptrs = k; Zlength parity_ptrs = h;
+          Zlength parities = h; Zlength stats = k; (*lengths for arrays*)
+          Forall (fun x => Zlength x <= c) packets;
+          forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
+    PARAMS (Vint (Int.repr k); (*Vint (Int.repr h);*) Vint (Int.repr c); pd; pl; ps)
+    GLOBALS (gv)
+    SEP (iter_sepcon_arrays packet_ptrs packets;
+         iter_sepcon_options parity_ptrs parities;
+         data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
+         data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
+         data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+         INDEX_TABLES gv; 
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
+  POST [ tint ]
+    PROP ()
+    RETURN (Vint Int.zero)
+    SEP (iter_sepcon_arrays packet_ptrs (decoder_list k c packets parities stats lengths) ;
+         iter_sepcon_options parity_ptrs parities;
+         data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
+         data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
+         data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+         INDEX_TABLES gv; 
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
+
+
 Definition Gprog := [fec_generate_math_tables_spec; fec_find_mod_spec; fec_gf_mult_spec; fec_matrix_transform_spec;
-  fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec].
+  fec_generate_weights_spec; rse_init_spec; fec_blk_encode_spec; fec_blk_decode_spec].
 

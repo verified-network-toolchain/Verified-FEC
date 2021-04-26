@@ -63,24 +63,24 @@ Section Decoder.
 (** Intermediate functions*)
 
 (*Get lost and found packets*)
-Definition find_lost_found_aux (f: Z -> bool) (g: Z -> Z) base pack l : list Z :=
+Definition find_lost_found_aux (f: byte -> bool) (g: Z -> byte) (base: list byte) pack l : list byte :=
   fold_left (fun acc x => if f (Znth x pack) then acc ++ [:: g x] else acc) l base.
 
 Lemma find_lost_found_aux_bound: forall f g base pack l b,
-  (forall x, In x l -> 0 <= g x < b) ->
-  (forall x, In x base -> 0 <= x < b) ->
-  Forall (fun x => 0 <= x < b) (find_lost_found_aux f g base pack l).
+  Forall (fun x => 0 <= Byte.unsigned (g x) < b) l ->
+  Forall (fun x => 0 <= Byte.unsigned x < b) base ->
+  Forall (fun x => 0 <= Byte.unsigned x < b) (find_lost_found_aux f g base pack l).
 Proof.
-  move => f g base pack l b Hg Hbase. 
-  rewrite /find_lost_found_aux Forall_forall. move : base Hbase Hg.
+  move => f g base pack l b.
+  rewrite /find_lost_found_aux !Forall_forall. move : base.
   elim : l => [ //= | h t /= IH base Hbase Hg x].
-  case Hh: (f (Znth h pack)); apply IH; rewrite //=.
-  - move => z Hin. apply in_app_or in Hin. case : Hin => [Hin | [Hzh | Hfalse]]; rewrite //.
-    + by apply Hbase.
-    + subst. apply Hg. by left.
-  - move => z Hin. apply Hg. by right.
-  - move => z Hin. apply Hg. by right.
-Qed. 
+  case Hh: (f (Znth h pack)); apply IH; rewrite //= => z Hin.
+  - apply Hbase. by right.
+  - apply in_app_or in Hin. case: Hin => [Hzbase | Hzg].
+    + by apply Hg.
+    + case : Hzg => [Hzg | //]. subst. apply Hbase. by left.
+  - apply Hbase. by right.
+Qed.
 
 Lemma find_lost_found_aux_app: forall f g base pack l1 l2,
   find_lost_found_aux f g base pack (l1 ++ l2) =
@@ -124,123 +124,162 @@ Proof.
 Qed.
 
 Lemma find_lost_found_aux_in: forall f stats l x b,
-  (forall x, In x l -> 0 <= x < b) ->
-  In x (find_lost_found_aux f id [::] stats l) ->
-  0 <= x < b.
+  b <= Byte.modulus ->
+  Forall (fun x => 0 <= x < b) l ->
+  In x (find_lost_found_aux f Byte.repr [::] stats l) ->
+  0 <= Byte.unsigned x < b.
 Proof.
-  move => f stats l x b Hl Hin.
-  have Htriv: (forall x : Z, In x [::] -> 0 <= x < b) by [].
-  pose proof (@find_lost_found_aux_bound f id [::] stats l b Hl Htriv) as Hall.
+  move => f stats l x b Hb Hl Hin.
+  have Htriv: (Forall (fun x : byte => 0 <= Byte.unsigned x < b) [::]) by [].
+  have Hl': (Forall (fun x : Z => 0 <= Byte.unsigned (Byte.repr x) < b) l). move: Hl.
+    rewrite !Forall_Znth => Hall i Hi. have Hnth: 0 <= Znth i l < b by apply Hall.
+    rewrite Byte.unsigned_repr //; rep_lia. 
+  pose proof (@find_lost_found_aux_bound f Byte.repr [::] stats l b Hl' Htriv) as Hall.
   by move: Hall; rewrite Forall_forall => /(_ _ Hin).
 Qed.
 
 Lemma find_lost_found_aux_in_spec: forall f base pack l x,
-  In x (find_lost_found_aux f id base pack l) <-> In x base \/ (In x l /\ f (Znth x pack)).
+  Forall (fun x => 0 <= x <= Byte.max_unsigned) l ->
+  In x (find_lost_found_aux f Byte.repr base pack l) <-> 
+  In x base \/ (In (Byte.unsigned x) l /\ f (Znth (Byte.unsigned x) pack)).
 Proof.
-  move => f base pack l x. move : base. elim : l => [//= base | h t /= IH base].
+  move => f base pack l x. move : base. elim : l => [//= base Hbound | h t /= IH base Hbound].
   - by split => [Hin | [Hin | [Hfalse Hf]]]; try left.
-  - case Hfh : (f (Znth h pack)).
-    + rewrite IH in_app_iff /= binop_lemmas2.or_False or_assoc. apply or_iff_compat_l.
+  - have Hhbound: 0 <= h <= Byte.max_unsigned by apply Forall_inv in Hbound.
+    apply Forall_inv_tail in Hbound. case Hfh : (f (Znth h pack)).
+    + rewrite IH // in_app_iff /= binop_lemmas2.or_False or_assoc. apply or_iff_compat_l.
       split.
       * move => [Hxh | [Hin Hh]].
-        -- subst. split. by left. by [].
+        -- subst. rewrite !Byte.unsigned_repr; try rep_lia. split. by left. by [].
         -- split. by right. by [].
       * move => [[Hxh | Hin] Hf].
-        -- subst. by left.
+        -- subst. rewrite Byte.repr_unsigned. by left.
         -- right. by split.
-    + rewrite IH. apply or_iff_compat_l. split.
+    + rewrite IH //. apply or_iff_compat_l. split.
       * move => [Hin Hf]. split. by right. by [].
       * move => [[Hhx | Hin] Hf]. subst. by rewrite Hf in Hfh. by split.
 Qed.  
 
 (*First, get the lost packets*)
-Definition find_lost (stats: list Z) (k: Z) : list Z :=
-  find_lost_found_aux (fun x => Z.eq_dec x 1%Z) id nil stats (Ziota 0 k).
+(*Use Byte.signed bc stats is really list of signed bytes, everything else unsigned bytes*)
+Definition find_lost (stats: list byte) (k: Z) : list byte :=
+  find_lost_found_aux (fun x => Z.eq_dec (Byte.signed x) 1%Z) Byte.repr nil stats (Ziota 0 k).
 
 Lemma find_lost_bound: forall l k,
-  0 <= k ->
-  Forall (fun x : Z => 0 <= x < k) (find_lost l k).
+  0 <= k <= Byte.max_unsigned ->
+  Forall (fun x => 0 <= Byte.unsigned x < k) (find_lost l k).
 Proof.
-  move => l k Hk. apply find_lost_found_aux_bound; try by [].
-  move => x. rewrite Ziota_In; lia. 
+  move => l k Hk. apply find_lost_found_aux_bound => [|//].
+  rewrite Forall_Znth => i. rewrite Zlength_Ziota //; try lia.
+  move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
+Qed. 
+
+(*TODO: move*)
+Lemma byte_repr_inj: forall x y,
+  0 <= x <= Byte.max_unsigned ->
+  0 <= y <= Byte.max_unsigned ->
+  Byte.repr x = Byte.repr y ->
+  x = y.
+Proof.
+  move => x y Hx Hy Hrepr. apply (congr1 Byte.unsigned) in Hrepr.
+  rewrite !Byte.unsigned_repr in Hrepr; rep_lia.
 Qed.
 
 Lemma find_lost_NoDup: forall l k,
+  0 <= k <= Byte.max_unsigned ->
   NoDup (find_lost l k).
 Proof.
-  move => l k. apply find_lost_found_aux_NoDup'; try by [].
-  apply Ziota_NoDup.
-Qed.
+  move => l k Hk. apply find_lost_found_aux_NoDup'; try by [].
+  apply Ziota_NoDup. move => x y. rewrite !Ziota_In; try lia.
+  move => Hx Hy. apply byte_repr_inj; rep_lia.
+Qed. 
 
 (*the first part of the found array*)
-Definition find_found (stats: list Z) (k: Z) : list Z :=
-  find_lost_found_aux (fun x => negb (Z.eq_dec x 1%Z)) id nil stats (Ziota 0 k).
+Definition find_found (stats: list byte) (k: Z) : list byte :=
+  find_lost_found_aux (fun x => negb (Z.eq_dec (Byte.signed x) 1%Z)) Byte.repr nil stats (Ziota 0 k).
 
 Lemma find_found_bound: forall l k,
-  0 <= k ->
-  Forall (fun x : Z => 0 <= x < k) (find_found l k).
+  0 <= k <= Byte.max_unsigned ->
+  Forall (fun x => 0 <= Byte.unsigned x < k) (find_found l k).
 Proof.
-  move => l k Hk. apply find_lost_found_aux_bound; try by []. move => x. by rewrite Ziota_In; lia.
-Qed.
+  move => l k Hk. apply find_lost_found_aux_bound => [|//].
+  rewrite Forall_Znth => i. rewrite Zlength_Ziota //; try lia.
+  move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
+Qed. 
 
 Lemma find_found_NoDup: forall l k,
+  0 <= k <= Byte.max_unsigned ->
   NoDup (find_found l k).
 Proof.
-  move => l k. apply find_lost_found_aux_NoDup'; try by [].
-  apply Ziota_NoDup.
-Qed.
+  move => l k Hk. apply find_lost_found_aux_NoDup'; try by [].
+  apply Ziota_NoDup. move => x y. rewrite !Ziota_In; try lia.
+  move => Hx Hy. apply byte_repr_inj; rep_lia.
+Qed. 
 
 (*Lost and found are complements*)
 Lemma find_lost_found_comp_nat: forall stats k,
-  map (Z.to_nat) (find_found stats k) =
-  nat_comp (Z.to_nat k) (map Z.to_nat (find_lost stats k)).
+  0 <= k <= Byte.max_unsigned ->
+  map Z.to_nat (map Byte.unsigned (find_found stats k)) =
+  nat_comp (Z.to_nat k) (map Z.to_nat (map Byte.unsigned (find_lost stats k))).
 Proof.
   move => stats k. rewrite /find_found /find_lost /Ziota /=.
-  elim : (Z.to_nat k) => [//= | n IH]. rewrite nat_comp_plus_one !iota_plus_1 /= !map_cat /= !add0n !find_lost_found_aux_app /=.
-  case: (Z.eq_dec (Znth (Z.of_nat n) stats) 1) => [/= Hn1 | /= Hn0].
+  move => Hk. have: (Z.to_nat k <= Z.to_nat Byte.max_unsigned)%coq_nat by lia. rewrite {Hk}.
+  elim : (Z.to_nat k) => [//= | n IH Hbound].
+  rewrite nat_comp_plus_one !iota_plus_1 /= !map_cat /= !add0n !find_lost_found_aux_app /=.
+  case: (Z.eq_dec (Byte.signed (Znth (Z.of_nat n) stats)) 1) => [/= Hn1 | /= Hn0].
   - have->:n
     \in [seq Z.to_nat i
-           | i <- find_lost_found_aux (fun x : Z => Z.eq_dec x 1) id [::] stats
-                    [seq Z.of_nat y | y <- iota 0 n] ++ [:: Z.of_nat n]]
-    by rewrite map_cat /= mem_cat Nat2Z.id in_cons eq_refl orbT.
-    rewrite map_cat /= Nat2Z.id nat_comp_app. apply IH.
+           | i <- [seq Byte.unsigned i
+                     | i <- find_lost_found_aux (fun x : byte => Z.eq_dec (Byte.signed x) 1) Byte.repr
+                              [::] stats [seq Z.of_nat y | y <- iota 0 n] ++ [:: 
+                            Byte.repr (Z.of_nat n)]]]. {
+    rewrite !map_cat /= Byte.unsigned_repr; try rep_lia. by rewrite Nat2Z.id mem_cat in_cons eq_refl orbT. }
+    rewrite !map_cat /= Byte.unsigned_repr; try rep_lia. rewrite Nat2Z.id nat_comp_app. apply IH. lia.
   - have->:n
     \in [seq Z.to_nat i
-           | i <- find_lost_found_aux (fun x : Z => Z.eq_dec x 1) id [::] stats
-                    [seq Z.of_nat y | y <- iota 0 n]] = false. {
+           | i <- [seq Byte.unsigned i
+                     | i <- find_lost_found_aux (fun x : byte => Z.eq_dec (Byte.signed x) 1) Byte.repr
+                              [::] stats [seq Z.of_nat y | y <- iota 0 n]]] = false. {
     apply /negPf /negP; rewrite in_mem_In in_map_iff => [[x [Hxn Hinx]]].
-    subst. apply (@find_lost_found_aux_in _ _ _ _  x) in Hinx. lia.
-    move => y. rewrite in_map_iff => [[x' [Hx' Hin]]]. subst. move: Hin.
+    subst. move: Hinx; rewrite in_map_iff => [[y [Hyn Hiny]]]. subst.
+    apply (@find_lost_found_aux_in _ _ _ _  (Byte.unsigned y)) in Hiny. lia. rep_lia.
+    rewrite Forall_forall => x.  rewrite in_map_iff => [[x' [Hx' Hin]]]. subst. move: Hin.
     rewrite -in_mem_In mem_iota add0n => /andP[/leP Hx0 /ltP Hxx]. lia. }
-    by rewrite map_cat /= Nat2Z.id IH.
+    rewrite !map_cat /= Byte.unsigned_repr; try rep_lia. rewrite Nat2Z.id IH //. lia.
 Qed.
 
 Lemma find_lost_found_comp: forall stats k,
-  0 <= k ->
-  Z_ord_list (find_found stats k) k =
-  (ord_comp (Z_ord_list (find_lost stats k) k)).
+  0 <= k <= Byte.max_unsigned ->
+  byte_ord_list (find_found stats k) k =
+  (ord_comp (byte_ord_list (find_lost stats k) k)).
 Proof.
   (*do widen_ord stuff separately*)
-  move => stats k Hk. rewrite {1}/Z_ord_list /ord_comp find_lost_found_comp_nat.
+  move => stats k Hk. rewrite {1}/byte_ord_list {1}/Z_ord_list /ord_comp find_lost_found_comp_nat.
   f_equal. f_equal. pose proof (find_lost_bound stats Hk) as Hbound.
    have[H0k | H0k]: k = 0%Z \/ 0 < k by lia.
   - subst. by [].
   - apply Znth_eq_ext.
-    + by rewrite !Zlength_map Z_ord_list_Zlength.
-    + move => i. rewrite Zlength_map => Hi.
+    + by rewrite !Zlength_map byte_ord_list_Zlength.
+    + move => i. rewrite !Zlength_map => Hi.
       have Hinhab: Inhabitant 'I_(Z.to_nat k). apply (ord_zero H0k).
       rewrite !Znth_map //=.
-      * by rewrite Z_ord_list_Znth'.
-      * by rewrite Z_ord_list_Zlength.
+      * rewrite byte_ord_list_Znth' //. lia.
+      * by rewrite byte_ord_list_Zlength.
+      * by rewrite Zlength_map.
+  - by [].
 Qed.
 
 (*The following is weaker but needed in the decoder correctness*)
 Lemma find_lost_found_in: forall l k x,
-  0 <= x < k ->
+  k <= Byte.max_unsigned ->
+  0 <= Byte.unsigned x < k ->
   In x (find_found l k) <-> ~ In x (find_lost l k).
 Proof.
-  move => l k x Hxk. rewrite !find_lost_found_aux_in_spec /= !binop_lemmas2.False_or.
-  have Hin: In x (Ziota 0 k) by rewrite Ziota_In; lia.
+  move => l k x Hk Hxk.
+  have Hiota: Forall (fun x0 : Z => 0 <= x0 <= Byte.max_unsigned) (Ziota 0 k). 
+    rewrite Forall_Znth Zlength_Ziota; try lia. move => i Hi. rewrite Znth_Ziota; try lia.
+  rewrite !find_lost_found_aux_in_spec //= !binop_lemmas2.False_or.
+  have Hin: In (Byte.unsigned x) (Ziota 0 k) by rewrite Ziota_In; lia.
   have Hand: forall (P Q: Prop), P -> ((P /\ Q) <-> Q) by tauto. rewrite !Hand {Hand} //.
   symmetry. apply rwN. apply idP.
 Qed.
@@ -252,7 +291,7 @@ Defined.
 (*Parities are represented as a list (option (list byte)), representing whether the parity packet is there
   or not. We will translate this into Vundef or Vptr as needed*)
 
-Definition find_parity_aux (f: Z -> Z) (par: list (option (list byte))) (base : list Z) (l: list Z) :=
+Definition find_parity_aux (f: Z -> byte) (par: list (option (list byte))) (base : list byte) (l: list Z) :=
   fold_left (fun acc x => match (Znth x par) with
                           | None => acc
                           | Some _ => acc ++ [:: f x]
@@ -278,51 +317,38 @@ Proof.
   - by apply IH.
 Qed.
 
-Lemma find_parity_aux_map: forall f par b1 b2 l,
-  map f b1 = b2 ->
-  map f (find_parity_aux id par b1 l) = find_parity_aux f par b2 l.
+Lemma find_parity_aux_map: forall (f: Z -> byte) par b1 b2 l,
+  Forall (fun x => 0 <= x <= Byte.max_unsigned) l ->
+  map (fun x => f (Byte.unsigned x)) b1 = b2 ->
+  map (fun x => f (Byte.unsigned x)) (find_parity_aux Byte.repr par b1 l) = find_parity_aux f par b2 l.
 Proof.
-  move => f par b1 b2 l. move: b1 b2. elim : l => [//= | h t /= IH b1 b2 Hb12].
-  apply IH. case Hh : (Znth h par) => [o |].
-  - by rewrite map_cat /= Hb12.
-  - by [].
+  move => f par b1 b2 l. move: b1 b2. elim : l => [//= | h t /= IH b1 b2 Hbound Hb12].
+  have Hhbound: (0 <= h <= Byte.max_unsigned) by apply Forall_inv in Hbound. apply Forall_inv_tail in Hbound.
+  apply IH => [//|]. case Hh : (Znth h par) => [o |//].
+  by rewrite map_cat /= Hb12 Byte.unsigned_repr.
 Qed.
 
 Lemma find_parity_aux_map': forall f par l,
-  map f (find_parity_aux id par nil l) = find_parity_aux f par nil l.
+  Forall (fun x : Z => 0 <= x <= Byte.max_unsigned) l ->
+  map (fun x => f (Byte.unsigned x)) (find_parity_aux Byte.repr par nil l) = find_parity_aux f par nil l.
 Proof.
-  move => f par l. by apply find_parity_aux_map.
+  move => f par l Hl. by apply find_parity_aux_map.
 Qed.
-  
 
 Lemma find_parity_aux_bound: forall f pars base l b,
-  (forall x, In x l -> 0 <= f x < b) ->
-  (forall x, In x base -> 0 <= x < b) ->
-  Forall (fun x : Z => 0 <= x < b) (find_parity_aux f pars base l).
+  Forall (fun x => 0 <= Byte.unsigned (f x) < b) l ->
+  Forall (fun x => 0 <= Byte.unsigned x < b) base ->
+  Forall (fun x => 0 <= Byte.unsigned x < b) (find_parity_aux f pars base l).
 Proof.
-  move => f pars base l b Hf Hbase. rewrite /find_parity_aux Forall_forall. move : base Hbase Hf.
-  elim : l => [ //= | h t /= IH base Hbase Hf x].
-  case Hh: (Znth h pars) => [y /= | //=]; apply IH; rewrite //=.
-  - move => z Hin. apply in_app_or in Hin. case : Hin => [Hin | Hzh].
+  move => f pars base l b. rewrite /find_parity_aux !Forall_forall. move : base.
+  elim : l => [ //= | h t /= IH base Hf Hbase x].
+  case Hh: (Znth h pars) => [y /= | //=]; apply IH; rewrite //= => z Hin.
+  - apply Hf. by right.
+  - apply in_app_or in Hin. case : Hin => [Hin | Hzh].
     + by apply Hbase.
-    + case : Hzh => [Hzh | Hfalse]; rewrite //. subst. apply Hf. by left.
-  - move => z Hin. apply Hf. by right.
-  - move => z Hin. apply Hf. by right.
+    + case : Hzh => [Hzh | //]. subst. apply Hf. by left.
+  - apply Hf. by right.
 Qed. 
-(*maybe we don't need this*)
-Lemma find_parity_aux_in: forall f par base l x,
-  In x (find_parity_aux f par base l) ->
-  In x base \/ exists y, f y = x /\ In y l.
-Proof.
-  move => f par base l x. move : base. elim : l => [//= base Hbase | h t /= IH base].
-  by left. case Hh : (Znth h par) => [y /= | //=]. move => Hin. apply IH in Hin.
-  case: Hin => [Hbaseh | Hxy].
-  - apply in_app_or in Hbaseh. case : Hbaseh => [Hin | [Hxh | Hfalse]]; rewrite //.
-    by left. right. exists h. split. by []. by left.
-  - case Hxy => [y' [Hfxy' Hyt]]. right. exists y'. split. by []. by right.
-  - move => Hin. apply IH in Hin. case : Hin => [Hin | [y [Hxy Hiny]]]. by left.
-    right. exists y. split. by []. by right.
-Qed.
 
 Lemma find_parity_aux_NoDup: forall f par base l,
   NoDup base ->
@@ -358,17 +384,20 @@ Proof.
 Qed.
 
 Lemma find_parity_aux_in_iff: forall par base l x,
-  In x (find_parity_aux id par base l) <-> In x base \/ (In x l /\ exists p, Znth x par = Some p).
+  Forall (fun x => 0 <= x <= Byte.max_unsigned) l ->
+  In x (find_parity_aux Byte.repr par base l) <-> 
+  In x base \/ (In (Byte.unsigned x) l /\ exists p, Znth (Byte.unsigned x) par = Some p).
 Proof.
-  move => par base l x. move: base. elim : l => [//= base | h t /= IH base].
+  move => par base l x. move: base. elim : l => [//= base | h t /= IH base Hbound].
   - by split => [ Hin //| [Hin // | [Hfalse Hex //]]]; left.
-  - case Hnth : (Znth h par) => [c |]; rewrite IH /=.
+  - have Hhbound: 0 <= h <= Byte.max_unsigned by apply Forall_inv in Hbound.
+    apply Forall_inv_tail in Hbound. case Hnth : (Znth h par) => [c |]; rewrite IH //=.
     + rewrite in_app_iff /= or_assoc binop_lemmas2.or_False. apply or_iff_compat_l. split.
       * move => [Hxh | [Hint Hex]]. 
-        -- subst. split. by left. by exists c.
+        -- subst. rewrite Byte.unsigned_repr; try rep_lia. split. by left. by exists c.
         -- split. by right. by [].
       * move => [[Hxh | Hin] Hex].
-        -- subst. by left.
+        -- subst. rewrite Byte.repr_unsigned. by left.
         -- right. by split.
     + apply or_iff_compat_l. split.
       * move => [Hin Hex]. split. by right. by [].
@@ -376,42 +405,47 @@ Proof.
 Qed. 
 
 Definition find_parity_rows (par: list (option (list byte))) (c: Z) :=
-  find_parity_aux id par nil (Ziota 0 c).
+  find_parity_aux Byte.repr par nil (Ziota 0 c).
 
 Lemma find_parity_rows_bound: forall par c,
-  0 <= c ->
-  Forall (fun x => 0 <= x < c) (find_parity_rows par c).
+  0 <= c <= Byte.max_unsigned ->
+  Forall (fun x => 0 <= Byte.unsigned x < c) (find_parity_rows par c).
 Proof.
   move => par c Hc.
-  apply find_parity_aux_bound; rewrite //=.
-  move => x. rewrite Ziota_In; lia.
+  apply find_parity_aux_bound; rewrite //=. rewrite Forall_Znth => i.
+  rewrite Zlength_Ziota; try lia. move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
 Qed.
 
 Lemma find_parity_rows_NoDup: forall par c,
+  0 <= c <= Byte.max_unsigned ->
   NoDup (find_parity_rows par c).
 Proof.
-  move => par c. apply find_parity_aux_NoDup'.
-  apply Ziota_NoDup.
-  by [].
+  move => par c Hc. apply find_parity_aux_NoDup'.
+  apply Ziota_NoDup. move => x y. rewrite !Ziota_In; try lia.
+  move => Hx Hy. apply byte_repr_inj; rep_lia.
 Qed.
 
 Definition find_parity_found (par: list (option (list byte))) (c: Z) (max_n : Z) :=
-  find_parity_aux (fun x => max_n - 1 - x) par nil (Ziota 0 c).
+  find_parity_aux (fun x => Byte.repr (max_n - 1 - x)) par nil (Ziota 0 c).
 
 Lemma find_parity_found_bound: forall par c max_n,
   0 <= c < max_n ->
-  Forall (fun x => 0 <= x < max_n) (find_parity_found par c max_n).
+  max_n <= Byte.max_unsigned ->
+  Forall (fun x => 0 <= Byte.unsigned x < max_n) (find_parity_found par c max_n).
 Proof.
-  move => par c max_n Hc. apply find_parity_aux_bound; try by [].
-  move => x. rewrite Ziota_In; lia.
+  move => par c max_n Hc Hn.
+  apply find_parity_aux_bound; rewrite //=. rewrite Forall_Znth => i.
+  rewrite Zlength_Ziota; try lia. move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
 Qed.
 
 Lemma find_parity_found_NoDup: forall par c max_n,
-  0 <= c ->
+  0 <= c < max_n->
+  max_n <= Byte.max_unsigned ->
   NoDup (find_parity_found par c max_n).
 Proof.
-  move => par c max_n Hc. apply find_parity_aux_NoDup'.
-  apply Ziota_NoDup. move => x y. rewrite !Ziota_In; lia.
+  move => par c max_n Hc Hn. apply find_parity_aux_NoDup'.
+  apply Ziota_NoDup. move => x y. rewrite !Ziota_In; try lia.
+  move => Hx Hy Hrepr. apply byte_repr_inj in Hrepr; rep_lia.
 Qed.
 
 (*The relationship between these two functions*)
@@ -423,22 +457,33 @@ Proof.
 Qed.
 
 Lemma find_parity_rows_found_map: forall par c max_n,
-  map (fun x => max_n - 1 - x) (find_parity_rows par c) = find_parity_found par c max_n.
+  0 <= c <= Byte.modulus ->
+  map (fun x => Byte.repr (max_n - 1 - Byte.unsigned x)) (find_parity_rows par c) = find_parity_found par c max_n.
 Proof.
-  move => par c max_n. apply find_parity_aux_map'.
+  move => par c max_n Hc. remember (fun x => Byte.repr (max_n - 1 - x)) as f.
+  have->: (fun x => Byte.repr (max_n - 1 - Byte.unsigned x)) = (fun x => f (Byte.unsigned x)).
+    by rewrite Heqf.
+  rewrite find_parity_aux_map' //. by subst.
+  rewrite Forall_Znth => i. rewrite Zlength_Ziota; try lia. move => Hic.
+  rewrite Znth_Ziota; rep_lia.
 Qed.
 
 Lemma find_parity_rows_found_Znth: forall par c max_n i,
+  0 <= c < max_n->
+  max_n <= Byte.max_unsigned ->
   0 <= i < Zlength (find_parity_rows par c) ->
-  Znth i (find_parity_found par c max_n) = max_n - 1 - Znth i (find_parity_rows par c).
+  Byte.unsigned (Znth i (find_parity_found par c max_n)) = max_n - 1 - Byte.unsigned (Znth i (find_parity_rows par c)).
 Proof.
-  move => par c max_n i Hi. by rewrite -find_parity_rows_found_map Znth_map.
+  move => par c max_n i Hc Hn Hi. rewrite -find_parity_rows_found_map; try rep_lia. rewrite Znth_map //.
+  rewrite Byte.unsigned_repr; try rep_lia. have Hc': 0 <= c <= Byte.max_unsigned  by rep_lia.
+  pose proof (find_parity_rows_bound par Hc') as Hbound.
+  move : Hbound. rewrite Forall_Znth => /(_ i Hi). rep_lia.
 Qed.
 
-Lemma forall_lt_leq_trans: forall n m (l: list Z),
+Lemma forall_lt_leq_trans: forall n m l,
   n <= m ->
-  Forall (fun x : Z => 0 <= x < n) l ->
-  Forall (fun x : Z => 0 <= x < m) l.
+  Forall (fun x => 0 <= Byte.unsigned x < n) l ->
+  Forall (fun x => 0 <= Byte.unsigned x < m) l.
 Proof.
   move => n m l Hnm. apply Forall_impl. move => a Ha. lia. 
 Qed. 
@@ -473,8 +518,10 @@ Qed.
 (** The Decoder  *)
 
 (*First, we will do everything in terms of list matrices, then bring back to packets of variable length*)
+(*TODO: see about all the "map Byte.unsigned" stuff, but need to do somewhere bc we are ultimately indexing
+  with Z, and need Ziota at other points - probably just keep*)
 Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (option (list byte))) 
-  (stats: list Z) : lmatrix B :=
+  (stats: list byte) : lmatrix B :=
   (*populate all of the "arrays"*)
   let lost := find_lost stats k in
   let found1 := find_found stats k in 
@@ -485,16 +532,16 @@ Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (op
   let parmx := fill_missing c parities in
   let xh := Zlength lost in
   (*step 1: find w' and v*)
-  let w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) row lost in
+  let w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) (map Byte.unsigned row) (map Byte.unsigned lost) in
   let v := find_invmx_list w' xh in
   (*step 2: find w'', d, and s*)
-  let w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) row found in
-  let d' := col_mx_list (submx_rows_cols_list input (k - xh) c found1 (Ziota 0 c))
-              (submx_rows_cols_list parmx xh c row (Ziota 0 c)) (k-xh) xh c in
+  let w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row) (map Byte.unsigned found) in
+  let d' := col_mx_list (submx_rows_cols_list input (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+              (submx_rows_cols_list parmx xh c (map Byte.unsigned row) (Ziota 0 c)) (k-xh) xh c in
   let s := list_lmatrix_multiply xh k c w'' d' in
   (*step 3: find missing packets and fill in*)
   let d := list_lmatrix_multiply xh xh c v s in
-  fill_rows_list k c xh input d lost.
+  fill_rows_list k c xh input d (map Byte.unsigned lost).
 
 
 Lemma max_h_n: ((Z.to_nat fec_max_h <= Z.to_nat (fec_n - 1)))%N.
@@ -553,19 +600,19 @@ Lemma strong_inv_list_partial: forall k xh h stats parities,
   Zlength (find_parity_rows parities h) = Zlength (find_lost stats k) ->
   Zlength (find_parity_rows parities h) = xh ->
   strong_inv_list xh xh (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) 
-    (find_parity_rows parities h) (find_lost stats k)) 0%Z.
+    (map Byte.unsigned (find_parity_rows parities h)) (map Byte.unsigned (find_lost stats k))) 0%Z.
 Proof.
   move => k xh h stats parities Hxh Hh Hhmax Hkn Hlens Hlenxh.
   rewrite /strong_inv_list. case : (range_le_lt_dec 0 0 xh); try lia.
   move => Hxh0. case : (Z_le_lt_dec xh xh); try lia. move => Hxhtriv.
   remember (find_parity_rows parities h) as row.
-  have Hallrow: Forall (fun x => 0 <= x < h) row.
-    rewrite Heqrow. by apply find_parity_rows_bound.
-  have Hallrow': Forall (fun x => 0 <= x < fec_max_h) row.
+  have Hallrow: Forall (fun x => 0 <= Byte.unsigned x < h) row.
+    rewrite Heqrow. apply find_parity_rows_bound. rep_lia.
+  have Hallrow': Forall (fun x => 0 <= Byte.unsigned x < fec_max_h) row.
     eapply Forall_impl. 2: apply Hallrow. rewrite /=. lia.
-  have Halllost: Forall (fun x => 0 <= x < k) (find_lost stats k).
-    apply find_lost_bound; lia.
-  have Halllost': Forall (fun x => 0 <= x < fec_n - 1) (find_lost stats k).
+  have Halllost: Forall (fun x => 0 <= Byte.unsigned x < k) (find_lost stats k).
+    apply find_lost_bound; rep_lia.
+  have Halllost': Forall (fun x => 0 <= Byte.unsigned x < fec_n - 1) (find_lost stats k).
     eapply Forall_impl. 2: apply Halllost. rewrite /=. lia.
   rewrite (@submx_rows_cols_rev_list_spec _ _ fec_max_h (fec_n - 1)) //=; try rep_lia.
   move => Hmaxh Hn. rewrite weight_mx_spec /weights /submx_rows_cols_rev. 
@@ -573,25 +620,26 @@ Proof.
   have Hhn: (Z.to_nat fec_max_h <= Z.to_nat (fec_n - 1))%N by (apply /leP; rep_lia).
   (*Need to switch defaults for applying theorem*)
   rewrite (submx_rows_cols_default _ (ord_zero Hmaxh) (ord_zero Hn) (Ordinal Hhnat) ( widen_ord Hhn (Ordinal Hhnat))).
-  + have->: (le_Z_N Hxhtriv) = (leqnn (Z.to_nat xh)) by apply ProofIrrelevance.proof_irrelevance.
+  + have->: (le_Z_N Hxhtriv) = (leqnn (Z.to_nat xh)) by apply bool_irrelevance.
     apply any_submx_strong_inv; rewrite //=.
     * by rewrite weight_list_uniq. 
     * apply weight_list_size.
-    * apply Z_ord_list_uniq. eapply Forall_impl. 2: apply Hallrow. move => a; rewrite /=. lia.
-      subst. apply find_parity_rows_NoDup.
+    * apply byte_ord_list_uniq. subst. apply find_parity_rows_NoDup. rep_lia.
     * rewrite map_inj_uniq. 2: { apply rev_ord_inj. }
-      apply Z_ord_list_uniq. eapply Forall_impl. 2: apply find_lost_bound; lia. rewrite //=.
-      lia. apply find_lost_NoDup.
-    * by rewrite size_map !size_length -!ZtoNat_Zlength !Z_ord_list_Zlength // Hlens.
-    * by rewrite size_length -ZtoNat_Zlength Z_ord_list_Zlength // Hlenxh.
+      apply byte_ord_list_uniq. apply find_lost_NoDup; rep_lia.
+    * by rewrite size_map !size_length -!ZtoNat_Zlength !byte_ord_list_Zlength // Hlens.
+    * by rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength // Hlenxh.
     * move => x /mapP[y Hyin Hxy]. subst. rewrite /=. 
-      apply Z_ord_list_In in Hyin. 2: eapply Forall_impl. 3: apply Halllost. 2: rewrite /=; lia.
-      move: Halllost; rewrite Forall_forall => Hallost. apply Hallost in Hyin.
+      apply Z_ord_list_In in Hyin. move: Hyin. rewrite in_map_iff => [[y' [Hy' Hiny']]].
+      move: Halllost; rewrite Forall_forall => Hallost. apply Hallost in Hiny'.
       rewrite leq_subRL. 2: apply /ltP; lia. rewrite addnC -leq_subRL. 2: apply /leP; lia. apply /ltP.
       have->:(Z.to_nat (fec_n - 1) - Z.to_nat fec_max_h)%N = (Z.to_nat (fec_n - 1) - Z.to_nat fec_max_h)%coq_nat by [].
-      lia.
-  + by rewrite size_length -ZtoNat_Zlength Z_ord_list_Zlength // Hlenxh.
-  + by rewrite size_map size_length -ZtoNat_Zlength Z_ord_list_Zlength // -Hlens Hlenxh.
+      lia. apply Z_byte_list_bound. eapply Forall_impl; [| apply Halllost].
+      move => a /=. lia.
+  + by rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength // Hlenxh.
+  + by rewrite size_map size_length -ZtoNat_Zlength byte_ord_list_Zlength // -Hlens Hlenxh.
+  + by apply Z_byte_list_bound.
+  + by apply Z_byte_list_bound.
 Qed.
 
 (*Trivial case of xh = 0*)
@@ -620,7 +668,7 @@ Lemma decode_list_mx_equiv: forall k c h xh packets parities stats (Hk: 0 < k <=
     decoder_mult max_h_n (k_bound_proof (proj2 Hk)) weight_list_size (ord_zero h_pos) (ord_zero n_pos)
       (ord_zero (proj1 Hk)) (ord_zero Hc) (lmatrix_to_mx k c (extend_mx k c packets))
       (lmatrix_to_mx h c (fill_missing c parities))
-      (Z_ord_list lost k) (Z_ord_list row h)
+      (byte_ord_list lost k) (byte_ord_list row h)
       (le_Z_N (proj2 Hh)) (ord_zero (proj1 Hh)) (le_Z_N Hxh).
 Proof.
   move => k c h xh packets parities stats Hk Hc Hh Hxh. rewrite /=.
@@ -631,14 +679,15 @@ Proof.
   - subst. rewrite (@decode_list_mx_zero k c (Zlength parities)) //.
     rewrite decoder_mult_0 //. rewrite size_length -ZtoNat_Zlength.
     rewrite Z_ord_list_Zlength. all: try (rewrite Hxh0; lia).
-    apply find_lost_bound; lia.
+    rewrite Zlength_map; lia.
+    apply Z_byte_list_bound. apply find_lost_bound; rep_lia.
   - (*Things we will need to know about the lists*)
-    have Hlostbound: Forall (fun x : Z => 0 <= x < k) (find_lost stats k) by (apply find_lost_bound; lia).
-    have Hrowbound: Forall (fun x : Z => 0 <= x < h) row. {
-      subst. apply find_parity_rows_bound. lia. }
-    have Hfoundbound: Forall (fun x : Z => 0 <= x < k) (find_found stats k). apply find_found_bound; lia.
-    have Hfoundpbound: Forall (fun x : Z => 0 <= x < fec_n - 1) foundp.
-      subst. apply find_parity_found_bound. lia. 
+    have Hlostbound: Forall (fun x => 0 <= Byte.unsigned x < k) (find_lost stats k) by (apply find_lost_bound; rep_lia).
+    have Hrowbound: Forall (fun x => 0 <= Byte.unsigned x < h) row. {
+      subst. apply find_parity_rows_bound; rep_lia. }
+    have Hfoundbound: Forall (fun x => 0 <= Byte.unsigned x < k) (find_found stats k) by apply find_found_bound; rep_lia.
+    have Hfoundpbound: Forall (fun x => 0 <= Byte.unsigned x < fec_n - 1) foundp.
+      subst. apply find_parity_found_bound; rep_lia. 
     (*have Hxh0: 0 <= xh by list_solve.*)
     rewrite /decode_list_mx Hlenpar Hlenlost /decoder_mult fill_rows_list_spec //; try lia.
     move => Hk0. f_equal.
@@ -646,57 +695,66 @@ Proof.
     2 : { apply list_lmatrix_multiply_wf; rep_lia. }
     2 : { by apply ord_inj. }
     rewrite find_invmx_list_spec. 2 : {
-      apply strong_inv_list_partial; try lia. by subst. by subst. } 
+      apply strong_inv_list_partial; try lia. by subst. by subst. }
+    2 : by apply Z_byte_list_bound.
+    2: by rewrite Zlength_map.
     f_equal.
     + rewrite (@submx_rows_cols_rev_list_spec _ _ (fec_max_h) (fec_n - 1) xh xh) //; try lia.
       * move => Hh0 Hn0. f_equal. f_equal.
         -- apply weight_mx_spec.
-        -- subst; by apply Z_ord_list_widen.
-        -- by apply Z_ord_list_widen.
+        -- subst; by apply byte_ord_list_widen.
+        -- by apply byte_ord_list_widen.
         -- by apply ord_inj.
         -- by apply ord_inj.
-      * subst. by apply (forall_lt_leq_trans (proj2 Hh)).
-      * have Hkn: k <= fec_n - 1 by lia. by apply (forall_lt_leq_trans Hkn). 
+      * subst. apply Z_byte_list_bound. by apply (forall_lt_leq_trans (proj2 Hh)).
+      * have Hkn: k <= fec_n - 1 by lia. apply Z_byte_list_bound. by apply (forall_lt_leq_trans Hkn). 
     + rewrite list_lmatrix_multiply_correct. 2: { apply submx_rows_cols_rev_list_wf; lia. }
       2 : { have Hkxh: k = (k - xh) + xh by lia. rewrite {5}Hkxh. apply col_mx_list_wf; lia. }
       rewrite (@submx_rows_cols_rev_list_spec _ _ fec_max_h) //; try lia.
-      2 : {  subst; by apply (forall_lt_leq_trans (proj2 Hh)). }
-      2 : { subst. rewrite Forall_app. split =>[|//]. have Hkn: (k <= fec_n - 1) by lia. by apply (forall_lt_leq_trans Hkn). }
+      2 : {  subst; apply Z_byte_list_bound; by apply (forall_lt_leq_trans (proj2 Hh)). }
+      2 : { subst. rewrite map_cat Forall_app. split; apply Z_byte_list_bound.
+            have Hkn: (k <= fec_n - 1) by lia. by apply (forall_lt_leq_trans Hkn). by []. }
       move => Hh0 Hn0. f_equal.
       * f_equal.
         -- apply weight_mx_spec.
-        -- subst; by apply Z_ord_list_widen.
-        -- rewrite Z_ord_list_app. f_equal.
-          ++ rewrite (Z_ord_list_widen (k_leq_n (k_bound_proof (proj2 Hk)))) // find_lost_found_comp //. lia.
+        -- subst; by apply byte_ord_list_widen.
+        -- rewrite byte_ord_list_fold byte_ord_list_app. f_equal.
+          ++ rewrite (byte_ord_list_widen (k_leq_n (k_bound_proof (proj2 Hk)))) // find_lost_found_comp //. rep_lia.
           ++ have Hinhab: Inhabitant 'I_(Z.to_nat (fec_n - 1)) by apply (ord_zero Hn0).
-             have Hfoundpbound': Forall (fun x : Z => 0 <= x < fec_n - 1) (find_parity_found parities h (fec_n - 1)) by subst.
+             have Hfoundpbound': Forall (fun x => 0 <= Byte.unsigned x < fec_n - 1) (find_parity_found parities h (fec_n - 1)) by subst.
              apply Znth_eq_ext. 
-             ** rewrite Zlength_map !Z_ord_list_Zlength //. subst. by rewrite find_parity_rows_found_Zlength.
-             ** move => i. rewrite !Z_ord_list_Zlength //  => Hi.
+             ** rewrite Zlength_map !Z_ord_list_Zlength //. subst. by rewrite !Zlength_map find_parity_rows_found_Zlength.
+                by apply Z_byte_list_bound. by apply Z_byte_list_bound.
+             ** move => i. rewrite !byte_ord_list_Zlength //  => Hi.
                 have Hinhabh: Inhabitant 'I_(Z.to_nat h). apply (ord_zero (proj1 Hh)).
                 rewrite Znth_map //.
                 { have Hilen: 0 <= i < Zlength row. subst. by rewrite find_parity_rows_found_Zlength in Hi.
-                  rewrite !Z_ord_list_Znth' //; try lia. apply ord_inj. subst. rewrite /= find_parity_rows_found_Znth //=.
-                  have->: (Z.to_nat (fec_n - 1) - 1 - Z.to_nat (Znth i (find_parity_rows parities (Zlength parities))))%N =
-                        ((Z.to_nat (fec_n - 1) - 1)%coq_nat - Z.to_nat (Znth i (find_parity_rows parities (Zlength parities))))%coq_nat by [].
-                  rewrite !Z2Nat.inj_sub; try lia. move: Hrowbound; rewrite Forall_Znth => /(_ i Hilen). lia.
+                  rewrite !Z_ord_list_Znth' //; try lia. by apply Z_byte_list_bound.
+                  by rewrite Zlength_map. by apply Z_byte_list_bound. by rewrite Zlength_map.
+                  move => Hbound1 Hlen1 Hbound2 Hlen2.
+                  apply ord_inj. subst. rewrite /= !Znth_map // find_parity_rows_found_Znth //=; try rep_lia.
+                  have->: (Z.to_nat (fec_n - 1) - 1 - Z.to_nat (Byte.unsigned (Znth i (find_parity_rows parities (Zlength parities)))))%N =
+                        ((Z.to_nat (fec_n - 1) - 1)%coq_nat - Z.to_nat (Byte.unsigned (Znth i (find_parity_rows parities (Zlength parities)))))%coq_nat by [].
+                  rewrite !Z2Nat.inj_sub; rep_lia.
                 }
-                { subst. rewrite Z_ord_list_Zlength //. by rewrite find_parity_rows_found_Zlength in Hi.
+                { subst. rewrite Z_ord_list_Zlength //. rewrite find_parity_rows_found_Zlength in Hi.
+                  by rewrite Zlength_map. by apply Z_byte_list_bound.
                 }
         -- by apply ord_inj.
         -- by apply ord_inj.
       * rewrite (@lmatrix_to_mx_cast _ k ((k - xh) + xh) c c). lia. move => Hkxh.
         rewrite col_mx_list_spec; try lia. move => Hkxh0 Hxh0'. rewrite castmx_twice.
         rewrite (@submx_rows_cols_list_equiv _ _ k c (k-xh) c) //=; try lia.
-        2: { rewrite Forall_forall => y. rewrite Ziota_In; lia. }
+        2: { by apply Z_byte_list_bound. }
+        2 : { rewrite Forall_forall => y. rewrite Ziota_In; lia. }
         rewrite -matrixP => x y.
         rewrite !castmxE /= !mxE /=.
         pose proof (splitP (cast_ord (esym (etrans (Logic.eq_sym (Z2Nat.inj_add (k - xh) xh Hkxh0 Hxh0')) (Z_to_nat_eq Hkxh))) x)).
         case : X => [j /= Hj | k' /= Hk'].
         { rewrite !mxE /=. pose proof (splitP (cast_ord (esym (subnK (le_Z_N Hxh))) x)).
           case : X => [j' /= Hj' | k'' /= Hk''].
-          { rewrite !mxE /=. f_equal; f_equal. rewrite find_lost_found_comp //.
-            rewrite -Hj Hj' /=. have->:(ord_zero Hk0 = (ord_zero (proj1 Hk))) by apply ord_inj. by []. lia.
+          { rewrite !mxE /=. f_equal; f_equal. rewrite byte_ord_list_fold find_lost_found_comp //.
+            rewrite -Hj Hj' /=. have->:(ord_zero Hk0 = (ord_zero (proj1 Hk))) by apply ord_inj. by []. rep_lia.
             rewrite Z_ord_list_iota //. lia. }
           { have /ltP Hx: (x < Z.to_nat (k - xh))%N by rewrite Hj.
             move: Hk''; have->: (Z.to_nat k - Z.to_nat xh + k'')%N = ((Z.to_nat k - Z.to_nat xh)%coq_nat + k'')%coq_nat by [] => Hk''. 
@@ -712,7 +770,7 @@ Proof.
             have->: k' = k''. move: Hk'' => /eqP Hx. move: Hx. rewrite Hk' Z2Nat.inj_sub; try lia.
             have->: (Z.to_nat k - Z.to_nat xh)%coq_nat = (Z.to_nat k - Z.to_nat xh)%N by [].
             rewrite eqn_add2l => /eqP Hx. by apply ord_inj.
-            rewrite -Z_ord_list_Znth //. by subst. lia. rewrite nth_ord_enum Znth_Ziota //=. lia.
+            rewrite -Z_ord_list_Znth //. by subst. lia. by apply Z_byte_list_bound. rewrite nth_ord_enum Znth_Ziota //=. lia.
             apply Z_ord_bound; lia. apply Z_ord_bound; lia. apply Z_ord_bound; lia. }
         }
 Qed.
@@ -743,31 +801,37 @@ Lemma decoder_list_mx_correct:forall k c h xh data packets parities stats,
   Zlength data = k ->
   Forall (fun l => Zlength l <= c) data ->
   (forall l, In (Some l) parities -> Zlength l = c) ->
-  (forall i, 0 <= i < k -> Znth i stats <> 1%Z -> Znth i packets = Znth i data) ->
+  (forall i, 0 <= i < k -> Byte.signed (Znth i stats) <> 1%Z -> Znth i packets = Znth i data) ->
   parities_valid k c parities data ->
   lmatrix_to_mx k c (decode_list_mx k c packets parities stats) = (lmatrix_to_mx k c (extend_mx k c data)).
 Proof.
   move => k c h xh data packets parities stats Hkn Hc Hhh Hxhh Hxhk Hlostlen Hrowslen Hparlen Hstatslen Hpacklen 
     Hdatalen Hdatalens Hparlens Hfound Hpars.
   (*Things we need multiple times*)
-  have Hstatsun: uniq (Z_ord_list (find_lost stats k) k). { apply Z_ord_list_uniq. eapply Forall_impl.
-    2: { apply find_lost_bound; lia. } move => a. rewrite /=. lia. apply find_lost_NoDup. }
-  have Hrowsun : uniq (Z_ord_list (find_parity_rows parities h) h). { apply Z_ord_list_uniq. eapply Forall_impl.
-    2: { apply find_parity_rows_bound; lia. } move => a. rewrite /=; lia. apply find_parity_rows_NoDup. }
-  have Hstatssz: size (Z_ord_list (find_lost stats k) k) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength Z_ord_list_Zlength //=.
-    by rewrite Hlostlen. apply find_lost_bound; lia. }
-  have Hrowssz: size (Z_ord_list (find_parity_rows parities h) h) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength
-    Z_ord_list_Zlength. by rewrite Hrowslen. apply find_parity_rows_bound; lia. }
+  have Hstatsun: uniq (byte_ord_list (find_lost stats k) k). { apply byte_ord_list_uniq.  apply find_lost_NoDup. rep_lia. }
+  have Hrowsun : uniq (byte_ord_list (find_parity_rows parities h) h). { apply byte_ord_list_uniq.
+     apply find_parity_rows_NoDup. rep_lia. }
+  have Hstatssz: size (byte_ord_list (find_lost stats k) k) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength //=.
+    by rewrite Hlostlen. apply find_lost_bound; rep_lia. }
+  have Hrowssz: size (byte_ord_list (find_parity_rows parities h) h) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength
+    byte_ord_list_Zlength. by rewrite Hrowslen. apply find_parity_rows_bound; rep_lia. }
   rewrite (@decode_list_mx_equiv _ _ _ _ packets parities stats Hkn Hc Hhh Hxhk) // decoder_equivalent //=.
   - rewrite (decoder_correct (data:=(lmatrix_to_mx k c (extend_mx k c data))) max_h_n weight_list_uniq weight_list_size (ord_zero h_pos) (ord_zero n_pos) 
         (ord_zero (proj1 Hkn)) (ord_zero Hc) (le_Z_N Hxhh) ) //.
-    + move => x y. rewrite !mxE !extend_mx_spec; try (apply Z_ord_bound; lia). 
-      rewrite Z_ord_list_notin //=. 2: apply find_lost_bound; lia. rewrite -find_lost_found_in. 2: apply Z_ord_bound; lia.
-      rewrite find_lost_found_aux_in_spec /= => [[Hfalse // | [Htriv Hstats]]].
-      have Hstatsx: Znth (Z.of_nat x) stats <> 1%Z. by move : Hstats; case : (Z.eq_dec (Znth (Z.of_nat x) stats) 1%Z).
-      apply Hfound in Hstatsx. 2: apply Z_ord_bound; lia. by rewrite Hstatsx.
-    + move => x y. rewrite Z_ord_list_In. 2: apply find_parity_rows_bound; lia.
-      rewrite find_parity_aux_in_iff /= => [[ Hfalse // | [Htriv [p Hnthx]]]].
+    + move => x y. rewrite !mxE !extend_mx_spec; try (apply Z_ord_bound; lia).
+       have /ltP Hx: ((nat_of_ord x) < Z.to_nat k)%N by [].  
+      rewrite byte_ord_list_notin //=. 2: apply find_lost_bound; rep_lia. 2: rep_lia. 
+      rewrite -find_lost_found_in; try rep_lia. 2: rewrite Byte.unsigned_repr; rep_lia. 
+      rewrite find_lost_found_aux_in_spec /= => [[Hfalse // | [Htriv Hstats]] |].
+      rewrite Byte.unsigned_repr in Hstats; try rep_lia.
+      have Hstatsx: Byte.signed (Znth (Z.of_nat x) stats) <> 1%Z
+        by move : Hstats; case : (Z.eq_dec (Byte.signed (Znth (Z.of_nat x) stats)) 1%Z).
+      apply Hfound in Hstatsx. by rewrite Hstatsx. lia. rewrite Forall_forall => i.
+      rewrite Ziota_In; rep_lia. 
+    + move => x y. have /ltP Hxh: ((nat_of_ord x) < Z.to_nat h)%N by []. 
+      rewrite byte_ord_list_In. 2: apply find_parity_rows_bound; rep_lia. 2: rep_lia.
+      rewrite find_parity_aux_in_iff /= => [[ Hfalse // | [Htriv [p Hnthx]]]|].
+      rewrite Byte.unsigned_repr in Hnthx; try rep_lia.
       rewrite mxE. have Hx: (0 <= Z.of_nat x < h) by (apply Z_ord_bound; lia).
       have Hx': (0 <= Z.of_nat x < Zlength parities) by lia.
       have  Hy: (0 <= Z.of_nat y < c) by (apply Z_ord_bound; lia).
@@ -781,9 +845,9 @@ Proof.
         have->: (k_leq_n (k_bound_proof (proj2 Hkn))) = le_Z_N Hkn' by  apply bool_irrelevance.
         rewrite -weight_mx_spec. by apply encoder_spec; try lia.
       * apply Hparlens; rewrite -Hnthx. apply Znth_In. lia.
+      * rewrite Forall_forall. move => i. rewrite Ziota_In; rep_lia.
   - apply weight_list_uniq.
 Qed.
-
 
 (*For the decoder preconditions, we don't want to explicitly mention [find_lost] and [find_parity_rows], especially
   since only the length is important. So we will use [filter] instead, which should be easier to reason about*)
@@ -815,7 +879,7 @@ Qed.
   [find_lost]*)
 Lemma find_lost_filter: forall stats k,
   k = Zlength stats ->
-  Zlength (find_lost stats k) = Zlength (filter (fun x => Z.eq_dec x 1) stats).
+  Zlength (find_lost stats k) = Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats).
 Proof.
   move => stats k Hk. have Hk0: 0 <= k by list_solve.
   have ->: k = Z.of_nat (Z.to_nat k) by lia. rewrite find_lost_found_aux_filter_sublist; try lia.
@@ -861,13 +925,13 @@ Definition decoder_list k c packets parities stats lens :=
   crop_mx (decode_list_mx k c packets parities stats) lens.
 
 Theorem decoder_list_correct: forall k c h xh (data packets : list (list byte)) 
-  (parities : list (option (list byte))) (stats lens : list Z),
+  (parities : list (option (list byte))) (stats : list byte) (lens : list Z),
   0 < k <= fec_n - 1 - fec_max_h ->
   0 < c ->
   0 < h <= fec_max_h ->
   xh <= h ->
   xh <= k ->
-  Zlength (filter (fun x => Z.eq_dec x 1) stats) = xh ->
+  Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats) = xh ->
   Zlength (filter isSome parities) = xh ->
   Zlength parities = h ->
   Zlength stats = k ->
@@ -876,7 +940,7 @@ Theorem decoder_list_correct: forall k c h xh (data packets : list (list byte))
   Zlength lens = k ->
   (forall i, 0 <= i < k -> Znth i lens = Zlength (Znth i data)) ->
   Forall (fun l => Zlength l <= c) data ->
-  (forall i, 0 <= i < k -> Znth i stats <> 1%Z -> Znth i packets = Znth i data) ->
+  (forall i, 0 <= i < k -> Byte.signed (Znth i stats) <> 1%Z -> Znth i packets = Znth i data) ->
   (forall l, In (Some l) parities -> Zlength l = c) ->
   parities_valid k c parities data ->
   decoder_list k c packets parities stats lens = data.

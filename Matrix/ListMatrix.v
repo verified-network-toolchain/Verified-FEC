@@ -16,6 +16,7 @@ Require Import CommonSSR.
 Require Import ZSeq.
 Require Import Vandermonde. (*for [submx_rows_cols]*)
 Require Import ReedSolomon. (*for [fill_row]*)
+Require Import ByteFacts. (*for [byte_unsigned_inj]*)
 
 (** Converting Between Z and Ordinals*)
 
@@ -260,6 +261,107 @@ Qed.
 
 End ZOrdList. 
 
+(*We also need a Byte version for the decoder.*)
+Section ByteOrdList.
+
+Lemma Z_byte_list_bound: forall l u s,
+  Forall (fun x => l <= Byte.unsigned x < u) s ->
+  Forall (fun x => l <= x < u) (map Byte.unsigned s).
+Proof.
+  move => l u s. rewrite !Forall_Znth => Hall i. rewrite Zlength_map => Hi.
+  rewrite Znth_map //. by apply Hall.
+Qed.
+
+Definition byte_ord_list (l: list byte) (n: Z) : seq 'I_(Z.to_nat n) :=
+  Z_ord_list (map Byte.unsigned l) n.
+
+Lemma byte_ord_list_fold: forall l n,
+  Z_ord_list (map Byte.unsigned l) n = byte_ord_list l n.
+Proof.
+  by [].
+Qed.
+
+Lemma byte_ord_list_Zlength: forall n l,
+  Forall (fun x => 0 <= Byte.unsigned x < n) l ->
+  Zlength (byte_ord_list l n) = Zlength l.
+Proof.
+  move => n l Hall. rewrite Z_ord_list_Zlength. by rewrite Zlength_map.
+  by apply Z_byte_list_bound.
+Qed.
+
+Lemma byte_list_bound: forall (l: seq byte) n i,
+  Forall (fun x => 0 <= Byte.unsigned x < n) l ->
+  0 <= i < Zlength l ->
+  (Z.to_nat (Byte.unsigned (Znth i l)) < Z.to_nat n)%N.
+Proof.
+  move => l n i. rewrite Forall_Znth => /(_ i) Hin Hi. apply /ltP. lia.
+Qed.
+
+Lemma byte_ord_list_Znth': forall (l: seq byte) n i `{Inhabitant 'I_(Z.to_nat n)} (Hi: 0 <= i < Zlength l)
+  (Hall: Forall (fun x => 0 <= Byte.unsigned x < n) l),
+  0 <= n ->
+  Znth i (byte_ord_list l n) = Ordinal (byte_list_bound Hall Hi).
+Proof.
+  move => l n i Hinhab Hi Hall Hn. rewrite /byte_ord_list Z_ord_list_Znth'.
+  - by apply Z_byte_list_bound.
+  - by rewrite Zlength_map.
+  - move => Hmap Hlen. apply ord_inj. by rewrite /= Znth_map.
+  - by [].
+Qed. 
+
+Lemma byte_ord_list_uniq: forall (l: seq byte) n,
+  NoDup l ->
+  uniq (byte_ord_list l n).
+Proof.
+  move => l n Huniq. apply Z_ord_list_uniq.
+  - rewrite Forall_Znth => i. rewrite Zlength_map => Hi. rewrite Znth_map //. rep_lia.
+  - apply FinFun.Injective_map_NoDup => [|//]. move => x y. apply byte_unsigned_inj.
+Qed.
+
+
+Lemma byte_ord_list_widen: forall n m (H: (Z.to_nat n <= Z.to_nat m)%N) (l: list byte),
+  Forall (fun x => 0 <= Byte.unsigned x < n) l ->
+  byte_ord_list l m = widen_ord_seq H (byte_ord_list l n).
+Proof.
+  move => n m H l. rewrite /byte_ord_list /Z_ord_list. elim : l => [//= | h t /= IH Hforall].
+  have Hhn: (Z.to_nat (Byte.unsigned h) < Z.to_nat n)%N. apply /ltP.
+    have Hhn: (0 <= Byte.unsigned h < n) by apply (Forall_inv Hforall). lia. 
+  rewrite !insubT. by apply (ltn_leq_trans Hhn). move => Hhm.
+  rewrite /= IH. f_equal. by apply ord_inj. apply (Forall_inv_tail Hforall).
+Qed.
+
+Lemma byte_ord_list_app: forall n l1 l2,
+  byte_ord_list (l1 ++ l2) n = byte_ord_list l1 n ++ byte_ord_list l2 n.
+Proof.
+  move => n l1 l2. by rewrite /byte_ord_list !map_cat Z_ord_list_app.
+Qed.
+
+Lemma byte_ord_list_In: forall (l: seq byte) n x,
+  Forall (fun x => 0 <= Byte.unsigned x < n) l ->
+  Z.of_nat (nat_of_ord x) <= Byte.max_unsigned ->
+  x \in (byte_ord_list l n) <->
+  In (Byte.repr (Z.of_nat x)) l.
+Proof.
+  move => l n x Hall Hx. rewrite /byte_ord_list. rewrite Z_ord_list_In; last first.
+  by apply Z_byte_list_bound.  rewrite in_map_iff. split.
+  - move => [y [Hxy Hiny]]. by rewrite -Hxy Byte.repr_unsigned.
+  - move => Hin. exists (Byte.repr (Z.of_nat x)). split => [|//].
+    rewrite Byte.unsigned_repr //. rep_lia. 
+Qed.
+
+Lemma byte_ord_list_notin: forall (l: seq byte) n x,
+  Forall (fun x => 0 <= Byte.unsigned x < n) l ->
+  Z.of_nat (nat_of_ord x) <= Byte.max_unsigned ->
+  x \notin (byte_ord_list l n) <->
+  ~  In (Byte.repr (Z.of_nat x)) l.
+Proof.
+  move => l n x Hall. split => Hnotin.
+  - rewrite -byte_ord_list_In //. by apply /idP.
+  - move: Hnotin; rewrite -byte_ord_list_In //=.
+    by case : (x \in byte_ord_list l n).
+Qed.
+
+End ByteOrdList.
   
 Section ListMx.
 
