@@ -162,6 +162,7 @@ start_function. (*use better names to make proof cleaner, since there will be a 
 rename H into Hknh. rename H0 into Hhh. rename H1 into Hccols. rename H2 into Hpacklen.
 rename H3 into Hpackptrlen. rename H4 into Hparptrlen. rename H5 into Hparlen. rename H6 into Hstatlen.
 rename H7 into Hlenbound. rename H8 into Hlenspec.
+assert_PROP (Zlength lengths = k) as Hlenslen. { entailer!. rewrite !Zlength_map in H8. assumption. } 
 (*Lots of initializations*)
 forward. forward. forward. forward. simpl_repr_byte. forward.
 assert_PROP (force_val (sem_binary_operation' Oadd (tptr (tptr tuchar)) tint pd (Vint (Int.repr k))) =
@@ -179,7 +180,8 @@ replace (16000) with fec_max_cols by rep_lia.
 replace 128 with fec_max_h by rep_lia. replace 256 with (fec_max_h * 2) by rep_lia. subst C.
 (*In the first loop, only "lost" and "found" are changing, so we bring them to the front, Likewise with
   "xh" and "xk"*)
-rewrite (grab_nth_SEP 1). simpl. rewrite (grab_nth_SEP 2); simpl.
+rewrite (grab_nth_SEP 9); simpl.
+rewrite (grab_nth_SEP 1); simpl. rewrite (grab_nth_SEP 2); simpl.
 rewrite (grab_nth_LOCAL 2 (gvars gv)); simpl; [| list_solve]. 
 rewrite (grab_nth_LOCAL 3 (gvars gv)); simpl; [| list_solve].
 (*hide all of the non-changing local and sep variables*)
@@ -190,15 +192,16 @@ remember [temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) p
    lvar _v (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v; gvars gv;
    temp _k (Vint (Int.repr k)); temp _c (Vint (Int.repr c)); temp _pdata pd; 
    temp _plen pl; temp _pstat ps] as LOCALS.
-remember [data_at_ Tsh (tarray tuchar fec_max_h) v_row;
-       data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s;
-       data_at_ Tsh (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v;
-       iter_sepcon_arrays packet_ptrs packets; iter_sepcon_options parity_ptrs parities;
-       data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
-       data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
-       data_at Ews (tarray tschar k) (map Vbyte stats) ps; INDEX_TABLES gv;
-       data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
-         (gv _fec_weights)] as SEPS. 
+(*TODO: maybe nest freezer so we can just unfold 1 layer at a time*)
+freeze FR1 := (data_at_ Tsh (tarray tuchar fec_max_h) v_row)
+       (data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
+       (data_at_ Tsh (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v)
+       (iter_sepcon_arrays packet_ptrs packets) (iter_sepcon_options parity_ptrs parities)
+       (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
+       (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
+       (data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
+       (gv _fec_weights)).
+freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).
 (*First loop - populate lost/found packets*)
 rewrite !data_at__tarray. rewrite !zseq_list_repeat by rep_lia.
 replace (default_val tuchar) with Vundef by reflexivity.
@@ -206,14 +209,14 @@ forward_loop (EX (i: Z),
   PROP (0 <= i <= k)
   (LOCALx (temp _i (Vubyte (Byte.repr i)) :: temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats i)))) 
     :: temp _xk (Vubyte (Byte.repr (Zlength (find_found stats i)))) :: LOCALS)
-  (SEPx (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats i fec_max_h) v_lost :: 
-         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats i fec_max_h) v_found :: SEPS))))
+  (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats i fec_max_h) v_lost;
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats i fec_max_h) v_found))%assert5))
   break: 
     (PROP ()
     (LOCALx (temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats k)))) :: 
              temp _xk (Vubyte (Byte.repr (Zlength (find_found stats k)))) :: LOCALS)
-    (SEPx (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h)  v_lost :: 
-         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h)  v_found :: SEPS)))).
+    (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h)  v_lost;
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h)  v_found )%assert5))).
 { rewrite_eqs. forward. Exists 0. rewrite_eqs. entailer!.
   { (*What is this goal?*) rewrite !Zaux.Zeq_bool_true by auto.
     assert (Hattr: eqb_attr noattr noattr = true) by (rewrite eqb_attr_spec; auto). rewrite Hattr.
@@ -224,14 +227,14 @@ forward_loop (EX (i: Z),
 { Intros i. rewrite_eqs; forward_if.
   { rewrite Byte.unsigned_repr in H0 by rep_lia.
     assert (Hilen: (0 <= Byte.unsigned (Byte.repr i) < Zlength stats)) by simpl_repr_byte.
-    forward. simpl_repr_byte. 
+    thaw FR2.
+    forward. simpl_repr_byte. freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).
     forward_if (PROP ()
       (LOCALx (temp _i (Vubyte (Byte.repr i)) :: temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats (i + 1))))) 
         :: temp _xk (Vubyte (Byte.repr (Zlength (find_found stats (i + 1))))) :: LOCALS)
-      (SEPx (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (i + 1) fec_max_h) v_lost :: 
-         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats (i + 1) fec_max_h) v_found :: SEPS)))).
-    { (*xh case*) forward. assert (Zlength (find_lost stats i) <= i). { unfold find_lost.
-      replace i with (Zlength (Ziota 0 i)) at 2 by (rewrite Zlength_Ziota; lia). apply find_lost_found_aux_Zlength. }
+      (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (i + 1) fec_max_h) v_lost; 
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats (i + 1) fec_max_h) v_found)%assert5))).
+    { (*xh case*) forward. pose proof (@find_lost_Zlength stats i (proj1 H)) as Hlostlen.
       forward. simpl_repr_byte. unfold Int.add. rewrite (Int.unsigned_repr (Zlength _)) by rep_lia.
       rewrite (Int.unsigned_repr 1) by rep_lia. rewrite Int.unsigned_repr by rep_lia. simpl_repr_byte.
       rewrite <- (byte_int_repr (Zlength (find_lost stats i))) by rep_lia.
@@ -249,8 +252,7 @@ forward_loop (EX (i: Z),
         }
       }
     }
-    { (*xk case*) forward. assert (Zlength (find_found stats i) <= i). { unfold find_lost.
-      replace i with (Zlength (Ziota 0 i)) at 2 by (rewrite Zlength_Ziota; lia). apply find_lost_found_aux_Zlength. }
+    { (*xk case*) forward. pose proof (@find_found_Zlength stats i (proj1 H)) as Hfoundlen.
       forward. simpl_repr_byte. unfold Int.add. rewrite (Int.unsigned_repr (Zlength _)) by rep_lia.
       rewrite (Int.unsigned_repr 1) by rep_lia. rewrite Int.unsigned_repr by rep_lia. simpl_repr_byte.
       rewrite <- (byte_int_repr (Zlength (find_found stats i))) by rep_lia.
@@ -271,7 +273,7 @@ forward_loop (EX (i: Z),
     { rewrite_eqs; forward. Exists (i+1). simpl_repr_byte. unfold Int.add.
       rewrite (Int.unsigned_repr 1) by rep_lia. rewrite (Int.unsigned_repr i) by rep_lia. simpl_repr_byte.
       rewrite_eqs; entailer!. rewrite !Zaux.Zeq_bool_true by auto; simpl.
-      rewrite <- byte_int_repr by rep_lia; repeat split; reflexivity.
+      rewrite <- byte_int_repr by rep_lia; repeat split; reflexivity. thaw FR2. cancel.
     }
   }
   { (*first loop postcondition*) forward. rewrite Byte.unsigned_repr in H0 by rep_lia.
@@ -280,12 +282,33 @@ forward_loop (EX (i: Z),
   }
 }
 { remember (Zlength (find_lost stats k)) as xh.
-  remember (Zlength (find_found stats k)) as xk.
+  remember (Zlength (find_found stats k)) as xk. assert (Hk: 0 <= k) by lia.
+  pose proof (@find_lost_Zlength stats k Hk) as Hxh. rewrite <-Heqxh in Hxh.
+  pose proof (@find_found_Zlength stats k Hk) as Hxk. rewrite <-Heqxk in Hxk. clear Hk.
   rewrite_eqs; forward_if.
-  { rewrite_eqs.     replace fec_max_h with 128 by rep_lia.
-    replace fec_max_cols with 16000 by rep_lia. forward. (*TODO: doesn't work ( in [solve_Forall2_fn_data_at])
+  { rewrite_eqs. replace fec_max_h with 128 by rep_lia.
+    replace fec_max_cols with 16000 by rep_lia. forward. thaw FR2. thaw FR1. (*TODO: doesn't work ( in [solve_Forall2_fn_data_at])
       if the constants are opaque*)
-    entailer!. (*TODO: go back to spec, add condition that there is at least 1 missing packet*)
+    entailer!. replace 256 with (fec_max_h * 2) by rep_lia. replace 16000 with fec_max_cols by rep_lia.
+    replace 128 with fec_max_h by rep_lia. cancel.
+    (*If xh = 0, the result is trivial*)
+    rewrite Int_repr_zero in H by rep_lia.
+    rewrite Byte.unsigned_repr in H by rep_lia.
+    rewrite decoder_list_correct_0; auto; try lia.
+    rewrite <- (find_lost_filter (k:=(Zlength packets))); auto.
+  }
+  { forward. unfold Int.sub. rewrite !Int.unsigned_repr by rep_lia. simpl_repr_byte.
+    (*Second loop - populate parity packet row/found*) 
+    clear HeqLOCALS. clear LOCALS. 
+    
+    remember 
+    forward_loop (EX (i: Z),
+      PROP (0 <= Zlength (find_parity_rows parities i) <= xh)
+      LOCAL 
+
+
+
+(*TODO: go back to spec, add condition that there is at least 1 missing packet*)
 
 (*Tactic debug stuff - first resturn
 
