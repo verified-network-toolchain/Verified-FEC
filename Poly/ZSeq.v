@@ -168,4 +168,23 @@ Proof.
   move => A B z x f. by rewrite map_nseq.
 Qed.
 
+Lemma zseq_hd: forall {A: Type} (z: Z) (x: A),
+  1 <= z ->
+  zseq z x = x :: zseq (z - 1) x.
+Proof.
+  move => A z x Hz. rewrite /zseq. have->:(Z.to_nat z) = (1 + (Z.to_nat (z - 1)))%N.
+    have->:(1 + (Z.to_nat (z - 1)))%N = (1 + (Z.to_nat (z - 1)))%coq_nat by []. lia.
+  by rewrite nseqD.
+Qed.
+
+Lemma zseq_list_repeat: forall {A: Type} (x: A) (z: Z),
+  0 <= z ->
+  list_repeat (Z.to_nat z) x = zseq z x.
+Proof.
+  move => A x z Hz. have Hinhab: Inhabitant A by apply x. apply Znth_eq_ext.
+  - by rewrite Zlength_list_repeat // zseq_Zlength.
+  - move => i. rewrite Zlength_list_repeat // => Hi. 
+    by rewrite Znth_list_repeat_inrange // zseq_Znth.
+Qed.
+
 End ZSeq.
