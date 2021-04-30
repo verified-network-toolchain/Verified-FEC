@@ -181,7 +181,7 @@ Definition fec_blk_decode_spec :=
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
          data_at Ews (tarray tschar k) (map Vbyte stats) ps;
-         INDEX_TABLES gv; 
+         INDEX_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
   POST [ tint ]
     PROP ()
@@ -191,7 +191,7 @@ Definition fec_blk_decode_spec :=
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
          data_at Ews (tarray tschar k) (map Vbyte stats) ps;
-         INDEX_TABLES gv; 
+         INDEX_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
 

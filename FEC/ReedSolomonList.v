@@ -176,8 +176,7 @@ Proof.
   move => f g base pack l. move: base. elim : l => [//= base | h t /= IH base].
   - list_solve.
   - case : (f (Znth h pack)).
-    + apply (Z.le_trans _ _ _ (IH (base ++ [:: g h]))). rewrite Zlength_app /=. list_solve. (*TODO: ask qinshi why
-      we need Zlength_app here*)
+    + apply (Z.le_trans _ _ _ (IH (base ++ [:: g h]))). rewrite Zlength_app /=. list_solve.
     + apply (Z.le_trans _ _ _ (IH base)). list_solve.
 Qed.
 
@@ -721,7 +720,9 @@ Qed.
 
 (*TODO: this is NOT the right condition, see*)
 Lemma pop_find_parity_found_plus_1: forall pack pars k len found max_n,
-  0 <= k < len - Zlength (find_found pack found) ->
+  0 <= k ->
+  Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) < len ->
+  (*0 <= k < len - Zlength (find_found pack found) ->*)
   0 <= found ->
   pop_find_parity_found pack pars (k+1) len found max_n =
   match Znth k pars with
@@ -730,10 +731,10 @@ Lemma pop_find_parity_found_plus_1: forall pack pars k len found max_n,
                 (pop_find_parity_found pack pars k len found max_n) (Vubyte (Byte.repr (max_n - 1 - k)))
   end.
 Proof.
-  move => pack pars k len found max_n Hk Hf.
+  move => pack pars k len found max_n Hk Hlen Hf.
   rewrite /pop_find_parity_found find_parity_found_plus_1; try lia.
   case : (Znth k pars) => [// Hnth | //= Hnth].
-  pose proof (@find_parity_found_Zlength pars k max_n (proj1 Hk)) as Hlenbound.
+  pose proof (@find_parity_found_Zlength pars k max_n Hk) as Hlenbound.
   rewrite map_cat -catA /= upd_Znth_app2; rewrite !Zlength_map.
   - rewrite upd_Znth_app2; rewrite !Zlength_map; [| list_solve].
     have->: (Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) -

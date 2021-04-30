@@ -262,6 +262,7 @@ freeze FR1 := (data_at_ Tsh (tarray tuchar fec_max_h) v_row)
        (iter_sepcon_arrays packet_ptrs packets) (iter_sepcon_options parity_ptrs parities)
        (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
        (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
+       (data_at Ews tint (Vint Int.zero) (gv _trace))
        (data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
        (gv _fec_weights)).
 freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).
@@ -387,7 +388,7 @@ forward_loop (EX (i: Z),
        (iter_sepcon_arrays packet_ptrs packets)
        (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
        (data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
-         (gv _fec_weights))
+         (gv _fec_weights)) (data_at Ews tint (Vint Int.zero) (gv _trace))
        (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost).
     freeze FR2 := (FRZL FR1) (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
         (iter_sepcon_options parity_ptrs parities).
@@ -496,109 +497,86 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                     rewrite Zlength_app; list_solve.
                   }
                   { rewrite pop_find_parity_rows_plus_1 by rep_lia.
-                    rewrite pop_find_parity_found_plus_1; try rep_lia. (*TODO: need to fix lemma*)
-
-
-2: rewrite find_parity_rows_found_Zlength; rep_lia. rewrite Hparith.
-                    rewrite <- !byte_int_repr by rep_lia. Check pop_find_parity_found_plus_1.
-
- cancel.
- rewrite find_parity_rows_plus_1 by lia.
-                    rewrite find_parity_found_plus_1 by lia. rewrite Hparith. 
-                    rewrite Zlength_app. list_solve.  rewrite Zlength_app. list_solve.
-                    list_solve.
-
-Search Vubyte Vint. split.
-                  
-
- a.
-
-
-                assert (Zlength (find_parity_found parities (fec_n - 1) i) < Zlength parities) by lia.
-                 
-
- rep_lia.
-
-
-
- Search derives sepcon. entailer!. entailer!. rewrite !sepcon_assoc. entailer!.  cancel.
-              apply derives_refl.
-              cancel.
-
-
- Intros. entailer!. entailer!. Search (?P * ?Q |-- ?P). entailer!. cancel.
-
-
- (*TODO: we need to add something about the lengths of the parity lists in the spec*)
-              Search ( _ * _)%logic "com".
-
-
- sep_apply data_at_memory_block. sep_apply memory_block_valid_ptr. auto. simpl.
-
- apply (data_at_valid_ptr _ _ _ (Znth i parity_ptrs)) ; auto. simpl. rep_lia.
-
-
-
- Search valid_pointer.
-
-
- entailer!. auto. Print field_compatible. Search valid_pointer field_compatible.
-
-
-
- split. solve_offset.
-
-
- forward.
-
- rewrite 
-
- (*TODO: do this after [iter_sepcon_options] - case on option, if None, nullval, else, data_at*)
-            admit.
+                    rewrite pop_find_parity_found_plus_1; try rep_lia.
+                    2: { assert (Hpackbound: 0 <= Zlength packets <= Byte.max_unsigned) by rep_lia.
+                        pose proof (find_lost_found_Zlength stats Hpackbound) as Hxhxk.
+                        rewrite find_parity_rows_found_Zlength. rep_lia. }
+                    rewrite Hparith. replace (fec_n - 1 - 1 - i) with (fec_n - 2 - i) by lia.
+                    (*need to put [iter_sepcon_options] back together*)
+                    rewrite (iter_sepcon_options_remove_one _ _ _ _ Hlen Hibound Hparith).
+                    rewrite <- !byte_int_repr by rep_lia. cancel.
+                  }
+                }
+              }
+            }
+            { (*contradiction*) rewrite Znth_app2 in H3 by lia.
+               replace (k + i - Zlength packet_ptrs) with i in H3 by lia.
+               rewrite <- Hparsconsist in H3 by lia. rewrite H3 in Hparith; inversion Hparith.
+            }
+            { (*TODO: it would be nice to not have to repeat this part, but not sure how
+                except by doing cases in all the above*) rewrite HeqIfpost. rewrite_eqs; forward.
+              unfold Int.sub. simpl_repr_byte. forward_if True.
+              { forward. entailer!. rewrite !eqb_type_refl; auto. }
+              { rep_lia. }
+              { forward. unfold Int.add. simpl_repr_byte. Exists (i+1). rewrite_eqs; entailer!.
+                { rewrite find_parity_rows_plus_1 by lia. rewrite Hparith. rewrite Zlength_app.
+                  rewrite !eqb_type_refl. repeat split; try reflexivity. rep_lia. list_solve.
+                  f_equal; f_equal; lia.
+                }
+                {  rewrite (iter_sepcon_options_remove_one _ _ _ _ Hlen Hibound Hparith). cancel. }
+            }
           }
-          { entailer!. (*Same thing*) admit.
+        }
+      }
+      { (*Now, we have the case where there is no parity packet. This will be simpler.*)
+        assert (Hnull: @Znth _ Vundef i parity_ptrs = nullval) by (apply Hparsconsist; [ lia | assumption]).
+        rewrite_eqs; forward.
+        { rewrite Znth_app2 by lia. replace (k + i - Zlength packet_ptrs) with i by lia.
+          entailer!. rewrite Hnull. auto.
+        }
+        { entailer!. solve_offset. }
+        { forward_if Ifpost; try(rewrite Znth_app2 by lia); 
+          try (replace (Zlength packets + i - Zlength packet_ptrs) with i by lia).
+          { rewrite Hnull. apply denote_tc_test_eq_split. apply valid_pointer_null.
+            apply valid_pointer_zero64; auto.
           }
-          { forward_if (PROP ()
-              (LOCALx (temp _i (Vint (Int.repr i)) :: temp _xr (Vubyte (Byte.repr (Zlength (find_parity_rows parities i)))) ::
-                temp _xk (Vubyte (Byte.repr (xk + Zlength (find_parity_found parities (fec_n - 1) i)))) ::
-                temp _q (Vint (Int.repr (fec_n - 2 - i))) :: LOCALS1)
-              (SEP (FRZL FR1; data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
-                iter_sepcon_options parity_ptrs parities;
-                data_at Tsh (tarray tuchar fec_max_h) (pop_find_parity_rows parities (i+1) fec_max_h) v_row;
-                data_at Tsh (tarray tuchar fec_max_h)  
-                  (pop_find_parity_found stats parities (i+1) fec_max_h k (fec_n - 1)) v_found))%assert5)).
-            { (*Search valid_pointer. Search denote_tc_test_eq. valid_pointer_zero64 denote_tc_test_eq_split*) admit. }
-            { Print nullval. Print isptr. Search isptr nullval. admit. }
-            {
-
-isptr (Znth (k + i) (packet_ptrs ++ parity_ptrs))
-H3 : Znth (k + i) (packet_ptrs ++ parity_ptrs) = nullval
-
-
-Search denote_tc_test_eq. !.
-
-
- Search isptr field_address0.
-
-
- Search is_pointer_or_null. solve_offset. rewrite Znth_app2.
-
-
-
- split; try lia.  list_solve.
-
- forward.
-
- Search find_parity_rows.
-
-
- (pop_find_parity_found packets parities i fec_max_h k (fec_n - 1)) (*TODO: pick up here*)
-
- v_row;
+          { forward. rewrite Znth_app2 in H3 by lia.
+            replace (k + i - Zlength packet_ptrs) with i in H3 by lia.
+            rewrite Hnull in H3. inversion H3.
+          }
+          { (*The actual null case*) forward. rewrite HeqIfpost. rewrite_eqs; entailer!.
+            { rewrite find_parity_rows_plus_1 by lia. rewrite find_parity_found_plus_1 by lia.
+              rewrite Hparith. rewrite !eqb_type_refl. auto.
+            }
+            { rewrite pop_find_parity_rows_plus_1 by rep_lia.
+              rewrite pop_find_parity_found_plus_1; try rep_lia. (*TODO: maybe assert this before destruct*)
+              2: { assert (Hpackbound: 0 <= Zlength packets <= Byte.max_unsigned) by rep_lia.
+                        pose proof (find_lost_found_Zlength stats Hpackbound) as Hxhxk.
+                        rewrite find_parity_rows_found_Zlength. rep_lia. }
+              rewrite Hparith. cancel.
+            }
+          }
+          { rewrite HeqIfpost. rewrite_eqs; forward. unfold Int.sub. simpl_repr_byte.
+            forward_if True.
+            { forward. entailer!. rewrite !eqb_type_refl; auto. }
+            { rep_lia. }
+            { forward. unfold Int.add; simpl_repr_byte. Exists (i+1). entailer!.
+              rewrite find_parity_rows_plus_1 by lia. rewrite Hparith. rewrite !eqb_type_refl.
+              repeat split; try rep_lia. f_equal; f_equal; lia.
+            }
+          }
+        }
+      }
+    }
+    { rewrite !Byte.unsigned_repr in H2 by rep_lia. forward. Exists i. rewrite_eqs; entailer!.
+      rewrite !eqb_type_refl; auto.
+    }
+  }
+  { Intros i. (*done with 2nd loop*) rewrite_eqs. thaw FR2. thaw FR1.
+    forward. forward_if True; [contradiction | forward; entailer!; rewrite !eqb_type_refl; auto |].
+    (*Start of matrix inversion loop*)
 
 
-
-(*TODO: go back to spec, add condition that there is at least 1 missing packet*)
 
 (*Tactic debug stuff - first resturn
 
