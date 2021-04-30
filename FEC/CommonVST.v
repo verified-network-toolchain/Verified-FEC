@@ -1,5 +1,6 @@
 Require Import VST.floyd.proofauto.
 Require Import VST.msl.iter_sepcon.
+Require Import InhabOption.
 (*Functions for working with arrays and memory in VST that are generic*)
 
 (*These first two are not directly related to VST but are used in the later proofs*)
@@ -484,11 +485,6 @@ Proof.
 Qed. 
 
 (* We want a similar definition for when only some of the data exists, and the others are null pointers*)
-
-(*TODO: duplicated from ReedSolomonList right now*)
-Instance Inhabitant_option: forall {A: Type}, Inhabitant (option A).
-intros A. apply None.
-Defined.
 (*
 Definition valid_option_vals (ptrs: list val) (contents: list (option (list byte))) :=
   Zlength ptrs = Zlength contents /\
@@ -498,8 +494,27 @@ Definition valid_option_vals (ptrs: list val) (contents: list (option (list byte
 Search nullval.
 Check iter_sepcon_arrays.
 *)(*TODO: see exactly what I need*)
-Definition iter_sepcon_options (pts: list val) (contents: list (option (list byte))) : mpred.
-Admitted.
+
+Definition iter_sepcon_options (ptrs: list val) (contents: list (option (list byte))) : mpred :=
+  iter_sepcon (fun (x: option (list byte) * val) => let (o, ptr) := x in
+    match o with
+      | None => emp
+      | Some l => data_at Ews (tarray tuchar (Zlength l)) (map Vubyte l) ptr
+    end) (combine contents ptrs).
+
+Lemma iter_sepcon_options_remove_one: forall ptrs contents i l,
+  Zlength ptrs = Zlength contents ->
+  0 <= i < Zlength contents ->
+  Znth i contents = Some l ->
+  iter_sepcon_options ptrs contents = 
+    (data_at Ews (tarray tuchar (Zlength l)) (map Vubyte l) (Znth i ptrs) *
+    iter_sepcon_options (remove_nth i ptrs) (remove_nth i contents))%logic.
+Proof.
+  intros ptrs contents i l Hlens Hi Hnth. unfold iter_sepcon_options. rewrite (iter_sepcon_remove_one _ _ i).
+  destruct (Znth i (combine contents ptrs)) as [o ptr] eqn : Hnth'.
+  rewrite combine_Znth in Hnth' by auto. inversion Hnth'; subst. rewrite Hnth.
+  rewrite combine_remove_nth by lia. reflexivity. rewrite combine_Zlength; lia.
+Qed.
 (*
 Definition iter_sepcon_options (pts: list val) (contents: list (option (list byte))) :=
   iter_sepcon_arrays (filter (fun x => x 

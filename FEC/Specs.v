@@ -158,7 +158,6 @@ Definition fec_blk_encode_spec :=
          INDEX_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
-
 (*We still include h to make the spec nicer; it is not an input the function, but we can always pass in
   Zlength parities when using the spec*)
 Definition fec_blk_decode_spec :=
@@ -171,7 +170,10 @@ Definition fec_blk_decode_spec :=
           Zlength packets = k; Zlength packet_ptrs = k; Zlength parity_ptrs = h;
           Zlength parities = h; Zlength stats = k; (*lengths for arrays*)
           Forall (fun x => Zlength x <= c) packets;
-          forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
+          forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets);
+          Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats) <= Zlength (filter ssrbool.isSome parities);
+          forall (i: Z), 0 <= i < h -> Znth i parities = None <-> Znth i parity_ptrs = nullval;
+          forall (i: Z) (l: list byte), 0 <= i < h -> Znth i parities = Some l -> Zlength l = c)
     PARAMS (Vint (Int.repr k); (*Vint (Int.repr h);*) Vint (Int.repr c); pd; pl; ps)
     GLOBALS (gv)
     SEP (iter_sepcon_arrays packet_ptrs packets;

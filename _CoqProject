@@ -15,6 +15,7 @@ FEC/ReedSolomon.v
 Matrix/ListMatrix.v
 FEC/MatrixTransform.v
 Matrix/VandermondeByte.v
+FEC/InhabOption.v
 FEC/ReedSolomonList.v
 #VST
 FEC/fec.v

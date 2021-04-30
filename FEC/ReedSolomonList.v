@@ -15,6 +15,7 @@ Require Import ZSeq.
 Require Import CommonSSR.
 Require Import Vandermonde.
 Require Import Gaussian.
+Require Import InhabOption.
 
 Lemma NoDup_app: forall {A: Type} (l1 l2:list A),
   NoDup l1 ->
@@ -427,9 +428,19 @@ Proof.
   symmetry. apply rwN. apply idP.
 Qed.
 
-Instance Inhabitant_option: forall {A: Type}, Inhabitant (option A).
-intros A. apply None.
-Defined.
+(*This is probably true without the assumption, but the proof becomes easier*)
+Lemma find_lost_found_Zlength: forall l k,
+  0 <= k <= Byte.max_unsigned ->
+  Zlength (find_found l k) + Zlength (find_lost l k) = k.
+Proof.
+  move => l k Hk. have Hk': 0 <= k <= Byte.max_unsigned by []. apply (find_lost_found_comp l) in Hk.
+  apply (congr1 (@Zlength _)) in Hk. move: Hk.
+  rewrite byte_ord_list_Zlength; last first. by apply find_found_bound.
+  move ->. rewrite Zlength_correct -size_length ord_comp_size_uniq.
+  rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength; last first. by apply find_lost_bound.
+  pose proof (@find_lost_Zlength l k (proj1 Hk')). rewrite Nat2Z.inj_sub; rep_lia.
+  apply byte_ord_list_uniq. by apply find_lost_NoDup.
+Qed.
 
 (*Parities are represented as a list (option (list byte)), representing whether the parity packet is there
   or not. We will translate this into Vundef or Vptr as needed*)
@@ -708,16 +719,18 @@ Proof.
   f_equal. f_equal. list_solve.
 Qed.
 
+(*TODO: this is NOT the right condition, see*)
 Lemma pop_find_parity_found_plus_1: forall pack pars k len found max_n,
-  0 <= k < len ->
+  0 <= k < len - Zlength (find_found pack found) ->
+  0 <= found ->
   pop_find_parity_found pack pars (k+1) len found max_n =
   match Znth k pars with
   | None => pop_find_parity_found pack pars k len found max_n
   | Some _ => upd_Znth (Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k))
-                (pop_find_parity_found pack pars (k+1) len found max_n) (Vubyte (Byte.repr (max_n - 1 - k)))
+                (pop_find_parity_found pack pars k len found max_n) (Vubyte (Byte.repr (max_n - 1 - k)))
   end.
 Proof.
-  move => pack pars k len found max_n Hk.
+  move => pack pars k len found max_n Hk Hf.
   rewrite /pop_find_parity_found find_parity_found_plus_1; try lia.
   case : (Znth k pars) => [// Hnth | //= Hnth].
   pose proof (@find_parity_found_Zlength pars k max_n (proj1 Hk)) as Hlenbound.
@@ -725,9 +738,12 @@ Proof.
   - rewrite upd_Znth_app2; rewrite !Zlength_map; [| list_solve].
     have->: (Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) -
     Zlength (find_found pack found) - Zlength (find_parity_found pars max_n k)) = 0%Z by lia.
-    by rewrite upd_Znth0 !cat_app.
+    symmetry. rewrite zseq_hd. rewrite upd_Znth0 !cat_app Zlength_app. f_equal. f_equal. f_equal. f_equal.
+    list_solve. list_solve.
   - rewrite Zlength_app Zlength_map. list_solve.
 Qed.
+
+
 
 Lemma pop_find_parity_found_Znth1: forall pack pars k len found max_n i,
   0 <= i < Zlength (find_found pack found) ->
@@ -748,7 +764,6 @@ Proof.
   rewrite Znth_app1. rewrite Znth_map; list_solve.
   rewrite Zlength_map; lia.
 Qed. 
-
 
 (*The relationship between these two functions*)
 Lemma find_parity_rows_found_Zlength: forall par c max_n,
@@ -1217,6 +1232,39 @@ Proof.
   move => pars h Hh. have Hh0: 0 <= h by list_solve.
   have ->: h = Z.of_nat (Z.to_nat h) by lia. rewrite find_parity_aux_filter_sublist; try lia.
   rewrite sublist_same //. lia.
+Qed.
+
+(*TODO: move to Zseq*)
+Lemma Ziota_leq: forall i j,
+  0 <= i <= j ->
+  Ziota 0 j = Ziota 0 i ++ Ziota i (j - i).
+Proof.
+  move => i j Hij. rewrite /Ziota -map_cat. f_equal.
+  have->: (Z.to_nat j) = ((Z.to_nat i) + (Z.to_nat (j-i)))%coq_nat by lia.
+  have->:(Z.to_nat i + Z.to_nat (j - i))%coq_nat = (Z.to_nat i + Z.to_nat (j - i))%N by [].
+  by rewrite iotaD.
+Qed. 
+
+(*We also use this for an injectivity lemma we will need in the VST proof*)
+Lemma find_parity_rows_inj_aux: forall parities i j,
+  0 <= i <= j ->
+  Zlength (find_parity_rows parities i) <= Zlength (find_parity_rows parities j).
+Proof.
+  move => par i j Hij. rewrite /find_parity_rows.
+  rewrite (Ziota_leq Hij) find_parity_aux_app (find_parity_aux_base_Zlength _ _ (find_parity_aux Byte.repr par [::] (Ziota 0 i))).
+  list_solve.
+Qed.
+
+Lemma find_parity_rows_inj: forall parities i j,
+  0 <= i ->
+  0 <= j ->
+  Zlength (find_parity_rows parities i) < Zlength (find_parity_rows parities j) ->
+  i < j.
+Proof.
+  move => parities i j Hi Hj Hlens.
+  have [Hij // | Hij]: (i < j \/ j <= i) by lia.
+  have Hij': 0 <= j <= i by lia. 
+  pose proof (@find_parity_rows_inj_aux parities _ _ Hij'). lia.
 Qed.
 
 (** Final Definition of Decoder and Correctness*)
