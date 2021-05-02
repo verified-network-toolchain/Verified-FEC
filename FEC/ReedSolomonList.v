@@ -718,11 +718,9 @@ Proof.
   f_equal. f_equal. list_solve.
 Qed.
 
-(*TODO: this is NOT the right condition, see*)
 Lemma pop_find_parity_found_plus_1: forall pack pars k len found max_n,
   0 <= k ->
   Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) < len ->
-  (*0 <= k < len - Zlength (find_found pack found) ->*)
   0 <= found ->
   pop_find_parity_found pack pars (k+1) len found max_n =
   match Znth k pars with
@@ -805,6 +803,198 @@ Lemma forall_lt_leq_trans: forall n m l,
 Proof.
   move => n m l Hnm. apply Forall_impl. move => a Ha. lia. 
 Qed. 
+
+(*TODO: move this? Not sure - maybe make separate file with VST stuff (actually that is better idea) - move
+  all "pop" stuff there*)
+
+(*Populating the matrix to be inverted is quite nontrivial, for 4 reasons
+  1. It is essentially represented as a 1D, rather than 2D array, so we need some arithmetic
+     to get the right indexing
+  2. It may not fill up the whole memory location
+  3. Everything is reversed
+  4. We fill up multiple nonconsecutive cells at a time*)
+
+
+(*For the inverse operation, populating is nontrivial because the entire matrix has to be reversed.
+  Also, it is treated as a 1-D array for all intents and purposes, so we do that here*)
+
+(*want to say in memory: flatten_mx ... ++ zseq Vundef (3 * fec_max_h - 3 * xh)*)
+
+(*This definition is quite ugly, which is why we don't want to use it directly*)
+(*This means we have filled up the first i rows are the first j entries of row i*)
+
+(*The first part (the rest is just Vundef)*)
+Definition pop_find_inv_fst (xh: Z) (weights: lmatrix B) (row lost : seq byte) i j : seq Values.val :=
+   mkseqZ (fun z =>
+                 let r := z / (2 * xh) in
+                 let c := z mod (2 * xh) in
+                 if (r <? i) || ((r =? i) && ((c <? j) || ((xh <=? c) && (c <? j + xh)))) then
+                    if (c <? xh) then if (r + c + 1 =? xh) then Vubyte Byte.one else Vubyte Byte.zero
+                    else Vubyte (get weights (Byte.unsigned (Znth r row)) (Byte.unsigned (Znth c lost)))
+                 else Vundef) (2 * xh * xh).
+
+Definition pop_find_inv (xh max_h: Z) (weights: lmatrix B) (row lost : seq byte) i j : seq Values.val :=
+  pop_find_inv_fst xh weights row lost i j ++ 
+  zseq (2 * max_h * max_h - 2 * xh * xh) Vundef.
+
+Lemma pop_find_inv_fst_Zlength: forall xh weights row lost i j,
+  0 <= xh ->
+  Zlength (pop_find_inv_fst xh weights row lost i j) = 2 * xh * xh.
+Proof.
+  move => xh weights row lost i j. rewrite /pop_find_inv_fst.
+  rewrite mkseqZ_Zlength //. nia.
+Qed.
+
+Lemma pop_find_inv_fst_0: forall xh weights row lost,
+  0 < xh ->
+  pop_find_inv_fst xh weights row lost 0 0 = zseq (2 * xh * xh) Vundef.
+Proof.
+  move => xh weights row lost Hxh. have Hxh': 0 <= xh by lia. apply Znth_eq_ext.
+  - rewrite pop_find_inv_fst_Zlength // zseq_Zlength; nia.
+  - move => i. rewrite pop_find_inv_fst_Zlength // => Hi.
+    rewrite /pop_find_inv_fst mkseqZ_Znth //.
+    case : (i / (2 * xh) <? 0) /Z.ltb_spec0 => [Hi0 | Hi0].
+    * have: 0 <= i / (2 * xh). apply Z_div_pos; lia. lia.
+    * have->: (xh <=? i mod (2 * xh)) && (i mod (2 * xh) <? 0 + xh) = false. {
+        case : (xh <=? i mod (2 * xh)) /Z.leb_spec => [Hmod /=|//]. apply /Z.ltb_spec0. lia. }
+      rewrite /=. case : (i / (2 * xh) =? 0) /Z.eqb_spec => [Hi0' | Hi0'].
+      -- case : (i mod (2 * xh) <? 0) /Z.ltb_spec0 => [Himod | Himod].
+         ++ have: 0 <= i mod (2 * xh) < 2 * xh. apply Z.mod_pos_bound; lia. lia.
+         ++ rewrite /= zseq_Znth //. lia.
+      -- rewrite /= zseq_Znth //. lia.
+Qed.
+
+(*Finish a row*)
+Lemma pop_find_inv_fst_finish: forall xh weights row lost i,
+  0 <= xh ->
+  pop_find_inv_fst xh weights row lost i xh = pop_find_inv_fst xh weights row lost (i+1) 0.
+Proof.
+  move => xh weights row lost i Hxh. apply Znth_eq_ext.
+  - by rewrite !pop_find_inv_fst_Zlength.
+  - rewrite pop_find_inv_fst_Zlength // => x Hx.
+    rewrite /pop_find_inv_fst !mkseqZ_Znth //.
+    case : (x / (2 * xh) <? i) /Z.ltb_spec0 => [Hdiv /= | Hdiv /=].
+    + have-> //: (x / (2 * xh) <? i + 1) = true. apply /Z.ltb_spec0. lia.
+    + case : (x / (2 * xh) <? i + 1) /Z.ltb_spec0 => [Hdiv' /= | Hdiv' /=].
+      * have-> //=: (x / (2 * xh) =? i). apply /Z.eqb_spec. lia.
+        case : (x mod (2 * xh) <? xh) /Z.ltb_spec0 => [//=|/= Hmodxh].
+        have-> /=:(xh <=? x mod (2 * xh)) = true. apply /Z.leb_spec0. lia.
+        have->//: x mod (2 * xh) <? xh + xh. apply /Z.ltb_spec0. 
+        have:  0 <= x mod (2 * xh) < 2 * xh. apply Z.mod_pos_bound; lia. lia.
+      * have->/=:(x / (2 * xh) =? i) = false. apply /Z.eqb_spec. lia.
+        case : (x / (2 * xh) =? i + 1) /Z.eqb_spec => [Hi1 /= | //].
+        have->//: (x mod (2 * xh) <? 0) || (xh <=? x mod (2 * xh)) && (x mod (2 * xh) <? 0 + xh) = false.
+        have Hmodbound:  0 <= x mod (2 * xh) < 2 * xh by apply Z.mod_pos_bound; lia.
+        apply orb_false_intro. apply /Z.ltb_spec0. lia. 
+        case : (xh <=? x mod (2 * xh)) /Z.leb_spec0 => [Hmodxh /=|//].
+        apply /Z.ltb_spec0. lia.
+Qed.
+Check upd_Znth.
+
+(*This is not a good name*)
+Lemma idx_div: forall i j k,
+  0 <= i < k ->
+  0 <= j < k ->
+  (i * k + j) / k = i.
+Proof.
+  move => i j k Hi Hj. rewrite Z.add_comm Z_div_plus; try lia.
+  rewrite Zdiv_small; lia.
+Qed.
+
+Lemma idx_mod: forall i j k,
+  0 <= i < k ->
+  0 <= j < k ->
+  (i * k + j) mod k = j.
+Proof.
+  move => i j k Hi Hj. by rewrite Z.add_comm Z_mod_plus_full Z.mod_small.
+Qed.
+
+(*Set the element(s) in the update. This is quite complicated because of
+  all the cases, setting multiple elements, and some div/mod math*)
+Lemma pop_find_inv_fst_set: forall xh weights row lost i j,
+  0 <= xh ->
+  0 <= i < xh ->
+  0 <= j < xh ->
+  pop_find_inv_fst xh weights row lost i (j+1) =
+  upd_Znth (i * xh * 2 + j + xh) (upd_Znth (i * xh * 2 + j) (pop_find_inv_fst xh weights row lost i j) 
+      (if Z.eq_dec (i + j + 1) xh then Vubyte Byte.one else Vubyte Byte.zero))
+    (Vubyte (get weights (Byte.unsigned (Znth i row)) (Byte.unsigned (Znth (j + xh) lost)))).
+Proof.
+  move => xh weights row lost i j Hxh Hi Hj. apply Znth_eq_ext.
+  - rewrite !Zlength_upd_Znth !pop_find_inv_fst_Zlength; lia.
+  - rewrite pop_find_inv_fst_Zlength; try lia. move => x Hx.
+    case (Z.eq_dec x (i * xh * 2 + j)) => [Hnew /= | Hnew /=].
+    + rewrite Hnew Znth_upd_Znth_diff; [| nia]. rewrite Znth_upd_Znth_same; try nia; last first.
+      rewrite pop_find_inv_fst_Zlength; lia. 
+      rewrite /pop_find_inv_fst mkseqZ_Znth; try nia.
+      have Hdiv : (i * xh * 2 + j) / (2 * xh) = i by rewrite -Z.mul_assoc (Z.mul_comm 2) idx_div //; nia.
+      have Hmod: (i * xh * 2 + j) mod (2 * xh) = j by rewrite -Z.mul_assoc (Z.mul_comm 2) idx_mod; nia.
+      rewrite Hdiv Hmod Z.ltb_irrefl Z.eqb_refl /=.
+      have->/=:(j <? j + 1). apply /Z.ltb_spec0. lia.
+      have->/=:j <? xh. apply /Z.ltb_spec0. lia.
+      case : (Z.eq_dec (i + j + 1) xh) => [Heq /= | Hneq /=].
+      by rewrite Heq Z.eqb_refl. have->//: i + j + 1 =? xh = false.
+      by apply /Z.eqb_spec.
+    + case (Z.eq_dec x (i * xh * 2 + j + xh)) => [Hnew' /= | Hnew' /=].
+      * rewrite Hnew' Znth_upd_Znth_same; try nia; last first. rewrite Zlength_upd_Znth
+        pop_find_inv_fst_Zlength; lia.
+        rewrite /pop_find_inv_fst mkseqZ_Znth; try nia.
+        have Hdiv: (i * xh * 2 + j + xh) / (2 * xh) = i
+          by rewrite -Z.add_assoc -Z.mul_assoc (Z.mul_comm 2) idx_div //; nia.
+        have Hmod: (i * xh * 2 + j + xh) mod (2 * xh) = j + xh by
+          by rewrite -Z.add_assoc -Z.mul_assoc (Z.mul_comm 2) idx_mod; nia.
+        rewrite Hdiv Hmod Z.ltb_irrefl Z.eqb_refl /=.
+        have->/=: (xh <=? j + xh) && (j + xh <? j + 1 + xh). {
+          apply andb_true_intro; split. apply /Z.leb_spec0; lia. apply /Z.ltb_spec0; lia. }
+        rewrite orbT. have->//:j + xh <? xh = false. apply /Z.ltb_spec0; lia.
+      * (*Finally, we are not updating anything new. This is still annoying, since we need to prove
+          nothing else changed*)
+        rewrite upd_Znth_diff//; last first; try (rewrite Zlength_upd_Znth pop_find_inv_fst_Zlength; nia).
+        rewrite upd_Znth_diff//; last first; try (rewrite pop_find_inv_fst_Zlength; nia).
+        rewrite /pop_find_inv_fst !mkseqZ_Znth; try lia.
+        case : (x / (2 * xh) <? i) /Z.ltb_spec0 => [Hidiv // | Hidiv//=].
+        case : (x / (2 * xh) =? i) /Z.eqb_spec => [Hieq /= | //].
+        case : (x mod (2 * xh) <? j) /Z.ltb_spec0 => [Hmod /= | Hmod /=].
+        -- have->//:(x mod (2 * xh) <? j + 1). apply /Z.ltb_spec0. lia.
+        -- case : (x mod (2 * xh) <? j + 1) /Z.ltb_spec0 => [Hmod' //=| Hmod' //=].
+          ++ have Hxj: x mod (2 * xh) = j by lia.
+             have Hxcon: x = i * xh * 2 + j by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
+          ++ case : (xh <=? x mod (2 * xh)) /Z.leb_spec0 => [Hxmod/=|//].
+             case : (x mod (2 * xh) <? j + xh) /Z.ltb_spec0 => [Hxjmod /= | Hxjmod /=].
+            ** have->//: x mod (2 * xh) <? j + 1 + xh. apply /Z.ltb_spec0; lia.
+            ** case : (x mod (2 * xh) <? j + 1 + xh) /Z.ltb_spec0 => [Hxjmod' /= | //].
+               have Hjeq: x mod (2 * xh) = j + xh by lia.
+               have Hxcon: x = i * xh * 2 + j + xh by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
+Qed.
+
+(*TODO (tomorrow): prove finish lemma here - about [flatten_mx]*)
+
+Lemma pop_find_inv_Zlength: forall xh max_h weights row lost i j,
+  0 <= xh <= max_h ->
+  Zlength(pop_find_inv xh max_h weights row lost i j) = 2 * max_h * max_h.
+Proof.
+  move => xh max_h i j weights row lost Hxh. rewrite /pop_find_inv Zlength_app zseq_Zlength; try nia.
+  rewrite pop_find_inv_fst_Zlength; nia.
+Qed.
+
+(*TODO: move to Zseq*)
+Lemma zseq_app: forall {A: Type} (z1 z2: Z) (x: A),
+  0 <= z1 ->
+  0 <= z2 ->
+  zseq (z1 + z2) x = zseq z1 x ++ zseq z2 x.
+Proof.
+  move => A z1 z2 x Hz1 Hz2. rewrite /zseq -nseqD. f_equal.
+  rewrite Z2Nat.inj_add //; lia.
+Qed. 
+
+Lemma pop_find_inv_0: forall xh max_h weights row lost,
+  0 < xh <= max_h ->
+  pop_find_inv xh max_h weights row lost 0 0 = zseq (2 * max_h * max_h) Vundef.
+Proof.
+  move => xh max_h weights row lost Hxh. rewrite /pop_find_inv pop_find_inv_fst_0; try lia.
+  rewrite -zseq_app; try nia. f_equal. nia.
+Qed.
+
 
 (*The parity packet is a list of option (list Z)'s, since some are lost in transit. We need to convert to 
   a matrix*)
