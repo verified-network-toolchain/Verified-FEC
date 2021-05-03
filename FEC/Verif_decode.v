@@ -9,6 +9,7 @@ Require Import ByteFacts.
 Require Import ZSeq.
 Require Import FECTactics.
 Require Import ReedSolomonList.
+Require Import PopArrays.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -155,6 +156,12 @@ Ltac solve_msubst_eval_lvalue ::=
            "given the information in your LOCAL clause; did you forget a 'temp' declaration?"
     end.*)
 
+Lemma default_arr: forall z, 0 <= z ->
+  default_val (tarray tuchar z) = @zseq (reptype tuchar) z Vundef.
+Proof. 
+  intros z Hz. unfold default_val. simpl. rewrite zseq_list_repeat by lia. reflexivity.
+Qed.
+
 Ltac prove_eqb_type :=
  match goal with |- context [eqb_type ?A ?B] => 
   try change (eqb_type A B) with true;
@@ -215,6 +222,27 @@ Ltac solve_msubst_eval_lvar ::=
   |- msubst_eval_lvar _ _ ?id _ = _ =>
    fail "Cannot symbolically evaluate lvar" id "given the information in your LOCAL clause; did you forget an 'lvar' declaration?"
   end.
+
+(*Due to bug in VST (TODO: remove this once I change to master branch or update VST) *)
+Ltac no_loads_expr e as_lvalue ::=
+ match e with
+ | Econst_int _ _ => idtac
+ | Econst_float _ _ => idtac
+ | Econst_single _ _ => idtac
+ | Econst_long _ _ => idtac
+ | Evar _ ?t => lazymatch as_lvalue with true => idtac | false => is_array_type t end
+ | Etempvar _ _ => idtac
+ | Ederef ?e1 ?t => lazymatch as_lvalue with true => idtac | false => is_array_type t end;
+                               no_loads_expr e1 true
+ | Eaddrof ?e1 _ => no_loads_expr e1 true
+ | Eunop _ ?e1 _ => no_loads_expr e1 as_lvalue
+ | Ebinop _ ?e1 ?e2 _ => no_loads_expr e1 as_lvalue ; no_loads_expr e2 as_lvalue
+ | Ecast ?e1 _ => no_loads_expr e1 as_lvalue
+ | Efield ?e1 _ ?t => lazymatch as_lvalue with true => idtac | false => is_array_type t end;
+                               no_loads_expr e1 true 
+ | Esizeof _ _ => idtac
+ | Ealignof _ _ => idtac
+end.
 
 Lemma body_fec_blk_decode : semax_body Vprog Gprog f_fec_blk_decode fec_blk_decode_spec.
 Proof.
@@ -575,7 +603,151 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
   { Intros i. (*done with 2nd loop*) rewrite_eqs. thaw FR2. thaw FR1.
     forward. forward_if True; [contradiction | forward; entailer!; rewrite !eqb_type_refl; auto |].
     (*Start of matrix inversion loop*)
+    (*Only things we need are v, lost, fec_weights, row*)
+    freeze FR1 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps)
+      (data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
+      (iter_sepcon_arrays packet_ptrs packets)
+      (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
+      (data_at Ews tint (Vint Int.zero) (gv _trace))
+      (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
+      (iter_sepcon_options parity_ptrs parities)
+      (data_at Tsh (tarray tuchar fec_max_h)
+            (pop_find_parity_found stats parities i fec_max_h k (fec_n - 1)) v_found).
+    (*Things we need in the loop but aren't changing*)
+    freeze FR2 := (FRZL FR1) 
+       (data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights))
+       (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost)
+       (data_at Tsh (tarray tuchar fec_max_h) (pop_find_parity_rows parities i fec_max_h) v_row).
+    clear HeqLOCALS1 LOCALS1 HeqLOCALS LOCALS.
+    rewrite (grab_nth_LOCAL 12 (gvars gv)); simpl; [| list_solve]. 
+    rewrite (grab_nth_LOCAL 6 (gvars gv)); simpl; [| list_solve]. 
+    rewrite (grab_nth_LOCAL 7 (gvars gv)); simpl; [| list_solve]. 
+    rewrite (grab_nth_LOCAL 10 (gvars gv)); simpl; [| list_solve]. 
+    rewrite (grab_nth_LOCAL 12 (gvars gv)); simpl; [| list_solve]. 
+    (*Locals we don't need in this loop*)
+    remember [temp _t'29 (Vint Int.zero);
+     temp _xr (Vubyte (Byte.repr (Zlength (find_parity_rows parities i))));
+     temp _xk (Vubyte (Byte.repr (xk + Zlength (find_parity_found parities (fec_n - 1) i))));
+     temp _q (Vint (Int.repr (fec_n - 2 - i))); lvar _found (tarray tuchar fec_max_h) v_found;
+     temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd);
+     temp _err (Vubyte Byte.zero); lvar _s (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s;
+     temp _k (Vint (Int.repr k)); temp _c (Vint (Int.repr c)); temp _pdata pd; 
+     temp _plen pl; temp _pstat ps] as LOCALS.
+    (*Locals we need but aren't changing*)
+    remember (lvar _v (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v
+       :: lvar _lost (tarray tuchar fec_max_h) v_lost
+          :: temp _xh (Vubyte (Byte.repr xh))
+             :: lvar _row (tarray tuchar fec_max_h) v_row :: gvars gv :: LOCALS) as LOCALS1.
+    assert (Hxh0: 0 < xh). { assert (Hxh0: 0 = xh \/ 0 < xh) by list_solve. destruct Hxh0 as [Hxh0 | Hxh0]; try lia.
+      rewrite <- Hxh0 in H. rewrite !Byte.unsigned_repr in H by rep_lia. contradiction. } clear H.
+    forward_loop (EX (j : Z),
+      PROP (0 <= j <= xh)
+      (LOCALx ((temp _j (Vint (Int.repr j))) :: LOCALS1)
+      (SEP (FRZL FR2; data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
+        (pop_find_inv xh weight_mx (find_parity_rows parities i) (find_lost stats k) j 0) v_v)%assert5)))
+     break: (PROP () (LOCALx LOCALS1 (SEP (FRZL FR2; data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
+         (pop_find_inv xh weight_mx (find_parity_rows parities i) (find_lost stats k) xh 0) v_v)%assert5))).
+    { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
+      rewrite !eqb_type_refl; auto. rewrite data_at__tarray. (*Need to go 2D-1D array for loop and Gaussian elim*)
+      rewrite data_at_2darray_concat. 
+      { replace (fec_max_h * (fec_max_h * 2)) with (2 * fec_max_h * fec_max_h) by lia. apply derives_refl'.
+        f_equal. rewrite pop_find_inv_0 by rep_lia. rewrite zseq_list_repeat by lia. 
+        rewrite default_arr by lia. rewrite (@zseq_concat (reptype tuchar)) by lia. f_equal. lia.
+      }
+      { rewrite Zlength_list_repeat'; rep_lia. }
+      { rewrite Forall_Znth. rewrite Zlength_list_repeat'; try rep_lia. intros y Hy.
+        rewrite Znth_list_repeat_inrange by lia. rewrite default_arr by lia. rewrite zseq_Zlength; lia. }
+      { auto. }
+    }
+    { Intros j. rewrite_eqs; forward_if.
+      { rewrite Byte.unsigned_repr in H2 by rep_lia. thaw FR2. forward.
+        { entailer!. }
+        { entailer!. simpl_repr_byte. rewrite pop_find_parity_rows_Znth by rep_lia. simpl_repr_byte. }
+        { rewrite pop_find_parity_rows_Znth by rep_lia.
+          (*TODO: look at encoder to see how I handled the partially indexed 2D array*)
+          assert (Hrowjbound: 0 <= Byte.unsigned (Znth j (find_parity_rows parities i)) < i). {
+            assert (Hi: 0 <= i <= Byte.max_unsigned) by rep_lia.
+            pose proof (find_parity_rows_bound parities Hi) as Hall. rewrite Forall_Znth in Hall.
+            apply Hall. rep_lia. }
+          assert_PROP (force_val (sem_add_ptr_int (tarray tuchar 255) Signed (gv _fec_weights)
+                    (Vubyte (Znth j (find_parity_rows parities i)))) =
+            field_address (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (SUB 
+            (Byte.unsigned ((Znth j (find_parity_rows parities i))))) (gv _fec_weights)) as Hp. {
+                  entailer!. solve_offset. rewrite <- (Byte.repr_unsigned (Znth j (find_parity_rows parities i))).
+            solve_offset. }
+          Print Ltac forward. Print Ltac forward1. Print Ltac no_loads_expr.
 
+
+          forward. clear Hp.
+                    (*Now we can express p as an actual address in the 2D array.*)
+                  assert_PROP ((force_val (sem_binary_operation' Oadd (tarray (tarray tuchar 255) 128) tuchar 
+                     (gv _fec_weights) (Vint (Int.repr i)))) = 
+                     field_address0 (tarray (tarray tuchar 255) 128) [ArraySubsc 0; ArraySubsc i] 
+                       (gv _fec_weights)) as Hp. {
+                  entailer!. solve_offset. }
+                  rewrite Hp. clear Hp. 
+    
+forward.
+
+
+
+ Search pop_find_parity_rows.
+
+
+ rewrite <- HeqLOCALS.
+        forward.
+
+
+
+      {
+
+Check default_arr.
+        rewrite default_arr. simpl. assert (reptype tuchar = val). reflexivity.
+
+
+ rewrite <- H7. subst. 
+
+
+
+ rewrite H7. Locate val.
+
+replace (reptype tuchar) with val by reflexivity. Eval compute in (reptype tuchar). Search reptype tuchar.
+(@reptype CompSpecs tuchar)
+
+(*replace (@reptype CompSpecs tuchar) with val by reflexivity.*)
+        rewrite (@zseq_concat _ fec_max_h (fec_max_h * 2) Vundef). Check zseq_concat.
+        (*TODO: move to Zseq*)
+        assert (zseq_concat: forall {A: Type} z1 z2 (x: A),
+          concat (zseq z1 (zseq z2 x)) = zseq (z1 * z2) x). {
+         
+
+
+
+ Print default_val. Print reptype_gen.  Search default_val. rewrite !default_val_eq. simpl. rewrite default_val_eq. simpl. unfold fold_reptype at 2; simpl.
+          
+
+
+ Print fold_reptype.
+
+
+ unfold fold_reptype. simpl. Search fold_reptype. Print fold_reptype.
+        assert (default_val (tarray tuchar (fec_max_h * 2)) = list_repeat
+        Eval compute in (default_val (tarray tuchar 3)).
+
+
+ Search list_repeat zseq.
+
+
+ 2: split; try rep_lia. by rep_lia.
+
+
+
+ vm_compute. simpl.
+
+
+ Eval compute in (default_val (tarray tuchar 3)). Print default_val. simpl.
+    
+    clear HeqLOCALS. clear LOCALS.
 
 
 (*Tactic debug stuff - first resturn
