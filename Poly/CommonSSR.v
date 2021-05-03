@@ -380,6 +380,19 @@ Proof.
   - case: n. by []. move => n. by rewrite /= IH.
 Qed.
 
+Lemma concat_flatten: forall {A: Type} (l: seq (seq A)),
+  concat l = flatten l.
+Proof.
+  move => A l. by [].
+Qed.
+
+Lemma rev_rev: forall {A: Type} (s: seq A),
+  rev s = List.rev s.
+Proof. 
+  move => A s. elim : s => [// | h t /= IH].
+  by rewrite rev_cons IH -cats1.
+Qed.
+
 (** Other list lemmas*)
 
 Lemma size_not_nil: forall {A: Type} (l: seq A),

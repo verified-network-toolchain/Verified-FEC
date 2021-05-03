@@ -236,52 +236,6 @@ Proof.
   rewrite {2}Hkiota. apply find_lost_found_aux_Zlength.
 Qed.
 
-(*Populate [find_lost] in the VST proof*)
-Definition pop_find_lost l k len : list Values.val :=
-  map Vubyte (find_lost l k) ++ zseq (len - Zlength (find_lost l k)) Vundef.
-
-Lemma pop_find_lost_0: forall l len,
-  pop_find_lost l 0 len = zseq len Vundef.
-Proof.
-  move => l len. rewrite /pop_find_lost /= /find_lost /=. f_equal. list_solve.
-Qed.
-
-Lemma cat_app: forall {A: Type} (l1 l2: list A),
-  (l1 ++ l2)%list = l1 ++ l2.
-Proof.
-  by [].
-Qed.
-
-Lemma pop_find_lost_plus_1: forall l k len,
-  0 <= k < len ->
-  pop_find_lost l (k+1) len = if (Z.eq_dec (Byte.signed (Znth k l)) 1%Z) then
-    upd_Znth (Zlength (find_lost l k)) (pop_find_lost l k len) (Vubyte (Byte.repr k))
-    else (pop_find_lost l k len).
-Proof.
-  move => l k len Hk.
-  rewrite /pop_find_lost find_lost_plus_1; try lia.
-  case: (Z.eq_dec (Byte.signed (Znth k l)) 1) => [/= Hk1 | //= Hk1]; try lia.
-  rewrite map_cat /= Zlength_app Zlength_cons Zlength_nil /=.
-  rewrite upd_Znth_app2.
-  - rewrite !Zlength_map Z.sub_diag. rewrite (@zseq_hd _ (len - Zlength _)).
-    + rewrite upd_Znth0 /= -!catA cat_app /=. f_equal. f_equal. f_equal. lia.
-    + pose proof (@find_lost_found_aux_Zlength (fun x : byte => Z.eq_dec (Byte.signed x) 1) Byte.repr l (Ziota 0 k)) as Hlen.
-      rewrite Zlength_Ziota in Hlen; rewrite /find_lost; lia.
-  - rewrite !Zlength_map. list_solve.
-Qed.
-
-(*TODO: see if we need anything else for done - maybe something about Znth*)
-Lemma pop_find_lost_Znth: forall l k len i,
-  0 <= i < Zlength (find_lost l k) ->
-  Znth i (pop_find_lost l k len) = Vubyte (Znth i (find_lost l k)).
-Proof.
-  move => l k len i Hi. rewrite /pop_find_lost. rewrite Znth_app1; last first.
-  by rewrite Zlength_map; lia. by rewrite Znth_map.
-Qed.
-
-(*TODO: can we generalize this to reduce duplication?*)
-
-
 (*the first part of the found array*)
 Definition find_found (stats: list byte) (k: Z) : list byte :=
   find_lost_found_aux (fun x => negb (Z.eq_dec (Byte.signed x) 1%Z)) Byte.repr nil stats (Ziota 0 k).
@@ -319,44 +273,6 @@ Lemma find_found_Zlength: forall l k,
 Proof.
   move => l k Hk. rewrite /find_found. have Hkiota: k = Zlength (Ziota 0 k) by rewrite Zlength_Ziota; lia.
   rewrite {2}Hkiota. apply find_lost_found_aux_Zlength.
-Qed.
-
-(*Populate [find_found] in the VST proof*)
-Definition pop_find_found l k len : list Values.val :=
-  map Vubyte (find_found l k) ++ zseq (len - Zlength (find_found l k)) Vundef.
-
-Lemma pop_find_found_0: forall l len,
-  pop_find_found l 0 len = zseq len Vundef.
-Proof.
-  move => l len. rewrite /pop_find_found /= /find_found /=. f_equal. list_solve.
-Qed.
-
-Lemma pop_find_found_plus_1: forall l k len,
-  0 <= k < len ->
-  pop_find_found l (k+1) len = if (Z.eq_dec (Byte.signed (Znth k l)) 1%Z) then (pop_find_found l k len) else
-    upd_Znth (Zlength (find_found l k)) (pop_find_found l k len) (Vubyte (Byte.repr k)).
-Proof.
-  move => l k len Hk. (*remember (pop_find_lost l k len) as pop.*)
-  rewrite /pop_find_found /find_found find_lost_found_aux_plus_1; try lia.
-  case: (Z.eq_dec (Byte.signed (Znth k l)) 1) => [//= Hk1 | //= Hk1]; try lia.
-  (*rewrite upd_Znth_map.
-  rewrite map_cat /= Zlength_app Zlength_cons Zlength_nil /=.*)
-  rewrite upd_Znth_app2.
-  - rewrite !Zlength_map Z.sub_diag. symmetry. rewrite (@zseq_hd _ (len - Zlength _)).
-    + rewrite map_cat upd_Znth0 /= cat_app -!catA /=. f_equal. f_equal. f_equal. 
-      rewrite Zlength_app; list_solve.
-    + pose proof (@find_lost_found_aux_Zlength (fun x : byte => ~~ Z.eq_dec (Byte.signed x) 1) Byte.repr l (Ziota 0 k)) as Hlen.
-      rewrite Zlength_Ziota in Hlen; lia.
-  - rewrite !Zlength_map. list_solve.
-Qed.
-
-(*TODO: see if we need anything else for done - maybe something about Znth*)
-Lemma pop_find_found_Znth: forall l k len i,
-  0 <= i < Zlength (find_found l k) ->
-  Znth i (pop_find_found l k len) = Vubyte (Znth i (find_found l k)).
-Proof.
-  move => l k len i Hi. rewrite /pop_find_found. rewrite Znth_app1; last first.
-  by rewrite Zlength_map; lia. by rewrite Znth_map.
 Qed.
 
 (*Lost and found are complements*)
@@ -625,40 +541,6 @@ Proof.
   move => par c Hc. rewrite /find_parity_rows. have Hciota: c = Zlength (Ziota 0 c) by rewrite Zlength_Ziota; lia.
   rewrite {2}Hciota. apply find_parity_aux_Zlength_bound.
 Qed.
-
-(*Populate [find_parity_rows] - this is basically the same as [pop_find_lost] and [pop_find_found]*)
-Definition pop_find_parity_rows l k len : list Values.val :=
-  map Vubyte (find_parity_rows l k) ++ zseq (len - Zlength (find_parity_rows l k)) Vundef.
-
-Lemma pop_find_parity_rows_0: forall l len,
-  pop_find_parity_rows l 0 len = zseq len Vundef.
-Proof.
-  move => l len. rewrite /pop_find_parity_rows /= /find_parity_rows /=. f_equal. list_solve.
-Qed.
-
-Lemma pop_find_parity_rows_plus_1: forall l k len,
-  0 <= k < len ->
-  pop_find_parity_rows l (k+1) len = 
-  match (Znth k l) with
-  | None => pop_find_parity_rows l k len
-  | Some _ => upd_Znth (Zlength (find_parity_rows l k)) (pop_find_parity_rows l k len) (Vubyte (Byte.repr k))
-  end.
-Proof.
-  move => l k len Hk. rewrite /pop_find_parity_rows find_parity_rows_plus_1; try lia.
-  case : (Znth k l) => [//= Hnth | //= Hnth].
-  pose proof (@find_parity_rows_Zlength l k (proj1 Hk)) as Hlenbound.
-  rewrite map_cat -catA /= upd_Znth_app2; rewrite !Zlength_map; [| list_solve].
-  rewrite Z.sub_diag. symmetry. rewrite zseq_hd; try lia.
-  rewrite cat_app upd_Znth0. f_equal. f_equal. f_equal. rewrite Zlength_app; list_solve.
-Qed.
-
-Lemma pop_find_parity_rows_Znth: forall l k len i,
-  0 <= i < Zlength (find_parity_rows l k) ->
-  Znth i (pop_find_parity_rows l k len) = Vubyte (Znth i (find_parity_rows l k)).
-Proof.
-  move => l k len i Hi. rewrite /pop_find_parity_rows Znth_app1; last first.
-  by rewrite Zlength_map; lia. by rewrite Znth_map.
-Qed.
   
 (*The second part of the "found" array*)
 
@@ -704,66 +586,6 @@ Proof.
   rewrite {2}Hciota. apply find_parity_aux_Zlength_bound.
 Qed.
 
-(*Populate the [find_parity_found] array - this is a bit trickier because it is populated after the [find_found]
-  array in memory*)
-Definition pop_find_parity_found pack pars k len found max_n : list Values.val :=
-  map Vubyte (find_found pack found) ++ map Vubyte (find_parity_found pars max_n k) ++
-  zseq (len - Zlength (find_found pack found) - Zlength (find_parity_found pars max_n k)) Vundef.
-
-Lemma pop_find_parity_found_0: forall pack pars len found max_n,
-  pop_find_parity_found pack pars 0 len found max_n =
-  pop_find_found pack found len.
-Proof.
-  move => pack pars len found max_n. rewrite /pop_find_parity_found /pop_find_found /find_parity_found /=.
-  f_equal. f_equal. list_solve.
-Qed.
-
-Lemma pop_find_parity_found_plus_1: forall pack pars k len found max_n,
-  0 <= k ->
-  Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) < len ->
-  0 <= found ->
-  pop_find_parity_found pack pars (k+1) len found max_n =
-  match Znth k pars with
-  | None => pop_find_parity_found pack pars k len found max_n
-  | Some _ => upd_Znth (Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k))
-                (pop_find_parity_found pack pars k len found max_n) (Vubyte (Byte.repr (max_n - 1 - k)))
-  end.
-Proof.
-  move => pack pars k len found max_n Hk Hlen Hf.
-  rewrite /pop_find_parity_found find_parity_found_plus_1; try lia.
-  case : (Znth k pars) => [// Hnth | //= Hnth].
-  pose proof (@find_parity_found_Zlength pars k max_n Hk) as Hlenbound.
-  rewrite map_cat -catA /= upd_Znth_app2; rewrite !Zlength_map.
-  - rewrite upd_Znth_app2; rewrite !Zlength_map; [| list_solve].
-    have->: (Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) -
-    Zlength (find_found pack found) - Zlength (find_parity_found pars max_n k)) = 0%Z by lia.
-    symmetry. rewrite zseq_hd. rewrite upd_Znth0 !cat_app Zlength_app. f_equal. f_equal. f_equal. f_equal.
-    list_solve. list_solve.
-  - rewrite Zlength_app Zlength_map. list_solve.
-Qed.
-
-
-
-Lemma pop_find_parity_found_Znth1: forall pack pars k len found max_n i,
-  0 <= i < Zlength (find_found pack found) ->
-  Znth i (pop_find_parity_found pack pars k len found max_n) = Vubyte (Znth i (find_found pack found)).
-Proof.
-  move => pack pars k len found max_n i Hi.
-  rewrite /pop_find_parity_found. rewrite Znth_app1.
-  - by rewrite Znth_map.
-  - rewrite Zlength_map; lia.
-Qed.
-
-Lemma pop_find_parity_found_Znth2: forall pack pars k len found max_n i,
-  Zlength (find_found pack found) <= i < Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) ->
-  Znth i (pop_find_parity_found pack pars k len found max_n) = 
-  Vubyte (Znth (i - (Zlength (find_found pack found))) (find_parity_found pars max_n k)).
-Proof.
-  move => pack pars k len found max_n i Hi. rewrite /pop_find_parity_found Znth_app2 !Zlength_map; [|lia].
-  rewrite Znth_app1. rewrite Znth_map; list_solve.
-  rewrite Zlength_map; lia.
-Qed. 
-
 (*The relationship between these two functions*)
 Lemma find_parity_rows_found_Zlength: forall par c max_n,
   Zlength (find_parity_found par max_n c) = Zlength (find_parity_rows par c).
@@ -803,197 +625,6 @@ Lemma forall_lt_leq_trans: forall n m l,
 Proof.
   move => n m l Hnm. apply Forall_impl. move => a Ha. lia. 
 Qed. 
-
-(*TODO: move this? Not sure - maybe make separate file with VST stuff (actually that is better idea) - move
-  all "pop" stuff there*)
-
-(*Populating the matrix to be inverted is quite nontrivial, for 4 reasons
-  1. It is essentially represented as a 1D, rather than 2D array, so we need some arithmetic
-     to get the right indexing
-  2. It may not fill up the whole memory location
-  3. Everything is reversed
-  4. We fill up multiple nonconsecutive cells at a time*)
-
-
-(*For the inverse operation, populating is nontrivial because the entire matrix has to be reversed.
-  Also, it is treated as a 1-D array for all intents and purposes, so we do that here*)
-
-(*want to say in memory: flatten_mx ... ++ zseq Vundef (3 * fec_max_h - 3 * xh)*)
-
-(*This definition is quite ugly, which is why we don't want to use it directly*)
-(*This means we have filled up the first i rows are the first j entries of row i*)
-
-(*The first part (the rest is just Vundef)*)
-Definition pop_find_inv_fst (xh: Z) (weights: lmatrix B) (row lost : seq byte) i j : seq Values.val :=
-   mkseqZ (fun z =>
-                 let r := z / (2 * xh) in
-                 let c := z mod (2 * xh) in
-                 if (r <? i) || ((r =? i) && ((c <? j) || ((xh <=? c) && (c <? j + xh)))) then
-                    if (c <? xh) then if (r + c + 1 =? xh) then Vubyte Byte.one else Vubyte Byte.zero
-                    else Vubyte (get weights (Byte.unsigned (Znth r row)) (Byte.unsigned (Znth c lost)))
-                 else Vundef) (2 * xh * xh).
-
-Definition pop_find_inv (xh max_h: Z) (weights: lmatrix B) (row lost : seq byte) i j : seq Values.val :=
-  pop_find_inv_fst xh weights row lost i j ++ 
-  zseq (2 * max_h * max_h - 2 * xh * xh) Vundef.
-
-Lemma pop_find_inv_fst_Zlength: forall xh weights row lost i j,
-  0 <= xh ->
-  Zlength (pop_find_inv_fst xh weights row lost i j) = 2 * xh * xh.
-Proof.
-  move => xh weights row lost i j. rewrite /pop_find_inv_fst.
-  rewrite mkseqZ_Zlength //. nia.
-Qed.
-
-Lemma pop_find_inv_fst_0: forall xh weights row lost,
-  0 < xh ->
-  pop_find_inv_fst xh weights row lost 0 0 = zseq (2 * xh * xh) Vundef.
-Proof.
-  move => xh weights row lost Hxh. have Hxh': 0 <= xh by lia. apply Znth_eq_ext.
-  - rewrite pop_find_inv_fst_Zlength // zseq_Zlength; nia.
-  - move => i. rewrite pop_find_inv_fst_Zlength // => Hi.
-    rewrite /pop_find_inv_fst mkseqZ_Znth //.
-    case : (i / (2 * xh) <? 0) /Z.ltb_spec0 => [Hi0 | Hi0].
-    * have: 0 <= i / (2 * xh). apply Z_div_pos; lia. lia.
-    * have->: (xh <=? i mod (2 * xh)) && (i mod (2 * xh) <? 0 + xh) = false. {
-        case : (xh <=? i mod (2 * xh)) /Z.leb_spec => [Hmod /=|//]. apply /Z.ltb_spec0. lia. }
-      rewrite /=. case : (i / (2 * xh) =? 0) /Z.eqb_spec => [Hi0' | Hi0'].
-      -- case : (i mod (2 * xh) <? 0) /Z.ltb_spec0 => [Himod | Himod].
-         ++ have: 0 <= i mod (2 * xh) < 2 * xh. apply Z.mod_pos_bound; lia. lia.
-         ++ rewrite /= zseq_Znth //. lia.
-      -- rewrite /= zseq_Znth //. lia.
-Qed.
-
-(*Finish a row*)
-Lemma pop_find_inv_fst_finish: forall xh weights row lost i,
-  0 <= xh ->
-  pop_find_inv_fst xh weights row lost i xh = pop_find_inv_fst xh weights row lost (i+1) 0.
-Proof.
-  move => xh weights row lost i Hxh. apply Znth_eq_ext.
-  - by rewrite !pop_find_inv_fst_Zlength.
-  - rewrite pop_find_inv_fst_Zlength // => x Hx.
-    rewrite /pop_find_inv_fst !mkseqZ_Znth //.
-    case : (x / (2 * xh) <? i) /Z.ltb_spec0 => [Hdiv /= | Hdiv /=].
-    + have-> //: (x / (2 * xh) <? i + 1) = true. apply /Z.ltb_spec0. lia.
-    + case : (x / (2 * xh) <? i + 1) /Z.ltb_spec0 => [Hdiv' /= | Hdiv' /=].
-      * have-> //=: (x / (2 * xh) =? i). apply /Z.eqb_spec. lia.
-        case : (x mod (2 * xh) <? xh) /Z.ltb_spec0 => [//=|/= Hmodxh].
-        have-> /=:(xh <=? x mod (2 * xh)) = true. apply /Z.leb_spec0. lia.
-        have->//: x mod (2 * xh) <? xh + xh. apply /Z.ltb_spec0. 
-        have:  0 <= x mod (2 * xh) < 2 * xh. apply Z.mod_pos_bound; lia. lia.
-      * have->/=:(x / (2 * xh) =? i) = false. apply /Z.eqb_spec. lia.
-        case : (x / (2 * xh) =? i + 1) /Z.eqb_spec => [Hi1 /= | //].
-        have->//: (x mod (2 * xh) <? 0) || (xh <=? x mod (2 * xh)) && (x mod (2 * xh) <? 0 + xh) = false.
-        have Hmodbound:  0 <= x mod (2 * xh) < 2 * xh by apply Z.mod_pos_bound; lia.
-        apply orb_false_intro. apply /Z.ltb_spec0. lia. 
-        case : (xh <=? x mod (2 * xh)) /Z.leb_spec0 => [Hmodxh /=|//].
-        apply /Z.ltb_spec0. lia.
-Qed.
-Check upd_Znth.
-
-(*This is not a good name*)
-Lemma idx_div: forall i j k,
-  0 <= i < k ->
-  0 <= j < k ->
-  (i * k + j) / k = i.
-Proof.
-  move => i j k Hi Hj. rewrite Z.add_comm Z_div_plus; try lia.
-  rewrite Zdiv_small; lia.
-Qed.
-
-Lemma idx_mod: forall i j k,
-  0 <= i < k ->
-  0 <= j < k ->
-  (i * k + j) mod k = j.
-Proof.
-  move => i j k Hi Hj. by rewrite Z.add_comm Z_mod_plus_full Z.mod_small.
-Qed.
-
-(*Set the element(s) in the update. This is quite complicated because of
-  all the cases, setting multiple elements, and some div/mod math*)
-Lemma pop_find_inv_fst_set: forall xh weights row lost i j,
-  0 <= xh ->
-  0 <= i < xh ->
-  0 <= j < xh ->
-  pop_find_inv_fst xh weights row lost i (j+1) =
-  upd_Znth (i * xh * 2 + j + xh) (upd_Znth (i * xh * 2 + j) (pop_find_inv_fst xh weights row lost i j) 
-      (if Z.eq_dec (i + j + 1) xh then Vubyte Byte.one else Vubyte Byte.zero))
-    (Vubyte (get weights (Byte.unsigned (Znth i row)) (Byte.unsigned (Znth (j + xh) lost)))).
-Proof.
-  move => xh weights row lost i j Hxh Hi Hj. apply Znth_eq_ext.
-  - rewrite !Zlength_upd_Znth !pop_find_inv_fst_Zlength; lia.
-  - rewrite pop_find_inv_fst_Zlength; try lia. move => x Hx.
-    case (Z.eq_dec x (i * xh * 2 + j)) => [Hnew /= | Hnew /=].
-    + rewrite Hnew Znth_upd_Znth_diff; [| nia]. rewrite Znth_upd_Znth_same; try nia; last first.
-      rewrite pop_find_inv_fst_Zlength; lia. 
-      rewrite /pop_find_inv_fst mkseqZ_Znth; try nia.
-      have Hdiv : (i * xh * 2 + j) / (2 * xh) = i by rewrite -Z.mul_assoc (Z.mul_comm 2) idx_div //; nia.
-      have Hmod: (i * xh * 2 + j) mod (2 * xh) = j by rewrite -Z.mul_assoc (Z.mul_comm 2) idx_mod; nia.
-      rewrite Hdiv Hmod Z.ltb_irrefl Z.eqb_refl /=.
-      have->/=:(j <? j + 1). apply /Z.ltb_spec0. lia.
-      have->/=:j <? xh. apply /Z.ltb_spec0. lia.
-      case : (Z.eq_dec (i + j + 1) xh) => [Heq /= | Hneq /=].
-      by rewrite Heq Z.eqb_refl. have->//: i + j + 1 =? xh = false.
-      by apply /Z.eqb_spec.
-    + case (Z.eq_dec x (i * xh * 2 + j + xh)) => [Hnew' /= | Hnew' /=].
-      * rewrite Hnew' Znth_upd_Znth_same; try nia; last first. rewrite Zlength_upd_Znth
-        pop_find_inv_fst_Zlength; lia.
-        rewrite /pop_find_inv_fst mkseqZ_Znth; try nia.
-        have Hdiv: (i * xh * 2 + j + xh) / (2 * xh) = i
-          by rewrite -Z.add_assoc -Z.mul_assoc (Z.mul_comm 2) idx_div //; nia.
-        have Hmod: (i * xh * 2 + j + xh) mod (2 * xh) = j + xh by
-          by rewrite -Z.add_assoc -Z.mul_assoc (Z.mul_comm 2) idx_mod; nia.
-        rewrite Hdiv Hmod Z.ltb_irrefl Z.eqb_refl /=.
-        have->/=: (xh <=? j + xh) && (j + xh <? j + 1 + xh). {
-          apply andb_true_intro; split. apply /Z.leb_spec0; lia. apply /Z.ltb_spec0; lia. }
-        rewrite orbT. have->//:j + xh <? xh = false. apply /Z.ltb_spec0; lia.
-      * (*Finally, we are not updating anything new. This is still annoying, since we need to prove
-          nothing else changed*)
-        rewrite upd_Znth_diff//; last first; try (rewrite Zlength_upd_Znth pop_find_inv_fst_Zlength; nia).
-        rewrite upd_Znth_diff//; last first; try (rewrite pop_find_inv_fst_Zlength; nia).
-        rewrite /pop_find_inv_fst !mkseqZ_Znth; try lia.
-        case : (x / (2 * xh) <? i) /Z.ltb_spec0 => [Hidiv // | Hidiv//=].
-        case : (x / (2 * xh) =? i) /Z.eqb_spec => [Hieq /= | //].
-        case : (x mod (2 * xh) <? j) /Z.ltb_spec0 => [Hmod /= | Hmod /=].
-        -- have->//:(x mod (2 * xh) <? j + 1). apply /Z.ltb_spec0. lia.
-        -- case : (x mod (2 * xh) <? j + 1) /Z.ltb_spec0 => [Hmod' //=| Hmod' //=].
-          ++ have Hxj: x mod (2 * xh) = j by lia.
-             have Hxcon: x = i * xh * 2 + j by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
-          ++ case : (xh <=? x mod (2 * xh)) /Z.leb_spec0 => [Hxmod/=|//].
-             case : (x mod (2 * xh) <? j + xh) /Z.ltb_spec0 => [Hxjmod /= | Hxjmod /=].
-            ** have->//: x mod (2 * xh) <? j + 1 + xh. apply /Z.ltb_spec0; lia.
-            ** case : (x mod (2 * xh) <? j + 1 + xh) /Z.ltb_spec0 => [Hxjmod' /= | //].
-               have Hjeq: x mod (2 * xh) = j + xh by lia.
-               have Hxcon: x = i * xh * 2 + j + xh by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
-Qed.
-
-(*TODO (tomorrow): prove finish lemma here - about [flatten_mx]*)
-
-Lemma pop_find_inv_Zlength: forall xh max_h weights row lost i j,
-  0 <= xh <= max_h ->
-  Zlength(pop_find_inv xh max_h weights row lost i j) = 2 * max_h * max_h.
-Proof.
-  move => xh max_h i j weights row lost Hxh. rewrite /pop_find_inv Zlength_app zseq_Zlength; try nia.
-  rewrite pop_find_inv_fst_Zlength; nia.
-Qed.
-
-(*TODO: move to Zseq*)
-Lemma zseq_app: forall {A: Type} (z1 z2: Z) (x: A),
-  0 <= z1 ->
-  0 <= z2 ->
-  zseq (z1 + z2) x = zseq z1 x ++ zseq z2 x.
-Proof.
-  move => A z1 z2 x Hz1 Hz2. rewrite /zseq -nseqD. f_equal.
-  rewrite Z2Nat.inj_add //; lia.
-Qed. 
-
-Lemma pop_find_inv_0: forall xh max_h weights row lost,
-  0 < xh <= max_h ->
-  pop_find_inv xh max_h weights row lost 0 0 = zseq (2 * max_h * max_h) Vundef.
-Proof.
-  move => xh max_h weights row lost Hxh. rewrite /pop_find_inv pop_find_inv_fst_0; try lia.
-  rewrite -zseq_app; try nia. f_equal. nia.
-Qed.
 
 
 (*The parity packet is a list of option (list Z)'s, since some are lost in transit. We need to convert to 
@@ -1040,7 +671,8 @@ Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (op
   let parmx := fill_missing c parities in
   let xh := Zlength lost in
   (*step 1: find w' and v*)
-  let w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) (map Byte.unsigned row) (map Byte.unsigned lost) in
+  let w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) (map Byte.unsigned row) 
+    (map Byte.unsigned (rev lost)) in
   let v := find_invmx_list w' xh in
   (*step 2: find w'', d, and s*)
   let w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row) (map Byte.unsigned found) in
@@ -1049,7 +681,7 @@ Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (op
   let s := list_lmatrix_multiply xh k c w'' d' in
   (*step 3: find missing packets and fill in*)
   let d := list_lmatrix_multiply xh xh c v s in
-  fill_rows_list k c xh input d (map Byte.unsigned lost).
+  fill_rows_list k c xh input d (map Byte.unsigned (rev lost)).
 
 
 Lemma max_h_n: ((Z.to_nat fec_max_h <= Z.to_nat (fec_n - 1)))%N.
@@ -1108,7 +740,7 @@ Lemma strong_inv_list_partial: forall k xh h stats parities,
   Zlength (find_parity_rows parities h) = Zlength (find_lost stats k) ->
   Zlength (find_parity_rows parities h) = xh ->
   strong_inv_list xh xh (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) 
-    (map Byte.unsigned (find_parity_rows parities h)) (map Byte.unsigned (find_lost stats k))) 0%Z.
+    (map Byte.unsigned (find_parity_rows parities h)) (map Byte.unsigned (rev (find_lost stats k)))) 0%Z.
 Proof.
   move => k xh h stats parities Hxh Hh Hhmax Hkn Hlens Hlenxh.
   rewrite /strong_inv_list. case : (range_le_lt_dec 0 0 xh); try lia.
@@ -1121,7 +753,9 @@ Proof.
   have Halllost: Forall (fun x => 0 <= Byte.unsigned x < k) (find_lost stats k).
     apply find_lost_bound; rep_lia.
   have Halllost': Forall (fun x => 0 <= Byte.unsigned x < fec_n - 1) (find_lost stats k).
-    eapply Forall_impl. 2: apply Halllost. rewrite /=. lia.
+    eapply Forall_impl. 2: apply Halllost. rewrite /=. lia. 
+  apply Forall_rev in Halllost. apply Forall_rev in Halllost'. rewrite -rev_rev in Halllost.
+  rewrite -rev_rev in Halllost'.
   rewrite (@submx_rows_cols_rev_list_spec _ _ fec_max_h (fec_n - 1)) //=; try rep_lia.
   move => Hmaxh Hn. rewrite weight_mx_spec /weights /submx_rows_cols_rev. 
   have Hhnat: (0 < Z.to_nat fec_max_h)%N by (apply /ltP; rep_lia).
@@ -1134,18 +768,18 @@ Proof.
     * apply weight_list_size.
     * apply byte_ord_list_uniq. subst. apply find_parity_rows_NoDup. rep_lia.
     * rewrite map_inj_uniq. 2: { apply rev_ord_inj. }
-      apply byte_ord_list_uniq. apply find_lost_NoDup; rep_lia.
-    * by rewrite size_map !size_length -!ZtoNat_Zlength !byte_ord_list_Zlength // Hlens.
+      apply byte_ord_list_uniq. rewrite rev_rev. apply NoDup_rev. apply find_lost_NoDup; rep_lia.
+    * by rewrite size_map !size_length -!ZtoNat_Zlength !byte_ord_list_Zlength // Hlens rev_rev Zlength_rev.
     * by rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength // Hlenxh.
     * move => x /mapP[y Hyin Hxy]. subst. rewrite /=. 
-      apply Z_ord_list_In in Hyin. move: Hyin. rewrite in_map_iff => [[y' [Hy' Hiny']]].
+      apply Z_ord_list_In in Hyin. move: Hyin. rewrite in_map_iff => [[y' [Hy' Hiny']]]. 
       move: Halllost; rewrite Forall_forall => Hallost. apply Hallost in Hiny'.
       rewrite leq_subRL. 2: apply /ltP; lia. rewrite addnC -leq_subRL. 2: apply /leP; lia. apply /ltP.
       have->:(Z.to_nat (fec_n - 1) - Z.to_nat fec_max_h)%N = (Z.to_nat (fec_n - 1) - Z.to_nat fec_max_h)%coq_nat by [].
       lia. apply Z_byte_list_bound. eapply Forall_impl; [| apply Halllost].
       move => a /=. lia.
   + by rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength // Hlenxh.
-  + by rewrite size_map size_length -ZtoNat_Zlength byte_ord_list_Zlength // -Hlens Hlenxh.
+  + by rewrite size_map size_length -ZtoNat_Zlength byte_ord_list_Zlength // rev_rev Zlength_rev -Hlens Hlenxh.
   + by apply Z_byte_list_bound.
   + by apply Z_byte_list_bound.
 Qed.
@@ -1161,6 +795,25 @@ Proof.
   by rewrite /fill_rows_list /=.
 Qed.
 
+(*TODO: move to commonssr*)
+Lemma mem_rev: forall {A: eqType} (s: seq A) (x: A),
+  (x \in s) = (x \in (rev s)).
+Proof.
+  move => A s x.  have: (0 <= (count_mem x s))%N by []. rewrite leq_eqVlt => /orP[/eqP Hc0 | Hcpos].
+  - have->: (x \in s) = false. apply negbTE. apply /count_memPn. by rewrite Hc0.
+    symmetry. apply negbTE. apply /count_memPn. by rewrite count_rev Hc0.
+  - have->: (x \in s) = true. apply negbFE. apply /count_memPn => Hc. by rewrite Hc in Hcpos.
+    symmetry. apply negbFE. apply /count_memPn. rewrite count_rev => Hc. by rewrite Hc in Hcpos.
+Qed.
+
+(*TODO: move to ListMatrix*)
+Lemma ord_comp_rev: forall n s,
+  ord_comp (byte_ord_list s n) = ord_comp (byte_ord_list (rev s) n).
+Proof.
+  move => n s. rewrite /ord_comp. f_equal. apply nat_comp_eq_mem. move => x.
+  by rewrite -byte_ord_list_rev map_rev mem_rev.
+Qed. 
+
 (*First, we prove that this is equivalent to the mathcomp decoder*)
 (*LOTS of ordinals and dependent types in here, eventually we will be able to just have a few bounds hypotheses
   that can be solved with [lia]*)
@@ -1175,7 +828,7 @@ Lemma decode_list_mx_equiv: forall k c h xh packets parities stats (Hk: 0 < k <=
     decoder_mult max_h_n (k_bound_proof (proj2 Hk)) weight_list_size (ord_zero h_pos) (ord_zero n_pos)
       (ord_zero (proj1 Hk)) (ord_zero Hc) (lmatrix_to_mx k c (extend_mx k c packets))
       (lmatrix_to_mx h c (fill_missing c parities))
-      (byte_ord_list lost k) (byte_ord_list row h)
+      (byte_ord_list (rev lost) k) (byte_ord_list row h)
       (le_Z_N (proj2 Hh)) (ord_zero (proj1 Hh)) (le_Z_N Hxh).
 Proof.
   move => k c h xh packets parities stats Hk Hc Hh Hxh. rewrite /=.
@@ -1186,8 +839,8 @@ Proof.
   - subst. rewrite (@decode_list_mx_zero k c) //.
     rewrite decoder_mult_0 //. rewrite size_length -ZtoNat_Zlength.
     rewrite Z_ord_list_Zlength. all: try (rewrite Hxh0; lia).
-    rewrite Zlength_map; lia.
-    apply Z_byte_list_bound. apply find_lost_bound; rep_lia.
+    rewrite Zlength_map rev_rev Zlength_rev; lia.
+    apply Z_byte_list_bound. rewrite rev_rev. apply Forall_rev. apply find_lost_bound; rep_lia.
   - (*Things we will need to know about the lists*)
     have Hlostbound: Forall (fun x => 0 <= Byte.unsigned x < k) (find_lost stats k) by (apply find_lost_bound; rep_lia).
     have Hrowbound: Forall (fun x => 0 <= Byte.unsigned x < h) row. {
@@ -1196,25 +849,27 @@ Proof.
     have Hfoundpbound: Forall (fun x => 0 <= Byte.unsigned x < fec_n - 1) foundp.
       subst. apply find_parity_found_bound; rep_lia. 
     (*have Hxh0: 0 <= xh by list_solve.*)
+    (*have Hlenlost': Zlength (rev (find_lost stats k)) = xh  by rewrite rev_rev Zlength_rev.*)
     rewrite /decode_list_mx Hlenpar Hlenlost /decoder_mult fill_rows_list_spec //; try lia.
     move => Hk0. f_equal.
     rewrite list_lmatrix_multiply_correct. 2: { apply right_submx_wf; rep_lia. }
     2 : { apply list_lmatrix_multiply_wf; rep_lia. }
-    2 : { by apply ord_inj. }
+    2 : {  by apply ord_inj. }
     rewrite find_invmx_list_spec. 2 : {
       apply strong_inv_list_partial; try lia. by subst. by subst. }
-    2 : by apply Z_byte_list_bound.
-    2: by rewrite Zlength_map.
+    2: by rewrite map_rev rev_rev; apply Forall_rev; apply Z_byte_list_bound.
+    2: by rewrite Zlength_map rev_rev Zlength_rev.
     f_equal.
     + rewrite (@submx_rows_cols_rev_list_spec _ _ (fec_max_h) (fec_n - 1) xh xh) //; try lia.
       * move => Hh0 Hn0. f_equal. f_equal.
         -- apply weight_mx_spec.
         -- subst; by apply byte_ord_list_widen.
-        -- by apply byte_ord_list_widen.
+        -- apply byte_ord_list_widen. by rewrite rev_rev; apply Forall_rev.
         -- by apply ord_inj.
         -- by apply ord_inj.
       * subst. apply Z_byte_list_bound. by apply (forall_lt_leq_trans (proj2 Hh)).
-      * have Hkn: k <= fec_n - 1 by lia. apply Z_byte_list_bound. by apply (forall_lt_leq_trans Hkn). 
+      * have Hkn: k <= fec_n - 1 by lia. apply Z_byte_list_bound.
+        rewrite rev_rev. apply Forall_rev. by apply (forall_lt_leq_trans Hkn). 
     + rewrite list_lmatrix_multiply_correct. 2: { apply submx_rows_cols_rev_list_wf; lia. }
       2 : { have Hkxh: k = (k - xh) + xh by lia. rewrite {5}Hkxh. apply col_mx_list_wf; lia. }
       rewrite (@submx_rows_cols_rev_list_spec _ _ fec_max_h) //; try lia.
@@ -1226,7 +881,8 @@ Proof.
         -- apply weight_mx_spec.
         -- subst; by apply byte_ord_list_widen.
         -- rewrite byte_ord_list_fold byte_ord_list_app. f_equal.
-          ++ rewrite (byte_ord_list_widen (k_leq_n (k_bound_proof (proj2 Hk)))) // find_lost_found_comp //. rep_lia.
+          ++ rewrite (byte_ord_list_widen (k_leq_n (k_bound_proof (proj2 Hk)))) // find_lost_found_comp //.
+             f_equal. apply ord_comp_rev. rep_lia.
           ++ have Hinhab: Inhabitant 'I_(Z.to_nat (fec_n - 1)) by apply (ord_zero Hn0).
              have Hfoundpbound': Forall (fun x => 0 <= Byte.unsigned x < fec_n - 1) (find_parity_found parities (fec_n - 1) h ) by subst.
              apply Znth_eq_ext. 
@@ -1261,7 +917,8 @@ Proof.
         { rewrite !mxE /=. pose proof (splitP (cast_ord (esym (subnK (le_Z_N Hxh))) x)).
           case : X => [j' /= Hj' | k'' /= Hk''].
           { rewrite !mxE /=. f_equal; f_equal. rewrite byte_ord_list_fold find_lost_found_comp //.
-            rewrite -Hj Hj' /=. have->:(ord_zero Hk0 = (ord_zero (proj1 Hk))) by apply ord_inj. by []. rep_lia.
+            rewrite -Hj Hj' /=. have->:(ord_zero Hk0 = (ord_zero (proj1 Hk))) by apply ord_inj.
+            f_equal. by rewrite ord_comp_rev. rep_lia.
             rewrite Z_ord_list_iota //. lia. }
           { have /ltP Hx: (x < Z.to_nat (k - xh))%N by rewrite Hj.
             move: Hk''; have->: (Z.to_nat k - Z.to_nat xh + k'')%N = ((Z.to_nat k - Z.to_nat xh)%coq_nat + k'')%coq_nat by [] => Hk''. 
@@ -1315,11 +972,13 @@ Proof.
   move => k c h xh data packets parities stats Hkn Hc Hhh Hxhh Hxhk Hlostlen Hrowslen Hparlen Hstatslen Hpacklen 
     Hdatalen Hdatalens Hparlens Hfound Hpars.
   (*Things we need multiple times*)
-  have Hstatsun: uniq (byte_ord_list (find_lost stats k) k). { apply byte_ord_list_uniq.  apply find_lost_NoDup. rep_lia. }
+  have Hstatsun: uniq (byte_ord_list (rev (find_lost stats k)) k). { apply byte_ord_list_uniq.
+    rewrite rev_rev. apply NoDup_rev.  apply find_lost_NoDup. rep_lia. }
   have Hrowsun : uniq (byte_ord_list (find_parity_rows parities h) h). { apply byte_ord_list_uniq.
      apply find_parity_rows_NoDup. rep_lia. }
-  have Hstatssz: size (byte_ord_list (find_lost stats k) k) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength byte_ord_list_Zlength //=.
-    by rewrite Hlostlen. apply find_lost_bound; rep_lia. }
+  have Hstatssz: size (byte_ord_list (rev (find_lost stats k)) k) = Z.to_nat xh. { rewrite size_length 
+    -ZtoNat_Zlength byte_ord_list_Zlength //= rev_rev. by rewrite Zlength_rev Hlostlen. apply Forall_rev.
+    apply find_lost_bound; rep_lia. }
   have Hrowssz: size (byte_ord_list (find_parity_rows parities h) h) = Z.to_nat xh. { rewrite size_length -ZtoNat_Zlength
     byte_ord_list_Zlength. by rewrite Hrowslen. apply find_parity_rows_bound; rep_lia. }
   rewrite (@decode_list_mx_equiv _ _ _ _ packets parities stats Hkn Hc Hhh Hxhk) // decoder_equivalent //=.
@@ -1327,7 +986,8 @@ Proof.
         (ord_zero (proj1 Hkn)) (ord_zero Hc) (le_Z_N Hxhh) ) //.
     + move => x y. rewrite !mxE !extend_mx_spec; try (apply Z_ord_bound; lia).
        have /ltP Hx: ((nat_of_ord x) < Z.to_nat k)%N by [].  
-      rewrite byte_ord_list_notin //=. 2: apply find_lost_bound; rep_lia. 2: rep_lia. 
+      rewrite byte_ord_list_notin //=. 2: rewrite rev_rev; apply Forall_rev; apply find_lost_bound; rep_lia. 2: rep_lia.
+      rewrite rev_rev -in_rev.
       rewrite -find_lost_found_in; try rep_lia. 2: rewrite Byte.unsigned_repr; rep_lia. 
       rewrite find_lost_found_aux_in_spec /= => [[Hfalse // | [Htriv Hstats]] |].
       rewrite Byte.unsigned_repr in Hstats; try rep_lia.

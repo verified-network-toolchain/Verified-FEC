@@ -187,4 +187,30 @@ Proof.
     by rewrite Znth_list_repeat_inrange // zseq_Znth.
 Qed.
 
+Lemma zseq_app: forall {A: Type} (z1 z2: Z) (x: A),
+  0 <= z1 ->
+  0 <= z2 ->
+  zseq (z1 + z2) x = zseq z1 x ++ zseq z2 x.
+Proof.
+  move => A z1 z2 x Hz1 Hz2. rewrite /zseq -nseqD. f_equal.
+  rewrite Z2Nat.inj_add //; lia.
+Qed. 
+
+(*also move this*)
+Lemma flatten_nseq: forall {A: Type} n1 n2 (x: A),
+  flatten (nseq n1 (nseq n2 x)) = nseq (n1 * n2) x.
+Proof.
+  move => A n1 n2 x. elim : n1 => [// | n1 /= IH].
+  by rewrite IH -nseqD.
+Qed. 
+
+Lemma zseq_concat: forall {A: Type} z1 z2 (x: A),
+  0 <= z1 ->
+  0 <= z2 ->
+  concat (zseq z1 (zseq z2 x)) = zseq (z1 * z2) x.
+Proof.
+  move => A z1 z2 x Hz1 Hz2. rewrite concat_flatten /zseq flatten_nseq. f_equal.
+  by rewrite Z2Nat.inj_mul.
+Qed.
+
 End ZSeq.

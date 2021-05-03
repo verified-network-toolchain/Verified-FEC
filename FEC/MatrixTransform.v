@@ -216,6 +216,7 @@ Proof.
   rewrite Hrevlen. simpl. f_equal. lia.
 Qed. 
 
+
 (*Matrix accesses are within bounds*)
 Lemma matrix_bounds_within: forall m n i j,
   0 <= i < m ->
@@ -241,6 +242,20 @@ Proof.
   rewrite <- Z.mul_lt_mono_pos_l in H0. split. apply Z.div_pos; lia. assumption. assumption.
   split. pose proof (Z.mod_pos_bound z n Hn). split; lia.
   rewrite Zmod_eq; lia.
+Qed.
+
+Lemma flatten_mx_Znth': forall {m n} (mx: bytemx) i,
+  wf_lmatrix mx m n ->
+  0 <= i < m * n ->
+  Znth i (flatten_mx mx) = get mx (i / n) (n - 1 - (i mod n)).
+Proof.
+  intros m n mx i Hwf Hi. assert (Hn: 0 < n). {
+    assert (0 <= m) by (apply (lmatrix_m_pos Hwf)).
+    assert (0 <= n) by (apply (lmatrix_n_pos Hwf)). lia. }
+  assert (Hieq: i = (i / n) * n + i mod n). rewrite Z.mul_comm. apply Z_div_mod_eq. lia.
+  assert (Hmod: i mod n = n - 1 - (n - 1 - i mod n)) by lia. rewrite Hmod in Hieq.
+  rewrite Hieq at 1. rewrite !Z.add_sub_assoc. apply (flatten_mx_Znth _ _ _ Hwf).
+  apply find_indices_correct; lia. pose proof (find_indices_correct m n i). lia.
 Qed.
 
 Lemma upd_Znth_rev: forall {A: Type} (l: list A) (i: Z) (x: A),
@@ -291,6 +306,14 @@ Proof.
       rewrite H by (try lia; auto); clear H. unfold get. unfold set. destruct Hwf as [Hlen [Hn Hin]].
       repeat(rewrite upd_Znth_same; try lia). reflexivity. rewrite Forall_Znth in Hin. rewrite Hin; lia.
 Qed.
+
+Lemma flatten_mx_Zlength: forall mx m n,
+  wf_lmatrix mx m n ->
+  Zlength (flatten_mx mx) = m * n.
+Proof.
+  intros mx m n Hwf. unfold flatten_mx. rewrite concat_Zlength.
+  rewrite whole_Zlength_map2d_rev. apply whole_Zlength_wf_matrix. assumption.
+Qed. 
 
 (** Working with [mx_val] and [rev_mx_val]*)
 

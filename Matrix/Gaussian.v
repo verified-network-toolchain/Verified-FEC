@@ -15,6 +15,41 @@ Variable F : fieldType.
 
 Local Open Scope ring_scope.
 
+(*TODO: nothing to do w gaussian elimination but I need a place to put this*)
+Definition rev_cols {m n} (A: 'M[F]_(m, n)) : 'M_(m, n) :=
+ \matrix_(i < m, j < n) A i (rev_ord j).
+
+(*Can't rewrite directly due to dependent type issues*)
+Definition rev_rows {m n} (A: 'M[F]_(m, n)) : 'M_(m, n) :=
+  \matrix_(i < m, j < n) A (rev_ord i) j.
+
+Lemma big_eq_ord {A: Type} (r1 r2 : nat) (Heq: r2 = r1) (op: A -> A -> A) idx (P : pred 'I_r1) F':
+  \big[op/idx]_(i < r1 | P i) F' i = \big[op/idx]_(i < r2 | P (eq_ord Heq i)) F' (eq_ord Heq i).
+Proof.
+  subst. apply eq_big.
+  - move => x. f_equal. by apply ord_inj.
+  - move => x Hx. f_equal. by apply ord_inj.
+Qed.
+
+(*The only thing we need about these*)
+Lemma rev_cols_row_mul: forall {m n k} (A : 'M[F]_(m, n)) (B: 'M[F]_(n, k)),
+  A *m B = (rev_cols A) *m (rev_rows B).
+Proof.
+  move => m n k A B. rewrite -matrixP => i j. rewrite !mxE /=.
+  have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP Hn0 /= | Hnpos /=].
+  - subst. rewrite big_seq_cond big_seq_cond. symmetry. 
+    rewrite (big_seq_cond (r:=(index_enum (ordinal_finType 0)))) (big_seq_cond (r:=(index_enum (ordinal_finType 0)))).
+    rewrite !big1 //; move => x; have: x < 0 by []; by [].
+  - rewrite !(big_nth (Ordinal Hnpos)) big_nat_rev /= big_nat_cond. symmetry. rewrite big_nat_cond.
+    apply eq_big => [// | x]. have->: size (index_enum (ordinal_finType n)) = n
+      by rewrite /index_enum /= ordinal_enum_size.
+    move => /andP[/andP[_ Hxn] _].
+    have Hcase: (n - (nth (Ordinal Hnpos) (ord_enum n) x).+1)%N = nth (Ordinal Hnpos) (ord_enum n) (0 + n - x.+1). {
+      have Hx: x = nat_of_ord (Ordinal Hxn) by []. rewrite {1}Hx nth_ord_enum /= add0n.
+      have ->: (n - x.+1)%N = nat_of_ord (rev_ord (Ordinal Hxn)) by []. by rewrite nth_ord_enum. }
+ rewrite !mxE /=. by f_equal; f_equal; apply ord_inj; rewrite /= !index_ord_enum.
+Qed.
+
 (*Preliminaries*)
 
 (*get elements of identity matrix*)

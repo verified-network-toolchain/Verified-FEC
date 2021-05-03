@@ -22,6 +22,7 @@ FEC/fec.v
 FEC/CommonVST.v
 FEC/Specs.v
 FEC/FECTactics.v
+FEC/PopArrays.v
 #FEC/Verif_encode.v
 FEC/Verif_decode.v
 FEC/Verif_field.v

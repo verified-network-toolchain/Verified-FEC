@@ -361,6 +361,24 @@ Proof.
     by case : (x \in byte_ord_list l n).
 Qed.
 
+
+(*TODO: move to CommonSSR*)
+Lemma rev_pmap: forall {aT rT} (f: aT -> option rT) (s: seq aT),
+  rev (pmap f s) = pmap f (rev s).
+Proof.
+  move => aT rT f s. elim : s => [// | h t /= IH].
+  rewrite rev_cons -cats1 pmap_cat /= -IH.
+  case Hf: (f h) =>[/= u|/=].
+  - by rewrite rev_cons -cats1.
+  - by rewrite cats0.
+Qed.
+
+Lemma byte_ord_list_rev: forall l n,
+  rev (byte_ord_list l n) = byte_ord_list (rev l) n.
+Proof.
+  move => l n. by rewrite /byte_ord_list /Z_ord_list rev_pmap !map_rev.
+Qed.
+
 End ByteOrdList.
   
 Section ListMx.
@@ -1430,141 +1448,6 @@ Proof.
   have->: (Z.to_nat n - (Z.to_nat y).+1)%N = (Z.to_nat n - (Z.to_nat y).+1)%coq_nat by []. f_equal; lia.
 Qed.
 
-(*At several places in the C code, a 2d array is populated by filling in each element, in order. We abstract that out
-  to make the VST proof simpler and to reduce duplication*)
-(*This is a matrix where the first i rows are filled, and the (i+1)st row is filled up to j*)
-Definition pop_2d_mx m n (f: Z -> Z -> F) (i j : Z) : lmatrix :=
-  mk_lmatrix m n (fun x y => if Z_lt_le_dec x i then f x y
-                    else if Z.eq_dec x i then if Z_lt_le_dec y j then f x y
-                    else 0 else 0).
-
-Lemma pop_2d_mx_wf: forall m n f i j,
-  0 <= m ->
-  0 <= n ->
-  wf_lmatrix (pop_2d_mx m n f i j) m n.
-Proof.
-  move => m n f i j Hm Hn. by apply mk_lmatrix_wf.
-Qed. 
-
-(*At the start, this is the zero 2D array*)
-Lemma pop_2d_mx_zero: forall m n f,
-  0 <= m ->
-  0 <= n ->
-  pop_2d_mx m n f 0 0 = (zseq m (zseq n 0)).
-Proof.
-  move => m n f Hm Hn. apply (@lmatrix_ext_eq m n).
-  - by apply pop_2d_mx_wf.
-  - rewrite /wf_lmatrix; repeat split; [| rep_lia |].
-    + rewrite zseq_Zlength; rep_lia.
-    + rewrite Forall_Znth => i. rewrite zseq_Zlength; try rep_lia. move => Hi.
-      rewrite zseq_Znth; try rep_lia. rewrite zseq_Zlength; rep_lia.
-  - move => i' j' Hi' Hj'.
-    rewrite mk_lmatrix_get; try rep_lia. rewrite /get !zseq_Znth; try rep_lia.
-    case :  (Z_lt_le_dec i' 0) => [| /= _]; try rep_lia.
-    case : (Z.eq_dec i' 0) => [/= Hi0 | //]. subst. 
-    by case : (Z_lt_le_dec j' 0); try rep_lia.
-Qed.
-
-(*Finishing a row*)
-Lemma pop_2d_mx_row_finish: forall m n f i,
-  0 <= m ->
-  0 <= n ->
-  pop_2d_mx m n f i n = pop_2d_mx m n f (i+1) 0.
-Proof.
-  move => m n f i Hm Hn. apply (lmatrix_ext_eq (pop_2d_mx_wf _ _ _ Hm Hn) (pop_2d_mx_wf _ _ _ Hm Hn)).
-  move => i' j' Hi' Hj'.
-  rewrite !mk_lmatrix_get; try rep_lia.
-  case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
-  - by case : (Z_lt_le_dec i' (i + 1)); try rep_lia. 
-  - case : (Z.eq_dec i' i) => [Hiieq /= | Hiineq /=].
-    + subst. case : (Z_lt_le_dec i (i + 1)) => [ /=_ | ]; try rep_lia.
-      case : (Z_lt_le_dec j' n) => [//|]. lia. 
-    + case : (Z_lt_le_dec i' (i + 1)) => [| /= _]; try rep_lia.
-      case : (Z.eq_dec i' (i + 1)) => [Hi1 /= | //].
-      by case : (Z_lt_le_dec j' 0); try rep_lia.
-Qed.
-
-(*Update an element*)
-Lemma pop_2d_mx_set: forall m n f i j,
-  0 <= i < m ->
-  0 <= j < n ->
-  set (pop_2d_mx m n f i j) i j (f i j) = pop_2d_mx m n f i (j + 1).
-Proof.
-  move => m n f i j Hi Hj. apply (@lmatrix_ext_eq m n).
-  - apply set_wf. apply pop_2d_mx_wf; lia.
-  - apply pop_2d_mx_wf; lia.
-  - move => i' j' Hi' Hj'. rewrite (@get_set m n); try rep_lia; last first.
-    apply pop_2d_mx_wf; lia. rewrite !mk_lmatrix_get; try rep_lia. 
-    case: (i' =? i) /(Z.eqb_spec _ _) => [ Hiieq /= | Hiineq /=].
-    + subst. case : (Z_lt_le_dec i i) => [| /= _]; try rep_lia.
-      case : (Z.eq_dec i i) => [/= _|]; try rep_lia.
-      case: (j' =? j) /(Z.eqb_spec _ _) => [Hjjeq //= | Hjjeq //=].
-      * subst. by case : (Z_lt_le_dec j (j + 1)); try rep_lia.
-      * case : (Z_lt_le_dec j' j) => [Hjj' /= | Hjj/=];  by case : (Z_lt_le_dec j' (j + 1)); try rep_lia.
-    + case : (Z_lt_le_dec i' i) => [// | Hii' /=].
-      by case : (Z.eq_dec i' i); try rep_lia.
-Qed.
-
-(*Finish - prove a postcondition*)
-Lemma pop_2d_mx_done: forall m n f j x y,
-  0 <= x < m ->
-  0 <= y < n ->
-  get (pop_2d_mx m n f m j) x y = f x y.
-Proof.
-  move => m n f j x y Hx Hy. rewrite mk_lmatrix_get //.
-  by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
-Qed.
-
-(*Fill in a matrix for matrix multiplication*)
-
-(*Input matrices are m x k and k x n, so output is m x n*)
-Definition pop_mx_mult m n k (mx1 mx2: lmatrix) (i j: Z): lmatrix :=
-  pop_2d_mx m n (fun x y => dot_prod mx1 mx2 x y k) i j.
-
-Lemma pop_mx_mult_wf: forall m n k mx1 mx2 i j,
-  0 <= m ->
-  0 <= n ->
-  wf_lmatrix (pop_mx_mult m n k mx1 mx2 i j) m n.
-Proof. 
-  move => m n k mx1 mx2 i j. apply pop_2d_mx_wf.
-Qed.
-
-Lemma pop_mx_mult_row_finish: forall m n k mx1 mx2 i,
-  0 <= m ->
-  0 <= n ->
-  pop_mx_mult m n k mx1 mx2 i n = pop_mx_mult m n k mx1 mx2 (i+1) 0.
-Proof. 
-  move => m n k mx1 mx2 i. apply pop_2d_mx_row_finish. 
-Qed.
-
-Lemma pop_mx_mult_zero: forall m n k mx1 mx2,
-  0 <= m ->
-  0 <= n ->
-  pop_mx_mult m n k mx1 mx2 0 0 = zseq m (zseq n 0).
-Proof.
-  move => m n k mx1 mx2. apply pop_2d_mx_zero.
-Qed.
-
-Lemma pop_mx_mult_set: forall m n k mx1 mx2 i j,
-  0 <= i < m ->
-  0 <= j < n ->
-  set (pop_mx_mult m n k mx1 mx2 i j) i j (dot_prod mx1 mx2 i j k) =
-  pop_mx_mult m n k mx1 mx2 i (j+1).
-Proof.
-  move => m n k mx1 mx2 i j Hi Hj. by rewrite pop_2d_mx_set.
-Qed. 
-
-Lemma pop_mx_mult_done: forall m n k mx1 mx2 j,
-  0 <= m ->
-  0 <= n ->
-  pop_mx_mult m n k mx1 mx2 m j = list_lmatrix_multiply m k n mx1 mx2.
-Proof.
-  move => m n k mx1 mx2 j Hm Hn. apply (@lmatrix_ext_eq m n).
-  - by apply pop_mx_mult_wf.
-  - by apply list_lmatrix_multiply_wf.
-  - move => x y Hx Hy. by rewrite pop_2d_mx_done // mk_lmatrix_get.
-Qed.
-
 End Encoder.
 
 (** ListMatrix operations for Decoder*)
@@ -1896,6 +1779,12 @@ Proof.
   lia. move: Hcbound; rewrite Forall_Znth => /(_ i Hi). lia. simpl. lia.
 Qed.
 
+(*Because of how the C Code represents matrices, it actually multiplies by effectively reversing the columns
+  of the first matrix and the rows of another. We don't need to worry about this in the functional model,
+  but we need to prove it equivalent in VST. The equality comes from [rev_cols_row_mul] in gaussian.v*)
+(*
+Definition rev_cols_list 
+*)
 End Decoder.
 
 End ListMx.
