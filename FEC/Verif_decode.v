@@ -644,9 +644,9 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
       PROP (0 <= j <= xh)
       (LOCALx ((temp _j (Vint (Int.repr j))) :: LOCALS1)
       (SEP (FRZL FR2; data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
-        (pop_find_inv xh weight_mx (find_parity_rows parities i) (find_lost stats k) j 0) v_v)%assert5)))
+        (pop_find_inv xh (map_2d_rev id weight_mx) (find_parity_rows parities i) (find_lost stats k) j 0) v_v)%assert5)))
      break: (PROP () (LOCALx LOCALS1 (SEP (FRZL FR2; data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
-         (pop_find_inv xh weight_mx (find_parity_rows parities i) (find_lost stats k) xh 0) v_v)%assert5))).
+         (pop_find_inv xh (map_2d_rev id weight_mx) (find_parity_rows parities i) (find_lost stats k) xh 0) v_v)%assert5))).
     { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
       rewrite !eqb_type_refl; auto. rewrite data_at__tarray. (*Need to go 2D-1D array for loop and Gaussian elim*)
       rewrite data_at_2darray_concat. 
@@ -672,82 +672,170 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
           assert_PROP (force_val (sem_add_ptr_int (tarray tuchar 255) Signed (gv _fec_weights)
                     (Vubyte (Znth j (find_parity_rows parities i)))) =
             field_address (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (SUB 
-            (Byte.unsigned ((Znth j (find_parity_rows parities i))))) (gv _fec_weights)) as Hp. {
+            (Byte.unsigned ((Znth j (find_parity_rows parities i))))) (gv _fec_weights)) as Hn. {
                   entailer!. solve_offset. rewrite <- (Byte.repr_unsigned (Znth j (find_parity_rows parities i))).
-            solve_offset. }
-          Print Ltac forward. Print Ltac forward1. Print Ltac no_loads_expr.
-
-
-          forward. clear Hp.
-                    (*Now we can express p as an actual address in the 2D array.*)
-                  assert_PROP ((force_val (sem_binary_operation' Oadd (tarray (tarray tuchar 255) 128) tuchar 
-                     (gv _fec_weights) (Vint (Int.repr i)))) = 
-                     field_address0 (tarray (tarray tuchar 255) 128) [ArraySubsc 0; ArraySubsc i] 
-                       (gv _fec_weights)) as Hp. {
-                  entailer!. solve_offset. }
-                  rewrite Hp. clear Hp. 
-    
-forward.
-
-
-
- Search pop_find_parity_rows.
-
-
- rewrite <- HeqLOCALS.
-        forward.
-
-
-
-      {
-
-Check default_arr.
-        rewrite default_arr. simpl. assert (reptype tuchar = val). reflexivity.
-
-
- rewrite <- H7. subst. 
-
-
-
- rewrite H7. Locate val.
-
-replace (reptype tuchar) with val by reflexivity. Eval compute in (reptype tuchar). Search reptype tuchar.
-(@reptype CompSpecs tuchar)
-
-(*replace (@reptype CompSpecs tuchar) with val by reflexivity.*)
-        rewrite (@zseq_concat _ fec_max_h (fec_max_h * 2) Vundef). Check zseq_concat.
-        (*TODO: move to Zseq*)
-        assert (zseq_concat: forall {A: Type} z1 z2 (x: A),
-          concat (zseq z1 (zseq z2 x)) = zseq (z1 * z2) x). {
-         
-
-
-
- Print default_val. Print reptype_gen.  Search default_val. rewrite !default_val_eq. simpl. rewrite default_val_eq. simpl. unfold fold_reptype at 2; simpl.
-          
-
-
- Print fold_reptype.
-
-
- unfold fold_reptype. simpl. Search fold_reptype. Print fold_reptype.
-        assert (default_val (tarray tuchar (fec_max_h * 2)) = list_repeat
-        Eval compute in (default_val (tarray tuchar 3)).
-
-
- Search list_repeat zseq.
-
-
- 2: split; try rep_lia. by rep_lia.
-
-
-
- vm_compute. simpl.
-
-
- Eval compute in (default_val (tarray tuchar 3)). Print default_val. simpl.
-    
-    clear HeqLOCALS. clear LOCALS.
+            solve_offset. } forward. clear Hn.
+          replace (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) with (tarray (tarray tuchar 256) 128) by
+           (repeat f_equal; repeat rep_lia). forward.
+          { entailer!. rewrite !Byte.unsigned_repr by rep_lia.
+            assert (Zlength (find_lost stats (Zlength packets)) <= 128) by rep_lia.
+            assert (Int.min_signed <= j * Zlength (find_lost stats (Zlength packets)) <= Int.max_signed). {
+              assert (j * Zlength (find_lost stats (Zlength packets)) <= 128 * 128) by nia. rep_lia. }
+            assert (Int.min_signed <= j * Zlength (find_lost stats (Zlength packets)) * 2 <= Int.max_signed). {
+               assert (j * Zlength (find_lost stats (Zlength packets)) * 2 <= 2 * 128 * 128) by nia. rep_lia. }
+            rewrite !Int.signed_repr; rep_lia.
+          }
+          { replace (tarray (tarray tuchar 256) 128) with (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h)
+            by (repeat f_equal; repeat rep_lia).
+            rewrite <- HeqLOCALS. rewrite <- HeqLOCALS1.
+            remember (temp _r (force_val (sem_binary_operation' Oadd (tarray tuchar 256) tint v_v
+               (eval_binop Omul tint tint (eval_binop Omul tint tuchar (Vint (Int.repr j)) (Vubyte (Byte.repr xh)))
+                (Vint (Int.repr 2))))) :: temp _n  (force_val
+                (sem_binary_operation' Oadd (tarray (tarray tuchar 255) 128) tuchar 
+                (gv _fec_weights) (Vubyte (Znth j (find_parity_rows parities i)))))
+                :: temp _t'28 (Vubyte (Znth j (find_parity_rows parities i)))
+                :: temp _j (Vint (Int.repr j)) :: LOCALS1) as LOCALS2.
+            freeze FR2 := (FRZL FR1)
+              (data_at Tsh (tarray tuchar fec_max_h) (pop_find_parity_rows parities i fec_max_h) v_row).
+            forward_loop (EX (ctr : Z),
+              PROP (0 <= ctr <= xh)
+              (LOCALx ((temp _i (Vint (Int.repr ctr))) :: LOCALS2)
+              (SEP (FRZL FR2;
+                 data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)(gv _fec_weights);
+                 data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost;
+                 data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
+                   (pop_find_inv xh (map_2d_rev id weight_mx) (find_parity_rows parities i) (find_lost stats k) j ctr) v_v))%assert5))
+            break: (PROP () (LOCALx LOCALS2 
+               (SEP (FRZL FR2;
+                 data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights);
+                 data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost;
+                 data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
+                   (pop_find_inv xh (map_2d_rev id weight_mx) (find_parity_rows parities i) (find_lost stats k) j xh) v_v))%assert5)).
+            { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
+              rewrite !eqb_type_refl; auto.
+            }
+            { Intros i'. (*Need for both branches*)
+              assert_PROP (force_val (sem_add_ptr_int tuchar Signed (force_val
+                (sem_add_ptr_int tuchar Signed v_v (Vint
+                (Int.mul (Int.mul (Int.repr j) (Int.repr (Byte.unsigned (Byte.repr xh)))) (Int.repr 2)))))
+                (Vint (Int.repr i'))) = field_address (tarray tuchar (2 * fec_max_h * fec_max_h)) 
+                (SUB (j * xh * 2 + i')) v_v) as Hri'. {
+                  rewrite_eqs; entailer!.
+                  assert (Zlength (find_lost stats (Zlength packets)) < 128) by rep_lia.
+                  assert (Int.min_signed <= j * Zlength (find_lost stats (Zlength packets)) * 2 <= Int.max_signed). {
+                  assert (j * Zlength (find_lost stats (Zlength packets)) * 2 <= 2 * 128 * 128) by nia. rep_lia. }
+                  assert (0 <= j * Zlength (find_lost stats (Zlength packets)) * 2 + i' < 2 * fec_max_h * fec_max_h). {
+                    rewrite !fec_max_h_eq; nia. }
+                  solve_offset. }
+              rewrite_eqs; forward_if.
+              { rewrite Byte.unsigned_repr in H4 by rep_lia.
+                rewrite_eqs; forward_if (PROP () (LOCALx ((temp _i (Vint (Int.repr i'))) :: LOCALS2)
+                  (SEP (FRZL FR2;
+                    data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights);
+                    data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost;
+                    data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h))
+                      (upd_Znth (j * xh * 2 + i') (pop_find_inv xh (map_2d_rev id weight_mx) (find_parity_rows parities i) (find_lost stats k) j i')
+                        (if (Z.eq_dec (i' + j + 1) xh) then Vubyte Byte.one else Vubyte Byte.zero)) v_v))%assert5)).
+                { (*simplify if condition*) 
+                  unfold Int.add in H5. rewrite !Byte.unsigned_repr in H5 by rep_lia. 
+                  rewrite (Int.unsigned_repr i') in H5 by rep_lia. rewrite (Int.unsigned_repr j) in H5 by rep_lia.
+                  rewrite !Int.unsigned_repr in H5 by rep_lia. apply (f_equal Int.unsigned) in H5.
+                  rewrite !Int.unsigned_repr in H5 by rep_lia. 
+                  forward. rewrite_eqs; entailer!.
+                  rewrite !eqb_type_refl; auto. rewrite H5. rewrite left_sumbool_if by reflexivity.
+                  simpl_repr_byte. rewrite field_at_data_at_cancel'. entailer!.
+                }
+                { (*Other case*)
+                  unfold Int.add in H5. rewrite !Byte.unsigned_repr in H5 by rep_lia. 
+                  rewrite (Int.unsigned_repr i') in H5 by rep_lia. rewrite (Int.unsigned_repr j) in H5 by rep_lia.
+                  rewrite !Int.unsigned_repr in H5 by rep_lia. 
+                  assert (Hijxh: i' + j + 1 <> xh). intro C. rewrite C in H5. contradiction. clear H5.
+                  forward. rewrite_eqs; entailer!.
+                  rewrite !eqb_type_refl; auto. rewrite right_sumbool_if by auto.
+                  simpl_repr_byte. rewrite field_at_data_at_cancel'. entailer!.
+                }
+                { (*After the if condition*) rewrite_eqs; forward.
+                  { entailer!. }
+                  { rewrite pop_find_lost_Znth by rep_lia. entailer!. simpl_repr_byte. }
+                  { rewrite pop_find_lost_Znth by rep_lia. 
+                    assert_PROP (force_val (sem_add_ptr_int tuchar Signed (force_val
+                      (sem_add_ptr_int (tarray tuchar 255) Signed (gv _fec_weights)
+                      (Vubyte (Znth j (find_parity_rows parities i))))) (Vubyte (Znth i' (find_lost stats k)))) =
+                    field_address (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
+                      [ArraySubsc (Byte.unsigned (Znth i' (find_lost stats k)));
+                       ArraySubsc (Byte.unsigned (Znth j (find_parity_rows parities i)))] (gv _fec_weights)). {
+                    entailer!. rewrite <- (Byte.repr_unsigned (Znth j (find_parity_rows parities i))).
+                    rewrite <- (Byte.repr_unsigned (Znth i' (find_lost stats (Zlength packets)))).
+                    assert (Byte.unsigned (Znth i' (find_lost stats (Zlength packets))) < 255). {
+                      assert (Hlostbound: Forall (fun x => 0 <= Byte.unsigned x < Zlength packets) (find_lost stats (Zlength packets))). {
+                        apply find_lost_bound; rep_lia. }
+                      rewrite Forall_Znth in Hlostbound. specialize (Hlostbound i'). rep_lia. } solve_offset. }
+                    forward.
+                    { entailer!. assert (0 <= Byte.unsigned (Znth j (find_parity_rows parities i)) < fec_max_h) by rep_lia.
+                      pose proof (weight_mx_wf) as [Hwh [_ Hwn]].
+                      rewrite !(@Znth_default _  Inhabitant_list). 2: { rewrite rev_mx_val_length1; rep_lia. }
+                      rewrite rev_mx_val_Znth; try rep_lia. 2: { inner_length.
+                        assert (Hlostbound: Forall (fun x => 0 <= Byte.unsigned x < Zlength packets) (find_lost stats (Zlength packets))). {
+                        apply find_lost_bound; rep_lia. }
+                        rewrite Forall_Znth in Hlostbound. specialize (Hlostbound i'). rep_lia. }
+                      simpl_repr_byte.
+                    }
+                    { (*Need to simplify r + i + xh before dereference*)
+                      assert_PROP (force_val (sem_add_ptr_int tuchar Signed (force_val
+                       (sem_add_ptr_int tuchar Signed (force_val (sem_add_ptr_int tuchar Signed v_v
+                       (Vint (Int.mul (Int.mul (Int.repr j) (Int.repr (Byte.unsigned (Byte.repr xh))))
+                       (Int.repr 2))))) (Vint (Int.repr i')))) (Vubyte (Byte.repr xh))) =
+                      field_address (tarray tuchar (2 * fec_max_h * fec_max_h)) 
+                      (SUB (j * xh * 2 + i' + xh)) v_v) as Hrixh. { entailer!.
+                        assert (Zlength (find_lost stats (Zlength packets)) < 128) by rep_lia.
+                        assert (Int.min_signed <= j * Zlength (find_lost stats (Zlength packets)) * 2 <= Int.max_signed). {
+                          assert (j * Zlength (find_lost stats (Zlength packets)) * 2 <= 2 * 128 * 128) by nia. rep_lia. }
+                        assert (0 <= j * Zlength (find_lost stats (Zlength packets)) * 2 + i' + Zlength (find_lost stats (Zlength packets)) <
+                                2 * fec_max_h * fec_max_h). {
+                          assert (j * Zlength (find_lost stats (Zlength packets)) * 2 + i' + Zlength (find_lost stats (Zlength packets))<=
+                              126 * 127 * 2 + 126 + 127) by nia. rep_lia. }
+                        solve_offset. }
+                      forward. forward. Exists (i' + 1). rewrite_eqs; entailer!.
+                      { simpl_repr_byte. rewrite !eqb_type_refl; auto. }
+                      { rewrite pop_find_inv_set by rep_lia. rewrite field_at_data_at_cancel'.
+                        apply derives_refl'. repeat f_equal.
+                        - destruct (Z.eq_dec (j + i' + 1) (Zlength (find_lost stats (Zlength packets)))); simpl;
+                          destruct (Z.eq_dec (i' + j + 1) (Zlength (find_lost stats (Zlength packets)))); try reflexivity;
+                          try lia.
+                        - unfold get. assert (0 <= Byte.unsigned (Znth j (find_parity_rows parities i)) < fec_max_h) by rep_lia.
+                          pose proof (weight_mx_wf) as [Hwh [_ Hwn]].
+                          assert (0 <= Byte.unsigned (Znth i' (find_lost stats (Zlength packets))) <
+                            Zlength (Znth (Byte.unsigned (Znth j (find_parity_rows parities i))) weight_mx)). {
+                            inner_length. assert (Hlostbound: Forall (fun x => 0 <= Byte.unsigned x < Zlength packets) (find_lost stats (Zlength packets))). {
+                              apply find_lost_bound; rep_lia. }
+                            rewrite Forall_Znth in Hlostbound. specialize (Hlostbound i'). rep_lia. }
+                          rewrite !(@Znth_default _  Inhabitant_list). 2: { rewrite rev_mx_val_length1; rep_lia. }
+                          rewrite rev_mx_val_Znth by rep_lia.
+                          rewrite map_2d_rev_Znth by rep_lia. reflexivity.
+                      }
+                    }
+                  }
+                }
+              }
+              { (*end of inner loop*) forward. rewrite_eqs; entailer!. rewrite !eqb_type_refl; auto.
+                rewrite Byte.unsigned_repr in H4 by rep_lia.
+                replace i' with (Zlength (find_lost stats (Zlength packets))) by rep_lia.
+                rewrite pop_find_inv_finish by rep_lia. cancel.
+              }
+            }
+            { (*inv preservation outer loop*) rewrite_eqs; forward. Exists (j+1). rewrite_eqs; entailer!.
+              rewrite !eqb_type_refl; auto. rewrite pop_find_inv_finish by rep_lia. thaw FR2. cancel.
+            }
+          }
+        }
+      }
+      { (*end of outer loop*) forward. rewrite Byte.unsigned_repr in H2 by rep_lia. rewrite_eqs; entailer!.
+        rewrite !eqb_type_refl; auto. replace j with (Zlength (find_lost stats (Zlength packets))) by lia.
+        cancel.
+      }
+    }
+    { (*Inverse loop is done! Next step is Gaussian elim, small err, then mx mult loop
+        (a bit more complicated bc whole array is not used - this one is 2D though, may need other "pop"*)
 
 
 (*Tactic debug stuff - first resturn
