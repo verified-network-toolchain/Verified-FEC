@@ -1550,6 +1550,29 @@ Proof.
   - apply Z_ord_bound. lia.
 Qed.
 
+(*Need analogue of [strong_inv_row_mx]*)
+Lemma strong_inv_row_mx_list: forall m n left right,
+  strong_inv_list m n left 0 ->
+  strong_inv_list m (n + n) (row_mx_list left right m n n) 0.
+Proof.
+  move => m n left right. rewrite /strong_inv_list.
+  case : (range_le_lt_dec 0 0 m) => [/= H0m | //].
+  case : (Z_le_lt_dec m n) => [/= Hmn | //].
+  case : (Z_le_lt_dec m (n + n)); try lia. move => Hmnn.
+  have H0n: 0 <= n by lia.
+  rewrite row_mx_list_spec; try lia. move => Hstr.
+  have Hmnn': (Z.to_nat m <= Z.to_nat n + Z.to_nat n)%N.
+    have->:(Z.to_nat n + Z.to_nat n)%N = (Z.to_nat n + Z.to_nat n)%coq_nat by [].
+    apply /leP. lia.
+  apply (@strong_inv_row_mx _ _ _ _ (lmatrix_to_mx m n right) _ Hmnn') in Hstr.
+  move: Hstr. rewrite (strong_inv_castmx _ (erefl (Z.to_nat m)) (Logic.eq_sym (Z2Nat.inj_add n n H0n H0n))).
+  move => Hstr.
+  have->:(le_Z_N Hmnn)  = (leq_subst (erefl (Z.to_nat m)) (Logic.eq_sym (Z2Nat.inj_add n n H0n H0n)) Hmnn')
+   by apply bool_irrelevance.
+  have->:(Z_to_ord H0m) = (eq_ord (erefl (Z.to_nat m)) (Z_to_ord H0m)) by apply ord_inj. by [].
+Qed.
+  
+
 (*Concatenate two matrices - up/down*)
 Definition col_mx_list (top bottom: lmatrix) m1 m2 n : lmatrix :=
   mk_lmatrix (m1 + m2) n (fun x y => if Z_lt_ge_dec x m1 then get top x y else get bottom (x - m1) y).

@@ -393,6 +393,12 @@ Proof.
   by rewrite rev_cons IH -cats1.
 Qed.
 
+Lemma map_map_equiv: forall {A B: Type} (f: A -> B) (s: seq A),
+  map f s = List.map f s.
+Proof.
+  by [].
+Qed.
+
 (** Other list lemmas*)
 
 Lemma size_not_nil: forall {A: Type} (l: seq A),

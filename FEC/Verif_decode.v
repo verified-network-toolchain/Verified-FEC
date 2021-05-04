@@ -289,7 +289,7 @@ freeze FR1 := (data_at_ Tsh (tarray tuchar fec_max_h) v_row)
        (data_at_ Tsh (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v)
        (iter_sepcon_arrays packet_ptrs packets) (iter_sepcon_options parity_ptrs parities)
        (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
-       (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
+       (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (FIELD_TABLES gv)
        (data_at Ews tint (Vint Int.zero) (gv _trace))
        (data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
        (gv _fec_weights)).
@@ -414,7 +414,7 @@ forward_loop (EX (i: Z),
        (data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
        (data_at_ Tsh (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v)
        (iter_sepcon_arrays packet_ptrs packets)
-       (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
+       (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (FIELD_TABLES gv)
        (data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
          (gv _fec_weights)) (data_at Ews tint (Vint Int.zero) (gv _trace))
        (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost).
@@ -607,7 +607,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
     freeze FR1 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps)
       (data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
       (iter_sepcon_arrays packet_ptrs packets)
-      (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (INDEX_TABLES gv)
+      (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (FIELD_TABLES gv)
       (data_at Ews tint (Vint Int.zero) (gv _trace))
       (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
       (iter_sepcon_options parity_ptrs parities)
@@ -834,8 +834,37 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
         cancel.
       }
     }
-    { (*Inverse loop is done! Next step is Gaussian elim, small err, then mx mult loop
-        (a bit more complicated bc whole array is not used - this one is 2D though, may need other "pop"*)
+    { (*Inverse loop is done! Now need pre/postconditions of gaussian elim*)
+      rewrite_eqs. (*issue: ptree does not evaluate bc of opaque constants*)
+      replace (tarray (tarray tuchar fec_max_cols) fec_max_h) with
+        (tarray (tarray tuchar 16000) 128) by (repeat f_equal; rep_lia).
+      replace (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) with
+         (tarray (tarray tuchar 256) 128) by (repeat f_equal; rep_lia). 
+      rewrite pop_find_inv_post; try lia. rewrite <- cat_app. rewrite CommonSSR.map_map_equiv.
+      2 : { apply weight_mx_wf. }
+      2 : { eapply forall_lt_leq_trans. 2 : apply find_parity_rows_bound. all: rep_lia. }
+      2 : { eapply forall_lt_leq_trans. 2 : apply find_lost_bound. all: rep_lia. }
+      (*We don't fill up the whole array, so we need to split it*)
+      rewrite (split2_data_at_Tarray_app (2 * xh * xh)).
+      2 : { rewrite Zlength_map. rewrite (@flatten_mx_Zlength _ xh (xh + xh)). lia.
+            apply row_mx_list_wf; lia. }
+      2 : { rewrite zseq_Zlength; try rep_lia. assert (xh <= fec_max_h) by rep_lia. nia. }
+      replace (tarray tuchar (2 * xh * xh)) with (tarray tuchar (xh * (xh + xh))) by  (f_equal; lia).
+      thaw FR2. thaw FR1.
+      forward_call(gv, xh, xh + xh, (concat_mx_id (F:=B)
+              (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+                 (seq.map Byte.unsigned (find_parity_rows parities i))
+                 (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh), v_v, Tsh).
+      { entailer!. simpl. simpl_repr_byte. f_equal. rewrite !byte_int_repr by rep_lia. f_equal.
+        f_equal. f_equal. f_equal. lia. }
+      { replace (xh * (xh + xh)) with (2 * xh * xh) by lia. entailer!.
+      }
+      { split; [lia | split; [ rep_lia |split]].
+        - apply row_mx_list_wf; lia.
+        - split; auto.  apply strong_inv_row_mx_list. apply strong_inv_list_partial; lia.
+      }
+      { forward. forward_if True; [contradiction | forward; entailer! |].
+        (*start of syndrome mx (multiplication) loop*)
 
 
 (*Tactic debug stuff - first resturn

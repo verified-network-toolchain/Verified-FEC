@@ -8,6 +8,7 @@ Require Import FECTactics.
 Require Import ByteFacts.
 Require Import ByteField.
 Require Import VandermondeByte.
+Require Import PopArrays.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -83,7 +84,7 @@ Proof.
 { forward. forward_if True; [contradiction | |].
   { forward. entailer!. }
   { forward_call(gv, fec_max_h, fec_n - 1,  (weight_mx_list fec_max_h (fec_n - 1)),
-      (gv _fec_weights)).
+      (gv _fec_weights), Ews).
     { entailer!. simpl. simpl_repr_byte. rewrite !byte_int_repr by rep_lia. repeat f_equal; rep_lia. }
     { assert(Hwf: wf_lmatrix (F:=B) (weight_mx_list fec_max_h (fec_n - 1)) fec_max_h (fec_n - 1)) by
         (apply (@weight_matrix_wf fec_max_h (fec_n - 1)); rep_lia).
@@ -92,7 +93,7 @@ Proof.
     }
     { split; [rep_lia | split; [ rep_lia | split]]. apply weight_matrix_wf; rep_lia.
       unfold strong_inv_list. destruct (range_le_lt_dec 0 0 fec_max_h ); try rep_lia.
-      destruct (Z_le_lt_dec fec_max_h (fec_n - 1)); try rep_lia. rewrite weight_mx_list_spec by rep_lia.
+      destruct (Z_le_lt_dec fec_max_h (fec_n - 1)); try rep_lia. rewrite weight_mx_list_spec by rep_lia. split; auto.
       apply vandermonde_strong_inv. apply (ssrbool.introT (ssrnat.leP)). rep_lia. 
     }
     { Intros ret. forward. forward_if True; [ contradiction | |].
@@ -119,13 +120,13 @@ Proof.
     LOCAL (temp _k (Vint (Int.repr k)); temp _p s; temp _i_max (Vubyte (Byte.repr m));
            temp _j_max (Vubyte (Byte.repr n)); gvars gv)
     SEP(FIELD_TABLES gv;
-        data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx 
+        data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx 
           (gauss_all_steps_rows_partial (F:=B) m n mx k ))) s))
     break: (
       PROP ()
       LOCAL (temp _p s; temp _i_max (Vubyte (Byte.repr m));  temp _j_max (Vubyte (Byte.repr n)); gvars gv)
       SEP(FIELD_TABLES gv;
-          data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx   
+          data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx   
             (gauss_all_steps_rows_partial (F:=B) m n mx m ))) s)). 
 { forward. Exists 0%Z. entailer!. }
 { Intros k. forward_if.
@@ -138,14 +139,14 @@ Proof.
       LOCAL (temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k)); temp _p s; 
              temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); gvars gv)
       SEP (FIELD_TABLES gv;
-        data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_cols_one_partial m n
+        data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_cols_one_partial m n
             (gauss_all_steps_rows_partial (F:=B) m n mx k) k i ))) s))
       break: (
         PROP ()
         LOCAL (temp _k (Vint (Int.repr k)); temp _p s; 
                 temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); gvars gv)
         SEP (FIELD_TABLES gv;
-             data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_cols_one_partial m n
+             data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_cols_one_partial m n
                 (gauss_all_steps_rows_partial (F:=B) m n mx k) k m ))) s)).
     { forward. Exists 0%Z. entailer!. }
     { Intros i. forward_if.
@@ -178,7 +179,7 @@ Proof.
            temp _p s; temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); 
            gvars gv)
            SEP (FIELD_TABLES gv;
-           data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx
+           data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx
               (all_cols_one_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx k) k i))) s)) as x.
          forward_loop x break: x; subst. (*so I don't have to write it twice*)
           { entailer!. solve_offset.  } 
@@ -229,7 +230,7 @@ Proof.
                   temp _p s; temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); 
                  gvars gv)
                 (SEP (FIELD_TABLES gv;
-                     data_at Ews (tarray tuchar (m * n)) (map Vubyte
+                     data_at sh (tarray tuchar (m * n)) (map Vubyte
                         (flatten_mx (scalar_mul_row_partial m n (all_cols_one_partial (F:=B) m n
                         (gauss_all_steps_rows_partial (F:=B) m n mx k) k i)  i (byte_inv qij) j))) s))%assert5))
                 break: (PROP ()
@@ -240,7 +241,7 @@ Proof.
                     temp _p s; temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); 
                     gvars gv)
                   (SEP (FIELD_TABLES gv;
-                        data_at Ews (tarray tuchar (m * n)) (map Vubyte
+                        data_at sh (tarray tuchar (m * n)) (map Vubyte
                         (flatten_mx (scalar_mul_row m n (all_cols_one_partial (F:=B) m n 
                         (gauss_all_steps_rows_partial (F:=B) m n mx k) k i) i (byte_inv qij)))) s)))%assert5).
                 { Exists 0%Z. entailer!. solve_offset. 
@@ -340,13 +341,13 @@ Proof.
           PROP (0 <= i <= m)
           (LOCALx  (temp _i (Vint (Int.repr i)) :: LOCALS)
           (SEP (FIELD_TABLES gv;
-                data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx (sub_all_rows_partial m n
+                data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx (sub_all_rows_partial m n
                (all_cols_one_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx k) k m) k i))) s))%assert5))
           break: 
           (PROP ()
           (LOCALx  (LOCALS)
           (SEP (FIELD_TABLES gv;
-                data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx (sub_all_rows_partial m n
+                data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx (sub_all_rows_partial m n
                 (all_cols_one_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx k) k m) k m))) s))%assert5)).
         { (*initialization of subtract all rows loop*) 
           rewrite HeqLOCALS; forward. Exists 0%Z. rewrite HeqLOCALS; entailer!. }
@@ -356,7 +357,7 @@ Proof.
             forward_if (PROP ()
                 (LOCALx (temp _i (Vint (Int.repr i)) :: LOCALS)
                 (SEP (FIELD_TABLES gv;
-                 data_at Ews (tarray tuchar (m * n))
+                 data_at sh (tarray tuchar (m * n))
                    (map Vubyte (flatten_mx (if Z.eq_dec i k then
                     (sub_all_rows_partial (F:=B) m n(all_cols_one_partial (F:=B) m n
                       (gauss_all_steps_rows_partial (F:=B) m n mx k) k m) k i) else
@@ -371,7 +372,7 @@ Proof.
                   temp _j_max (Vubyte (Byte.repr n));  temp _i (Vint (Int.repr i)); 
                   temp _j (Vint (Int.repr j)); gvars gv)
                 SEP (FIELD_TABLES gv;
-                 data_at Ews (tarray tuchar (m * n))
+                 data_at sh (tarray tuchar (m * n))
                    (map Vubyte(flatten_mx
                    (add_multiple_partial m n (sub_all_rows_partial (F:=B) m n (all_cols_one_partial (F:=B) m n
                       (gauss_all_steps_rows_partial (F:=B) m n mx k) k m) k i) k i Byte.one j))) s)).
@@ -463,13 +464,13 @@ Proof.
       LOCAL (temp _p s;  temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n));
              temp _i (Vint (Int.repr i)); gvars gv)
       SEP (FIELD_TABLES gv;
-           data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_lc_one_rows_partial m n
+           data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_lc_one_rows_partial m n
             (gauss_all_steps_rows_partial (F:=B) m n mx m) i))) s))
       break:
        (PROP ()
         LOCAL (temp _p s;  temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); gvars gv) 
         SEP (FIELD_TABLES gv;
-           data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_lc_one_rows_partial m n
+           data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx (all_lc_one_rows_partial m n
             (gauss_all_steps_rows_partial (F:=B) m n mx m) (m-1)))) s)).
     { (*initialization*) forward. Exists 0%Z. entailer!. }
     { (*outer loop for lc's 1*) Intros i. forward_if.
@@ -518,7 +519,7 @@ Proof.
                   temp _q (offset_val (i * n + n - 1) s); temp _p s; temp _i_max (Vubyte (Byte.repr m));
                   temp _j_max (Vubyte (Byte.repr n)); temp _i (Vint (Int.repr i)); gvars gv)
                 SEP (FIELD_TABLES gv;
-                  data_at Ews (tarray tuchar (m * n))(map Vubyte (flatten_mx (scalar_mul_row_partial m n
+                  data_at sh (tarray tuchar (m * n))(map Vubyte (flatten_mx (scalar_mul_row_partial m n
                     (all_lc_one_rows_partial (F:=B) m n 
                     (gauss_all_steps_rows_partial (F:=B) m n mx m) i) i (byte_inv aii) j))) s)).
               { Exists 0%Z. entailer!. solve_offset. unfold FIELD_TABLES. 

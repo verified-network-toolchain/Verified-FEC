@@ -43,23 +43,22 @@ Definition fec_generate_weights_spec :=
     SEP (data_at Ews (tint) (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights)).
 
-
 (*We require that m * n is nonzero (or else we do not have weak_valid_pointers in the loop guards).
   We require that m > 0 since the last loop goes from 0 to m - 1 *)
 Definition fec_matrix_transform_spec :=
   DECLARE _fec_matrix_transform
-  WITH gv: globals, m : Z, n : Z, mx : list (list byte), s : val
+  WITH gv: globals, m : Z, n : Z, mx : list (list byte), s : val, sh: share
   PRE [ tptr tuchar, tuchar, tuchar]
-    PROP (0 < m <= n; n <= Byte.max_unsigned; wf_lmatrix mx m n; strong_inv_list m n mx 0)
+    PROP (0 < m <= n; n <= Byte.max_unsigned; wf_lmatrix mx m n; strong_inv_list m n mx 0; writable_share sh)
     PARAMS (s; Vubyte (Byte.repr m); Vubyte (Byte.repr n))
     GLOBALS (gv)
     SEP (FIELD_TABLES gv;
-         data_at Ews (tarray tuchar (m * n)) (map Vubyte (flatten_mx mx)) s)
+         data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx mx)) s)
   POST [tint]
     PROP()
     RETURN (Vint Int.zero)
     SEP(FIELD_TABLES gv;
-        data_at Ews (tarray tuchar (m * n))(map Vubyte (flatten_mx (gauss_restrict_rows m n mx))) s).
+        data_at sh (tarray tuchar (m * n))(map Vubyte (flatten_mx (gauss_restrict_rows m n mx))) s).
 
 Definition fec_gf_mult_spec :=
   DECLARE _fec_gf_mult
@@ -181,7 +180,7 @@ Definition fec_blk_decode_spec :=
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
          data_at Ews (tarray tschar k) (map Vbyte stats) ps;
-         INDEX_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
+         FIELD_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
   POST [ tint ]
     PROP ()
@@ -191,7 +190,7 @@ Definition fec_blk_decode_spec :=
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
          data_at Ews (tarray tschar k) (map Vbyte stats) ps;
-         INDEX_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
+         FIELD_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
 

@@ -2367,6 +2367,50 @@ Proof.
     apply mulmx1_unit in Ha. case : Ha => [Ha  Hc]. by rewrite Ha in Hun.
 Qed.
 
+(*We also need to know that [strong_inv] does not change if we cast a matrix*)
+
+Lemma leq_subst: forall m n m' n',
+  m = m' ->
+  n = n' ->
+  m <= n ->
+  m' <= n'.
+Proof.
+  by move => m n m' n' -> ->.
+Qed.
+
+Lemma submx_remove_col_castmx: forall  {m n m' n'} (A: 'M[F]_(m, n)) (Hmm: m = m') (Hnn: n = n') (Hmn: m <= n) r' j,
+  submx_remove_col A Hmn r' j =
+  submx_remove_col (castmx (Hmm, Hnn) A) (leq_subst Hmm Hnn Hmn) (eq_ord Hmm r') (eq_ord Hmm j).
+Proof.
+  move => m n m' n' A Hmm Hnn Hmn r' j. rewrite -matrixP => x y /=. rewrite !mxE /=.
+  rewrite castmxE /=. case Hyj: (y < j); f_equal; by apply ord_inj.
+Qed.
+
+Lemma submx_add_row_castmx: forall  {m n m' n'} (A: 'M[F]_(m, n)) (Hmm: m = m') (Hnn: n = n') (Hmn: m <= n) r' j,
+  submx_add_row A Hmn r' j =
+  submx_add_row (castmx (Hmm, Hnn) A) (leq_subst Hmm Hnn Hmn) (eq_ord Hmm r') (eq_ord Hmm j).
+Proof.
+  move => m n m' n' A Hmm Hnn Hmn r' j. rewrite -matrixP => x y /=. rewrite !mxE /=.
+  rewrite castmxE /=. case Hyj: (x < r'); f_equal; by apply ord_inj.
+Qed.
+
+Lemma strong_inv_castmx: forall {m n m' n'} (A: 'M[F]_(m, n)) (Hmm: m = m') (Hnn: n = n') (Hmn: m <= n) (x: 'I_m),
+  strong_inv A Hmn x <-> strong_inv (castmx (Hmm, Hnn) A) (leq_subst Hmm Hnn Hmn) (eq_ord Hmm x).
+Proof.
+  move => m n m' n' A Hmm Hnn Hmn x. rewrite /strong_inv /=. split; move => Hstr r' Hxr'.
+  - remember (eq_ord (esym Hmm) r') as r.  move: Hstr => /(_ r). rewrite Heqr /= => /(_ Hxr') => [[Hcol Hrow]].
+    have ->: r' = eq_ord Hmm r by subst; apply ord_inj. rewrite /=.
+    split; move => j Hjr;remember (eq_ord (esym Hmm) j) as j';  have ->:j = eq_ord Hmm j' by subst; apply ord_inj.
+    + rewrite -submx_remove_col_castmx Heqr. apply Hcol. by subst.
+    + rewrite -submx_add_row_castmx Heqr. apply Hrow. by subst.
+  - remember (eq_ord Hmm r') as r.  move: Hstr => /(_ r). rewrite Heqr /= => /(_ Hxr') => [[Hcol Hrow]].
+    split; move => j Hjr;remember (eq_ord Hmm j) as j'.
+    + move: Hcol => /(_ j'). move: Hjr. rewrite Heqj' /= => Hjr /(_ Hjr).
+      by rewrite -submx_remove_col_castmx.
+    + move: Hrow => /(_ j'). move: Hjr. rewrite Heqj' /= => Hjr /(_ Hjr).
+      by rewrite -submx_add_row_castmx.
+Qed.
+
 Lemma castmx_twice: forall m1 m2 m3 n1 n2 n3 (A: 'M[F]_(m1, n1)) 
   (Hm12: m1 = m2) (Hm23: m2 = m3) (Hn12: n1 = n2) (Hn23: n2 = n3),
   castmx (Hm23, Hn23) (castmx (Hm12, Hn12) A) =
