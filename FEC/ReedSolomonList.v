@@ -929,7 +929,7 @@ Proof.
           { have /ltP Hx: (x < (Z.to_nat k - Z.to_nat xh)%coq_nat)%N by rewrite Hj'.
             move: Hk'; have->:(Z.to_nat (k - xh) + k')%N = (Z.to_nat (k - xh) + k')%coq_nat by [] => Hk'. lia.
           }
-          { rewrite !mxE /=. rewrite !mk_lmatrix_get; try lia. f_equal.
+          { rewrite !mxE !mk_lmatrix_get; try lia. f_equal.
             have->:(nat_of_ord k'') = Z.to_nat (Z.of_nat k'') by rewrite Nat2Z.id.
             have->: k' = k''. move: Hk'' => /eqP Hx. move: Hx. rewrite Hk' Z2Nat.inj_sub; try lia.
             have->: (Z.to_nat k - Z.to_nat xh)%coq_nat = (Z.to_nat k - Z.to_nat xh)%N by [].

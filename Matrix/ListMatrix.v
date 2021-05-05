@@ -380,6 +380,77 @@ Proof.
 Qed.
 
 End ByteOrdList.
+
+Section ListRect.
+
+(*Some general definitions for 2D rectangular arrays/lists*)
+Definition rect {A} (l: list (list A)) m n : Prop :=
+  Zlength l = m /\ 0 <= n /\ Forall (fun x => Zlength x = n) l.
+
+Definition get {A} `{Inhabitant A} (l: list (list A)) i j :=
+  Znth j (Znth i l).
+
+Definition set {A} `{Inhabitant A} (l: list (list A)) i j k :=
+  upd_Znth i l (upd_Znth j (Znth i l) k).
+
+Lemma set_rect: forall {A} `{Inhabitant A} (l: list (list A)) m n i j k,
+  rect l m n ->
+  rect (set l i j k) m n.
+Proof.
+  move => A Hinhab l m n i j k [Hlenm [Hn Hlenn]].
+  rewrite /rect /set. split.
+  - by rewrite Zlength_upd_Znth.
+  - split => [//|]. move: Hlenn. rewrite !Forall_Znth Zlength_upd_Znth => Hlenn x Hx.
+    have Hith: Zlength (Znth x l) = n by apply Hlenn.
+    have [Hxi | Hxi]: x = i \/ x <> i by lia.
+    + subst. by rewrite upd_Znth_same // Zlength_upd_Znth.
+    + list_solve.
+Qed. 
+
+Lemma get_set: forall {A} `{Inhabitant A} (l: list (list A)) m n i j i' j' k,
+  rect l m n ->
+  0 <= i < m ->
+  0 <= i' < m ->
+  0 <= j < n ->
+  0 <= j' < n ->
+  get (set l i j k) i' j' = if (i =? i') && (j =? j') then k else get l i' j'.
+Proof.
+  move => A Hinhab l m n i j i' j' k [Hlenm [_ Hlenn]] Hi Hi' Hj Hj'.
+  rewrite /get /set. case : (i =? i') /Z.eqb_spec => [Hii /= | Hii /=]; last first.
+  by rewrite upd_Znth_diff; try lia.
+  subst. rewrite upd_Znth_same //.
+  have Hithlen: Zlength (Znth i' l) = n. move : Hlenn. by rewrite Forall_Znth => /(_ _ Hi').
+  case : (j =? j') /Z.eqb_spec => [Hjj /= | Hjj /=]; last first.
+  by rewrite upd_Znth_diff; try lia. subst. by rewrite upd_Znth_same.
+Qed.
+
+Lemma rect_eq_ext: forall {A} `{Inhabitant A} m n (l1 l2: list (list A)),
+  rect l1 m n ->
+  rect l2 m n ->
+  (forall i j, 0 <= i < m -> 0 <= j < n -> get l1 i j = get l2 i j) ->
+  l1 = l2.
+Proof.
+  move => A Hinhab m n l1 l2 [Hl1m [Hn Hl1n]] [Hl2m [_ Hl2n]] Heq.
+  apply Znth_eq_ext.
+  - lia.
+  - rewrite Hl1m => i Hi. have Hithl1: Zlength (Znth i l1) = n. {
+      move: Hl1n. by rewrite Forall_Znth Hl1m => /(_ i Hi). } 
+    apply Znth_eq_ext.
+    + move: Hl2n. rewrite Forall_Znth Hl2m => /(_ i Hi) Hithl2. lia.
+    + rewrite Hithl1 => j Hj. by apply Heq.
+Qed.  
+
+Lemma zseq_rect: forall {A: Type} m n (x: A),
+  0 <= m ->
+  0 <= n ->
+  rect (zseq m (zseq n x)) m n.
+Proof.
+  move => A m n x Hm Hn. rewrite /rect. split; [| split]; try by [].
+  by rewrite zseq_Zlength. rewrite Forall_Znth zseq_Zlength // => i Hi.
+  by rewrite zseq_Znth // zseq_Zlength.
+Qed.
+
+End ListRect.
   
 Section ListMx.
 
@@ -395,10 +466,10 @@ Defined.
 
 Definition lmatrix := list (list F).
 
-Definition wf_lmatrix (mx: lmatrix) (m n : Z) :=
-  Zlength mx = m /\ 0 <= n /\ Forall (fun x => Zlength x = n) mx.
+Definition wf_lmatrix (mx: lmatrix) := rect mx. (*(mx: lmatrix) (m n : Z) := rect mx m n.*)
+  (*Zlength mx = m /\ 0 <= n /\ Forall (fun x => Zlength x = n) mx.*)
 
-(*get the (i,j)th entry of a lmatrix*)
+(*get the (i,j)th entry of a lmatrix*)(*
 Definition get (mx: lmatrix) (i j : Z) :=
   let row := Znth i mx in
   Znth j row.
@@ -406,20 +477,24 @@ Definition get (mx: lmatrix) (i j : Z) :=
 Definition set (mx: lmatrix) (i j : Z) (k: F) :=
   let row := Znth i mx in
   let new_row := upd_Znth j row k in
-  upd_Znth i mx new_row.
+  upd_Znth i mx new_row.*)
 
 Lemma set_wf: forall m n mx i j k,
   wf_lmatrix mx m n ->
   wf_lmatrix (set mx i j k) m n.
 Proof.
-  move => m n mx i j k [Hlen [Hn Hin]].
+  move => m n mx i j k Hwf.
+  by apply set_rect.
+Qed.
+(*
+ [Hlen [Hn Hin]].
   move : Hin; rewrite Forall_Znth /wf_lmatrix /set => Hin.
   split. list_solve. split. by []. rewrite Forall_Znth Zlength_upd_Znth => i' Hi'.
   have [Hii' | Hii']: i = i' \/ i <> i' by lia.
   - subst. rewrite upd_Znth_same; list_solve.
   - list_solve.
-Qed. 
-
+Qed. *)
+(*
 Lemma get_set: forall m n mx i j i' j' k,
   wf_lmatrix mx m n ->
   0 <= i < m ->
@@ -436,7 +511,7 @@ Proof.
     + subst. rewrite upd_Znth_same. by []. rewrite Hin; lia.
     + by rewrite upd_Znth_diff; try rewrite Hin; try lia.
   - by rewrite upd_Znth_diff; try lia.
-Qed.
+Qed.*)
 
 Lemma lmatrix_m_pos: forall {m n} (mx: lmatrix) (Hwf: wf_lmatrix mx m n),
   0 <= m.
@@ -452,6 +527,7 @@ Qed.
 
 Definition lmatrix_to_mx m n (mx: lmatrix) : 'M[F]_(Z.to_nat m, Z.to_nat n) :=
   \matrix_(i < Z.to_nat m, j < Z.to_nat n) (get mx (Z.of_nat i) (Z.of_nat j)).
+
 
 Lemma matrix_to_mx_get : forall m n (l: lmatrix) mx (i: 'I_(Z.to_nat m)) (j: 'I_(Z.to_nat n)),
   lmatrix_to_mx m n l = mx ->
@@ -481,10 +557,7 @@ Lemma lmatrix_ext_eq: forall m n mx1 mx2,
   (forall i j, 0 <= i < m -> 0 <= j < n -> get mx1 i j = get mx2 i j) -> 
   mx1 = mx2.
 Proof.
-  move => m n mx1 mx2 [Hm1 [Hn1 Hin1]] [Hm2 [Hn2 Hin2]] Hsame. apply Znth_eq_ext. lia.
-  move => i Hi. move: Hin1 Hin2; rewrite !Forall_Znth => Hin1 Hin2.
-  apply Znth_eq_ext. rewrite Hin1 =>[|//]. rewrite Hin2; lia.
-  move => j Hj. rewrite Hin1 in Hj =>[|//]. apply Hsame; lia.
+  move => m n mx1 mx2 Hwf1 Hwf2 Hsame. by apply (rect_eq_ext Hwf1 Hwf2).
 Qed.
 
 (*Create a lmatrix by giving a function for the elements*)
@@ -498,7 +571,7 @@ Lemma mk_lmatrix_wf: forall m n f,
   0 <= n ->
   wf_lmatrix (mk_lmatrix m n f) m n.
 Proof.
-  move => m n f Hm Hn. rewrite /wf_lmatrix /mk_lmatrix mkseqZ_Zlength =>[|//].
+  move => m n f Hm Hn. rewrite /wf_lmatrix /rect /mk_lmatrix mkseqZ_Zlength =>[|//].
   repeat split; try lia. rewrite Forall_Znth mkseqZ_Zlength =>[i Hi|//].
   rewrite mkseqZ_Znth; try lia. by rewrite mkseqZ_Zlength.
 Qed.
@@ -587,13 +660,13 @@ Proof.
   - by apply mk_lmatrix_wf.
   - apply set_wf. by apply mk_lmatrix_wf.
   - move => i j Hi Hj. 
-    rewrite (@get_set m n) //=. 2: by apply mk_lmatrix_wf.
+    rewrite (@get_set _ _ _ m n) //=. 2: by apply mk_lmatrix_wf.
     rewrite !mk_lmatrix_get //=.
-    case_eqb i r Hir; rewrite /=.
-    + subst. case_eqb j b Hjb; subst.
-      * by case_ltb b (b+1)%Z Hbb; try lia.
-      * case_ltb j b Hjblt; by case_ltb j (b+1)%Z Hjb1; try lia.
-    + rewrite Hrow //=. by case_ltb j b Hjb; case_ltb j (b+1)%Z Hjb'.
+    case_eqb r i Hir; rewrite /=.
+    + subst. case_eqb b j Hjb; subst.
+      * by case_ltb j (j+1)%Z Hbb; try lia.
+      * by case_ltb j b Hjblt; case_ltb j (b+1)%Z Hjb1; try lia.
+    + rewrite Hrow //=. by case_ltb j b Hjb; case_ltb j (b+1)%Z Hjb'. auto.
 Qed.
 
 End BoundMx.
@@ -1196,7 +1269,7 @@ Lemma strong_inv_list_unfold: forall m n mx r (Hrm : 0 <= r < m) (Hmn : m <= n),
 Proof.
   move => m n mx r Hrm Hmn. rewrite /strong_inv_list. destruct (range_le_lt_dec 0 r m) => [|//]. (*case doesnt work*)
   destruct (Z_le_lt_dec m n) => [|//]. move => Hstr.
-  have <-: (le_Z_N l) = (le_Z_N Hmn) by apply ProofIrrelevance.proof_irrelevance. 
+  have <-: (le_Z_N l) = (le_Z_N Hmn) by apply bool_irrelevance. 
   rewrite strong_inv_dep. apply Hstr. by have: Z.to_nat r == Z.to_nat r by [].
 Qed.
 

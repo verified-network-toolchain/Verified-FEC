@@ -14,8 +14,157 @@ Require Import ReedSolomonList.
 Require Import VandermondeByte.
 Require Import MatrixTransform.
 Require Import CommonSSR.
+  
+Section PopArr.
 
-Section PopMx.
+(*We define a more general version, where we only populate up to m' and n' (such that m' <= m, n' <= n)
+  and the rest has a default element. We need this more general version for the decoder, then we define
+  the primary array populating in terms of this*)
+Definition pop_partial {A}  m' n' m n (f: Z -> Z -> A) (d: A) (i j : Z) :=
+  mkseqZ (fun x => mkseqZ (fun y => if Z_lt_le_dec n' y then d else
+                                    if Z_lt_le_dec m' x then d else 
+                                    if Z_lt_le_dec x i then f x y else 
+                                    if Z.eq_dec x i then if Z_lt_le_dec y j then f x y else d 
+                                    else d) n) m.
+
+Lemma pop_partial_rect: forall {A: Type} (m' n' m n : Z) (f: Z -> Z -> A) (d: A) (i j : Z),
+  0 <= m ->
+  0 <= n ->
+  rect (pop_partial m' n' m n f d i j) m n.
+Proof.
+  move => A m' n' m n f d i j Hm Hn.
+  have Hlen1: Zlength (pop_partial m' n' m n f d i j) = m by rewrite mkseqZ_Zlength.
+  rewrite /rect; split; [| split]; try by [].
+  rewrite Forall_Znth Hlen1 // => x Hx. by rewrite mkseqZ_Znth // mkseqZ_Zlength.
+Qed.
+
+(*At the start, this is the 2D array with all d's*)
+Lemma pop_partial_zero: forall {A} m' n' m n f (d : A),
+  0 <= m ->
+  0 <= n ->
+  pop_partial m' n' m n f d 0 0 = zseq m (zseq n d).
+Proof.
+  move => A m' n' m n f d Hm Hn. have Hinhab: Inhabitant A. apply d. apply (@rect_eq_ext _ _ m n).
+  - by apply pop_partial_rect.
+  - by apply zseq_rect.
+  - move => i j Hi Hj. rewrite /get !mkseqZ_Znth // !zseq_Znth //.
+    case :  (Z_lt_le_dec i 0) => [| /= _]; try rep_lia.
+    case : (Z_lt_le_dec n' j) => [//=| /= Hjn ].
+    case : (Z_lt_le_dec m' i) => [//=| /= Him].
+    case : (Z.eq_dec i 0) => [/= Hi0 | //]. subst. 
+    by case : (Z_lt_le_dec j 0); try rep_lia.
+Qed.
+
+(*Finish a row*)
+Lemma pop_partial_row_finish: forall {A} m' n' m n f (d: A) i,
+  0 <= m ->
+  0 <= n ->
+  pop_partial m' n' m n f d i n = pop_partial m' n' m n f d (i+1) 0.
+Proof.
+  move => A m' n' m n f d i Hm Hn. have Hinhab: Inhabitant A. apply d.
+  apply (rect_eq_ext (pop_partial_rect _ _ _ _ _ _ Hm Hn)  (pop_partial_rect  _ _ _ _ _ _ Hm Hn) ).
+  move => i' j' Hi' Hj'. rewrite /get !mkseqZ_Znth //.
+  case : (Z_lt_le_dec n' j') => [// | /= _].
+  case : (Z_lt_le_dec m' i') => [// | /=_].
+   case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
+  - by case : (Z_lt_le_dec i' (i + 1)); try rep_lia. 
+  - case : (Z.eq_dec i' i) => [Hiieq /= | Hiineq /=].
+    + subst. case : (Z_lt_le_dec i (i + 1)) => [ /=_ | ]; try rep_lia.
+      case : (Z_lt_le_dec j' n) => [//|]. lia. 
+    + case : (Z_lt_le_dec i' (i + 1)) => [| /= _]; try rep_lia.
+      case : (Z.eq_dec i' (i + 1)) => [Hi1 /= | //].
+      by case : (Z_lt_le_dec j' 0); try rep_lia.
+Qed.
+
+Lemma pop_partial_set: forall {A} `{Inhabitant A} m' n' m n f (d: A) i j,
+  m' <= m ->
+  n' <= n ->
+  0 <= i < m' ->
+  0 <= j < n' ->
+  pop_partial m' n' m n f d i (j+1) =
+    set (pop_partial m' n' m n f d i j) i j (f i j).
+Proof.
+  move => A Hinhab m' n' m n f d i j Hm Hn Hi Hj. apply (@rect_eq_ext _ _ m n).
+  - apply pop_partial_rect; lia.
+  - apply set_rect; apply pop_partial_rect; lia.
+  - move => i' j' Hi' Hj'. rewrite (@get_set _ _ _ m n); try rep_lia; last first.
+    apply pop_partial_rect; lia. rewrite /get !mkseqZ_Znth; try lia.
+    case : (Z_lt_le_dec n' j') => [/= Hnj' | /= Hnj']. have->: j =? j' = false.
+      apply /Z.eqb_spec. lia. by rewrite andbF.
+    case : (Z_lt_le_dec m' i') => [/= Hmi' | /= Hmi']. have->//: i =? i' = false.
+      apply /Z.eqb_spec. lia.
+    case: (i =? i') /(Z.eqb_spec _ _) => [ Hiieq /= | Hiineq /=].
+    + subst. case : (Z_lt_le_dec i' i') => [| /= _]; try rep_lia.
+      case : (Z.eq_dec i' i') => [/= _|]; try rep_lia.
+      case: (j =? j') /(Z.eqb_spec _ _) => [Hjjeq //= | Hjjeq //=].
+      * subst. by case : (Z_lt_le_dec j' (j' + 1)); try rep_lia.
+      * case : (Z_lt_le_dec j' j) => [Hjj' /= | Hjj/=];  by case : (Z_lt_le_dec j' (j + 1)); try rep_lia.
+    + case : (Z_lt_le_dec i' i) => [// | Hii' /=].
+      by case : (Z.eq_dec i' i); try rep_lia.
+Qed.
+
+Lemma pop_partial_done: forall {A} `{Inhabitant A} m' n' m n f (d: A) j x y,
+  m' <= m ->
+  n' <= n ->
+  0 <= x < m' ->
+  0 <= y < n' ->
+  get (pop_partial m' n' m n f d m j) x y = f x y.
+Proof.
+  move => A Hinhab m' n' m n f d j x y Hm Hn Hx Hy. rewrite /get !mkseqZ_Znth //; try lia.
+  case : (Z_lt_le_dec n' y) => [|/= _]; try lia.
+  case : (Z_lt_le_dec m' x) => [|/=_]; try lia.
+  by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
+Qed.
+
+(*Now we can define the version that uses the full array. We repeat a lot of the theorems because
+  they were done before; we don't have to change the downstream proofs*)
+Definition pop_2d_arr {A: Type} m n (f: Z -> Z -> A) (d: A) (i j : Z) : list (list A) :=
+  pop_partial m n m n f d i j.
+
+Lemma pop_2d_arr_rect:forall {A: Type} (m n : Z) (f: Z -> Z -> A) (d: A) (i j : Z),
+  0 <= m ->
+  0 <= n ->
+  rect (pop_2d_arr m n f d i j) m n.
+Proof.
+  move => A m n f d i j Hm Hn. by apply pop_partial_rect.
+Qed.
+
+Lemma pop_2d_arr_zero: forall {A} m n f (d : A),
+  0 <= m ->
+  0 <= n ->
+  pop_2d_arr m n f d 0 0 = zseq m (zseq n d).
+Proof.
+  move => A m n f d Hm Hn. by apply pop_partial_zero.
+Qed.
+
+Lemma pop_2d_arr_row_finish: forall {A} m n f (d: A) i,
+  0 <= m ->
+  0 <= n ->
+  pop_2d_arr m n f d i n = pop_2d_arr m n f d (i+1) 0.
+Proof.
+  move => A m n f d i Hm Hn. by apply pop_partial_row_finish.
+Qed.
+
+Lemma pop_2d_arr_set: forall {A} `{Inhabitant A} m n f (d: A) i j,
+  0 <= i < m ->
+  0 <= j < n ->
+  pop_2d_arr m n f d i (j+1) =
+    set (pop_2d_arr m n f d i j) i j (f i j).
+Proof.
+   move => A Hinhab m n f d i j Hi Hj. apply pop_partial_set; lia.
+Qed.
+
+Lemma pop_2d_arr_done: forall {A} `{Inhabitant A} m n f (d : A) j x y,
+  0 <= x < m ->
+  0 <= y < n ->
+  get (pop_2d_arr m n f d m j) x y = f x y.
+Proof.
+  move => A Hinhab m n f d j x y Hx Hy. apply pop_partial_done; lia.
+Qed.
+
+End PopArr.
+
+(*
 
 Local Open Scope ring_scope.
 
@@ -106,18 +255,25 @@ Proof.
   by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
 Qed.
 
+*)
+Section PopMult.
+
+Variable F : fieldType.
+
+Local Open Scope ring_scope.
+
 (*Fill in a matrix for matrix multiplication*)
 
 (*Input matrices are m x k and k x n, so output is m x n*)
 Definition pop_mx_mult m n k (mx1 mx2: lmatrix F) (i j: Z): lmatrix F :=
-  pop_2d_mx m n (fun x y => dot_prod mx1 mx2 x y k) i j.
+  pop_2d_arr m n (fun x y => dot_prod mx1 mx2 x y k) 0 i j.
 
 Lemma pop_mx_mult_wf: forall m n k mx1 mx2 i j,
   0 <= m ->
   0 <= n ->
   wf_lmatrix (pop_mx_mult m n k mx1 mx2 i j) m n.
 Proof. 
-  move => m n k mx1 mx2 i j. apply pop_2d_mx_wf.
+  move => m n k mx1 mx2 i j. apply pop_2d_arr_rect.
 Qed.
 
 Lemma pop_mx_mult_row_finish: forall m n k mx1 mx2 i,
@@ -125,7 +281,7 @@ Lemma pop_mx_mult_row_finish: forall m n k mx1 mx2 i,
   0 <= n ->
   pop_mx_mult m n k mx1 mx2 i n = pop_mx_mult m n k mx1 mx2 (i+1) 0.
 Proof. 
-  move => m n k mx1 mx2 i. apply pop_2d_mx_row_finish. 
+  move => m n k mx1 mx2 i. apply pop_2d_arr_row_finish. 
 Qed.
 
 Lemma pop_mx_mult_zero: forall m n k mx1 mx2,
@@ -133,16 +289,16 @@ Lemma pop_mx_mult_zero: forall m n k mx1 mx2,
   0 <= n ->
   pop_mx_mult m n k mx1 mx2 0 0 = zseq m (zseq n 0).
 Proof.
-  move => m n k mx1 mx2. apply pop_2d_mx_zero.
+  move => m n k mx1 mx2. apply pop_2d_arr_zero.
 Qed.
 
 Lemma pop_mx_mult_set: forall m n k mx1 mx2 i j,
   0 <= i < m ->
   0 <= j < n ->
-  set (pop_mx_mult m n k mx1 mx2 i j) i j (dot_prod mx1 mx2 i j k) =
+  @set _ 0 (pop_mx_mult m n k mx1 mx2 i j) i j (dot_prod mx1 mx2 i j k) =
   pop_mx_mult m n k mx1 mx2 i (j+1).
 Proof.
-  move => m n k mx1 mx2 i j Hi Hj. by rewrite pop_2d_mx_set.
+  move => m n k mx1 mx2 i j Hi Hj. by rewrite -pop_2d_arr_set.
 Qed. 
 
 Lemma pop_mx_mult_done: forall m n k mx1 mx2 j,
@@ -153,36 +309,91 @@ Proof.
   move => m n k mx1 mx2 j Hm Hn. apply (@lmatrix_ext_eq _ m n).
   - by apply pop_mx_mult_wf.
   - by apply list_lmatrix_multiply_wf.
-  - move => x y Hx Hy. by rewrite pop_2d_mx_done // mk_lmatrix_get.
+  - move => x y Hx Hy. by rewrite pop_2d_arr_done // mk_lmatrix_get.
 Qed.
 
-End PopMx.
+End PopMult.
+
+(*We also need a partial version for the decoder, since the whole array is not filled in*)
+(*The original matrices have dimensions m' x k' and k' x n'*)
+Definition pop_mx_mult_part m' n' k' m n (mx1 mx2: lmatrix B) (i j : Z) : list (list Values.val) :=
+  pop_partial m' n' m n (fun x y => Vubyte (dot_prod mx1 mx2 x y k')) Vundef i j.
+
+
+Lemma pop_mx_mult_part_wf: forall m' n' k' m n mx1 mx2 i j,
+  0 <= m ->
+  0 <= n ->
+  rect (pop_mx_mult_part m' n' k' m n mx1 mx2 i j) m n.
+Proof. 
+  move => m n k mx1 mx2 i j. apply pop_partial_rect.
+Qed.
+
+Lemma pop_mx_mult_part_row_finish: forall m' n' k' m n mx1 mx2 i,
+  0 <= m ->
+  0 <= n ->
+  pop_mx_mult_part m' n' k' m n mx1 mx2 i n = pop_mx_mult_part m' n' k' m n mx1 mx2 (i+1) 0.
+Proof. 
+  move => m' n' k' m n mx1 mx2 i. apply pop_partial_row_finish. 
+Qed.
+
+Lemma pop_mx_mult_part_zero: forall m' n' k' m n mx1 mx2,
+  0 <= m ->
+  0 <= n ->
+  pop_mx_mult_part m' n' k' m n mx1 mx2 0 0 = zseq m (zseq n Vundef).
+Proof.
+  move => m' n' k' m n mx1 mx2. apply pop_partial_zero.
+Qed.
+
+Lemma pop_mx_mult_part_set: forall m' n' k' m n mx1 mx2 i j,
+   m' <= m ->
+  n' <= n ->
+  0 <= i < m' ->
+  0 <= j < n' ->
+  @set _ Vundef (pop_mx_mult_part m' n' k' m n mx1 mx2 i j) i j (Vubyte (dot_prod mx1 mx2 i j k')) =
+  pop_mx_mult_part m' n' k' m n mx1 mx2 i (j+1).
+Proof.
+  move => m' n' k' m n mx1 mx2 i j Hm Hn Hi Hj. by rewrite -pop_partial_set.
+Qed. 
+
+(*We can't say anything about the list as a whole, but the part we care about has entries equivalent to
+  matrix multiplication*)
+Lemma pop_mx_mult_part_done: forall m' n' k' m n mx1 mx2 j x y,
+  m' <= m ->
+  n' <= n ->
+  0 <= x < m' ->
+  0 <= y < n' ->
+  Znth y (Znth x (pop_mx_mult_part m' n' k' m n mx1 mx2 m j)) = 
+    Vubyte (get (list_lmatrix_multiply m' k' n' mx1 mx2) x y).
+Proof.
+  move => m' n' k' m n mx1 mx2 j x y Hm Hn Hx Hy. rewrite mk_lmatrix_get //.
+  pose proof (@pop_partial_done  _ _ m' n' m n (fun x y => Vubyte (dot_prod mx1 mx2 x y k')) Vundef) as Hdone.
+  rewrite /get in Hdone. by apply Hdone.
+Qed. 
 
 Require Import ByteField.
 Require Import PolyField.
 Require Import ByteFacts.
 
-
-(*Fill in the weight matrix in order, using [pop_2d_mx]*)
-Definition pop_weight_mx (i j : Z) : lmatrix B := pop_2d_mx fec_max_h (fec_n -1) 
-  (fun x y => (byte_pow_map (Byte.repr ((x * y) mod 255)))) i j.
+(*Fill in the weight matrix in order, using [pop_2d_arr]*)
+Definition pop_weight_mx (i j : Z) : lmatrix B := pop_2d_arr fec_max_h (fec_n -1) 
+  (fun x y => (byte_pow_map (Byte.repr ((x * y) mod 255)))) 0%R i j.
 
 Lemma pop_weight_mx_wf: forall i j,
   wf_lmatrix (pop_weight_mx i j) fec_max_h (fec_n - 1).
 Proof.
-  move => i j. apply pop_2d_mx_wf; rep_lia.
+  move => i j. apply pop_2d_arr_rect; rep_lia.
 Qed.
 
 Lemma pop_weight_mx_row_finish: forall i,
   pop_weight_mx i (fec_n - 1) = pop_weight_mx (i+1) 0.
 Proof.
-  move => i. apply pop_2d_mx_row_finish; rep_lia.
+  move => i. apply pop_2d_arr_row_finish; rep_lia.
 Qed.
 
 Lemma pop_weight_mx_zero:
   pop_weight_mx 0 0 = (zseq fec_max_h (zseq (fec_n - 1) Byte.zero)).
 Proof.
-  apply pop_2d_mx_zero; rep_lia.
+  apply pop_2d_arr_zero; rep_lia.
 Qed.
 
 Lemma pop_weight_mx_set: forall i j,
@@ -191,7 +402,7 @@ Lemma pop_weight_mx_set: forall i j,
   set (pop_weight_mx i j) i j (byte_pow_map (Byte.repr ((i * j) mod 255))) =
   pop_weight_mx i (j + 1).
 Proof.
-  move => i j Hi Hj. by apply pop_2d_mx_set.
+  move => i j Hi Hj. by rewrite -pop_2d_arr_set.
 Qed.
 
 (*Relate [modn] to Z.modulo*)
@@ -223,7 +434,7 @@ Proof.
   move => j. apply (map_2d_rev_equiv fec_max_h (fec_n - 1)).
   - apply pop_weight_mx_wf.
   - apply weight_matrix_wf; rep_lia.
-  - move => i' j' Hi' Hj'. rewrite pop_2d_mx_done //.
+  - move => i' j' Hi' Hj'. rewrite pop_2d_arr_done //.
     rewrite mk_lmatrix_get; try lia. rewrite /byte_pow_map /bx -qpoly_to_byte_pow. f_equal.
     rewrite /qpow_map_full /=. apply powX_eq_mod. rewrite Byte.unsigned_repr; last first.
     pose proof (Z.mod_pos_bound (i' * j') 255); rep_lia. rewrite modn_mod_Z; try lia.
