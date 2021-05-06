@@ -21,8 +21,8 @@ Section PopArr.
   and the rest has a default element. We need this more general version for the decoder, then we define
   the primary array populating in terms of this*)
 Definition pop_partial {A}  m' n' m n (f: Z -> Z -> A) (d: A) (i j : Z) :=
-  mkseqZ (fun x => mkseqZ (fun y => if Z_lt_le_dec n' y then d else
-                                    if Z_lt_le_dec m' x then d else 
+  mkseqZ (fun x => mkseqZ (fun y => if Z_le_lt_dec n' y then d else
+                                    if Z_le_lt_dec m' x then d else 
                                     if Z_lt_le_dec x i then f x y else 
                                     if Z.eq_dec x i then if Z_lt_le_dec y j then f x y else d 
                                     else d) n) m.
@@ -49,8 +49,8 @@ Proof.
   - by apply zseq_rect.
   - move => i j Hi Hj. rewrite /get !mkseqZ_Znth // !zseq_Znth //.
     case :  (Z_lt_le_dec i 0) => [| /= _]; try rep_lia.
-    case : (Z_lt_le_dec n' j) => [//=| /= Hjn ].
-    case : (Z_lt_le_dec m' i) => [//=| /= Him].
+    case : (Z_le_lt_dec n' j) => [//=| /= Hjn ].
+    case : (Z_le_lt_dec m' i) => [//=| /= Him].
     case : (Z.eq_dec i 0) => [/= Hi0 | //]. subst. 
     by case : (Z_lt_le_dec j 0); try rep_lia.
 Qed.
@@ -59,18 +59,18 @@ Qed.
 Lemma pop_partial_row_finish: forall {A} m' n' m n f (d: A) i,
   0 <= m ->
   0 <= n ->
-  pop_partial m' n' m n f d i n = pop_partial m' n' m n f d (i+1) 0.
+  pop_partial m' n' m n f d i n' = pop_partial m' n' m n f d (i+1) 0.
 Proof.
   move => A m' n' m n f d i Hm Hn. have Hinhab: Inhabitant A. apply d.
   apply (rect_eq_ext (pop_partial_rect _ _ _ _ _ _ Hm Hn)  (pop_partial_rect  _ _ _ _ _ _ Hm Hn) ).
   move => i' j' Hi' Hj'. rewrite /get !mkseqZ_Znth //.
-  case : (Z_lt_le_dec n' j') => [// | /= _].
-  case : (Z_lt_le_dec m' i') => [// | /=_].
-   case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
+  case : (Z_le_lt_dec n' j') => [// | /= Hjn'].
+  case : (Z_le_lt_dec m' i') => [// | /=Him'].
+  case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
   - by case : (Z_lt_le_dec i' (i + 1)); try rep_lia. 
   - case : (Z.eq_dec i' i) => [Hiieq /= | Hiineq /=].
     + subst. case : (Z_lt_le_dec i (i + 1)) => [ /=_ | ]; try rep_lia.
-      case : (Z_lt_le_dec j' n) => [//|]. lia. 
+      case : (Z_lt_le_dec j' n') => [//|]; lia. 
     + case : (Z_lt_le_dec i' (i + 1)) => [| /= _]; try rep_lia.
       case : (Z.eq_dec i' (i + 1)) => [Hi1 /= | //].
       by case : (Z_lt_le_dec j' 0); try rep_lia.
@@ -89,9 +89,9 @@ Proof.
   - apply set_rect; apply pop_partial_rect; lia.
   - move => i' j' Hi' Hj'. rewrite (@get_set _ _ _ m n); try rep_lia; last first.
     apply pop_partial_rect; lia. rewrite /get !mkseqZ_Znth; try lia.
-    case : (Z_lt_le_dec n' j') => [/= Hnj' | /= Hnj']. have->: j =? j' = false.
+    case : (Z_le_lt_dec n' j') => [/= Hnj' | /= Hnj']. have->: j =? j' = false.
       apply /Z.eqb_spec. lia. by rewrite andbF.
-    case : (Z_lt_le_dec m' i') => [/= Hmi' | /= Hmi']. have->//: i =? i' = false.
+    case : (Z_le_lt_dec m' i') => [/= Hmi' | /= Hmi']. have->//: i =? i' = false.
       apply /Z.eqb_spec. lia.
     case: (i =? i') /(Z.eqb_spec _ _) => [ Hiieq /= | Hiineq /=].
     + subst. case : (Z_lt_le_dec i' i') => [| /= _]; try rep_lia.
@@ -111,8 +111,8 @@ Lemma pop_partial_done: forall {A} `{Inhabitant A} m' n' m n f (d: A) j x y,
   get (pop_partial m' n' m n f d m j) x y = f x y.
 Proof.
   move => A Hinhab m' n' m n f d j x y Hm Hn Hx Hy. rewrite /get !mkseqZ_Znth //; try lia.
-  case : (Z_lt_le_dec n' y) => [|/= _]; try lia.
-  case : (Z_lt_le_dec m' x) => [|/=_]; try lia.
+  case : (Z_le_lt_dec n' y) => [|/= _]; try lia.
+  case : (Z_le_lt_dec m' x) => [|/=_]; try lia.
   by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
 Qed.
 
@@ -328,10 +328,17 @@ Proof.
   move => m n k mx1 mx2 i j. apply pop_partial_rect.
 Qed.
 
+(*Don't want to use wf lemma directly bc the matrices involved have very long names*)
+Lemma pop_mx_mult_part_Zlength: forall m' n' k' m n mx1 mx2 i j,
+  0 <= m -> 0 <= n -> Zlength (pop_mx_mult_part m' n' k' m n mx1 mx2 i j) = m.
+Proof.
+  move => m' n' k' m n mx1 mx2 x y Hm Hn. by apply pop_mx_mult_part_wf.
+Qed. 
+
 Lemma pop_mx_mult_part_row_finish: forall m' n' k' m n mx1 mx2 i,
   0 <= m ->
   0 <= n ->
-  pop_mx_mult_part m' n' k' m n mx1 mx2 i n = pop_mx_mult_part m' n' k' m n mx1 mx2 (i+1) 0.
+  pop_mx_mult_part m' n' k' m n mx1 mx2 i n' = pop_mx_mult_part m' n' k' m n mx1 mx2 (i+1) 0.
 Proof. 
   move => m' n' k' m n mx1 mx2 i. apply pop_partial_row_finish. 
 Qed.

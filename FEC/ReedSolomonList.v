@@ -473,6 +473,27 @@ Proof.
       * move => [[Hhx | Hin] [p Hex]]. subst. by rewrite Hex in Hnth. split. by []. by exists p.
 Qed. 
 
+(*Unfortunately, the above isn't general enough for [find_parity_found] (though we do need it elsewhere)*)
+Lemma find_parity_aux_in_found: forall par base l max_n x,
+  Forall (fun x => 0 <= (max_n - 1 - x) <= Byte.max_unsigned) l -> (*TODO: see*)
+  In x (find_parity_aux (fun x => Byte.repr(max_n - 1 - x)) par base l) ->
+  In x base \/ In (max_n - 1 - Byte.unsigned x) l /\ exists p, Znth (max_n - 1 - Byte.unsigned x) par = Some p.
+Proof.
+  move => par base l max_n x. move: base. elim : l => [//= base Hbound Hin | h t /= IH base Hbound].
+  - by left.
+  - have Hhbound: 0 <= (max_n - 1 - h) <= Byte.max_unsigned by (apply Forall_inv in Hbound).
+    apply Forall_inv_tail in Hbound. case Hh: (Znth h par) => [l|]; move => Hin; apply IH in Hin => [|//]; last first. 
+    + case : Hin => [Hbase | [Hint Hex]].
+      * by left.
+      * right. split. by right. by [].
+    + case : Hin => [Hbaseh | [Hint Hex]]; last first. right. split. by right. by [].
+      apply in_app_or in Hbaseh. case : Hbaseh => [Hbase | [Hxh | Hf //]].
+      by left. right. subst. split. left. rewrite Byte.unsigned_repr; rep_lia.
+      exists l. rewrite Byte.unsigned_repr; [|rep_lia]. 
+      by have->: (max_n - 1 - (max_n - 1 - h)) = h by lia.
+Qed.
+  
+
 Lemma find_parity_aux_plus_1: forall f par base c,
   0 <= c ->
   find_parity_aux f par base (Ziota 0 (c + 1)) =
@@ -595,6 +616,28 @@ Lemma find_parity_found_Zlength: forall par c max_n,
 Proof.
   move => par c max_n Hc. rewrite /find_parity_found. have Hciota: c = Zlength (Ziota 0 c) by rewrite Zlength_Ziota; lia.
   rewrite {2}Hciota. apply find_parity_aux_Zlength_bound.
+Qed.
+
+Lemma find_parity_found_in: forall par c max_n x,
+  0 <= c < max_n->
+  max_n - 1 <= Byte.max_unsigned ->
+  In x (find_parity_found par max_n c) ->
+  exists l, Znth (max_n - 1 - Byte.unsigned x) par = Some l.
+Proof.
+  move => par c max_n x Hc Hn Hin. apply find_parity_aux_in_found in Hin.
+  - case : Hin => [Hf // | [Hin Hex] //].
+  - rewrite Forall_Znth. rewrite Zlength_Ziota; try lia. move => i Hi.
+    rewrite Znth_Ziota; lia.
+Qed.
+
+Lemma find_parity_found_Znth_some: forall par c max_n i,
+  0 <= c < max_n->
+  max_n - 1 <= Byte.max_unsigned ->
+  0 <= i < Zlength (find_parity_found par max_n c) ->
+  exists l, Znth (max_n - 1 - Byte.unsigned (Znth i (find_parity_found par max_n c))) par = Some l.
+Proof.
+  move => par c max_n i Hc Hn Hi. apply (find_parity_found_in Hc Hn).
+  by apply Znth_In.
 Qed.
 
 (*The relationship between these two functions*)

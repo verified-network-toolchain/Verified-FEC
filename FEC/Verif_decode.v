@@ -244,6 +244,14 @@ Ltac no_loads_expr e as_lvalue ::=
  | Ealignof _ _ => idtac
 end.
 
+(*small lemmas that are helpful*)
+Lemma get_inhab: forall l i j, @get byte (inhabitant_F B) l i j = 
+   @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j.
+Proof.
+  reflexivity.
+Qed.
+
+
 Lemma body_fec_blk_decode : semax_body Vprog Gprog f_fec_blk_decode fec_blk_decode_spec.
 Proof.
 start_function. (*use better names to make proof cleaner, since there will be a lot of goals and hypotheses*)
@@ -1107,21 +1115,47 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                     (*try with freezer*)
                                     (*maybe try w constants (shouldnt affect it though)*)
                                     (*LOL looks like freeze only accepts 10 arguments*)
-                                    unfold FIELD_TABLES. Intros. 
+                                    unfold FIELD_TABLES. Intros. (*
                                     freeze FR2 := (data_at _ _ _ (Znth (Byte.unsigned (Znth q (find_found stats (Zlength packets)))) packet_ptrs))
                                    (FRZL FR1) (data_at _ _ _ (gv _fec_invefec))
                                     (data_at _ _ _ v_s) (iter_sepcon_arrays _ _) (data_at _ _ _ pl)
                                     (data_at _ _ _ pd) (data_at _ _ _ v_found)
                                     (data_at _ _ _ v_row) (data_at _ _ _ (gv _fec_weights)).
                                     freeze FR3 := (FRZL FR2)
-                                    (iter_sepcon_options _ _).
-                                   admit. (*TODO: this runs out of memory*)
-                                      (*
+                                    (iter_sepcon_options _ _).*)
                                     (*Finally, we do the multiplication*)
                                     forward_call(gv, (Znth (fec_n - 1 - Byte.unsigned (Znth q (find_found stats (Zlength packets))) - 1)
                                       (Znth (Byte.unsigned (Znth i' (find_parity_rows parities i))) weight_mx)),
                                       (Znth j (Znth (Byte.unsigned (Znth q (find_found stats (Zlength packets)))) packets))).
-                                      *)
+                                    forward. rewrite_eqs; unfold FIELD_TABLES; entailer!.
+                                    { unfold Int.xor. rewrite !Int.unsigned_repr by simpl_repr_byte.
+                                      rewrite ByteFacts.byte_xor_fold.
+                                      simpl_repr_byte. unfold Vubyte. f_equal. f_equal. f_equal.
+                                      rewrite dot_prod_plus_1 by lia.
+                                      replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType B)) with
+                                        Byte.xor by reflexivity. f_equal.
+                                      replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType B)) with
+                                        ByteField.byte_mul by reflexivity. f_equal.
+                                      - unfold submx_rows_cols_rev_list.
+                                        unfold submx_rows_cols_list. rewrite mk_lmatrix_get by lia.
+                                        unfold get. rewrite !Znth_map by list_solve.
+                                        rewrite Znth_app1 by lia. reflexivity.
+                                      - unfold col_mx_list. rewrite mk_lmatrix_get by lia.
+                                        destruct (Z_lt_ge_dec q (Zlength packets - Zlength (find_lost stats (Zlength packets)))); simpl.
+                                        + (*real case*)
+                                          unfold submx_rows_cols_list.
+                                          (*TODO: separate lemma*)
+                                           (*assert (Hget: forall l i j, @get byte (inhabitant_F B) l i j = 
+                                            @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j). {
+                                            reflexivity. }*)  rewrite get_inhab. rewrite mk_lmatrix_get by lia.
+                                          rewrite Znth_Ziota by lia. unfold get. rewrite Znth_map by list_solve. f_equal.
+                                        + (*contradiction case*)
+                                          assert (Hkbyte: 0 <= (Zlength packets) <= Byte.max_unsigned) by rep_lia.
+                                          pose proof (find_lost_found_Zlength stats Hkbyte). rep_lia.
+                                    }
+                                    { rewrite (iter_sepcon_arrays_remove_one _  _ _ Hlens Hpackbound).
+                                      cancel.
+                                    }
                                   }
                                 }
                               }
@@ -1132,20 +1166,163 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                 forward. rewrite_eqs; entailer!. f_equal. rewrite dot_prod_plus_1 by lia. simpl.
                                 unfold col_mx_list at 2. assert (Hget: forall l i j,
                                   @get byte (inhabitant_F B) l i j = @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j). {
-                                  reflexivity. } rewrite (Hget _ q j). rewrite mk_lmatrix_get by rep_lia.
+                                  reflexivity. } rewrite (get_inhab _ q j). rewrite mk_lmatrix_get by rep_lia.
                                 destruct (Z_lt_ge_dec q (Zlength packets - Zlength (find_lost stats (Zlength packets)))); simpl.
                                 2 : { assert (Hkbyte: 0 <= (Zlength packets) <= Byte.max_unsigned) by rep_lia.
                                       pose proof (find_lost_found_Zlength stats Hkbyte). rep_lia. }
                                 assert (Hzero: @get byte (inhabitant_F B) (submx_rows_cols_list (F:=B) packets
                                  (Zlength packets - Zlength (find_lost stats (Zlength packets))) c
                                  (map Byte.unsigned (find_found stats (Zlength packets))) (Ziota 0 c)) q j = Byte.zero). {
-                                  unfold submx_rows_cols_list. rewrite (Hget _ q j). rewrite mk_lmatrix_get by lia.
+                                  unfold submx_rows_cols_list. rewrite (get_inhab _ q j). rewrite mk_lmatrix_get by lia.
                                   rewrite Znth_Ziota by lia. unfold get. rewrite Znth_overflow by list_solve. reflexivity. }
                                 rewrite Hzero. rewrite ssralg.GRing.mulr0. rewrite ssralg.GRing.addr0. reflexivity.
                               }
                             }
                             { (*Other case - we are in parities - TODO: start here*)
-                  
+                              destruct (range_le_lt_dec 0 q (Zlength (find_found stats (Zlength packets)))); simpl in Heqfoundnth.
+                              (*contradiction case*) rewrite Heqfoundnth in H10.
+                              assert (Hkbyte: 0 <= Zlength packets <= Byte.max_unsigned) by rep_lia.
+                              pose proof (find_found_bound stats Hkbyte) as Hfoundb. rewrite Forall_Znth in Hfoundb.
+                              assert (0 <= Byte.unsigned (Znth q (find_found stats (Zlength packets))) < Zlength packets) by 
+                                (apply Hfoundb; lia). rep_lia. (*accessing parity - need to split [iter_sepcon_option]*)
+                              assert (Hkbyte: 0 <= (Zlength packets) <= Byte.max_unsigned) by rep_lia.
+                              pose proof (find_lost_found_Zlength stats Hkbyte) as Hxhxk. 
+                              (*Print find_parity_found. (*Need a result about this - get Some in this location*)
+                              Check iter_sepcon_options_remove_one.
+                              assert (find_parity_found_Znth_some: forall par c max_n i,
+                              0 <= c < max_n->
+                              max_n - 1 <= Byte.max_unsigned ->
+                              0 <= i < Zlength (find_parity_found par max_n c) ->
+                              exists l, Znth (max_n - 1 - Byte.unsigned (Znth i (find_parity_found par max_n c))) par = Some l)
+                              by admit.*)
+                              assert (Hnthsome: exists l, (Znth (fec_n - 2 - Byte.unsigned foundnth) parities) = Some l). {
+                                rewrite Heqfoundnth. replace (fec_n - 2) with ((fec_n - 1) - 1) by lia.
+                                apply find_parity_found_Znth_some; try rep_lia. subst; rep_lia. }
+                              destruct Hnthsome as [l Hsome].
+                              assert (Hqlen: 0 <= (fec_n - 2 - Byte.unsigned foundnth) < Zlength parities). {
+                                subst. assert (Hin: 0 <= i < fec_n - 1) by rep_lia.
+                                assert (Hbyte: fec_n - 1 <= Byte.max_unsigned) by rep_lia.
+                                pose proof (find_parity_found_bound' parities Hin Hbyte) as Hparb.
+                                rewrite Forall_Znth in Hparb. 
+                                specialize (Hparb (q - Zlength (find_found stats (Zlength packets)))); rep_lia. }
+                              assert (Hparlenseq: Zlength parity_ptrs = Zlength parities) by lia.
+                              rewrite (iter_sepcon_options_remove_one _ _ _ _ Hparlenseq Hqlen Hsome). Intros.
+                              assert (Hlenl: Zlength l = c). { apply (Hparsomelen (fec_n - 2 - Byte.unsigned foundnth)); auto. lia. }
+                              rewrite Hlenl.
+                              replace (Zlength l) with c by (rewrite Hparsomelen; auto).
+                              (*Now we can express the field_address*)
+                              assert_PROP (force_val
+                               (sem_add_ptr_int (tptr tuchar) Signed (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd)
+                                  (Vint (Int.sub (Int.sub (Int.repr 256) (Int.repr 2)) (Int.repr (Byte.unsigned foundnth))))) =
+                                field_address (tarray (tptr tuchar) (Zlength packets + Zlength parity_ptrs)) (SUB (k + (fec_n - 2 - Byte.unsigned foundnth))) pd). {
+                                  entailer!. solve_offset. } subst foundnth.
+                              forward.
+                              { rewrite Znth_app2 by lia. 
+                                assert (Hremk: forall x, k + x - Zlength packet_ptrs = x) by (intros x; lia).
+                                rewrite Hremk. entailer!. }
+                              { entailer!. rewrite H11. solve_offset. }
+                              { rewrite Znth_app2 by lia. 
+                                assert (Hremk: forall x, k + x - Zlength packet_ptrs = x) by (intros x; lia).
+                                rewrite Hremk. forward.
+                                { rewrite Znth_map by lia. entailer!. simpl_repr_byte. }
+                                { forward. rewrite Znth_map by lia. rewrite force_val_byte.
+                                  (*at multiplication*) unfold FIELD_TABLES; Intros.
+                                  forward_call (gv, (Znth (fec_n - 1 - Byte.unsigned
+                                      (Znth (q - Zlength (find_found stats (Zlength packets)))
+                                      (find_parity_found parities (fec_n - 1) i)) - 1)
+                                      (Znth (Byte.unsigned (Znth i' (find_parity_rows parities i))) weight_mx)), 
+                                    (Znth j l)).
+                                  forward.  rewrite_eqs; unfold FIELD_TABLES; entailer!.
+                                  { unfold Int.xor. rewrite !Int.unsigned_repr by simpl_repr_byte.
+                                    rewrite ByteFacts.byte_xor_fold.
+                                    simpl_repr_byte. unfold Vubyte. f_equal. f_equal. f_equal.
+                                    rewrite dot_prod_plus_1 by lia.
+                                    replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType B)) with
+                                      Byte.xor by reflexivity. f_equal.
+                                    replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType B)) with
+                                      ByteField.byte_mul by reflexivity. f_equal.
+                                    - unfold submx_rows_cols_rev_list.
+                                      unfold submx_rows_cols_list. rewrite mk_lmatrix_get by lia.
+                                      unfold get. rewrite !Znth_map by list_solve.
+                                      rewrite Znth_app2 by lia. reflexivity.
+                                    - unfold col_mx_list. rewrite mk_lmatrix_get by lia.
+                                      destruct (Z_lt_ge_dec q (Zlength packets - Zlength (find_lost stats (Zlength packets)))); simpl.
+                                      + (*contradiction case*) rep_lia.
+                                      + (*real case*)
+                                        unfold submx_rows_cols_list.
+                                        (*TODO: separate lemma*)
+                                         (*assert (Hget: forall l i j, @get byte (inhabitant_F B) l i j = 
+                                          @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j). {
+                                          reflexivity. }*)  rewrite get_inhab. rewrite mk_lmatrix_get by lia.
+                                        rewrite Znth_Ziota by lia. apply fill_missing_mx_some; try lia; auto. 
+                                        rewrite <- Hsome. f_equal. rewrite Znth_map by lia.
+                                        rewrite find_parity_rows_found_Znth by rep_lia.
+                                        pose proof find_lost_found_Zlength stats Hkbyte.
+                                        replace (Zlength packets - Zlength (find_lost stats (Zlength packets))) with
+                                           (Zlength (find_found stats (Zlength packets))) by lia. lia. 
+                                        rewrite Znth_map by lia. 
+                                        assert (Hibyte: 0 <= i <= Byte.max_unsigned) by rep_lia.
+                                        pose proof (find_parity_rows_bound parities Hibyte) as Hrowb.
+                                        rewrite Forall_Znth in Hrowb. 
+                                        specialize (Hrowb (q - (Zlength packets - Zlength (find_lost stats (Zlength packets))))). rep_lia.
+                                  }
+                                  { rewrite (iter_sepcon_options_remove_one _ _ _ _ Hparlenseq Hqlen Hsome). cancel.
+                                  }
+                                }
+                              }
+                            }
+                            { (*invariant pres for dot prod loop*) rewrite_eqs; forward.
+                              Exists (q+1). rewrite_eqs; entailer!. simpl_repr_byte.
+                            }
+                          }
+                        }
+                      }
+                      { (*end of dot prod loop*) forward. rewrite_eqs; entailer!.
+                        replace q with (Zlength packets) by lia. reflexivity.
+                      }
+                    }
+                    { (*put the value in the matrix*) rewrite_eqs.
+                      replace (lvar _s (tarray (tarray tuchar 16000) 128) v_s) with
+                              (lvar _s (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
+                        by (repeat f_equal; rep_lia).
+                      assert (Htemp: forall x, data_at Tsh (tarray (tarray tuchar 16000) 128) x v_s =
+                        data_at Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) x v_s). { intros x.
+                        rewrite fec_max_cols_eq. rewrite fec_max_h_eq. reflexivity. }
+                     rewrite Htemp.
+                      assert_PROP (force_val
+                       (sem_add_ptr_int tuchar Signed
+                          (force_val (sem_add_ptr_int (tarray tuchar 16000) Signed v_s (Vint (Int.repr i'))))
+                          (Vint (Int.repr j))) = field_address (tarray (tarray tuchar fec_max_cols) fec_max_h)
+                             [ArraySubsc j; ArraySubsc i'] v_s). {
+                      entailer!. solve_offset. } (*We needed opaque constants otherwise this takes forever*)
+                      rewrite_eqs; forward.
+                      simpl_repr_byte. forward. Exists (j+1). rewrite_eqs; entailer!.
+                      { rewrite fec_max_h_eq. rewrite fec_max_cols_eq. rewrite eqb_type_refl. auto. }
+                      { rewrite <- fec_max_cols_eq. rewrite <- fec_max_h_eq. rewrite field_at_data_at_cancel'.
+                        apply derives_refl'. f_equal. rewrite <- pop_mx_mult_part_set by rep_lia.
+                        unfold set. f_equal. f_equal. apply Znth_default.
+                        (*TODO: separate lemma - dont want to use wf directly because it is huge*)
+                        (*assert (pop_mx_mult_part_Zlength: forall m' n' k' m n mx1 mx2 i j,
+                          0 <= m -> 0 <= n -> Zlength (pop_mx_mult_part m' n' k' m n mx1 mx2 i j) = m). {
+                          intros m' n' k' m n mx1 mx2 x y Hm Hn. apply (pop_mx_mult_part_wf); assumption. }*)
+                        rewrite pop_mx_mult_part_Zlength; rep_lia.
+                      }
+                    }
+                  }
+                  { (*end of j loop*) replace j with c by lia. forward. rewrite_eqs; entailer!. }
+                }
+                { (*preservation of outer loop invar*) rewrite_eqs; forward. Exists (i'+1). 
+                  unfold Int.add. simpl_repr_byte. rewrite_eqs; entailer!.
+                  rewrite <- pop_mx_mult_part_row_finish by lia. cancel.
+                }
+              }
+            }
+            { (*end of outer loop*) rewrite Byte.unsigned_repr in H2 by rep_lia. replace i' with xh by lia.
+              forward. rewrite_eqs; entailer!.
+            }
+          }
+          { (*Final loop (multiplication and regenerate data)*)
+
 
 (*Tactic debug stuff - first resturn
 
