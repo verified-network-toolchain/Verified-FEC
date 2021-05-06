@@ -404,12 +404,12 @@ Proof.
   move => f par l Hl. by apply find_parity_aux_map.
 Qed.
 
-Lemma find_parity_aux_bound: forall f pars base l b,
-  Forall (fun x => 0 <= Byte.unsigned (f x) < b) l ->
-  Forall (fun x => 0 <= Byte.unsigned x < b) base ->
-  Forall (fun x => 0 <= Byte.unsigned x < b) (find_parity_aux f pars base l).
+Lemma find_parity_aux_bound: forall f pars base l a b,
+  Forall (fun x => a <= Byte.unsigned (f x) < b) l ->
+  Forall (fun x => a <= Byte.unsigned x < b) base ->
+  Forall (fun x => a <= Byte.unsigned x < b) (find_parity_aux f pars base l).
 Proof.
-  move => f pars base l b. rewrite /find_parity_aux !Forall_forall. move : base.
+  move => f pars base l a b. rewrite /find_parity_aux !Forall_forall. move : base.
   elim : l => [ //= | h t /= IH base Hf Hbase x].
   case Hh: (Znth h pars) => [y /= | //=]; apply IH; rewrite //= => z Hin.
   - apply Hf. by right.
@@ -557,6 +557,17 @@ Proof.
   rewrite Zlength_Ziota; try lia. move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
 Qed.
 
+(*This is more general, but we need version above for compatibility with other similar bounds*)
+Lemma find_parity_found_bound': forall par c max_n,
+  0 <= c < max_n ->
+  max_n <= Byte.max_unsigned ->
+  Forall (fun x => max_n - c <= Byte.unsigned x < max_n) (find_parity_found par max_n c).
+Proof.
+  move => par c max_n Hc Hn.
+  apply find_parity_aux_bound; rewrite //=. rewrite Forall_Znth => i.
+  rewrite Zlength_Ziota; try lia. move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
+Qed.
+
 Lemma find_parity_found_NoDup: forall par c max_n,
   0 <= c < max_n->
   max_n <= Byte.max_unsigned ->
@@ -655,7 +666,8 @@ Proof.
 Qed.
 
 (** The Decoder  *)
-
+(*TODO: need to change [find_parity_rows] and [find_parity_found] to go up to some i - doesnt need to
+  take the whole list - should still work I believe*)
 (*First, we will do everything in terms of list matrices, then bring back to packets of variable length*)
 (*TODO: see about all the "map Byte.unsigned" stuff, but need to do somewhere bc we are ultimately indexing
   with Z, and need Ziota at other points - probably just keep*)

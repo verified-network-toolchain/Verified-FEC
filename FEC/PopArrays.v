@@ -600,8 +600,24 @@ Proof.
   - rewrite Zlength_app Zlength_map. list_solve.
 Qed.
 
+Lemma pop_find_parity_found_Znth: forall pack pars k len found max_n i,
+  0 <= i < (Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k)) ->
+  Znth i (pop_find_parity_found pack pars k len found max_n) =
+  Vubyte (if range_le_lt_dec 0 i (Zlength (find_found pack found)) then
+          Znth i (find_found pack found)
+          else (Znth (i - (Zlength (find_found pack found))) (find_parity_found pars max_n k))).
+Proof.
+  move => pack pars k len found max_n i Hi.
+  rewrite /pop_find_parity_found. case : (range_le_lt_dec 0 i (Zlength (find_found pack found))) => [/= Hi' | /= Hi'].
+  - rewrite Znth_app1.
+    + by rewrite Znth_map.
+    + rewrite Zlength_map; lia.
+  - rewrite Znth_app2 !Zlength_map; [|lia]. rewrite Znth_app1.
+    + rewrite Znth_map; list_solve.
+    + rewrite Zlength_map; lia.
+Qed.
 
-
+(*
 Lemma pop_find_parity_found_Znth1: forall pack pars k len found max_n i,
   0 <= i < Zlength (find_found pack found) ->
   Znth i (pop_find_parity_found pack pars k len found max_n) = Vubyte (Znth i (find_found pack found)).
@@ -620,7 +636,7 @@ Proof.
   move => pack pars k len found max_n i Hi. rewrite /pop_find_parity_found Znth_app2 !Zlength_map; [|lia].
   rewrite Znth_app1. rewrite Znth_map; list_solve.
   rewrite Zlength_map; lia.
-Qed. 
+Qed. *)
 
 (*Populating the matrix to be inverted is quite nontrivial, for 4 reasons
   1. It is essentially represented as a 1D, rather than 2D array, so we need some arithmetic
