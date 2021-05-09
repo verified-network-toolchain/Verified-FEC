@@ -143,7 +143,7 @@ Definition fec_blk_encode_spec :=
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          iter_sepcon_arrays packet_ptrs packets;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
-         data_at Ews (tarray tschar k) (zseq fec_n (Vint Int.zero)) ps;
+         data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
          INDEX_TABLES gv; 
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
   POST [ tint ]
@@ -153,7 +153,7 @@ Definition fec_blk_encode_spec :=
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          iter_sepcon_arrays packet_ptrs packets;
          data_at Ews (tarray tint k) (map Vint (map Int.repr (lengths))) pl;
-         data_at Ews (tarray tschar k) (zseq fec_n (Vint Int.zero)) ps;
+         data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
          INDEX_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
@@ -172,7 +172,8 @@ Definition fec_blk_decode_spec :=
           forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets);
           Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats) <= Zlength (filter ssrbool.isSome parities);
           forall (i: Z), 0 <= i < h -> Znth i parities = None <-> Znth i parity_ptrs = nullval;
-          forall (i: Z) (l: list byte), 0 <= i < h -> Znth i parities = Some l -> Zlength l = c)
+          forall (i: Z) (l: list byte), 0 <= i < h -> Znth i parities = Some l -> Zlength l = c;
+          Forall (fun x => x = Byte.zero \/ x = Byte.one) stats)
     PARAMS (Vint (Int.repr k); (*Vint (Int.repr h);*) Vint (Int.repr c); pd; pl; ps)
     GLOBALS (gv)
     SEP (iter_sepcon_arrays packet_ptrs packets;
@@ -184,12 +185,12 @@ Definition fec_blk_decode_spec :=
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
   POST [ tint ]
     PROP ()
-    RETURN (Vint Int.zero)
+    RETURN (Vint (Int.repr (Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats)))) (*this is xh*)
     SEP (iter_sepcon_arrays packet_ptrs (decoder_list k c packets parities stats lengths) ;
          iter_sepcon_options parity_ptrs parities;
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
-         data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+         data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
          FIELD_TABLES gv; data_at Ews tint (Vint (Int.zero)) (gv _trace);
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 

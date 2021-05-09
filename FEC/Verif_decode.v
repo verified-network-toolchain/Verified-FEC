@@ -258,7 +258,7 @@ start_function. (*use better names to make proof cleaner, since there will be a 
 rename H into Hknh. rename H0 into Hhh. rename H1 into Hccols. rename H2 into Hpacklen.
 rename H3 into Hpackptrlen. rename H4 into Hparptrlen. rename H5 into Hparlen. rename H6 into Hstatlen.
 rename H7 into Hlenbound. rename H8 into Hlenspec. rename H9 into Hnumpars.
-rename H10 into Hparsconsist. rename H11 into Hparsomelen.
+rename H10 into Hparsconsist. rename H11 into Hparsomelen. rename H12 into Hstatsvals.
 rewrite <- (@find_parity_rows_filter _ (Zlength parities)) in Hnumpars by lia.
 rewrite <- (@find_lost_filter _ k) in Hnumpars by lia.
 assert_PROP (Zlength lengths = k) as Hlenslen. { entailer!. rewrite !Zlength_map in H8. assumption. } 
@@ -391,13 +391,28 @@ forward_loop (EX (i: Z),
     replace fec_max_cols with 16000 by rep_lia.*) forward.
     thaw FR2. thaw FR1. (*TODO: doesn't work ( in [solve_Forall2_fn_data_at])
       if the constants are opaque*)
-    entailer!. replace 256 with (fec_max_h * 2) by rep_lia. replace 16000 with fec_max_cols by rep_lia.
-    replace 128 with fec_max_h by rep_lia. cancel.
-    (*If xh = 0, the result is trivial*)
-    rewrite Int_repr_zero in H by rep_lia.
-    rewrite Byte.unsigned_repr in H by rep_lia.
-    rewrite decoder_list_correct_0; auto; try lia.
-    rewrite <- (find_lost_filter (k:=(Zlength packets))); auto.
+    rewrite Byte.unsigned_repr in H by rep_lia. rewrite Int_repr_zero in H by rep_lia.
+    entailer!.
+    { rewrite <- (@find_lost_filter _ (Zlength packets)). rewrite H. reflexivity. lia. }
+    { replace 256 with (fec_max_h * 2) by rep_lia. replace 16000 with fec_max_cols by rep_lia.
+      replace 128 with fec_max_h by rep_lia. cancel.
+      (*If xh = 0, the result is trivial*)
+      rewrite decoder_list_correct_0; auto; try lia. cancel.
+      2 : { rewrite <- (find_lost_filter (k:=(Zlength packets))); auto. }
+      apply derives_refl'. repeat f_equal. apply Znth_eq_ext. 
+      - rewrite zseq_Zlength; list_solve.
+      - rewrite Zlength_map. intros i Hi. rewrite Znth_map by auto.
+        rewrite zseq_Znth; try lia. f_equal.
+        destruct (Byte.eq_dec (Znth i stats) (Byte.zero)); auto.
+        assert (Hinlost: In (Byte.repr i) (find_lost stats (Zlength packets))). {
+          apply find_lost_found_aux_in_spec. rewrite Forall_Znth => x. rewrite Zlength_Ziota by lia.
+          intros Hx. rewrite Znth_Ziota by lia. rep_lia. right. rewrite !Byte.unsigned_repr by rep_lia.
+          split. apply Ziota_In; lia. assert (Hith: Znth i stats = Byte.one). {
+            rewrite Forall_Znth in Hstatsvals. specialize (Hstatsvals _ Hi). destruct Hstatsvals; subst; auto. 
+            contradiction. }
+          rewrite Hith. destruct (Z.eq_dec (Byte.signed Byte.one) 1); auto. }
+        apply Zlength_nil_inv in H. rewrite H in Hinlost. contradiction.
+    }
   }
   { forward. unfold Int.sub. rewrite !Int.unsigned_repr by rep_lia. simpl_repr_byte.
     (*Second loop - populate parity packet row/found*) 
@@ -1322,6 +1337,142 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
             }
           }
           { (*Final loop (multiplication and regenerate data)*)
+            rewrite_eqs; forward. unfold Int.sub. simpl_repr_byte.
+            (*TODO: cannot rewrite opaque constants, get C parser error*)
+            forward.
+            clear HeqLOCALS LOCALS HeqSEPS SEPS. thaw FR1.
+            (*unfortunately, we need almost everything in this loop*)
+            freeze FR1 := (data_at _ _ _
+              (field_address0 (tarray tuchar (2 * fec_max_h * fec_max_h)) (SUB (2 * xh * xh)) v_v))
+              (data_at _ _ _ (gv _trace)) (iter_sepcon_options parity_ptrs parities) 
+              (data_at _ _ _ v_found) (data_at _ _ _ (gv _fec_weights)) (data_at _ _ _ v_row).
+            (*remember matrices to make the loop invariants nicer. The names match those in [decode_list_mx]*)
+            remember (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+              (map Byte.unsigned found)) as w''.
+            remember (col_mx_list (F:=B)
+             (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+             (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c (map Byte.unsigned row)
+                (Ziota 0 c)) (k - xh) xh c) as d'.
+            remember (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+                    (seq.map Byte.unsigned row) (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) as w'.
+            (*remember local variables - none are changing in loop*)
+            remember [temp _u (force_val (sem_binary_operation' Oadd (tarray (tarray tuchar 16000) 128) tuchar v_s
+                (Vint (Int.repr (xh - 1))))); temp _x (Vint (Int.repr (xh - 1)));
+               temp _err (Vint Int.zero); temp _t'6 (Vint Int.zero); lvar _v (tarray (tarray tuchar 256) 128) v_v;
+               lvar _lost (tarray tuchar fec_max_h) v_lost; temp _xh (Vubyte (Byte.repr xh));
+               lvar _row (tarray tuchar fec_max_h) v_row; gvars gv; temp _t'29 (Vint Int.zero);
+               temp _xr (Vubyte (Byte.repr (Zlength row))); temp _xk (Vubyte (Byte.repr (xk + Zlength found2)));
+               lvar _found (tarray tuchar fec_max_h) v_found;
+               temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd);
+               lvar _s (tarray (tarray tuchar 16000) 128) v_s; temp _k (Vint (Int.repr k));
+               temp _c (Vint (Int.repr c)); temp _pdata pd; temp _plen pl; temp _pstat ps] as LOCALS.
+            (*Only item actually changing in the SEP clause in what is stats and pdata, so all rest can be remembered*)
+            rewrite (grab_nth_SEP 3); simpl.
+            rewrite (grab_nth_SEP 6); simpl.
+            remember [FRZL FR1; data_at Tsh (tarray (tarray tuchar 16000) 128)
+              (pop_mx_mult_part xh c k fec_max_h fec_max_cols w'' d' xh 0) v_s;
+              data_at Tsh (tarray tuchar (xh * (xh + xh)))
+              (map Vubyte (flatten_mx (gauss_restrict_rows (F:=B) xh (xh + xh) (concat_mx_id (F:=B) w' xh)))) v_v;
+             data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (Zlength packets) fec_max_h) v_lost;
+             FIELD_TABLES gv;
+             data_at Ews (tarray tint (Zlength packets)) (map Vint (map Int.repr lengths)) pl;
+             data_at Ews (tarray (tptr tuchar) (Zlength packets + Zlength parity_ptrs))
+               (packet_ptrs ++ parity_ptrs) pd] as SEPS.
+            forward_loop (EX (i: Z),
+              PROP (0 <= i <= xh)
+              (LOCALx ((temp _i (Vint (Int.repr i))) :: LOCALS)
+              (SEPx (iter_sepcon_arrays packet_ptrs 
+                (pop_fill_rows_list packets (list_lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                    (list_lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k))) i 0) ::
+                data_at Ews (tarray tschar (Zlength packets)) 
+                  (map Vbyte (pop_stats stats (map Byte.unsigned (rev (find_lost stats k))) i)) ps :: SEPS))))
+            break: (PROP () (LOCALx LOCALS
+              (SEPx (iter_sepcon_arrays packet_ptrs 
+                (pop_fill_rows_list packets (list_lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                    (list_lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k))) xh 0) ::
+                data_at Ews (tarray tschar (Zlength packets)) 
+                  (map Vbyte (pop_stats stats (map Byte.unsigned (rev (find_lost stats k))) xh)) ps :: SEPS)))).
+            { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
+              rewrite pop_fill_rows_list_0. rewrite pop_stats_0. cancel. }
+            { Intros i'. rewrite_eqs; forward_if.
+              { forward.
+                { entailer!. rewrite !Byte.unsigned_repr by rep_lia. 
+                  rewrite (Int.signed_repr 2) by rep_lia.
+                  assert (Int.min_signed <= i' * Zlength (find_lost stats (Zlength packets)) * 2 <= Int.max_signed).
+                    split; try rep_lia. 
+                    assert (i' * Zlength (find_lost stats (Zlength packets)) * 2 <= 
+                    Zlength (find_lost stats (Zlength packets)) * Zlength (find_lost stats (Zlength packets)) * 2) by nia.
+                    assert ( Zlength (find_lost stats (Zlength packets)) <= 127) by rep_lia.
+                    assert (i' * Zlength (find_lost stats (Zlength packets)) * 2 <= 127 * 127 * 2) by nia. rep_lia.
+                    rewrite Int.signed_repr; rep_lia.
+                }
+                { forward. (*TODO: rewrite the above as field_address0 (so I can use the if lemma), continue, loop invar*)
+                  
+                    
+
+(*stuff we need
+  - xh
+  - v
+  - p
+  - lost
+  - pstat
+  - c
+  - FIELD_TABLES
+  - pdata
+  - u
+  - gv
+  - plen
+
+  dont need
+  - found
+  - rows
+  - err
+  - t6
+  - t29
+  - xr
+  - xk
+  - pparity
+  - s (bc its in u)
+  - k
+  - 
+
+in seps, only thing changing is contents of packets, so remember everything else!
+
+
+LOCALS
+need (nothing changing), so remember all
+
+SEPS
+need
+v_s
+v_v (inverse)
+ps
+
+
+dont need
+v_v (other)
+trace
+iter sepcon parities
+v_found
+(gv _fec_weights)
+v_row
+
+
+forget
+ i
+
+
+
+ (*TODO: hopefully no issues with AST, but shouldnt be*)
+            rewrite <- !fec_max_cols_eq. rewrite <- !fec_max_h_eq. forward.
+            (*let's try opaque constants again and see*)
+            assert (tarray (tarray tuchar 16000) 128 = tarray (tarray tuchar fec_max_cols) fec_max_h) by
+              (repeat f_equal; rep_lia). subst. rewrite H.
+
+
+ forward.
+            
+             unfold MORE_COMMANDS. unfold abbreviate.
 
 
 (*Tactic debug stuff - first resturn

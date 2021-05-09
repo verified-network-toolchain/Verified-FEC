@@ -915,6 +915,62 @@ Proof.
   rewrite /pop_find_inv. f_equal. by apply pop_find_inv_fst_post.
 Qed.
 
+(*Populate the stats array. This is a bit complicated because we index in using lost*)
+Definition pop_stats (stats: list byte) (to_fill : list Z) i :=
+  mkseqZ (fun x => if (Zindex x to_fill) <? Zlength to_fill then 
+                      if ((Zindex x to_fill) <? i) then Byte.zero else Znth x stats
+                   else Znth x stats) (Zlength stats).
+
+Lemma pop_stats_Zlength: forall stats to_fill i,
+  Zlength (pop_stats stats to_fill i) = Zlength stats.
+Proof.
+  move => stats to_fill i. rewrite mkseqZ_Zlength //; list_solve.
+Qed.
+
+Lemma pop_stats_0: forall stats to_fill,
+  pop_stats stats to_fill 0 = stats.
+Proof.
+  move => stats to_fill. apply Znth_eq_ext; rewrite pop_stats_Zlength //.
+  move => i Hi. rewrite mkseqZ_Znth //. case : (Zindex i to_fill <? Zlength to_fill) => [|//].
+  case : (Zindex i to_fill <? 0) /Z.ltb_spec0 => [|//]. rewrite /Zindex. lia.
+Qed.
+
+Lemma pop_stats_plus_1: forall stats to_fill i,
+  NoDup to_fill ->
+  Forall (fun x => 0 <= x < Zlength stats) to_fill ->
+  0 <= i < Zlength to_fill ->
+  pop_stats stats to_fill (i + 1) = upd_Znth (Znth i to_fill) (pop_stats stats to_fill i) Byte.zero.
+Proof.
+  move => stats to_fill i Hnodup Hall Hi. apply Znth_eq_ext.
+  - by rewrite Zlength_upd_Znth !pop_stats_Zlength.
+  - rewrite pop_stats_Zlength => x Hx. rewrite !mkseqZ_Znth //.
+    have [Hix | Hix]: (x = Znth i to_fill) \/ (x <> Znth i to_fill) by lia.
+    + subst. rewrite upd_Znth_same //; last first. by rewrite pop_stats_Zlength.
+      rewrite !Zindex_Znth //. have->/=: (i <? Zlength to_fill) = true by lia.
+      have->//: i <? i + 1 = true by lia.
+    + rewrite upd_Znth_diff //; try rewrite pop_stats_Zlength; try lia; last first.
+      move: Hall. by rewrite Forall_Znth => /(_ _ Hi).
+      rewrite !mkseqZ_Znth //.
+      case : (Zindex x to_fill <? Zlength to_fill) => [|//].
+      case : (Zindex x to_fill <? i ) /Z.ltb_spec0 => [/= Hxi | /= Hxi].
+      * have->//: (Zindex x to_fill <? i + 1) = true by lia.
+      * case : (Zindex x to_fill <? i + 1) /Z.ltb_spec0 => [/= Hxi' | //].
+        have Hieq: Zindex x to_fill = i by lia. subst. 
+        move: Hix. rewrite Znth_Zindex //. apply Zindex_In. lia.
+Qed.
+
+Lemma pop_stats_done: forall stats to_fill,
+  (forall i, ~ In i to_fill -> Znth i stats = Byte.zero) ->
+  pop_stats stats to_fill (Zlength to_fill) = zseq (Zlength stats) Byte.zero.
+Proof.
+  move => stats to_fill Hinfill.
+  apply Znth_eq_ext.
+  - rewrite pop_stats_Zlength zseq_Zlength //. list_solve.
+  - rewrite pop_stats_Zlength => i Hi. rewrite mkseqZ_Znth // zseq_Znth //; [| list_solve].
+    case : (Zindex i to_fill <? Zlength to_fill) /Z.ltb_spec0 => [// | /= Hnotin].
+    apply Hinfill. by rewrite -Zindex_In.
+Qed.
+
 (* Populate (and trim) [fill_rows_list]*)
 (*NOTE: input is NOT necessarily a filled matrix - it has length m and each row has length <= n*)
 (*This definition does not use mk_lmatrix, because it is not a well formed matrix. We only fill in where needed*)
