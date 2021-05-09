@@ -841,13 +841,15 @@ Qed.
 
 (*Trivial case of xh = 0*)
 Lemma decode_list_mx_zero: forall k c packets parities stats,
+  0 <= k ->
+  0 <= c ->
   Zlength (find_lost stats k) = 0%Z ->
   lmatrix_to_mx k c (decode_list_mx k c packets parities stats) = 
   lmatrix_to_mx k c (extend_mx k c packets).
 Proof.
-  move => k c packets parities stats Hlen0.
+  move => k c packets parities stats Hk Hc Hlen0.
   rewrite /decode_list_mx /=. rewrite !Hlen0 /=.
-  by rewrite /fill_rows_list /=.
+  rewrite fill_rows_list_0 //=. by apply extend_mx_wf.
 Qed.
 
 (*TODO: move to commonssr*)
@@ -891,7 +893,7 @@ Proof.
   remember (find_parity_found parities (fec_n - 1) h) as foundp.
   move => Hlenlost Hlenfound Hlenpar.
   have: xh = 0%Z \/ 0 < xh by list_solve. move => [Hxh0 | Hxh0].
-  - subst. rewrite (@decode_list_mx_zero k c) //.
+  - subst. rewrite (@decode_list_mx_zero k c) //; try lia.
     rewrite decoder_mult_0 //. rewrite size_length -ZtoNat_Zlength.
     rewrite Z_ord_list_Zlength. all: try (rewrite Hxh0; lia).
     rewrite Zlength_map rev_rev Zlength_rev; lia.
@@ -912,6 +914,8 @@ Proof.
     2 : {  by apply ord_inj. }
     rewrite find_invmx_list_spec. 2 : {
       apply strong_inv_list_partial; try lia. by subst. by subst. }
+    2 : { rewrite map_rev rev_rev. apply NoDup_rev. apply NoDup_map_inj.
+          move => b1 b2 Hinb1 Hinb2. apply byte_unsigned_inj. apply find_lost_NoDup; rep_lia. }
     2: by rewrite map_rev rev_rev; apply Forall_rev; apply Z_byte_list_bound.
     2: by rewrite Zlength_map rev_rev Zlength_rev.
     f_equal.
@@ -1191,10 +1195,11 @@ Lemma decoder_list_correct_0: forall k c packets parities stats lens,
 Proof.
   move => k c packets parities stats lens Hc Hkstat Hkpack Hklens Hlens Hlenbound. 
   rewrite /decoder_list -(@find_lost_filter _ k) // => Hlen.
-  pose proof (@decode_list_mx_zero k c packets parities stats Hlen) as Hmx.
+  have Hk: 0 <= k by list_solve.
+  pose proof (@decode_list_mx_zero k c packets parities stats Hk Hc Hlen) as Hmx.
   apply lmatrix_to_mx_inj in Hmx.
   - rewrite Hmx Hkpack crop_extend //. lia. by rewrite -Hkpack.
-  - apply fill_rows_list_aux_wf. apply extend_mx_wf; list_solve.
+  - apply fill_rows_list_wf; lia.
   - apply extend_mx_wf; list_solve.
 Qed.
 
@@ -1229,7 +1234,7 @@ Proof.
     - by rewrite find_parity_rows_filter. }
   apply lmatrix_to_mx_inj in Hmx. 
   - rewrite Hmx -Hdatalen crop_extend //; try lia; rewrite Hdatalen //; lia. 
-  - apply fill_rows_list_aux_wf. apply extend_mx_wf; lia.
+  - apply fill_rows_list_wf; lia.
   - apply extend_mx_wf; lia.
 Qed.
 

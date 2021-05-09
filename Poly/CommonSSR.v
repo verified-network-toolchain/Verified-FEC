@@ -341,6 +341,21 @@ Proof.
     have Hi1: (i.-1 < i)%N by apply pred_lt. by apply (ltn_leq_trans Hi1).
 Qed.
 
+Lemma index_pmap: forall (aT rT: eqType) (f: aT -> option rT) (g: rT -> aT) (s: seq aT) (x: rT),
+  pcancel g f ->
+  (forall x x' y, f x = Some y -> f x' = Some y -> x = x') ->
+  all f s ->
+  index (g x) s = index x (pmap f s).
+Proof.
+  move => aT rT f g s x Hcancel Hinj. elim : s => [//= | h t /= IH /andP[Hh Hall]]. 
+  move: Hh. case Hfh : (f h) => [o /= | //]. move => _.
+  case : (h == g x) /eqP => [Hhg | Hhg].
+  - rewrite Hhg in Hfh. rewrite Hcancel in Hfh. case : Hfh => [->]. by rewrite eq_refl.
+  - case: (o == x) /eqP => [Hox /= | Hox /=].
+    + subst. have: h = g x. apply (Hinj _ _ x). by []. apply Hcancel. by [].
+    + by rewrite IH.
+Qed.
+
 (** Relating ssreflect and standard library functions*)
 
 
@@ -416,6 +431,13 @@ Lemma larger_not_nil: forall {A: Type} (l1 l2: seq A),
 Proof.
   move => A l1 l2 Hl2 Hsz. rewrite ltnNge in Hsz. apply negbFE in Hsz. move : Hl2;
   rewrite -!size_not_nil => Hl2. by apply (ltn_leq_trans Hl2).
+Qed.
+
+Lemma index_notin: forall {T: eqType} (x: T) (s: seq T), (index x s == size s) = (x \notin s).
+Proof.
+  move => T x s. case Hin: (x \in s).
+  - move: Hin. rewrite -index_mem. case : (index x s == size s) /eqP => [->// |//]. by rewrite ltnn.
+  - rewrite memNindex. by rewrite eq_refl. by rewrite Hin.
 Qed.
 
 (** Stuff about finTypes*)
