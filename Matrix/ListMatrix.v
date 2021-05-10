@@ -1554,6 +1554,25 @@ Proof.
   - rewrite (Z_ord_list_Znth Hn) => [//||//]. lia.
 Qed.
 
+(*We can replace the input with [extend_mx] input with no issues*)
+Lemma submx_rows_cols_list_extend: forall mx m n rows cols c,
+  0 <= m -> 0 <= n ->
+  Forall (fun x => 0 <= x < Zlength mx) rows ->
+  Forall (fun x => 0 <= x < c) cols ->
+  Zlength rows = m ->
+  Zlength cols = n ->
+  submx_rows_cols_list mx m n rows cols =
+  submx_rows_cols_list (extend_mx (Zlength mx) c mx) m n rows cols.
+Proof.
+  move => mx m n rows cols c Hm Hn Hrows Hcols Hrowlen Hcollen.
+  apply (@lmatrix_ext_eq m n); try (apply mk_lmatrix_wf; lia).
+  move => i j Hi Hj. rewrite !mk_lmatrix_get //.
+  - case : (Z_lt_le_dec (Znth j cols) (Zlength (Znth (Znth i rows) mx))) => [// |//= Hlen].
+    rewrite /get Znth_overflow //. lia.
+  - move: Hrows. by rewrite Forall_Znth Hrowlen => /(_ _ Hi).
+  - move: Hcols. by rewrite Forall_Znth Hcollen => /(_ _ Hj).
+Qed.
+
 (*Take columns from end instead of beginning - large mx is m x n, submx is m' x n'*)
 Definition submx_rows_cols_rev_list (mx: lmatrix) m' n' n rows cols :=
   submx_rows_cols_list mx m' n' rows (map (fun x => (n - x - 1)%Z) cols).
@@ -1889,6 +1908,21 @@ Proof.
     + by rewrite size_length -ZtoNat_Zlength Z_ord_list_Zlength // Hlen.
     + by rewrite Z_ord_list_notin.
 Qed. 
+
+(*Also need to know that we can replace d with (extend_mx d). This works because the default element is 0*)
+Lemma fill_rows_list_extend: forall m n xh d r to_fill c,
+  0 <= m -> 0 <= n -> n <= c ->
+  fill_rows_list m n xh d r to_fill =
+  fill_rows_list m n xh (extend_mx m c d) r to_fill.
+Proof.
+  move => m n xh d r to_fill c Hm Hn Hnc.
+  apply (@lmatrix_ext_eq m n); try (apply mk_lmatrix_wf; lia).
+  move => i j Hi Hj. rewrite !mk_lmatrix_get //; try lia.
+  case : (Z_lt_le_dec (Zindex i to_fill) xh) => [//|/= Hxhf].
+  case : (Z_lt_le_dec j (Zlength (Znth i d))) => [//|/= Hlen].
+  rewrite /get Znth_overflow //. lia.
+Qed.
+
 
 (*
 Definition fill_row_list m n (d r: lmatrix) row_d row_r :=

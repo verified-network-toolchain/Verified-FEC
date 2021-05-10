@@ -262,6 +262,31 @@ Proof.
       split; intros; try lia. inversion H.
 Qed.
 
+(*Switch Cgt and Clt*)
+Lemma cgt_clt_ptr: forall p1 p2,
+  sem_cmp_pp Cgt p1 p2 = sem_cmp_pp Clt p2 p1.
+Proof.
+  intros p1 p2. unfold sem_cmp_pp. simpl. f_equal. unfold Val.cmplu_bool.
+  destruct p1; destruct p2; auto. destruct (Archi.ptr64); auto; simpl.
+  destruct (eq_block b b0). subst. destruct (eq_block b0 b0); try contradiction.
+  reflexivity. destruct (eq_block b0 b); subst; auto. contradiction.
+Qed.
+
+(*Same for the lt case. This is an easy corollary of the above 2 lemmas*)
+Lemma ptr_comparison_lt_iff: forall t size p i j,
+  field_compatible (tarray t size) [] p ->
+  0 <= i <= size ->
+  0 <= j <= size ->
+  0 < sizeof t ->
+  isptr p ->
+  typed_true tint (force_val (sem_cmp_pp Clt (field_address0 (tarray t size) (SUB i) p)
+    (field_address0 (tarray t size) (SUB j) p))) <-> i < j. 
+Proof.
+  intros t sz p i j Hcompat Hi Hj Ht Hptr. rewrite <- cgt_clt_ptr.
+  rewrite ptr_comparison_gt_iff by auto. lia.
+Qed.
+
+
 (** Working with 2D Arrays*)
 
 (*We can consider an instance of t at position p to be a valid array of length 1 at p*)

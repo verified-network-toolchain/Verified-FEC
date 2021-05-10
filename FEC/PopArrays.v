@@ -108,12 +108,12 @@ Lemma pop_partial_done: forall {A} `{Inhabitant A} m' n' m n f (d: A) j x y,
   n' <= n ->
   0 <= x < m' ->
   0 <= y < n' ->
-  get (pop_partial m' n' m n f d m j) x y = f x y.
+  get (pop_partial m' n' m n f d m' j) x y = f x y.
 Proof.
   move => A Hinhab m' n' m n f d j x y Hm Hn Hx Hy. rewrite /get !mkseqZ_Znth //; try lia.
   case : (Z_le_lt_dec n' y) => [|/= _]; try lia.
   case : (Z_le_lt_dec m' x) => [|/=_]; try lia.
-  by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
+  by case : (Z_lt_le_dec x m') => [_ // |]; try lia.
 Qed.
 
 (*Now we can define the version that uses the full array. We repeat a lot of the theorems because
@@ -369,7 +369,7 @@ Lemma pop_mx_mult_part_done: forall m' n' k' m n mx1 mx2 j x y,
   n' <= n ->
   0 <= x < m' ->
   0 <= y < n' ->
-  Znth y (Znth x (pop_mx_mult_part m' n' k' m n mx1 mx2 m j)) = 
+  Znth y (Znth x (pop_mx_mult_part m' n' k' m n mx1 mx2 m' j)) = 
     Vubyte (get (list_lmatrix_multiply m' k' n' mx1 mx2) x y).
 Proof.
   move => m' n' k' m n mx1 mx2 j x y Hm Hn Hx Hy. rewrite mk_lmatrix_get //.
@@ -960,7 +960,7 @@ Proof.
 Qed.
 
 Lemma pop_stats_done: forall stats to_fill,
-  (forall i, ~ In i to_fill -> Znth i stats = Byte.zero) ->
+  (forall i, 0 <= i < Zlength stats -> ~ In i to_fill -> Znth i stats = Byte.zero) ->
   pop_stats stats to_fill (Zlength to_fill) = zseq (Zlength stats) Byte.zero.
 Proof.
   move => stats to_fill Hinfill.
@@ -968,7 +968,7 @@ Proof.
   - rewrite pop_stats_Zlength zseq_Zlength //. list_solve.
   - rewrite pop_stats_Zlength => i Hi. rewrite mkseqZ_Znth // zseq_Znth //; [| list_solve].
     case : (Zindex i to_fill <? Zlength to_fill) /Z.ltb_spec0 => [// | /= Hnotin].
-    apply Hinfill. by rewrite -Zindex_In.
+    apply Hinfill. by []. by rewrite -Zindex_In.
 Qed.
 
 (* Populate (and trim) [fill_rows_list]*)
@@ -982,12 +982,25 @@ Definition pop_fill_rows_list (input : list (list byte)) rec rows i j :=
                                     else get input x y)
   (Zlength (Znth x input))) (Zlength input).
 
+Lemma pop_fill_rows_Zlength1: forall input rec rows i j,
+  Zlength (pop_fill_rows_list input rec rows i j) = Zlength input.
+Proof.
+  move => input rec rows i j. rewrite mkseqZ_Zlength //. list_solve.
+Qed.
+
+Lemma pop_fill_rows_Zlength2: forall input rec rows i j x,
+  0 <= x < Zlength input ->
+  Zlength (Znth x (pop_fill_rows_list input rec rows i j)) = Zlength (Znth x input).
+Proof.
+  move => input rec rows i j x Hx. rewrite mkseqZ_Znth // mkseqZ_Zlength //. list_solve.
+Qed. 
+
 Lemma pop_fill_rows_list_0: forall input rec rows,
   pop_fill_rows_list input rec rows 0 0 = input.
 Proof.
-  move => input rec rows. apply Znth_eq_ext; rewrite mkseqZ_Zlength; [by [] | list_solve | move =>i Hi | list_solve].
-  apply Znth_eq_ext; rewrite !mkseqZ_Znth // mkseqZ_Zlength //; [list_solve | | list_solve].
-  move => j Hj. rewrite mkseqZ_Znth //.
+  move => input rec rows. apply Znth_eq_ext; rewrite pop_fill_rows_Zlength1 // => i Hi.
+  apply Znth_eq_ext; rewrite pop_fill_rows_Zlength2 // => j Hj.
+  rewrite !mkseqZ_Znth //.
   case : (Zindex i rows <? Zlength rows) => [/=|//].
   case : (Zindex i rows <? 0) /Z.ltb_spec0. rewrite /Zindex; lia. move => _ /=.
   case : (j <? 0) /Z.ltb_spec0; try lia. move => _ /=. by rewrite andbF.
@@ -1006,10 +1019,8 @@ Lemma pop_fill_rows_list_finish: forall input rec rows i c,
   pop_fill_rows_list input rec rows i c = pop_fill_rows_list input rec rows (i+1) 0.
 Proof.
   move => input rec rows i c Hall.
-  have Hlenin: 0 <= Zlength input by list_solve.
-  apply Znth_eq_ext; rewrite !mkseqZ_Zlength // => x Hx.
-  have Hlennth: 0 <= Zlength (Znth x input) by list_solve.
-  apply Znth_eq_ext; rewrite !mkseqZ_Znth // !mkseqZ_Zlength // => y Hy.
+  apply Znth_eq_ext; rewrite !pop_fill_rows_Zlength1 // => x Hx.
+  apply Znth_eq_ext; rewrite !pop_fill_rows_Zlength2 // => y Hy.
   rewrite !mkseqZ_Znth //.
   case : (Zindex x rows <? Zlength rows) => [|//].
   have->: (y <? c) = true. apply /Z.ltb_spec0. have: Zlength (Znth x input) <= c; try lia.
@@ -1047,30 +1058,46 @@ Lemma pop_fill_rows_list_set: forall input rec rows i j,
   pop_fill_rows_list input rec rows i (j+1) =
     set (pop_fill_rows_list input rec rows i j) (Znth i rows) j (get rec i j).
 Proof.
-  move => input rec rows i j Hnodup Hinrows Hi Hj. 
-  have Hlenin: 0 <= Zlength input by list_solve.
-  apply Znth_eq_ext; rewrite !mkseqZ_Zlength //.
-  by rewrite set_Zlength1 mkseqZ_Zlength.
-  move => x Hx. have Hlennth: 0 <= Zlength (Znth x input) by list_solve.
-  apply Znth_eq_ext; rewrite !mkseqZ_Znth // !mkseqZ_Zlength //.
-  by rewrite set_Zlength2 mkseqZ_Znth // mkseqZ_Zlength.
-  move => y Hy. rewrite mkseqZ_Znth // /set mkseqZ_Znth //; last first.
+  move => input rec rows i j Hnodup Hinrows Hi Hj.
+  apply Znth_eq_ext. by rewrite set_Zlength1 !pop_fill_rows_Zlength1.
+  rewrite pop_fill_rows_Zlength1 => x Hx.
+  apply Znth_eq_ext. by rewrite set_Zlength2 // !pop_fill_rows_Zlength2.
+  rewrite pop_fill_rows_Zlength2 // => y Hy.
+  rewrite !mkseqZ_Znth // /set mkseqZ_Znth //; last first.
   move: Hinrows. by rewrite Forall_Znth => /(_ _ Hi).
   case : (Z.eq_dec x (Znth i rows)) => [Hxi | Hxi].
-  - subst. rewrite upd_Znth_same; last first. rewrite mkseqZ_Zlength //.
+  - subst. rewrite upd_Znth_same; last first. by rewrite pop_fill_rows_Zlength1.
     case : (Z.eq_dec y j) => [Hyj | Hyj].
-    + subst. rewrite upd_Znth_same; last first. by rewrite mkseqZ_Zlength.
+    + subst. rewrite upd_Znth_same; last first. rewrite mkseqZ_Zlength; list_solve.
       rewrite !Zindex_Znth //. have->:i <? Zlength rows = true by lia.
       by have->:(i <? i) || (i =? i) && (j <? j + 1) = true by lia.
     + rewrite upd_Znth_diff; try lia; try rewrite mkseqZ_Zlength //.
       rewrite mkseqZ_Znth //.
-      by have->: (y <? j) = (y <? j + 1) by lia.
-  - rewrite upd_Znth_diff; try lia; try rewrite mkseqZ_Zlength //; last first.
+      by have->: (y <? j) = (y <? j + 1) by lia. all: list_solve.
+  - rewrite upd_Znth_diff; try lia; try rewrite pop_fill_rows_Zlength1 //; last first.
     move: Hinrows. by rewrite Forall_Znth => /(_ _ Hi).
     rewrite !mkseqZ_Znth //.
     have->//=:(Zindex x rows =? i) = false. case : (Z.eq_dec (Zindex x rows) i); try lia.
     move => Hieq. subst. rewrite Znth_Zindex in Hxi. by []. 
     apply Zindex_In. lia.
+Qed.
+
+Lemma pop_fill_rows_list_set_over: forall input rec rows i j,
+  0 <= i < Zlength rows ->
+  Zlength (Znth (Znth i rows) input) <= j ->
+  pop_fill_rows_list input rec rows i (j+1) =
+  pop_fill_rows_list input rec rows i j.
+Proof.
+  move => input rec rows i j Hi Hj. apply Znth_eq_ext; rewrite !pop_fill_rows_Zlength1 // => x Hx.
+  apply Znth_eq_ext; rewrite !pop_fill_rows_Zlength2 // => y Hy.
+  rewrite !mkseqZ_Znth //.
+  case : (Zindex x rows <? Zlength rows) /Z.ltb_spec0 => [Hxin|//].
+  case : (Zindex x rows <? i)=> [// |/=].
+  case : (Zindex x rows =? i) /Z.eqb_spec => [Hxidx/=|//]. subst.
+  rewrite Znth_Zindex in Hj. 2: { by apply Zindex_In. }
+  case : ( y <? j) /Z.ltb_spec => [Hyj /= | Hyj /=].
+  have->//: (y <? j + 1) = true by lia.
+  case : (y <? j + 1) /Z.ltb_spec => [Hyj' /=|//]. lia.
 Qed.
 
 Lemma pop_fill_rows_list_done: forall input rec rows lens j k c xh,
@@ -1082,14 +1109,14 @@ Lemma pop_fill_rows_list_done: forall input rec rows lens j k c xh,
   xh <= k ->
   Forall (fun x => Zlength x <= c) input ->  
   (forall i, 0 <= i < Zlength input -> Znth i lens = Zlength (Znth i input)) ->
-  pop_fill_rows_list input rec rows (Zlength input) j =
+  pop_fill_rows_list input rec rows (Zlength rows) j =
   crop_mx (fill_rows_list k c xh input rec rows) lens.
 Proof.
   move => input rec rows lens j k c xh Hc Hinlen Hlenlen Hreclen Hrowlen Hxhk Hinbound Hlenspec.
-  have Hlenin: 0 <= Zlength input by list_solve.
+  (*have Hlenin: 0 <= Zlength input by list_solve.*)
   have Hk: 0 <= k by list_solve.
   pose proof (fill_rows_list_wf xh input rec rows Hk Hc) as [Hfillen [_ Hfillin]].
-  apply Znth_eq_ext; rewrite mkseqZ_Zlength //.
+  apply Znth_eq_ext; rewrite pop_fill_rows_Zlength1 //.
   - rewrite Zlength_map Zlength_Ziota; lia. 
   - move => i Hi.
     have Hlennth: 0 <= Zlength (Znth i input) by list_solve.
@@ -1109,8 +1136,7 @@ Proof.
       rewrite mk_lmatrix_get; try lia; last first.
       have: Zlength (Znth i input) <= c; try lia. move: Hinbound. by rewrite Forall_Znth => /(_ _ Hi).
       rewrite Hrowlen. case : (Zindex i rows <? xh) /Z.ltb_spec0 => [Hidxh | Hidxh].
-      * case : (Z_lt_le_dec (Zindex i rows) xh); try lia. move => /= _.
-        have->//:(Zindex i rows <? Zlength input). apply /Z.ltb_spec0. lia.
+      * by case : (Z_lt_le_dec (Zindex i rows) xh); try lia.
       * case : (Z_lt_le_dec (Zindex i rows) xh) => [|//]; try lia.
 Qed.
 

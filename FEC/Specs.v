@@ -161,16 +161,17 @@ Definition fec_blk_encode_spec :=
   Zlength parities when using the spec*)
 Definition fec_blk_decode_spec :=
   DECLARE _fec_blk_decode
-  WITH gv: globals, k : Z, h : Z, c : Z, pd: val, pl : val, ps: val, packets: list (list byte), 
+  WITH gv: globals, k : Z, h : Z, c : Z, parbound: Z, pd: val, pl : val, ps: val, packets: list (list byte), 
        parities: list (option (list byte)), lengths : list Z, stats: list byte, packet_ptrs: list val, 
        parity_ptrs: list val
   PRE [ tint, tint, tptr (tptr tuchar), tptr (tint), tptr (tschar) ]
-    PROP (0 < k < fec_n - fec_max_h; 0 <= h <= fec_max_h; 0 < c <= fec_max_cols; (*bounds for int inputs*)
+    PROP (0 < k < fec_n - fec_max_h; 0 <= h <= fec_max_h; 0 < c <= fec_max_cols; 0 <= parbound <= h; (*bounds for int inputs*)
           Zlength packets = k; Zlength packet_ptrs = k; Zlength parity_ptrs = h;
           Zlength parities = h; Zlength stats = k; (*lengths for arrays*)
           Forall (fun x => Zlength x <= c) packets;
           forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets);
-          Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats) <= Zlength (filter ssrbool.isSome parities);
+          Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats) = 
+          Zlength (filter ssrbool.isSome (sublist 0 parbound parities));
           forall (i: Z), 0 <= i < h -> Znth i parities = None <-> Znth i parity_ptrs = nullval;
           forall (i: Z) (l: list byte), 0 <= i < h -> Znth i parities = Some l -> Zlength l = c;
           Forall (fun x => x = Byte.zero \/ x = Byte.one) stats)
@@ -186,7 +187,7 @@ Definition fec_blk_decode_spec :=
   POST [ tint ]
     PROP ()
     RETURN (Vint (Int.repr (Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats)))) (*this is xh*)
-    SEP (iter_sepcon_arrays packet_ptrs (decoder_list k c packets parities stats lengths) ;
+    SEP (iter_sepcon_arrays packet_ptrs (decoder_list k c packets parities stats lengths parbound) ;
          iter_sepcon_options parity_ptrs parities;
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;

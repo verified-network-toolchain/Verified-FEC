@@ -414,6 +414,12 @@ Proof.
   by [].
 Qed.
 
+Lemma filter_filter: forall {A: Type} (f: A -> bool) (s: seq A),
+  filter f s = List.filter f s.
+Proof.
+  by [].
+Qed.
+
 (** Other list lemmas*)
 
 Lemma size_not_nil: forall {A: Type} (l: seq A),
