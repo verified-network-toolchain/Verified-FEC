@@ -17,11 +17,7 @@ start_function.
 forward_if (PROP () LOCAL (temp _modulus (Vint (Int.repr modulus))) SEP ()); try lia.
 - forward. forward. entailer!. f_equal. f_equal. rep_lia.
 - forward.
-<<<<<<< HEAD
-Qed. 
-=======
 Qed.
->>>>>>> mathcomp-poly
 
 Ltac simpl_map :=
   repeat lazymatch goal with

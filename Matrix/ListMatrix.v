@@ -450,6 +450,20 @@ Proof.
   by rewrite zseq_Znth // zseq_Zlength.
 Qed.
 
+Lemma get_default: forall {A: Type} (H1 H2: Inhabitant A) l i j,
+  H1 = H2 ->
+  @get A H1 l i j = @get A H2 l i j.
+Proof.
+  move => A H1 H2 l i j H12. by subst.
+Qed.
+
+Lemma set_default: forall {A: Type} (H1 H2: Inhabitant A) l i j x,
+  H1 = H2 ->
+  @set A H1 l i j x = @set A H2 l i j x.
+Proof.
+  by [].
+Qed.
+
 End ListRect.
   
 Section ListMx.

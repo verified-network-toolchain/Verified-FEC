@@ -213,7 +213,7 @@ Proof.
                 rewrite !(@flatten_mx_Znth m n); [ | solve_wf | rep_lia | rep_lia].
                 rewrite !byte_invs_Znth by rep_lia. rewrite !Byte.repr_unsigned. rewrite force_val_byte.
                 (*simplify before for loop*)
-                remember (get (F:=byte_fieldType)
+                remember (get
                     (all_cols_one_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx k) k i)
                     i k) as qij eqn : Hqij. pointer_to_offset_with s (i * n + n). (*simplify pointer in n*)
                 assert (Hmn_leq: 0 <= i * n + n <= m * n) by nia. simpl_repr_byte.
@@ -284,7 +284,7 @@ Proof.
                     forward.
                     { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr_byte. solve_wf. }
                     { rewrite Znth_map by rep_lia. rewrite (@flatten_mx_Znth m n); try lia; auto.
-                      remember (get (F:=byte_fieldType) (scalar_mul_row_partial (F:=B) m n
+                      remember (get (scalar_mul_row_partial (F:=B) m n
                         (all_cols_one_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx k) k i)
                         i (byte_inv qij) j) i j) as aij.
                       forward_call (gv, aij, (byte_inv qij)).
@@ -425,8 +425,9 @@ Proof.
                         rewrite <- (@flatten_mx_set m n); [| solve_wf | lia | lia].
                         rewrite upd_Znth_map. rewrite field_at_data_at_cancel'.
                         apply derives_refl'. repeat f_equal. 
-                        rewrite ssralg.GRing.mul1r.
+                        rewrite ssralg.GRing.mul1r. rewrite !(@get_default _ _ (inhabitant_F B)) by reflexivity.
                         rewrite (@add_multiple_partial_outside _ m n); try lia; [| solve_wf].
+                         rewrite (@get_default _ Inhabitant_byte (inhabitant_F B) (add_multiple_partial _ _ _ _ _ _ _)) by reflexivity.
                         rewrite (@add_multiple_partial_other_row _ m n); try lia; [ | solve_wf]. reflexivity.
                       }
                     }
@@ -507,7 +508,7 @@ Proof.
               forward. pointer_to_offset_with s (i * n + n).
               assert (Himn: 0 <= i * n + n <= m * n) by nia. 
               assert (Hin0: 0 <= i * n) by nia.
-              remember (get (F:=byte_fieldType)
+              remember (get
               (all_lc_one_rows_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx m) i) i i) as aii.
               (*inner loop (scalar multiply)*)
               forward_loop (EX (j: Z),
@@ -555,7 +556,7 @@ Proof.
                   forward.
                   { entailer!. rewrite (@flatten_mx_Znth m n); [| solve_wf | lia | lia]. simpl_repr_byte. }
                   { rewrite Znth_map by rep_lia. rewrite (@flatten_mx_Znth m n); [ | solve_wf | lia | lia].
-                    remember (get (F:=byte_fieldType)(scalar_mul_row_partial (F:=B) m n
+                    remember (get (scalar_mul_row_partial (F:=B) m n
                      (all_lc_one_rows_partial (F:=B) m n (gauss_all_steps_rows_partial (F:=B) m n mx m)
                       i) i (byte_inv aii) j) i j) as aij.
                     forward_call (gv, aij, (byte_inv aii)).
@@ -566,7 +567,8 @@ Proof.
                       { rewrite <- byte_int_repr by rep_lia. rewrite Byte.repr_unsigned.
                         rewrite (@scalar_mul_row_plus_1 B _ m n); [| solve_wf | lia | lia]. rewrite upd_Znth_map.
                         unfold FIELD_TABLES; cancel. 
-                        rewrite (@flatten_mx_set m n); [|solve_wf | lia | lia]. unfold set. 
+                        rewrite (@flatten_mx_set m n); [|solve_wf | lia | lia]. unfold set.
+                        rewrite !(@get_default _ _ (inhabitant_F B) (scalar_mul_row_partial _ _ _ _ _ _)) by reflexivity.
                         rewrite (@scalar_mul_row_outside _ m n); try lia; [| solve_wf]. apply derives_refl'.
                         repeat f_equal. apply ssralg.GRing.mulrC.
                       }
@@ -586,6 +588,7 @@ Proof.
                   rewrite ptr_comparison_gt_iff. reflexivity. all: auto. all: simpl; lia. }
                   lia. } 
                 assert (j = n) by lia. subst; clear Hjn HRE. 
+                rewrite !(@get_default _ _ (inhabitant_F B)) by reflexivity.
                 rewrite (@all_lc_one_outside _ m n); try lia. cancel. solve_wf.
               }
             }

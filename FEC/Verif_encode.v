@@ -9,6 +9,7 @@ Require Import ByteFacts.
 Require Import ZSeq.
 Require Import FECTactics.
 Require Import ReedSolomonList.
+Require Import PopArrays.
 
 Set Bullet Behavior "Strict Subproofs".
 
@@ -53,7 +54,7 @@ Proof.
   remember [data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
        iter_sepcon_arrays packet_ptrs packets;
        data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
-       data_at Ews (tarray tschar k) (zseq fec_n (Vint Int.zero)) ps; INDEX_TABLES gv;
+       data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps; INDEX_TABLES gv;
        data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
          (gv _fec_weights)] as SEPS.
   remember (iter_sepcon_arrays parity_ptrs (zseq h (zseq c Byte.zero)) :: SEPS) as SEPS1.
@@ -213,7 +214,7 @@ Proof.
                           data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
                           iter_sepcon_arrays packet_ptrs packets;
                           data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
-                          data_at Ews (tarray tschar k) (zseq fec_n (Vint Int.zero)) ps; 
+                          data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
                           INDEX_TABLES gv;
                           data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) 
                             (gv _fec_weights)))).
@@ -245,7 +246,6 @@ Proof.
                             { rewrite !(Znth_default Inhabitant_list) by (rewrite rev_mx_val_length1; lia).
                               rewrite rev_mx_val_Znth; [|lia| inner_length]. rewrite Znth_map_Vubyte by inner_length.
                               rewrite force_val_byte.
-                              (*TODO: why is this ridiculously slow?*)
                               forward_call (gv, (Znth (Zlength (Znth i weight_mx) - n - 1) (Znth i weight_mx)),
                                   (Znth j (Znth n packets))).
                               { forward. entailer!.
@@ -312,9 +312,11 @@ Proof.
                         remember (pop_mx_mult (Zlength parity_ptrs) c (Zlength packets)
                           (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packets))
                           (extend_mx (F:=B) (Zlength packets) c packets) i j) as mx'.
-                        remember (set (F:=B) mx' i j (dot_prod (F:=B)
+                        rewrite (@set_default _ _ Inhabitant_byte mx') by reflexivity.
+                        remember (set mx' i j (dot_prod (F:=B)
                           (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packets))
-                          (extend_mx (F:=B) (Zlength packets) c packets) i j (Zlength packets))) as mx''.
+                          (extend_mx (F:=B) (Zlength packets) c packets) i j (Zlength packets))) as mx''. simpl in Heqmx''.
+                        rewrite <- Heqmx''.
                         assert (Hwf: wf_lmatrix mx'' (Zlength parity_ptrs) c). { subst. apply set_wf.
                           apply pop_mx_mult_wf; rep_lia. } destruct Hwf as [Hlenmx'' [_ Hinmx'']].
                         assert (Hlens: Zlength parity_ptrs = Zlength mx'') by lia. 
