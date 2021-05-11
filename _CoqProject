@@ -1,30 +1,30 @@
 -R . lib
+#Common/general results
+Common/ByteFacts.v
+Common/CommonSSR.v
+Common/ZSeq.v
 #Pure mathcomp/functional model
-Poly/CommonSSR.v
 Poly/PolyField.v
 Poly/BoolField.v
 Poly/ListPoly.v
-Poly/ZSeq.v
-ByteFacts.v
 Poly/ByteField.v
 Matrix/Gaussian.v
 Matrix/LinIndep.v
 Matrix/Vandermonde.v
-FEC/ReedSolomon.v
+RS/ReedSolomon.v
 #Intermediate layer (VST + mathcomp)
 Matrix/ListMatrix.v
-FEC/MatrixTransform.v
+Matrix/MatrixTransform.v
 Matrix/VandermondeByte.v
-FEC/InhabOption.v
-FEC/ReedSolomonList.v
+VST/InhabOption.v
+RS/ReedSolomonList.v
 #VST
-FEC/fec.v
-FEC/CommonVST.v
-FEC/Specs.v
-FEC/FECTactics.v
-FEC/PopArrays.v
-#FEC/Verif_encode.v
-FEC/Verif_decode.v
-FEC/Verif_field.v
-FEC/Verif_matrix.v
-FEC/Verif_encode.v
+VST/fec.v
+VST/CommonVST.v
+VST/Specs.v
+VST/FECTactics.v
+VST/PopArrays.v
+VST/Verif_field.v
+VST/Verif_matrix.v
+VST/Verif_encode.v
+VST/Verif_decode.v

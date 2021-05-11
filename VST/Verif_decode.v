@@ -13,8 +13,6 @@ Require Import PopArrays.
 
 Set Bullet Behavior "Strict Subproofs".
 
-
-
 Section Decoder.
 
 Opaque ByteField.byte_mul.
@@ -23,7 +21,6 @@ Lemma int_byte_zero: Vint (Int.repr 0) = Vubyte Byte.zero.
 Proof.
   reflexivity.
 Qed.
-Check LOCALx_Permutation.
 
 (*Let's see, may be harder this*)
 Lemma sublist_nil'': forall {A: Type} (lo hi: Z),
