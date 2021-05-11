@@ -247,7 +247,7 @@ Proof.
                 { Exists 0%Z. entailer!. solve_offset. 
                   rewrite scalar_mul_row_partial_0. unfold FIELD_TABLES. unfold INDEX_TABLES. cancel. solve_wf. }
                 { Intros j. assert (Hcn : 0 <= i * n) by nia. 
-                  (*TODO: doesn't work if I use LOCALS - why?*)
+                  (*TODO: doesn't work if LOCALS are folded - why?*)
                   forward_if.
                   { rewrite !arr_field_address0; auto;[|nia]. rewrite arr_field_address; auto;[|nia].
                     rewrite isptr_denote_tc_test_order; auto. unfold test_order_ptrs. rewrite sameblock_offset_val by auto.

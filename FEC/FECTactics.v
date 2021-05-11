@@ -32,7 +32,7 @@ Ltac simplify_zeroes  :=
 (*To make things nicer*)
 Notation B := ByteField.byte_fieldType.
 
-(*TODO: expand this with needed definitions (decoder)*)
+(*maybe expand this with needed definitions for decoder (only 2-3 places it would be needed)*)
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
   repeat(lazymatch goal with
@@ -44,7 +44,6 @@ Ltac solve_wf :=
   | [H: _ |- wf_lmatrix (sub_all_rows_partial (F:=B) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
   | [H: _ |- wf_lmatrix (gauss_all_steps_rows_partial (F:=B) _ _ _ _) _ _] => apply gauss_all_steps_rows_partial_wf
   | [H: _ |- wf_lmatrix (all_lc_one_rows_partial (F:=B) _ _ _ _) _ _] => apply all_lc_one_rows_partial_wf
-  (*| [H: _ |- wf_lmatrix (F:=B) (weight_mx_list _ _ ) _ _] => apply weight_matrix_wf*)
   end); try lia; try assumption.
 
 (*These lemmas are easy to prove with [simpl_repr_byte], which is why they are here*)

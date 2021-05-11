@@ -200,7 +200,6 @@ Proof.
   move => Hi. rewrite Byte.unsigned_repr Znth_Ziota; rep_lia.
 Qed. 
 
-(*TODO: move*)
 Lemma byte_repr_inj: forall x y,
   0 <= x <= Byte.max_unsigned ->
   0 <= y <= Byte.max_unsigned ->
@@ -475,7 +474,7 @@ Qed.
 
 (*Unfortunately, the above isn't general enough for [find_parity_found] (though we do need it elsewhere)*)
 Lemma find_parity_aux_in_found: forall par base l max_n x,
-  Forall (fun x => 0 <= (max_n - 1 - x) <= Byte.max_unsigned) l -> (*TODO: see*)
+  Forall (fun x => 0 <= (max_n - 1 - x) <= Byte.max_unsigned) l ->
   In x (find_parity_aux (fun x => Byte.repr(max_n - 1 - x)) par base l) ->
   In x base \/ In (max_n - 1 - Byte.unsigned x) l /\ exists p, Znth (max_n - 1 - Byte.unsigned x) par = Some p.
 Proof.
@@ -709,11 +708,9 @@ Proof.
 Qed.
 
 (** The Decoder  *)
-(*TODO: need to change [find_parity_rows] and [find_parity_found] to go up to some i - doesnt need to
-  take the whole list - should still work I believe*)
 (*First, we will do everything in terms of list matrices, then bring back to packets of variable length*)
-(*TODO: see about all the "map Byte.unsigned" stuff, but need to do somewhere bc we are ultimately indexing
-  with Z, and need Ziota at other points - probably just keep*)
+(*The "map Byte.unsigned" is not super elegant, but it needs to be done somewhere, since we are ultimately indexing
+  by Znth which uses Z*)
 Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (option (list byte))) 
   (stats: list byte) (i:Z) : lmatrix B :=
   (*populate all of the "arrays"*)
@@ -851,25 +848,6 @@ Proof.
   rewrite /decode_list_mx /=. rewrite !Hlen0 /=.
   rewrite fill_rows_list_0 //=. by apply extend_mx_wf.
 Qed.
-
-(*TODO: move to commonssr*)
-Lemma mem_rev: forall {A: eqType} (s: seq A) (x: A),
-  (x \in s) = (x \in (rev s)).
-Proof.
-  move => A s x.  have: (0 <= (count_mem x s))%N by []. rewrite leq_eqVlt => /orP[/eqP Hc0 | Hcpos].
-  - have->: (x \in s) = false. apply negbTE. apply /count_memPn. by rewrite Hc0.
-    symmetry. apply negbTE. apply /count_memPn. by rewrite count_rev Hc0.
-  - have->: (x \in s) = true. apply negbFE. apply /count_memPn => Hc. by rewrite Hc in Hcpos.
-    symmetry. apply negbFE. apply /count_memPn. rewrite count_rev => Hc. by rewrite Hc in Hcpos.
-Qed.
-
-(*TODO: move to ListMatrix*)
-Lemma ord_comp_rev: forall n s,
-  ord_comp (byte_ord_list s n) = ord_comp (byte_ord_list (rev s) n).
-Proof.
-  move => n s. rewrite /ord_comp. f_equal. apply nat_comp_eq_mem. move => x.
-  by rewrite -byte_ord_list_rev map_rev mem_rev.
-Qed. 
 
 (*First, we prove that this is equivalent to the mathcomp decoder*)
 (*LOTS of ordinals and dependent types in here, eventually we will be able to just have a few bounds hypotheses
@@ -1177,27 +1155,6 @@ Proof.
 Qed.
 
 
-(*
-Lemma find_parity_rows_filter: forall parities h,
-  Zlength parities = h ->
-  Zlength (find_parity_rows parities h) = Zlength (filter isSome parities).
-Proof.
-  move => pars h Hh. have Hh0: 0 <= h by list_solve.
-  have ->: h = Z.of_nat (Z.to_nat h) by lia. rewrite find_parity_aux_filter_sublist; try lia.
-  rewrite sublist_same //. lia.
-Qed.*)
-
-(*TODO: move to Zseq*)
-Lemma Ziota_leq: forall i j,
-  0 <= i <= j ->
-  Ziota 0 j = Ziota 0 i ++ Ziota i (j - i).
-Proof.
-  move => i j Hij. rewrite /Ziota -map_cat. f_equal.
-  have->: (Z.to_nat j) = ((Z.to_nat i) + (Z.to_nat (j-i)))%coq_nat by lia.
-  have->:(Z.to_nat i + Z.to_nat (j - i))%coq_nat = (Z.to_nat i + Z.to_nat (j - i))%N by [].
-  by rewrite iotaD.
-Qed. 
-
 (*We also use this for an injectivity lemma we will need in the VST proof*)
 Lemma find_parity_rows_inj_aux: forall parities i j,
   0 <= i <= j ->
@@ -1218,14 +1175,6 @@ Proof.
   have [Hij // | Hij]: (i < j \/ j <= i) by lia.
   have Hij': 0 <= j <= i by lia. 
   pose proof (@find_parity_rows_inj_aux parities _ _ Hij'). lia.
-Qed.
-
-(*TODO: move*)
-Lemma cat_extra: forall {A: Type} (s1 s2 : seq A),
-  s1 ++ s2 = s1 ->
-  s2 = [::].
-Proof.
-  move => A s1 s2. elim : s1 => [//= | /= h t IH [Happ]]. by apply IH.
 Qed.
 
 (*Want to prove that if we have find_parity_rows (or found) for i and j, if the lengths are the same,

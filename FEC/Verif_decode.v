@@ -93,7 +93,6 @@ Proof.
   apply perm_skip. apply Permutation_app_comm.
 Qed.
 
-(*TODO: maybe move somewhere*)
 Lemma left_proj_sumbool_if: forall {A: Prop} {C: Type} (H: A) (x: {A} + {~ A}) (c1 c2: C),
    (if (proj_sumbool x) then c1 else c2) = c1.
 Proof.
@@ -127,34 +126,6 @@ Ltac simpl_sum_if :=
       try (rewrite left_sumbool_if; [ | assumption]);
       try (rewrite right_sumbool_if; [ | assumption])
   end.
-(*
-Ltac solve_eval_vardesc :=
-  try reflexivity;
-  unfold eval_vardesc;
-  match goal with
-  |- match ?A with _ => _ end = _ => let x := fresh "X" in set (X := A); hnf in X; subst X
-  end; cbv beta iota;
-  match goal with
-  |- match ?A with _ => _ end = _ => let x := fresh "X" in set (X := A); hnf in X; subst X
-  end; cbv beta iota; rewrite -> (proj2 (eqb_type_spec _ _)) by (repeat f_equal; rep_lia);
-  reflexivity.
-
-Ltac solve_msubst_eval_LR ::=
-  (unfold msubst_eval_LR; simpl; cbv[force_val2 force_val1];
-    rewrite ?isptr_force_ptr, <- ?offset_val_force_ptr by auto; solve_eval_vardesc) ||
-    match goal with
-    | |- msubst_eval_LR _ _ _ _ ?e _ = _ =>
-          fail "Cannot symbolically evaluate expression" e
-           "given the information in your LOCAL clause; did you forget a 'temp' declaration?"
-    end.
-
-Ltac solve_msubst_eval_lvalue ::=
-  (simpl; cbv[force_val2 force_val1]; rewrite ?isptr_force_ptr, <- ?offset_val_force_ptr by auto; solve_eval_vardesc) ||
-    match goal with
-    | |- msubst_eval_lvalue _ _ _ _ ?e = _ =>
-          fail "Cannot symbolically evaluate expression" e
-           "given the information in your LOCAL clause; did you forget a 'temp' declaration?"
-    end.*)
 
 Lemma default_arr: forall z, 0 <= z ->
   default_val (tarray tuchar z) = @zseq (reptype tuchar) z Vundef.
@@ -274,8 +245,7 @@ match goal with
    |- semax _ _ ?c _ => set (C := c)
   end.
 replace (16000) with fec_max_cols by rep_lia.
-(*TODO: see if this causes issues - 128 refers to fec_max_h OR fec_max_n - fec_max_h, but for our
-  purposes, it only matters that it is not unfolded ever*)
+(*Note: 128 refers to fec_max_h OR fec_max_n - fec_max_h, but for our purposes, we just need it to be opaque*)
 replace 128 with fec_max_h by rep_lia. replace 256 with (fec_max_h * 2) by rep_lia. subst C.
 (*In the first loop, only "lost" and "found" are changing, so we bring them to the front, Likewise with
   "xh" and "xk"*)
@@ -291,7 +261,6 @@ remember [temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) p
    lvar _v (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v; gvars gv;
    temp _k (Vint (Int.repr k)); temp _c (Vint (Int.repr c)); temp _pdata pd; 
    temp _plen pl; temp _pstat ps] as LOCALS.
-(*TODO: maybe nest freezer so we can just unfold 1 layer at a time*)
 freeze FR1 := (data_at_ Tsh (tarray tuchar fec_max_h) v_row)
        (data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
        (data_at_ Tsh (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v)
@@ -318,11 +287,7 @@ forward_loop (EX (i: Z),
     (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h)  v_lost;
          data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h)  v_found )%assert5))).
 { rewrite_eqs. forward. Exists 0. rewrite_eqs. entailer!.
-  { rewrite !eqb_type_refl; split; reflexivity.
-    (*Search eqb_type. (*What is this goal?*) rewrite !Zaux.Zeq_bool_true by auto.
-    assert (Hattr: eqb_attr noattr noattr = true) by (rewrite eqb_attr_spec; auto). rewrite Hattr.
-    simpl. auto.*)
-  }
+  { rewrite !eqb_type_refl; split; reflexivity.  }
   { rewrite pop_find_lost_0. rewrite pop_find_found_0. cancel. }
 }
 { Intros i. rewrite_eqs; forward_if.
@@ -342,7 +307,7 @@ forward_loop (EX (i: Z),
       forward. (*TODO: this was the problematic one*)
       { entailer!. simpl_repr_byte. }
       { simpl_repr_byte. rewrite_eqs; entailer!.
-        { rewrite !eqb_type_refl. (*rewrite !Zaux.Zeq_bool_true by auto. simpl.*) rewrite <- byte_int_repr by rep_lia.
+        { rewrite !eqb_type_refl. rewrite <- byte_int_repr by rep_lia.
           rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
           repeat split; try reflexivity. f_equal; f_equal.  
           rewrite <- cat_app. list_solve.
@@ -360,7 +325,7 @@ forward_loop (EX (i: Z),
       forward.
       { entailer!. simpl_repr_byte. }
       { simpl_repr_byte. rewrite_eqs; entailer!.
-        { rewrite !eqb_type_refl. (*rewrite !Zaux.Zeq_bool_true by auto. simpl.*) rewrite <- byte_int_repr by rep_lia.
+        { rewrite !eqb_type_refl. rewrite <- byte_int_repr by rep_lia.
           rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
           repeat split; try reflexivity. f_equal; f_equal.  
           rewrite <- cat_app. list_solve.
@@ -373,13 +338,12 @@ forward_loop (EX (i: Z),
     }
     { rewrite_eqs; forward. Exists (i+1). simpl_repr_byte. unfold Int.add.
       rewrite (Int.unsigned_repr 1) by rep_lia. rewrite (Int.unsigned_repr i) by rep_lia. simpl_repr_byte.
-      rewrite_eqs; entailer!. rewrite !eqb_type_refl. (*rewrite !Zaux.Zeq_bool_true by auto; simpl.*)
+      rewrite_eqs; entailer!. rewrite !eqb_type_refl.
       rewrite <- byte_int_repr by rep_lia; repeat split; reflexivity. thaw FR2. cancel.
     }
   }
   { (*first loop postcondition*) forward. rewrite Byte.unsigned_repr in H0 by rep_lia.
     replace i with k by lia. rewrite_eqs; entailer!. rewrite !eqb_type_refl; split; reflexivity.
-    (*rewrite !Zaux.Zeq_bool_true by auto; repeat split; reflexivity.*)
   }
 }
 { remember (Zlength (find_lost stats k)) as xh.
@@ -387,10 +351,8 @@ forward_loop (EX (i: Z),
   pose proof (@find_lost_Zlength stats k Hk) as Hxh. rewrite <-Heqxh in Hxh.
   pose proof (@find_found_Zlength stats k Hk) as Hxk. rewrite <-Heqxk in Hxk. clear Hk.
   rewrite_eqs; forward_if.
-  { rewrite_eqs. (*replace fec_max_h with 128 by rep_lia.
-    replace fec_max_cols with 16000 by rep_lia.*) forward.
-    thaw FR2. thaw FR1. (*TODO: doesn't work ( in [solve_Forall2_fn_data_at])
-      if the constants are opaque*)
+  { rewrite_eqs. forward.
+    thaw FR2. thaw FR1. (*TODO: this didn't doesn't work ( in [solve_Forall2_fn_data_at]) with opaque constants*)
     rewrite Byte.unsigned_repr in H by rep_lia. rewrite Int_repr_zero in H by rep_lia.
     entailer!.
     { rewrite <- (@find_lost_filter _ (Zlength packets)). rewrite H. reflexivity. lia. }
@@ -445,29 +407,8 @@ forward_loop (EX (i: Z),
         (iter_sepcon_options parity_ptrs parities).
     rewrite !data_at__tarray. rewrite !zseq_list_repeat by rep_lia.
     replace (default_val tuchar) with Vundef by reflexivity.
-    (*The loop invariant - TODO : need to know that i <= fec_max_h - we know this
-      idea is that xh valid parity ptrs exist - but probably easiest way to say this is that
-      whole length is at most fec_max_h - technically, however, this doesnt always need to be true
-      (but it will be, parities should be subset of encoder results) - see about this
-
-in actuator - it knows h and only considers the first h - so this is an OK assumption to make - TODO
-  change spec to include this, also put in result for i
-  
-  but we will also need condition that xh valid pointers exist - use filter for this and add it, or else
-  this loop will access invalid memory - think about this with spec
-
-  also also - need to fill in sepcon_array_option - most likely just add emp w None,
-  dat_at with some, say pts is nullvall iff parity is None, then would neeed a result
-  that if (pparity[i]) evaluates to false iff this is a nullval - is this true?
-  need to see how if statement works first
-
-  summary
-  -need bound of fec_max_h on Zlength parities
-  - need condition that number lost packets <= (myabe =) number parity packets
-  - need to see about how if works, then fill it iter_sepcon_array_options
-
- need some result about bound of i, probably with bound of fec_max_h
-      maybe - assume length of parities is <= fec_max_h? This should be OK*)
+    (*In this loop, we exit once we have found xh valid parity pointers, so the
+      postcondition involves an EX quantifier - we don't know exactly how many steps it will take*)
     forward_loop (EX (i: Z),
       PROP (0 <= i <= Zlength parities; 0 <= Zlength (find_parity_rows parities i) <= xh)
       (LOCALx (temp _i (Vint (Int.repr i)) :: temp _xr (Vubyte (Byte.repr (Zlength (find_parity_rows parities i)))) ::
@@ -483,7 +424,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
       (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_parity_rows parities i fec_max_h) v_row;
             data_at Tsh (tarray tuchar fec_max_h)  
               (pop_find_parity_found stats parities i fec_max_h k (fec_n - 1)) v_found))%assert5)).
-      (*TODO: see about postcondition*)
     { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
       { rewrite !eqb_type_refl.
         pose proof (@find_parity_rows_Zlength parities 0). 
@@ -564,7 +504,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                replace (k + i - Zlength packet_ptrs) with i in H3 by lia.
                rewrite <- Hparsconsist in H3 by lia. rewrite H3 in Hparith; inversion Hparith.
             }
-            { (*TODO: it would be nice to not have to repeat this part, but not sure how
+            { (*it would be nice to not have to repeat this part, but not sure how
                 except by doing cases in all the above*) rewrite HeqIfpost. rewrite_eqs; forward.
               unfold Int.sub. simpl_repr_byte. forward_if True.
               { forward. entailer!. rewrite !eqb_type_refl; auto. }
@@ -600,7 +540,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
               rewrite Hparith. rewrite !eqb_type_refl. auto.
             }
             { rewrite pop_find_parity_rows_plus_1 by rep_lia.
-              rewrite pop_find_parity_found_plus_1; try rep_lia. (*TODO: maybe assert this before destruct*)
+              rewrite pop_find_parity_found_plus_1; try rep_lia.
               2: { assert (Hpackbound: 0 <= Zlength packets <= Byte.max_unsigned) by rep_lia.
                         pose proof (find_lost_found_Zlength stats Hpackbound) as Hxhxk.
                         rewrite find_parity_rows_found_Zlength. rep_lia. }
@@ -691,7 +631,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
         { entailer!. }
         { entailer!. simpl_repr_byte. rewrite pop_find_parity_rows_Znth by rep_lia. simpl_repr_byte. }
         { rewrite pop_find_parity_rows_Znth by rep_lia.
-          (*TODO: look at encoder to see how I handled the partially indexed 2D array*)
           assert (Hrowjbound: 0 <= Byte.unsigned (Znth j (find_parity_rows parities i)) < i). {
             assert (Hi: 0 <= i <= Byte.max_unsigned) by rep_lia.
             pose proof (find_parity_rows_bound parities Hi) as Hall. rewrite Forall_Znth in Hall.
@@ -897,8 +836,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
         freeze FR1 := (data_at _ _ _ v_v) (data_at _ (tarray tuchar (2 * fec_max_h * fec_max_h - 2 * xh * xh)) _ _)
           (data_at _ _ _ ps) (data_at _ _ _ (gv _trace))
           (data_at _ _ _ v_lost).
-        (*replace (tarray (tarray tuchar 16000) 128) with (tarray (tarray tuchar fec_max_cols) fec_max_h)
-          by (repeat f_equal; rep_lia).*)
         (*All local variables are unchanging in the loop*) (*q is redefined, so we don't want to remember it*)
         rewrite (grab_nth_LOCAL 10 (gvars gv)); simpl; [| list_solve]. 
         remember [temp _err (Vint Int.zero); temp _t'6 (Vint Int.zero);
@@ -907,7 +844,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
          gvars gv; temp _t'29 (Vint Int.zero);
          temp _xr (Vubyte (Byte.repr (Zlength (find_parity_rows parities i))));
          temp _xk (Vubyte (Byte.repr (xk + Zlength (find_parity_found parities (fec_n - 1) i))));
-         (*temp _q (Vint (Int.repr (fec_n - 2 - i)));*) lvar _found (tarray tuchar fec_max_h) v_found;
+         lvar _found (tarray tuchar fec_max_h) v_found;
          temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd);
          lvar _s (tarray (tarray tuchar 16000) 128) v_s; temp _k (Vint (Int.repr k));
          temp _c (Vint (Int.repr c)); temp _pdata pd; temp _plen pl; temp _pstat ps] as LOCALS.
@@ -931,7 +868,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
           PROP (0 <= i' <= xh)
           (LOCALx ((temp _i (Vint (Int.repr i'))) :: LOCALS)
           (SEPx (
-            (*This matrix is quite complicated to describe*)(*opaque constants give dependent type issues when
+            (*This matrix is quite complicated to describe, also opaque constants give dependent type issues when
                   trying to rewrite*)
              (data_at Tsh (tarray (tarray tuchar 16000) 128) 
               (pop_mx_mult_part xh c k fec_max_h fec_max_cols 
@@ -959,20 +896,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
               { entailer!. }
               { rewrite pop_find_parity_rows_Znth by (subst; lia). entailer!. simpl_repr_byte. }
               { rewrite pop_find_parity_rows_Znth by (subst; lia). forward.
-                (*simplify p pointer*) (*TODO: not sure if we actually need this*)
-                (*
-                assert (Hrowibound: 0 <= Byte.unsigned (Znth i' (find_parity_rows parities i)) < fec_max_h). {
-                  assert (Hi: 0 <= i <= Byte.max_unsigned) by rep_lia.
-                  pose proof (find_parity_rows_bound parities Hi) as Hall. rewrite Forall_Znth in Hall.
-                  assert (0 <= Byte.unsigned (Znth i' (find_parity_rows parities i)) < i) by (apply Hall; subst; rep_lia).
-                  lia. }
-                assert_PROP ((force_val
-                     (sem_binary_operation' Oadd (tarray (tarray tuchar 255) 128) tuchar 
-                        (gv _fec_weights) (Vubyte (Znth i' (find_parity_rows parities i))))) =
-                  field_address (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (SUB 
-                  (Byte.unsigned ((Znth i' (find_parity_rows parities i))))) (gv _fec_weights)) as Hp. {
-                        entailer!. rewrite <- (Byte.repr_unsigned (Znth i' (find_parity_rows parities i))).
-                  solve_offset. } rewrite Hp.*)
               (*NOTE: Again, get C-language expression error, can't directly work with arrays due to
                   dependent type issues, not using opaque constants here*)
               forward. rewrite <- HeqLOCALS. rewrite <- HeqSEPS.
@@ -1131,18 +1054,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                   { entailer!. simpl_repr_byte. }
                                   { rewrite Znth_map by lia. forward. simpl_repr_byte.
                                     rewrite <- byte_int_repr by rep_lia. rewrite Byte.repr_unsigned.
-                                    (*try with freezer*)
-                                    (*maybe try w constants (shouldnt affect it though)*)
-                                    (*LOL looks like freeze only accepts 10 arguments*)
-                                    unfold FIELD_TABLES. Intros. (*
-                                    freeze FR2 := (data_at _ _ _ (Znth (Byte.unsigned (Znth q (find_found stats (Zlength packets)))) packet_ptrs))
-                                   (FRZL FR1) (data_at _ _ _ (gv _fec_invefec))
-                                    (data_at _ _ _ v_s) (iter_sepcon_arrays _ _) (data_at _ _ _ pl)
-                                    (data_at _ _ _ pd) (data_at _ _ _ v_found)
-                                    (data_at _ _ _ v_row) (data_at _ _ _ (gv _fec_weights)).
-                                    freeze FR3 := (FRZL FR2)
-                                    (iter_sepcon_options _ _).*)
-                                    (*Finally, we do the multiplication*)
+                                    unfold FIELD_TABLES. Intros. 
                                     forward_call(gv, (Znth (fec_n - 1 - Byte.unsigned (Znth q (find_found stats (Zlength packets))) - 1)
                                       (Znth (Byte.unsigned (Znth i' (find_parity_rows parities i))) weight_mx)),
                                       (Znth j (Znth (Byte.unsigned (Znth q (find_found stats (Zlength packets)))) packets))).
@@ -1163,10 +1075,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                         destruct (Z_lt_ge_dec q (Zlength packets - Zlength (find_lost stats (Zlength packets)))); simpl.
                                         + (*real case*)
                                           unfold submx_rows_cols_list.
-                                          (*TODO: separate lemma*)
-                                           (*assert (Hget: forall l i j, @get byte (inhabitant_F B) l i j = 
-                                            @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j). {
-                                            reflexivity. }*)  rewrite get_inhab. rewrite mk_lmatrix_get by lia.
+                                          rewrite get_inhab. rewrite mk_lmatrix_get by lia.
                                           rewrite Znth_Ziota by lia. unfold get. rewrite Znth_map by list_solve. f_equal.
                                         + (*contradiction case*)
                                           assert (Hkbyte: 0 <= (Zlength packets) <= Byte.max_unsigned) by rep_lia.
@@ -1197,7 +1106,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                 rewrite Hzero. rewrite ssralg.GRing.mulr0. rewrite ssralg.GRing.addr0. reflexivity.
                               }
                             }
-                            { (*Other case - we are in parities - TODO: start here*)
+                            { (*Other case - we are in parities*)
                               destruct (range_le_lt_dec 0 q (Zlength (find_found stats (Zlength packets)))); simpl in Heqfoundnth.
                               (*contradiction case*) rewrite Heqfoundnth in H10.
                               assert (Hkbyte: 0 <= Zlength packets <= Byte.max_unsigned) by rep_lia.
@@ -1206,14 +1115,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                 (apply Hfoundb; lia). rep_lia. (*accessing parity - need to split [iter_sepcon_option]*)
                               assert (Hkbyte: 0 <= (Zlength packets) <= Byte.max_unsigned) by rep_lia.
                               pose proof (find_lost_found_Zlength stats Hkbyte) as Hxhxk. 
-                              (*Print find_parity_found. (*Need a result about this - get Some in this location*)
-                              Check iter_sepcon_options_remove_one.
-                              assert (find_parity_found_Znth_some: forall par c max_n i,
-                              0 <= c < max_n->
-                              max_n - 1 <= Byte.max_unsigned ->
-                              0 <= i < Zlength (find_parity_found par max_n c) ->
-                              exists l, Znth (max_n - 1 - Byte.unsigned (Znth i (find_parity_found par max_n c))) par = Some l)
-                              by admit.*)
                               assert (Hnthsome: exists l, (Znth (fec_n - 2 - Byte.unsigned foundnth) parities) = Some l). {
                                 rewrite Heqfoundnth. replace (fec_n - 2) with ((fec_n - 1) - 1) by lia.
                                 apply find_parity_found_Znth_some; try rep_lia. subst; rep_lia. }
@@ -1269,10 +1170,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                                       + (*contradiction case*) rep_lia.
                                       + (*real case*)
                                         unfold submx_rows_cols_list.
-                                        (*TODO: separate lemma*)
-                                         (*assert (Hget: forall l i j, @get byte (inhabitant_F B) l i j = 
-                                          @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j). {
-                                          reflexivity. }*)  rewrite get_inhab. rewrite mk_lmatrix_get by lia.
+                                        rewrite get_inhab. rewrite mk_lmatrix_get by lia.
                                         rewrite Znth_Ziota by lia. apply fill_missing_mx_some; try lia; auto. 
                                         rewrite <- Hsome. f_equal. rewrite Znth_map by lia.
                                         rewrite find_parity_rows_found_Znth by rep_lia.
@@ -1320,10 +1218,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                       { rewrite <- fec_max_cols_eq. rewrite <- fec_max_h_eq. rewrite field_at_data_at_cancel'.
                         apply derives_refl'. f_equal. rewrite <- pop_mx_mult_part_set by rep_lia.
                         unfold set. f_equal. f_equal. apply Znth_default.
-                        (*TODO: separate lemma - dont want to use wf directly because it is huge*)
-                        (*assert (pop_mx_mult_part_Zlength: forall m' n' k' m n mx1 mx2 i j,
-                          0 <= m -> 0 <= n -> Zlength (pop_mx_mult_part m' n' k' m n mx1 mx2 i j) = m). {
-                          intros m' n' k' m n mx1 mx2 x y Hm Hn. apply (pop_mx_mult_part_wf); assumption. }*)
                         rewrite pop_mx_mult_part_Zlength; rep_lia.
                       }
                     }
@@ -1425,7 +1319,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                   { entailer!. assert (Hkbyte: 0 <= Zlength packets <= Byte.max_unsigned) by rep_lia.
                     apply (find_lost_bound stats) in Hkbyte. rewrite Forall_Znth in Hkbyte. apply Hkbyte; rep_lia.
                   }
-                  { (*might as well do the stats one here*)
+                  { (*might as well do the stats postcondition here*)
                     replace (upd_Znth (Byte.unsigned (Znth (xh - 1 - i') (find_lost stats (Zlength packets))))
                       (map Vbyte (pop_stats stats (map Byte.unsigned (rev (find_lost stats k))) i'))
                       (Vint (Int.repr 0))) 
@@ -1510,7 +1404,6 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                               offset_val (i' * xh * 2 + xh) v_v) as Hptr2. { entailer!; solve_offset. }
                             rewrite Hptr1. rewrite Hptr2. rewrite sameblock_offset_val by auto.
                             repeat(sep_apply data_at_memory_block).
-                            (*TODO: will we need this anywhere else?*)
                             assert (Hptrbound: 0 <= i' * xh * 2 + xh <= (xh * (xh + xh))) by nia.
                             apply andp_right.
                             - sep_eapply (memory_block_weak_valid_pointer Tsh (sizeof (tarray tuchar (xh * (xh + xh)))) v_v); auto; try(simpl; lia).
@@ -1527,16 +1420,14 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                               entailer!; solve_offset. }
                             assert_PROP (n < xh) as Hxnxh. { entailer!. rewrite Hntemp in H6. rewrite Hmtemp in H6.
                               rewrite ptr_comparison_lt_iff in H6; auto; try lia; try nia. simpl. lia. }
-                            clear Hntemp Hmtemp H6. (*TODO: we will need these for other case, may want to move*)
+                            clear Hntemp Hmtemp H6.
                             forward.
                             { entailer!; nia. }
                             { rewrite Znth_map. 2: { rewrite (flatten_mx_Zlength _ xh (xh + xh)). nia.
-                              (*TODO: improve solve_wf*)
                               apply gauss_restrict_rows_wf. apply row_mx_list_wf; lia. }
                               entailer!. simpl_repr_byte.
                             }
                             { rewrite Znth_map. 2 : { rewrite (flatten_mx_Zlength _ xh (xh + xh)). nia.
-                              (*TODO: improve solve_wf*)
                               apply gauss_restrict_rows_wf. apply row_mx_list_wf; lia. }
                               (*Takes forever with literals, need opaque constants*)
                               replace (lvar _s (tarray (tarray tuchar 16000) 128) v_s) with
@@ -1612,7 +1503,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                             assert_PROP (xh <= n) as Hxnxh. { entailer!. rewrite Hntemp in H6. rewrite Hmtemp in H6.
                               apply typed_false_not_true in H6. 
                               rewrite ptr_comparison_lt_iff in H6; auto; try lia; try nia.  simpl. lia. }
-                            clear Hntemp Hmtemp H6. (*TODO: maybe combine with above*)
+                            clear Hntemp Hmtemp H6.
                             assert (Hnxh: n = xh) by lia. rewrite_eqs; entailer!. 
                             rewrite dot_prod_rev; try lia. reflexivity. apply right_submx_wf; lia.
                             apply list_lmatrix_multiply_wf; lia.
@@ -1787,7 +1678,7 @@ in actuator - it knows h and only considers the first h - so this is an OK assum
                   (Zlength (map Byte.unsigned (rev (find_lost stats (Zlength packets))))) by
                 (rewrite Zlength_map; rewrite Zlength_rev; reflexivity).
                 rewrite pop_stats_done. rewrite zseq_map. replace (Zlength stats) with (Zlength packets) by lia.
-                cancel. intros x Hxlen Hx. (*TODO: I think i need to know that x is within bounds too*)
+                cancel. intros x Hxlen Hx.
                 assert (Znth x stats = Byte.zero \/ Znth x stats = Byte.one) as [Hbz | Hbo].  {
                   rewrite Forall_Znth in Hstatsvals. apply Hstatsvals. lia. }
                 apply Hbz. rewrite in_map_iff in Hx.

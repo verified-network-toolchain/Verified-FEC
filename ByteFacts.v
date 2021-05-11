@@ -88,7 +88,6 @@ Proof.
   apply Int.signed_repr. rewrite Z.shiftl_mul_pow2; rep_lia.
 Qed.
 
-(*TODO: how to generalize this with above?*)
 Lemma byte_shiftl1': forall b: byte,
   Int.unsigned (Int.shl (Int.repr (Byte.unsigned b)) (Int.repr 1)) =
   Z.shiftl (Byte.unsigned b) 1.

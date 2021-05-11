@@ -1,7 +1,6 @@
 Require Import VST.floyd.functional_base.
 
 From mathcomp Require Import all_ssreflect.
-(*Require Import mathcomp.algebra.matrix.*)
 Require Import mathcomp.algebra.ssralg.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -164,98 +163,6 @@ Qed.
 
 End PopArr.
 
-(*
-
-Local Open Scope ring_scope.
-
-Variable F : fieldType.
-
-(*At several places in the C code, a 2d array is populated by filling in each element, in order. We abstract that out
-  to make the VST proof simpler and to reduce duplication*)
-(*This is a matrix where the first i rows are filled, and the (i+1)st row is filled up to j*)
-Definition pop_2d_mx m n (f: Z -> Z -> F) (i j : Z) : lmatrix F :=
-  mk_lmatrix m n (fun x y => if Z_lt_le_dec x i then f x y
-                    else if Z.eq_dec x i then if Z_lt_le_dec y j then f x y
-                    else 0 else 0).
-
-Lemma pop_2d_mx_wf: forall m n f i j,
-  0 <= m ->
-  0 <= n ->
-  wf_lmatrix (pop_2d_mx m n f i j) m n.
-Proof.
-  move => m n f i j Hm Hn. by apply mk_lmatrix_wf.
-Qed. 
-
-(*At the start, this is the zero 2D array*)
-Lemma pop_2d_mx_zero: forall m n f,
-  0 <= m ->
-  0 <= n ->
-  pop_2d_mx m n f 0 0 = (zseq m (zseq n 0)).
-Proof.
-  move => m n f Hm Hn. apply (@lmatrix_ext_eq _ m n).
-  - by apply pop_2d_mx_wf.
-  - rewrite /wf_lmatrix; repeat split; [| rep_lia |].
-    + rewrite zseq_Zlength; rep_lia.
-    + rewrite Forall_Znth => i. rewrite zseq_Zlength; try rep_lia. move => Hi.
-      rewrite zseq_Znth; try rep_lia. rewrite zseq_Zlength; rep_lia.
-  - move => i' j' Hi' Hj'.
-    rewrite mk_lmatrix_get; try rep_lia. rewrite /get !zseq_Znth; try rep_lia.
-    case :  (Z_lt_le_dec i' 0) => [| /= _]; try rep_lia.
-    case : (Z.eq_dec i' 0) => [/= Hi0 | //]. subst. 
-    by case : (Z_lt_le_dec j' 0); try rep_lia.
-Qed.
-
-(*Finishing a row*)
-Lemma pop_2d_mx_row_finish: forall m n f i,
-  0 <= m ->
-  0 <= n ->
-  pop_2d_mx m n f i n = pop_2d_mx m n f (i+1) 0.
-Proof.
-  move => m n f i Hm Hn. apply (lmatrix_ext_eq (pop_2d_mx_wf _ _ _ Hm Hn) (pop_2d_mx_wf _ _ _ Hm Hn)).
-  move => i' j' Hi' Hj'.
-  rewrite !mk_lmatrix_get; try rep_lia.
-  case :  (Z_lt_le_dec i' i) => [Hii' /= | Hii' /=].
-  - by case : (Z_lt_le_dec i' (i + 1)); try rep_lia. 
-  - case : (Z.eq_dec i' i) => [Hiieq /= | Hiineq /=].
-    + subst. case : (Z_lt_le_dec i (i + 1)) => [ /=_ | ]; try rep_lia.
-      case : (Z_lt_le_dec j' n) => [//|]. lia. 
-    + case : (Z_lt_le_dec i' (i + 1)) => [| /= _]; try rep_lia.
-      case : (Z.eq_dec i' (i + 1)) => [Hi1 /= | //].
-      by case : (Z_lt_le_dec j' 0); try rep_lia.
-Qed.
-
-(*Update an element*)
-Lemma pop_2d_mx_set: forall m n f i j,
-  0 <= i < m ->
-  0 <= j < n ->
-  set (pop_2d_mx m n f i j) i j (f i j) = pop_2d_mx m n f i (j + 1).
-Proof.
-  move => m n f i j Hi Hj. apply (@lmatrix_ext_eq _ m n).
-  - apply set_wf. apply pop_2d_mx_wf; lia.
-  - apply pop_2d_mx_wf; lia.
-  - move => i' j' Hi' Hj'. rewrite (@get_set _ m n); try rep_lia; last first.
-    apply pop_2d_mx_wf; lia. rewrite !mk_lmatrix_get; try rep_lia. 
-    case: (i' =? i) /(Z.eqb_spec _ _) => [ Hiieq /= | Hiineq /=].
-    + subst. case : (Z_lt_le_dec i i) => [| /= _]; try rep_lia.
-      case : (Z.eq_dec i i) => [/= _|]; try rep_lia.
-      case: (j' =? j) /(Z.eqb_spec _ _) => [Hjjeq //= | Hjjeq //=].
-      * subst. by case : (Z_lt_le_dec j (j + 1)); try rep_lia.
-      * case : (Z_lt_le_dec j' j) => [Hjj' /= | Hjj/=];  by case : (Z_lt_le_dec j' (j + 1)); try rep_lia.
-    + case : (Z_lt_le_dec i' i) => [// | Hii' /=].
-      by case : (Z.eq_dec i' i); try rep_lia.
-Qed.
-
-(*Finish - prove a postcondition*)
-Lemma pop_2d_mx_done: forall m n f j x y,
-  0 <= x < m ->
-  0 <= y < n ->
-  get (pop_2d_mx m n f m j) x y = f x y.
-Proof.
-  move => m n f j x y Hx Hy. rewrite mk_lmatrix_get //.
-  by case : (Z_lt_le_dec x m) => [_ // |]; try lia.
-Qed.
-
-*)
 Section PopMult.
 
 Variable F : fieldType.
@@ -484,7 +391,6 @@ Proof.
   - rewrite !Zlength_map. list_solve.
 Qed.
 
-(*TODO: see if we need anything else for done - maybe something about Znth*)
 Lemma pop_find_lost_Znth: forall l k len i,
   0 <= i < Zlength (find_lost l k) ->
   Znth i (pop_find_lost l k len) = Vubyte (Znth i (find_lost l k)).
@@ -492,8 +398,6 @@ Proof.
   move => l k len i Hi. rewrite /pop_find_lost. rewrite Znth_app1; last first.
   by rewrite Zlength_map; lia. by rewrite Znth_map.
 Qed.
-
-(*TODO: can we generalize this to reduce duplication?*)
 
 
 (*Populate [find_found] in the VST proof*)
@@ -511,11 +415,9 @@ Lemma pop_find_found_plus_1: forall l k len,
   pop_find_found l (k+1) len = if (Z.eq_dec (Byte.signed (Znth k l)) 1%Z) then (pop_find_found l k len) else
     upd_Znth (Zlength (find_found l k)) (pop_find_found l k len) (Vubyte (Byte.repr k)).
 Proof.
-  move => l k len Hk. (*remember (pop_find_lost l k len) as pop.*)
+  move => l k len Hk.
   rewrite /pop_find_found /find_found find_lost_found_aux_plus_1; try lia.
   case: (Z.eq_dec (Byte.signed (Znth k l)) 1) => [//= Hk1 | //= Hk1]; try lia.
-  (*rewrite upd_Znth_map.
-  rewrite map_cat /= Zlength_app Zlength_cons Zlength_nil /=.*)
   rewrite upd_Znth_app2.
   - rewrite !Zlength_map Z.sub_diag. symmetry. rewrite (@zseq_hd _ (len - Zlength _)).
     + rewrite map_cat upd_Znth0 /= cat_app -!catA /=. f_equal. f_equal. f_equal. 
@@ -525,7 +427,6 @@ Proof.
   - rewrite !Zlength_map. list_solve.
 Qed.
 
-(*TODO: see if we need anything else for done - maybe something about Znth*)
 Lemma pop_find_found_Znth: forall l k len i,
   0 <= i < Zlength (find_found l k) ->
   Znth i (pop_find_found l k len) = Vubyte (Znth i (find_found l k)).
@@ -624,41 +525,10 @@ Proof.
     + rewrite Zlength_map; lia.
 Qed.
 
-(*
-Lemma pop_find_parity_found_Znth1: forall pack pars k len found max_n i,
-  0 <= i < Zlength (find_found pack found) ->
-  Znth i (pop_find_parity_found pack pars k len found max_n) = Vubyte (Znth i (find_found pack found)).
-Proof.
-  move => pack pars k len found max_n i Hi.
-  rewrite /pop_find_parity_found. rewrite Znth_app1.
-  - by rewrite Znth_map.
-  - rewrite Zlength_map; lia.
-Qed.
-
-Lemma pop_find_parity_found_Znth2: forall pack pars k len found max_n i,
-  Zlength (find_found pack found) <= i < Zlength (find_found pack found) + Zlength (find_parity_found pars max_n k) ->
-  Znth i (pop_find_parity_found pack pars k len found max_n) = 
-  Vubyte (Znth (i - (Zlength (find_found pack found))) (find_parity_found pars max_n k)).
-Proof.
-  move => pack pars k len found max_n i Hi. rewrite /pop_find_parity_found Znth_app2 !Zlength_map; [|lia].
-  rewrite Znth_app1. rewrite Znth_map; list_solve.
-  rewrite Zlength_map; lia.
-Qed. *)
-
-(*Populating the matrix to be inverted is quite nontrivial, for 4 reasons
-  1. It is essentially represented as a 1D, rather than 2D array, so we need some arithmetic
-     to get the right indexing
-  2. It may not fill up the whole memory location
-  3. Everything is reversed
-  4. We fill up multiple nonconsecutive cells at a time*)
-
-
 (*For the inverse operation, populating is nontrivial because the entire matrix has to be reversed.
   Also, it is treated as a 1-D array for all intents and purposes, so we do that here*)
 
-(*want to say in memory: flatten_mx ... ++ zseq Vundef (3 * fec_max_h - 3 * xh)*)
-
-(*This means we have filled up the first i rows are the first j entries of row i*)
+(*This means we have filled up the first i rows and the first j entries of row i*)
 
 (*The first part (the rest is just Vundef)*)
 Definition pop_find_inv_fst (xh: Z) (weights: lmatrix B) (row lost : seq byte) i j : seq Values.val :=
@@ -1028,26 +898,6 @@ Proof.
   have->:(y <? 0) = false. apply /Z.ltb_spec0. lia. by rewrite andbF orbF z_leb_split.
 Qed.
 
-(*TODO: move*)
-Lemma set_Zlength1: forall {A} `{Inhabitant A} (s: seq (seq A)) i j x,
-  Zlength (set s i j x) = Zlength s.
-Proof.
-  move => A Hinhab s i j x. rewrite /set. list_solve.
-Qed.
-
-Lemma set_Zlength2: forall {A} `{Inhabitant A} (s: seq (seq A)) i j x y,
-  Zlength (Znth y (set s i j x)) = Zlength (Znth y s).
-Proof.
-  move => A Hinhab s i j x y. rewrite /set.
-  have [Hylo | [Hyhi | Hyin]]: (y < 0 \/ Zlength s <= y \/ 0 <= y < Zlength s) by lia.
-  - by rewrite !Znth_underflow.
-  - rewrite !(Znth_overflow y) //. lia. list_solve.
-  - have [Hiy | Hiy]: i = y \/ i <> y by lia.
-    + subst. rewrite upd_Znth_same //. list_solve.
-    + have [Hiout | Hiin]: ~ (0 <= i < Zlength s) \/ 0 <= i < Zlength s by lia.
-      * rewrite upd_Znth_out_of_range //. lia.
-      * rewrite upd_Znth_diff //. lia.
-Qed.
 
 (*update an element - this is a bit more complicated than above bc we dont update elt (i, j)*)
 Lemma pop_fill_rows_list_set: forall input rec rows i j,
@@ -1113,7 +963,6 @@ Lemma pop_fill_rows_list_done: forall input rec rows lens j k c xh,
   crop_mx (fill_rows_list k c xh input rec rows) lens.
 Proof.
   move => input rec rows lens j k c xh Hc Hinlen Hlenlen Hreclen Hrowlen Hxhk Hinbound Hlenspec.
-  (*have Hlenin: 0 <= Zlength input by list_solve.*)
   have Hk: 0 <= k by list_solve.
   pose proof (fill_rows_list_wf xh input rec rows Hk Hc) as [Hfillen [_ Hfillin]].
   apply Znth_eq_ext; rewrite pop_fill_rows_Zlength1 //.

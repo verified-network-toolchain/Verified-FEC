@@ -356,6 +356,40 @@ Proof.
     + by rewrite IH.
 Qed.
 
+Lemma rev_pmap: forall {aT rT} (f: aT -> option rT) (s: seq aT),
+  rev (pmap f s) = pmap f (rev s).
+Proof.
+  move => aT rT f s. elim : s => [// | h t /= IH].
+  rewrite rev_cons -cats1 pmap_cat /= -IH.
+  case Hf: (f h) =>[/= u|/=].
+  - by rewrite rev_cons -cats1.
+  - by rewrite cats0.
+Qed.
+
+(** Lemmas about [index]*)
+
+Lemma index_notin: forall {T: eqType} (x: T) (s: seq T), (index x s == size s) = (x \notin s).
+Proof.
+  move => T x s. case Hin: (x \in s).
+  - move: Hin. rewrite -index_mem. case : (index x s == size s) /eqP => [->// |//]. by rewrite ltnn.
+  - rewrite memNindex. by rewrite eq_refl. by rewrite Hin.
+Qed.
+
+(*Don't need f to be injective fully, only on some predicate that encompases list and x (for us,
+  dealing with only positive integers)*)
+Lemma index_map': forall [T1 T2 : eqType] [f : T1 -> T2] (s: seq T1) (a: pred T1),
+  (forall x y, a x -> a y -> f x = f y -> x = y) ->
+  all a s ->
+  forall (x : T1), a x -> index (f x) [seq f i | i <- s] = index x s.
+Proof.
+  move => T1 T2 f s a Hinj Hall x Hx. move: Hinj Hall. elim : s => [//= | h t /= IH Hinj /andP[Hah Hat]].
+  case : (h == x) /eqP => [Hhx/= | Hhx/=].
+  - subst. by rewrite eq_refl.
+  - case : (f h == f x) /eqP => [Hfxh /= | Hfxh /=].
+    + have: h = x. by apply Hinj. by [].
+    + by rewrite IH.
+Qed.
+
 (** Relating ssreflect and standard library functions*)
 
 
@@ -422,6 +456,13 @@ Qed.
 
 (** Other list lemmas*)
 
+Lemma cat_extra: forall {A: Type} (s1 s2 : seq A),
+  s1 ++ s2 = s1 ->
+  s2 = [::].
+Proof.
+  move => A s1 s2. elim : s1 => [//= | /= h t IH [Happ]]. by apply IH.
+Qed.
+
 Lemma size_not_nil: forall {A: Type} (l: seq A),
   (0 < size l) = ~~ (nilp l).
 Proof.
@@ -437,13 +478,6 @@ Lemma larger_not_nil: forall {A: Type} (l1 l2: seq A),
 Proof.
   move => A l1 l2 Hl2 Hsz. rewrite ltnNge in Hsz. apply negbFE in Hsz. move : Hl2;
   rewrite -!size_not_nil => Hl2. by apply (ltn_leq_trans Hl2).
-Qed.
-
-Lemma index_notin: forall {T: eqType} (x: T) (s: seq T), (index x s == size s) = (x \notin s).
-Proof.
-  move => T x s. case Hin: (x \in s).
-  - move: Hin. rewrite -index_mem. case : (index x s == size s) /eqP => [->// |//]. by rewrite ltnn.
-  - rewrite memNindex. by rewrite eq_refl. by rewrite Hin.
 Qed.
 
 (** Stuff about finTypes*)

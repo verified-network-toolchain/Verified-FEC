@@ -213,6 +213,16 @@ Proof.
   by rewrite Z2Nat.inj_mul.
 Qed.
 
+Lemma Ziota_leq: forall i j,
+  0 <= i <= j ->
+  Ziota 0 j = Ziota 0 i ++ Ziota i (j - i).
+Proof.
+  move => i j Hij. rewrite /Ziota -map_cat. f_equal.
+  have->: (Z.to_nat j) = ((Z.to_nat i) + (Z.to_nat (j-i)))%coq_nat by lia.
+  have->:(Z.to_nat i + Z.to_nat (j - i))%coq_nat = (Z.to_nat i + Z.to_nat (j - i))%N by [].
+  by rewrite iotaD.
+Qed. 
+
 End ZSeq.
 
 Section Zindex.

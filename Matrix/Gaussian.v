@@ -5,6 +5,7 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
+
 Require Import CommonSSR.
 
 Ltac eq_subst H := apply (elimT eqP) in H; subst.
@@ -15,14 +16,14 @@ Variable F : fieldType.
 
 Local Open Scope ring_scope.
 
-(*TODO: nothing to do w gaussian elimination but I need a place to put this*)
+(*NOTE: nothing to do w gaussian elimination but I need a place to put this*)
 Definition rev_cols {m n} (A: 'M[F]_(m, n)) : 'M_(m, n) :=
  \matrix_(i < m, j < n) A i (rev_ord j).
 
-(*Can't rewrite directly due to dependent type issues*)
 Definition rev_rows {m n} (A: 'M[F]_(m, n)) : 'M_(m, n) :=
   \matrix_(i < m, j < n) A (rev_ord i) j.
 
+(*Can't rewrite directly due to dependent type issues*)
 Lemma big_eq_ord {A: Type} (r1 r2 : nat) (Heq: r2 = r1) (op: A -> A -> A) idx (P : pred 'I_r1) F':
   \big[op/idx]_(i < r1 | P i) F' i = \big[op/idx]_(i < r2 | P (eq_ord Heq i)) F' (eq_ord Heq i).
 Proof.
@@ -31,7 +32,7 @@ Proof.
   - move => x Hx. f_equal. by apply ord_inj.
 Qed.
 
-(*The only thing we need about these*)
+(*The key fact we need about these*)
 Lemma rev_cols_row_mul: forall {m n k} (A : 'M[F]_(m, n)) (B: 'M[F]_(n, k)),
   A *m B = (rev_cols A) *m (rev_rows B).
 Proof.

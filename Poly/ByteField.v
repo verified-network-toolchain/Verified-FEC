@@ -797,7 +797,7 @@ Proof.
   move => i Hi. rewrite {1}/populate_pows_logs. by rewrite populate_pows_logs_iota_aux_plus_1.
 Qed.
 
-(*TODO: why do we need these? Why doesn't lia work*)
+(*Why do we need these? Why doesn't lia work directly?*)
 Lemma nat_leq_1: forall n,
   Z.of_nat n < 1 ->
   n = 0%N.

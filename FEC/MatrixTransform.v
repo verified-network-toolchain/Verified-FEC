@@ -168,32 +168,6 @@ Proof.
   intros. induction l; simpl; auto. rewrite Zlength_rev. list_solve.
 Qed.
 
-(*TODO: probably get rid of these*)
-(*
-
-Lemma whole_Zlength_wf_matrix: forall (mx: bytemx) m n,
-  wf_lmatrix mx m n ->
-  whole_Zlength mx = m * n.
-Proof.
-  intros mx m n Hwf. destruct Hwf as [Hlen [Hn Hin]]. generalize dependent m.
-  induction mx; intros m Hlen.
-  - list_solve.
-  - simpl in *. inversion Hin; subst. rewrite Zlength_cons. rewrite IHmx with(m:=Zlength mx); auto.
-    nia.
-Qed.
-
-Lemma whole_Zlength_sublist: forall (mx: bytemx) m n lo hi,
-  wf_lmatrix mx m n ->
-  0 <= lo <= hi ->
-  hi <= Zlength mx -> 
-  whole_Zlength (sublist lo hi mx) = (hi - lo) * n.
-Proof.
-  intros mx m n lo hi Hwf Hlo Hi. apply whole_Zlength_wf_matrix.
-  destruct Hwf as [Hlen [Hn Hin]].
-  unfold wf_lmatrix. split. list_solve. split. assumption.
-  rewrite Forall_forall in *. intros.  apply Hin. eapply sublist_In. apply H.
-Qed.*)
-
 Lemma whole_Zlength_rect: forall {A: Type} (l: list (list A)) m n,
   Zlength l = m ->
   Forall (fun x => Zlength x = n) l ->

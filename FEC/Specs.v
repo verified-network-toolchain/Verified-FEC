@@ -139,7 +139,7 @@ Definition fec_blk_encode_spec :=
           forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets))
     PARAMS (Vint (Int.repr k); Vint (Int.repr h); Vint (Int.repr c); pd; pl; ps)
     GLOBALS (gv)
-    SEP (iter_sepcon_arrays parity_ptrs (zseq h (zseq c Byte.zero)); (*since this is changing, it is helpful to have it first*)
+    SEP (iter_sepcon_arrays parity_ptrs (zseq h (zseq c Byte.zero));
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          iter_sepcon_arrays packet_ptrs packets;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
@@ -157,7 +157,7 @@ Definition fec_blk_encode_spec :=
          INDEX_TABLES gv;
          data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
 
-(*We still include h to make the spec nicer; it is not an input the function, but we can always pass in
+(*We still include h to make the spec nicer; it is not an input to the function, but we can always pass in
   Zlength parities when using the spec*)
 Definition fec_blk_decode_spec :=
   DECLARE _fec_blk_decode
@@ -175,7 +175,7 @@ Definition fec_blk_decode_spec :=
           forall (i: Z), 0 <= i < h -> Znth i parities = None <-> Znth i parity_ptrs = nullval;
           forall (i: Z) (l: list byte), 0 <= i < h -> Znth i parities = Some l -> Zlength l = c;
           Forall (fun x => x = Byte.zero \/ x = Byte.one) stats)
-    PARAMS (Vint (Int.repr k); (*Vint (Int.repr h);*) Vint (Int.repr c); pd; pl; ps)
+    PARAMS (Vint (Int.repr k); Vint (Int.repr c); pd; pl; ps)
     GLOBALS (gv)
     SEP (iter_sepcon_arrays packet_ptrs packets;
          iter_sepcon_options parity_ptrs parities;

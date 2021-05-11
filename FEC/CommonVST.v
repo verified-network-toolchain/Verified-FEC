@@ -510,15 +510,6 @@ Proof.
 Qed. 
 
 (* We want a similar definition for when only some of the data exists, and the others are null pointers*)
-(*
-Definition valid_option_vals (ptrs: list val) (contents: list (option (list byte))) :=
-  Zlength ptrs = Zlength contents /\
-  (forall i, 0 <= i < Zlength ptrs -> Znth i ptrs = nullval <-> Znth i contents = None).
-*)
-(*
-Search nullval.
-Check iter_sepcon_arrays.
-*)(*TODO: see exactly what I need*)
 
 Definition iter_sepcon_options (ptrs: list val) (contents: list (option (list byte))) : mpred :=
   iter_sepcon (fun (x: option (list byte) * val) => let (o, ptr) := x in
@@ -540,33 +531,5 @@ Proof.
   rewrite combine_Znth in Hnth' by auto. inversion Hnth'; subst. rewrite Hnth.
   rewrite combine_remove_nth by lia. reflexivity. rewrite combine_Zlength; lia.
 Qed.
-(*
-Definition iter_sepcon_options (pts: list val) (contents: list (option (list byte))) :=
-  iter_sepcon_arrays (filter (fun x => x 
-
-
-  iter_sepcon (fun (x: (list byte) * val) := let (o, ptr) := x in
-    match o with
-      | None => 
-
-
-Definition iter_sepcon_arrays (ptrs : list val) (contents: list (list byte)) := 
-  iter_sepcon (fun (x: (list byte * val)) => let (l, ptr) := x in 
-            data_at Ews (tarray tuchar (Zlength l)) (map Vubyte l) ptr) (combine contents ptrs).
-
-Lemma iter_sepcon_arrays_Znth: forall ptrs contents i,
-  Zlength ptrs = Zlength contents ->
-  0 <= i < Zlength contents ->
-  iter_sepcon_arrays ptrs contents |-- 
-    data_at Ews (tarray tuchar (Zlength (Znth i contents))) (map Vubyte (Znth i contents)) (Znth i ptrs) * TT.
-Proof.
-  intros ptrs contents i Hlen Hi. unfold iter_sepcon_arrays. 
-  sep_apply (iter_sepcon_in_true (fun x : list byte * val => let (l, ptr) := x in 
-    data_at Ews (tarray tuchar (Zlength l)) (map Vubyte l) ptr) (combine contents ptrs) 
-    (Znth i contents, Znth i ptrs)); [|cancel].
-  rewrite In_Znth_iff. exists i. split. rewrite combine_Zlength; lia.
-  apply combine_Znth; lia.
-Qed.
-*)
 
 End VSTFacts.

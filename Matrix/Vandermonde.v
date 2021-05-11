@@ -78,7 +78,6 @@ Proof.
   have: nth y (drop n l) 0 = h by rewrite -Hdrop /=. rewrite nth_drop addn0. by move->.
 Qed. 
 
-
 Lemma rem_nth_subseq: forall {A: eqType} (l: seq A) (n: nat) (y: A),
   subseq (rem_nth l n) l.
 Proof.
