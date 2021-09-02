@@ -13,7 +13,8 @@ patent expired on May 4, 2020 -- but that's not a warranty, get your
 own lawyer.
 
 In 2021 the core of the algorithm was proved correct* by Josh
-Cohen at Princeton University, advised by Andrew Appel.
+Cohen at Princeton University, advised by Andrew Appel 
+and with assistance from Qinshi Wang.
 *except for a latent undefined behavior bug; see the forthcoming
 technical report.
 
