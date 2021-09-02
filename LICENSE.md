@@ -27,7 +27,8 @@ in individual files.
 who are researchers at Princeton University and hold copyright
 in their own names.
 
-Any author who contributes files, modifications, pull requests
+Any author who contributes files, modifications, pull requests to this repo
+thereby licenses those contributions under the License.
 
 The file fec.c embodies U.S. Patent 5,115,436, dated May 19, 1992.
 It is entirely plausible that the patent expired May 4, 2020,
