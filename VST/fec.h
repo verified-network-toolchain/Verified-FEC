@@ -1,5 +1,16 @@
 /*
  * FEC.H
+ * Forward Erasure Correction encoder and decoder
+ *
+ * Copyright 2021 Peraton Labs Inc.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * See the beginning of fec.c for other disclosures and release notes.
  */
 
 #ifndef _FEC_H

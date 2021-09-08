@@ -2,16 +2,43 @@
  * FEC.C
  * Forward Erasure Correction encoder and decoder
  *
- * Developed for DARPA (#DABT63-95-C) by 
+ * Copyright 2021 Peraton Labs Inc.
+ *
+ * Originally developed by A. McAuley, Peraton Labs Inc.
+ * 
+ * This software was developed in work supported by the following U.S.
+ * Government contracts:
+ *
+ * W15P7T-05-C-R402
+ * HR0011-15-C-0098
+ * HR0011-20-C-0160
+ *
+ * Any opinions, findings and conclusions or recommendations expressed in
+ * this material are those of the author(s) and do not necessarily reflect
+ * the views, either expressed or implied, of the U.S. Government.
+
+ * This software embodies U.S. Patent 5,115,436
+ *
+ * DoD Distribution Statement A
+ * Approved for Public Release, Distribution Unlimited
+ * 
+ * DISTAR Case 34797, cleared June 21, 2021.
+ * 
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ * http://www.apache.org/licenses/LICENSE-2.0
+ * 
+ * Revision history:
+ *
+ * Developed circa 1996 for DARPA (#DABT63-95-C) by 
  * A. McAuley, Bellcore (mcauley@bellcore.com)
  * 
- *
  * Modifications:
  * 	9/1997   Vinh Lam (for NRL)   High speed version
  *	7/2005   Harshad Tanna	Integration with SAPIENT PCNM code
- *
- * $Revision: 1.14 $
- * $Date: 2007/08/02 18:51:56 $
+ *      2020     Josh Cohen (Princeton)  fec_gf_mult function instead of macro
  */
 
 #ifdef TRACE_FEC_MALLOCS

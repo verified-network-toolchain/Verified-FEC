@@ -1,12 +1,11 @@
 # Verified-FEC
 Verification of Forward Erasure Correction in Coq
 
-Forward Erasure Correction is a technique of expanding k network
-packets with h extra packets so that if some packets (no more than h)
-are lost, the missing packets can be reconstructed without
-retransmission.  It uses a 1990 algorithm by Anthony McAuley of
-Bellcore, implemented in C by McAuley and improved in 1997 by Vinh Lam
-for the Naval Research Lab.
+Forward Erasure Correction is a technique of expanding k network packets
+with h extra packets so that if some packets (no more than h) are lost,
+the missing packets can be reconstructed without retransmission.
+It uses a 1990 algorithm by Anthony McAuley of Bellcore, implemented in C
+by McAuley and improved in 1997 by Vinh Lam for the Naval Research Lab.
 
 The algorithm was patented (#5,115,436) in 1992.  We believe the
 patent expired on May 4, 2020 -- but that's not a warranty, get your
