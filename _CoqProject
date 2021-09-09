@@ -1,30 +1,30 @@
 -R . lib
 #Common/general results
-Common/ByteFacts.v
-Common/CommonSSR.v
-Common/ZSeq.v
+proofs/Common/ByteFacts.v
+proofs/Common/CommonSSR.v
+proofs/Common/ZSeq.v
 #Pure mathcomp/functional model
-Poly/PolyField.v
-Poly/BoolField.v
-Poly/ListPoly.v
-Poly/ByteField.v
-Matrix/Gaussian.v
-Matrix/LinIndep.v
-Matrix/Vandermonde.v
-RS/ReedSolomon.v
+proofs/Poly/PolyField.v
+proofs/Poly/BoolField.v
+proofs/Poly/ListPoly.v
+proofs/Poly/ByteField.v
+proofs/Matrix/Gaussian.v
+proofs/Matrix/LinIndep.v
+proofs/Matrix/Vandermonde.v
+proofs/RS/ReedSolomon.v
 #Intermediate layer (VST + mathcomp)
-Matrix/ListMatrix.v
-Matrix/MatrixTransform.v
-Matrix/VandermondeByte.v
-VST/InhabOption.v
-RS/ReedSolomonList.v
+proofs/Matrix/ListMatrix.v
+proofs/Matrix/MatrixTransform.v
+proofs/Matrix/VandermondeByte.v
+proofs/VST/InhabOption.v
+proofs/RS/ReedSolomonList.v
 #VST
-VST/fec.v
-VST/CommonVST.v
-VST/Specs.v
-VST/FECTactics.v
-VST/PopArrays.v
-VST/Verif_field.v
-VST/Verif_matrix.v
-VST/Verif_encode.v
-VST/Verif_decode.v
+src/fecActuator/fec.v
+proofs/VST/CommonVST.v
+proofs/VST/Specs.v
+proofs/VST/FECTactics.v
+proofs/VST/PopArrays.v
+proofs/VST/Verif_field.v
+proofs/VST/Verif_matrix.v
+proofs/VST/Verif_encode.v
+proofs/VST/Verif_decode.v

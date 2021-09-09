@@ -9,6 +9,7 @@
  * Modifications:
  * 	9/1997   Vinh Lam (for NRL)   High speed version
  *	7/2005   Harshad Tanna	Integration with SAPIENT PCNM code
+ *  9/2021   Joshua Cohen   Remove undefined behavior and change fec_gf_mult into a function for Coq/VST verification
  *
  * $Revision: 1.14 $
  * $Date: 2007/08/02 18:51:56 $
