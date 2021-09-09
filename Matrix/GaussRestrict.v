@@ -89,79 +89,7 @@ Qed.
 
 (*TODO: do these for the sub one, then prove for one step entirely - will need to show no zeroes preserved
   by row ops (either directly or indirectly with unitmx)*)
-
-
-
-    + by [].
-
-
- Search (0^-1).
-
- Search (?x / ?x).
-
-Lemma all_cols_one_inner_equiv: forall {m n} (A: 'M[F]_(m, n)) x c,
-  ~ (exists i, forall j, A i j = 0) ->
-  (if (A x c) == 0 then A else sc_mul A (A x c)^-1 x) == sc_mul A (A x c)^-1 x =
-  (A x c != 0).
-Proof.
-  move => m n A x c Hnozero. case : (A x c == 0) /eqP => [/= Haxc|//= Haxc].
-  - apply /eqP. rewrite Haxc GRing.invr0 -matrixP /eqrel => Hcon.
-    apply Hnozero. exists x. move => j. move: Hcon => /(_ x j). by rewrite mxE eq_refl GRing.mul0r.
-  - by rewrite eq_refl.
-Qed.
-
 (*
-
-Print all_cols_one.
-
-
-
-  move => Hcon.
-
-Print all_cols_one.
-
-
-
-let f := A x c in if f == 0 then acc else sc_mul acc f^-1 x)
-
-
-sc_mul acc (A x c)^-1 x)*)
-
-Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
-  all_cols_one_noif_gen A c (ord_enum m).
-
-Lemma all_cols_one_equiv: forall {m n} (A: 'M[F]_(m, n)) c,
-  (forall (x: 'I_m), A x c != 0) <->
-  all_cols_one_noif A c = all_cols_one A c.
-Proof.
-  move => m n A c.  rewrite /all_cols_one /all_cols_one_noif.
-  have ->: (forall x : 'I_m, A x c != 0) <-> (forall x : 'I_m, x \in (ord_enum m) -> A x c != 0). {
-    split => [Hnz x _ // | Hnz x]. apply Hnz. apply mem_ord_enum. }
-  have: uniq (ord_enum m) by apply ord_enum_uniq.
-  elim : (ord_enum m) => [//=| h t IH].
-  split.
-  - move => Hall /=. have->: A h c == 0 = false. apply negbTE. apply Hall. by rewrite in_cons eq_refl.
-    f_equal. apply IH. move => x Hint. apply Hall. by rewrite in_cons Hint orbT.
-  - case : (A h c == 0) /eqP => [Hzero | Hzero].
-    + (*contradiction here is annoying*)
-      rewrite Hzero GRing.invr0.
-
-
-if A x c == 0 then acc else sc_mul acc (A x c)^-1 x
-
-
-sc_mul (all_cols_one_noif_gen A c t) (A h c)^-1 h
-
-idea: prove inner is equiv iff A h c != 0 (supposing invertible)
-then 
-      
-
-GRing.invr0
-    
-
-  have: A h c != 0 by apply Hall. by case: (A h c == 0). move ->.
-  by rewrite IH.
-Qed.
 
 Lemma all_cols_one_equiv: forall {m n} (A: 'M[F]_(m, n)) c,
   (forall (x: 'I_m), A x c != 0) ->
@@ -171,7 +99,23 @@ Proof.
   elim : (ord_enum m) => [//| h t IH].
   rewrite //=. have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case: (A h c == 0). move ->.
   by rewrite IH.
+Qed.*)
+
+Definition all_cols_one_noif_l {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
+  foldl (fun acc x => sc_mul acc (A x c)^-1 x) A (ord_enum m).
+
+Lemma all_cols_one_noif_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) ,
+  all_cols_one_noif A c = all_cols_one_noif_l A c.
+Proof.
+  move => m n A c. rewrite /all_cols_one_noif /all_cols_one_noif_l. 
+  have {2}->: ord_enum m = rev (rev (ord_enum m)) by rewrite revK. rewrite foldl_rev.
+  apply mx_row_transform_rev.
+  - move => A' i' j' r'.
+    rewrite /sc_mul mxE /negb. by case: (i' == r').
+  - move => A' B' r Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
+  - apply ord_enum_uniq.
 Qed.
+(*
 
 Definition all_cols_one_noif_l_gen {m n} (A: 'M[F]_(m, n)) (c: 'I_n) (l: list 'I_m) :=
   foldl (fun acc x => sc_mul acc (A x c)^-1 x) A l.
@@ -196,11 +140,46 @@ Lemma all_cols_one_noif_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) ,
   all_cols_one_noif A c = all_cols_one_noif_l A c.
 Proof.
   move => m n A c. apply all_cols_one_noif_gen_foldl. apply ord_enum_uniq.
-Qed.
+Qed.*)
 
 
 Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
+
+Lemma sub_all_rows_noif_val: forall {m n} (A: 'M[F]_(m, n)) (r : 'I_m) i j,
+  sub_all_rows_noif A r i j = if i == r then A i j else A i j - A r j.
+Proof.
+  move => m n A r i j. rewrite /sub_all_rows_noif. rewrite foldr_remAll. case : (i == r) /eqP => [-> | Hir].
+  rewrite mx_row_transform_notin. by []. move => A' i' j' r'.
+  rewrite /add_mul mxE //= /negb. by case : (i' == r').
+  apply remAll_notin. 
+  rewrite mx_row_transform.
+  - by rewrite /add_mul mxE eq_refl GRing.mulN1r.
+  - move => A' i' j' r'.
+    rewrite /add_mul mxE /negb. by case H : (i' == r').
+  - move => A' B' r' Hin Hout j'.
+    rewrite !/add_mul !mxE !eq_refl !Hin.
+    rewrite Hout => [//|]. apply remAll_notin.
+  - rewrite -rem_remAll. apply rem_uniq. all: apply ord_enum_uniq.
+  - apply remAll_in. by apply /eqP. by rewrite mem_ord_enum.
+Qed.
+
+Lemma sub_all_rows_equiv: forall {m n} (A: 'M[F]_(m, n)) r c,
+  A r c != 0 -> (*don't love this assumption but should be ok because used after*)
+  (sub_all_rows_noif A r = sub_all_rows A r c) <-> forall (i: 'I_m), A i c != 0.
+Proof.
+  move => m n A r c Harc0 . rewrite -matrixP /eqrel. split.
+  - move => Heq i. pose proof Heq as Heq'. move: Heq => /(_ i c). rewrite sub_all_rows_noif_val sub_all_rows_val/=.
+    case : (i == r) /eqP => [Hir | Hir].
+    + by rewrite Hir Harc0.
+    + case : (A i c == 0) => [|//]. move => /eqP Hsub. move: Hsub.
+      rewrite GRing.subr_eq GRing.addrC -GRing.subr_eq GRing.subrr eq_sym => Harcz. move: Harc0. by rewrite Harcz.
+  - move => Hallz x y. rewrite sub_all_rows_noif_val sub_all_rows_val/=.
+    case (x == r) => [//|].
+    have->//: A x c == 0 = false. apply negbTE. apply Hallz.
+Qed.
+
+(*
 
 Lemma sub_all_rows_equiv: forall {m n} (A: 'M[F]_(m, n)) r c,
   (forall (x: 'I_m), A x c != 0) ->
@@ -209,7 +188,7 @@ Proof.
   move => m n A r c Hall. rewrite /sub_all_rows /sub_all_rows_noif. elim : (ord_enum m) => [// | h t IH].
   rewrite /=. case : (h == r). apply IH.
   have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case : (A h c == 0). move ->. by rewrite IH. 
-Qed.
+Qed.*)
 
 Definition sub_all_rows_noif_l {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldl (fun acc x => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
@@ -245,6 +224,7 @@ Definition gauss_one_step_restrict {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <=
   equivalent. First, we define the conditions*)
 (*Working with the ordinals in the submatrices is a bit annoying. We define the following utilities to
   construct ordinals*)
+  
 
 
 
@@ -456,6 +436,19 @@ Qed.
 (* The second part: show that one step of restricted gaussian elimination is equivalent to one step
   of regular gaussian elimination iff the current matrix has a row of all zeroes (and hence iff it
   is strongly invertible)*)
+Lemma gauss_one_step_restrict_equiv_zeroes:  forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
+  ~ (exists i, forall j, A i j = 0) ->
+  ((gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
+  (forall (x : 'I_m), A x (widen_ord Hmn r) != 0).
+Proof.
+  (*TODO:*)
+
+Lemma gauss_one_step_restrict_equiv_iff: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
+  gauss_invar A r r -> (*can do just row of zeroes if want to do in parts but its ok i think*)
+  ((gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
+  r_strong_inv A Hmn r.
+Proof.
+  gauss_one_step_restrict A r Hmn = gauss_one_step A r (widen_ord Hmn r)
 
 
 
