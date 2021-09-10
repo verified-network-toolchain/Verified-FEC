@@ -28,13 +28,6 @@ Local Open Scope ring_scope.
 Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
   foldr (fun x acc => sc_mul acc (A x c)^-1 x) A (ord_enum m).
 
-(*
-Definition all_cols_one_noif_gen {m n} (A: 'M[F]_(m, n)) (c: 'I_n) (l: list 'I_m) :=
-  foldr (fun x acc => sc_mul acc (A x c)^-1 x) A l.
-
-Definition all_cols_one_noif {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
-  all_cols_one_noif_gen A c (ord_enum m).*)
-
 Lemma all_cols_one_noif_val: forall {m n} (A: 'M[F]_(m,n)) c i j,
   (all_cols_one_noif A c) i j = A i j / A i c.
 Proof.
@@ -47,59 +40,6 @@ Proof.
   - apply ord_enum_uniq.
   - apply mem_ord_enum.
 Qed.
-(*
-Lemma all_cols_one_noif_notin: forall {m n} (A : 'M[F]_(m, n)) (c: 'I_n) x y l,
-  x \notin l ->
-  (all_cols_one_noif_gen A c l) x y = A x y.
-Proof.
-  move => m n A c x y l. rewrite /all_cols_one_noif_gen. elim : l => [Hin //=| h t IH Hin /=].
-  rewrite /sc_mul mxE. have ->: x == h = false. case Hxh : (x == h) => [| //].
-  move : Hin. by rewrite in_cons Hxh. rewrite IH. by []. move : Hin. rewrite in_cons negb_or.
-  case : (x \notin t). by []. by rewrite andbF.
-Qed.*)
-(*
-Lemma all_cols_one_noif_gen_zero: forall {m n} (A : 'M[F]_(m, n)) (c: 'I_n) x y l,
-  uniq l ->
-  (forall (x: 'I_m), A x c != 0) ->
-  ((all_cols_one_noif_gen A c l) x y == 0) = (A x y == 0).
-Proof.
-  move => m n A c x y l Hun Hz.
-  case Hin : (x \in l).
-  - rewrite mx_row_transform => [|||//|//].
-    + have: A x c == 0 = false. move : (Hz x). by case : (A x c == 0).
-      by rewrite /sc_mul mxE eq_refl GRing.mulf_eq0 GRing.invr_eq0; move ->.
-    + move => A' i j r Hir. rewrite /sc_mul mxE. by have ->: i == r = false by move : Hir; case : (i == r).
-    + move => A' B r Hin' Hout j. by rewrite /sc_mul !mxE eq_refl Hin'.
-  -  rewrite all_cols_one_noif_notin. by []. by rewrite Hin.
-Qed. *)
-
-Lemma all_cols_one_equiv: forall {m n} (A: 'M[F]_(m, n)) c,
-  ~ (exists i, forall j, A i j = 0) ->
-  (all_cols_one_noif A c = all_cols_one A c) <-> forall (i: 'I_m), A i c != 0.
-Proof.
-  move => m n A c Hnozero. rewrite -matrixP /eqrel. split.
-  - move => Heq i. pose proof Heq as Heq'. move: Heq => /(_ i c). rewrite all_cols_one_noif_val all_cols_one_val/=.
-    case : (A i c == 0) /eqP => [Haic | Haic//].
-    exfalso. apply Hnozero. exists i. move => j.
-    move: Heq'. move => /(_ i j). 
-    by rewrite all_cols_one_noif_val all_cols_one_val/= Haic GRing.invr0 GRing.mulr0 eq_refl.
-  - move => Hallz x y. rewrite all_cols_one_noif_val all_cols_one_val/=.
-    have->//: A x c == 0 = false. apply negbTE. apply Hallz.
-Qed.
-
-(*TODO: do these for the sub one, then prove for one step entirely - will need to show no zeroes preserved
-  by row ops (either directly or indirectly with unitmx)*)
-(*
-
-Lemma all_cols_one_equiv: forall {m n} (A: 'M[F]_(m, n)) c,
-  (forall (x: 'I_m), A x c != 0) ->
-  all_cols_one_noif A c = all_cols_one A c.
-Proof.
-  move => m n A c Hall. rewrite /all_cols_one /all_cols_one_noif.
-  elim : (ord_enum m) => [//| h t IH].
-  rewrite //=. have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case: (A h c == 0). move ->.
-  by rewrite IH.
-Qed.*)
 
 Definition all_cols_one_noif_l {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
   foldl (fun acc x => sc_mul acc (A x c)^-1 x) A (ord_enum m).
@@ -115,33 +55,6 @@ Proof.
   - move => A' B' r Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
   - apply ord_enum_uniq.
 Qed.
-(*
-
-Definition all_cols_one_noif_l_gen {m n} (A: 'M[F]_(m, n)) (c: 'I_n) (l: list 'I_m) :=
-  foldl (fun acc x => sc_mul acc (A x c)^-1 x) A l.
-
-Lemma all_cols_one_noif_gen_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) l,
-  uniq l ->
-  all_cols_one_noif_gen A c l = all_cols_one_noif_l_gen A c l.
-Proof.
-  move => m n A c l Hu. rewrite /all_cols_one_noif_gen /all_cols_one_noif_l_gen. 
-  have {2}->: l = rev (rev l) by rewrite revK. rewrite foldl_rev.
-  apply mx_row_transform_rev.
-  - move => A' i' j' r'.
-    rewrite /sc_mul mxE /negb. by case: (i' == r').
-  - move => A' B' r Hin Hout j'. by rewrite /sc_mul !mxE eq_refl Hin.
-  - by [].
-Qed.
-
-Definition all_cols_one_noif_l {m n} (A: 'M[F]_(m, n)) (c: 'I_n) :=
-  all_cols_one_noif_l_gen A c (ord_enum m).
-
-Lemma all_cols_one_noif_foldl: forall {m n}  (A: 'M[F]_(m, n)) (c: 'I_n) ,
-  all_cols_one_noif A c = all_cols_one_noif_l A c.
-Proof.
-  move => m n A c. apply all_cols_one_noif_gen_foldl. apply ord_enum_uniq.
-Qed.*)
-
 
 Definition sub_all_rows_noif {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldr (fun x acc => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
@@ -163,32 +76,6 @@ Proof.
   - rewrite -rem_remAll. apply rem_uniq. all: apply ord_enum_uniq.
   - apply remAll_in. by apply /eqP. by rewrite mem_ord_enum.
 Qed.
-
-Lemma sub_all_rows_equiv: forall {m n} (A: 'M[F]_(m, n)) r c,
-  A r c != 0 -> (*don't love this assumption but should be ok because used after*)
-  (sub_all_rows_noif A r = sub_all_rows A r c) <-> forall (i: 'I_m), A i c != 0.
-Proof.
-  move => m n A r c Harc0 . rewrite -matrixP /eqrel. split.
-  - move => Heq i. pose proof Heq as Heq'. move: Heq => /(_ i c). rewrite sub_all_rows_noif_val sub_all_rows_val/=.
-    case : (i == r) /eqP => [Hir | Hir].
-    + by rewrite Hir Harc0.
-    + case : (A i c == 0) => [|//]. move => /eqP Hsub. move: Hsub.
-      rewrite GRing.subr_eq GRing.addrC -GRing.subr_eq GRing.subrr eq_sym => Harcz. move: Harc0. by rewrite Harcz.
-  - move => Hallz x y. rewrite sub_all_rows_noif_val sub_all_rows_val/=.
-    case (x == r) => [//|].
-    have->//: A x c == 0 = false. apply negbTE. apply Hallz.
-Qed.
-
-(*
-
-Lemma sub_all_rows_equiv: forall {m n} (A: 'M[F]_(m, n)) r c,
-  (forall (x: 'I_m), A x c != 0) ->
-  sub_all_rows_noif A r = sub_all_rows A r c.
-Proof.
-  move => m n A r c Hall. rewrite /sub_all_rows /sub_all_rows_noif. elim : (ord_enum m) => [// | h t IH].
-  rewrite /=. case : (h == r). apply IH.
-  have: A h c == 0 = false. have: A h c != 0 by apply Hall. by case : (A h c == 0). move ->. by rewrite IH. 
-Qed.*)
 
 Definition sub_all_rows_noif_l {m n} (A: 'M[F]_(m, n)) (r : 'I_m) : 'M[F]_(m, n) :=
   foldl (fun acc x => if x == r then acc else add_mul acc (- 1) r x) A (ord_enum m).
@@ -224,9 +111,6 @@ Definition gauss_one_step_restrict {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <=
   equivalent. First, we define the conditions*)
 (*Working with the ordinals in the submatrices is a bit annoying. We define the following utilities to
   construct ordinals*)
-  
-
-
 
 (*The first submatrix - the definition is a bit awkward because of the ordinal proof obligations*)
 Definition submx_remove_col {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j : 'I_m) : 'M[F]_(r, r) :=
@@ -353,7 +237,7 @@ Proof.
     + move => i Hi. apply /eqP. by rewrite GRing.mulf_eq0 Hcol // orbT.
 Qed.
 
-(*TODO: there will be lots of overlap with this proof (the lin indep part - can we make it less repetitive?*)
+(* The similar condition for the row matrices*)
 Lemma submx_add_row_unitmx_cond: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) (j: 'I_m),
   gauss_invar A r r ->
   r <= j ->
@@ -433,64 +317,103 @@ Proof.
     + by rewrite submx_add_row_unitmx_cond.
 Qed.
 
+(*TODO: move*) 
+Lemma xrow_rr : forall {m n } (A: 'M[F]_(m, n)) (r: 'I_m),
+  xrow r r A = A.
+Proof.
+  move => m n A r. rewrite -matrixP => x y. rewrite xrow_val.
+  case : (x == r) /eqP => [Hxr | Hxr//]. by rewrite Hxr.
+Qed.
+
 (* The second part: show that one step of restricted gaussian elimination is equivalent to one step
   of regular gaussian elimination iff the current matrix has a row of all zeroes (and hence iff it
   is strongly invertible)*)
 Lemma gauss_one_step_restrict_equiv_zeroes:  forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
-  ~ (exists i, forall j, A i j = 0) ->
   ((gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
   (forall (x : 'I_m), A x (widen_ord Hmn r) != 0).
 Proof.
-  (*TODO:*)
+  move => m n A r Hmn. split.
+  - (*If equal, then all zeroes*)
+    rewrite /gauss_one_step_restrict /gauss_one_step.
+    (* first, we know that [fst_nonzero A (widen_ord Hmn r) r] is not None, or else we get an easy contradiction*)
+    case Hfst: (fst_nonzero A (widen_ord Hmn r) r) => [k |//]; last first.
+    + move => [Ha Hr]; move : Hr. case Hr1 : (r.+1 < m). rewrite insubT => [[Hr]].
+      have : nat_of_ord r = (nat_of_ord r).+1 by rewrite -{1}Hr /=. move => Hr'.
+      exfalso. by apply (n_Sn (nat_of_ord r)).
+      by rewrite insubF.
+    + (*now, need to prove that A r r != 0 (ie: fst_nonzero A (widen_ord Hmn r) = Some r)*)
+      move => [Heq]. have Hrr : A r (widen_ord Hmn r) != 0. {
+        case Hrr0: (A r (widen_ord Hmn r) == 0) => [|//].
+        (* Proof idea: know rth row of [all_cols_one_noif] is all zeroes, so that is true of
+           [ sub_all_rows_no_if] mx, by equality true of [sub_all_rows] mx, but this cannot be*)
+        have Hcols1: (forall x, (all_cols_one_noif A (widen_ord Hmn r)) r x = 0). {
+          move => x. rewrite all_cols_one_noif_val. apply (elimT eqP) in Hrr0. 
+          by rewrite Hrr0 GRing.invr0 GRing.mulr0. }
+        have Hrows1: (forall x, (sub_all_rows_noif (all_cols_one_noif A (widen_ord Hmn r)) r) r x = 0). {
+          move => x. by rewrite sub_all_rows_noif_val eq_refl Hcols1. }
+        have Hk: A k (widen_ord Hmn r) != 0. { move: Hfst. by rewrite fst_nonzero_some_iff => [[_ [Htriv _]]]. }
+        have Hswap1: (xrow k r A) r (widen_ord Hmn r) != 0. {
+          rewrite xrow_val eq_refl. case : (r == k) /eqP => [Hrk | Hrk//]. by rewrite {1}Hrk. }
+        have Hcols2: (all_cols_one (xrow k r A) (widen_ord Hmn r)) r (widen_ord Hmn r) != 0
+          by rewrite all_cols_one_val /= (negbTE Hswap1) GRing.Theory.mulfV // GRing.oner_neq0.
+        have: (sub_all_rows (all_cols_one (xrow k r A) (widen_ord Hmn r)) r (widen_ord Hmn r)) 
+          r (widen_ord Hmn r) != 0 by rewrite sub_all_rows_val eq_refl. 
+        by rewrite -Heq Hrows1 eq_refl.
+      }
+      (* Therefore, k == r*)
+      have Hfst': fst_nonzero A (widen_ord Hmn r) r = Some r. {
+        rewrite fst_nonzero_some_iff. repeat split.
+        - by rewrite leqnn.
+        - by [].
+        - move => x /andP[Hxr Hrx]. move: Hrx. by rewrite ltnNge Hxr.
+      }
+      rewrite Hfst' in Hfst. case : Hfst => Hrk. rewrite {Hfst'}. rewrite -Hrk in Heq. rewrite {Hrk k}.
+      rewrite xrow_rr in Heq.
+      (*Idea: if A x r == 0, then [sub_all_rows_noif] x r != 0 (bc we subtract a nonzero value)
+        but [sub_all_rows] x r == 0 (because we skip this entry entirely)*)
+      move => x. case Haxr : (A x (widen_ord Hmn r) == 0) => [|//]. apply (elimT eqP) in Haxr.
+      have Hcols1: (all_cols_one_noif A (widen_ord Hmn r)) x (widen_ord Hmn r) = 0
+        by rewrite all_cols_one_noif_val Haxr GRing.invr0 GRing.mulr0.
+      have Hxr: x == r = false. apply /eqP. move => Hxr. rewrite Hxr in Haxr.
+        move : Hrr. by rewrite Haxr eq_refl.
+      have Hrows1: (sub_all_rows_noif (all_cols_one_noif A (widen_ord Hmn r)) r) x (widen_ord Hmn r) != 0. {
+        rewrite sub_all_rows_noif_val.  rewrite Hcols1 all_cols_one_noif_val GRing.Theory.mulfV // Hxr.
+        apply /eqP. move => H10. have: (GRing.zero F) = 1.  apply (GRing.subr0_eq H10). rewrite {H10} => /eqP Hcon.
+        move: Hcon. by rewrite eq_sym GRing.oner_eq0. }
+      have Hcols2: (all_cols_one A (widen_ord Hmn r)) x (widen_ord Hmn r) = 0 
+        by rewrite all_cols_one_val /= Haxr eq_refl.
+      have Hrows2: (sub_all_rows (all_cols_one A (widen_ord Hmn r)) r (widen_ord Hmn r)) x (widen_ord Hmn r) = 0
+        by rewrite sub_all_rows_val Hxr Hcols2 eq_refl.
+      move: Hrows1. by rewrite Heq Hrows2 eq_refl.
+  - (*Other direction: if all zeroes, then equal*)
+    move => Hallz. rewrite /gauss_one_step_restrict /gauss_one_step.
+    have->: fst_nonzero A (widen_ord Hmn r) r = Some r. { rewrite fst_nonzero_some_iff; repeat split.
+      by rewrite leqnn. by rewrite Hallz. move => x /andP[Hxr Hrx]. move: Hrx. by rewrite ltnNge Hxr. }
+    rewrite xrow_rr.
+    have->//: sub_all_rows_noif (all_cols_one_noif A (widen_ord Hmn r)) r = 
+      sub_all_rows (all_cols_one A (widen_ord Hmn r)) r (widen_ord Hmn r).
+    (*First, this will be helpful*)
+    have Hcols: all_cols_one_noif A (widen_ord Hmn r) = all_cols_one A (widen_ord Hmn r). {
+      rewrite -matrixP => x y. by rewrite all_cols_one_noif_val all_cols_one_val/= (negbTE (Hallz x)). }
+    rewrite -matrixP => x y. rewrite sub_all_rows_noif_val sub_all_rows_val.
+    case Hxr : (x == r).
+    + by rewrite all_cols_one_noif_val all_cols_one_val/= (negbTE (Hallz x)).
+    + rewrite Hcols. have->//: all_cols_one A (widen_ord Hmn r) x (widen_ord Hmn r) == 0 = false.
+      by rewrite all_cols_one_val/= (negbTE (Hallz x)) GRing.mulfV // GRing.oner_eq0.
+Qed.
 
+(* Now we give the condition in terms of strong invertibility*)
 Lemma gauss_one_step_restrict_equiv_iff: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
-  gauss_invar A r r -> (*can do just row of zeroes if want to do in parts but its ok i think*)
+  gauss_invar A r r ->
   ((gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
   r_strong_inv A Hmn r.
 Proof.
-  gauss_one_step_restrict A r Hmn = gauss_one_step A r (widen_ord Hmn r)
+  move => m n A r Hmn Hinv. by rewrite gauss_one_step_restrict_equiv_zeroes r_strong_inv_all_zeroes_iff.
+Qed.
 
+(* TODO: show preservation iff*)
 
-
-r_strong_inv
-
-
- Hcol // orbT.
-    
-
-
-
-    Search negb false.
-    move : Hrow. by move => /(_ x Hge) ->.
-
-
-    -
-    
-
-
-
- Search (_ <= _) negb.
-
-
- Search ?x.-1.+1. 
-
- rewrite mxE /=.
-
-
-
- apply (ord_nonzero). Search (?p -> 0 < ?b).
-
-
- by []. Search (?x.-1 < ?y). apply (ltn_trans y).
-        +
-    
-
- apply  
-
-
-      Search negb false.
-      move : Hcol. move => /(_ x Hlt). by move ->.
-      
+(* Old proofs *)
 
 
 (*Now, we show the crucial property that ensures that this condition is sufficient for the restricted
