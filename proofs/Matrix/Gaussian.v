@@ -727,14 +727,14 @@ Definition gauss_invar {m n} (A: 'M[F]_(m, n)) (r : nat) (c: nat) :=
   (forall (r' : 'I_m) (c' : 'I_n), r <= r' ->  c' < c -> A r' c' = 0). (*first c entries of rows >= r are all zero*)
 
 (*One step of gaussian elimination*)
-Definition gauss_one_step {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) : 'M[F]_(m, n) * (option 'I_m) * (option 'I_n) :=
+Definition gauss_one_step {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n) : 'M[F]_(m, n) * (option 'I_m) :=
   match (fst_nonzero A c r) with
-  | None => (A, Some r, insub (c.+1))
+  | None => (A, Some r)
   | Some k =>
     let A1 := xrow k r A in
     let A2 := all_cols_one A1 c in
     let A3 := sub_all_rows A2 r c in
-    (A3, insub (r.+1), insub (c.+1))
+    (A3, insub (r.+1))
   end.
 
 (*Results about the structure of the matrix after 1 step of gaussian elim. We use these lemmas to prove invariant
@@ -871,12 +871,12 @@ Qed.
 Lemma gauss_one_step_invar: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n),
   gauss_invar A r c ->
   match (gauss_one_step A r c) with
-  | (A', or, oc) => gauss_invar A' (ord_bound_convert or) (ord_bound_convert oc)
+  | (A', or) => gauss_invar A' (ord_bound_convert or) (c.+1)
   end.
 Proof.
-  move => m n A r c Hinv. case G : (gauss_one_step A r c) => [[A' or] oc]. move : G.
+  move => m n A r c Hinv. case G : (gauss_one_step A r c) => [A' or]. move : G.
   rewrite /gauss_one_step. case Fz : (fst_nonzero A c r) => [k |]; rewrite //=.
-  - move => G. case : G => Ha' Hor Hoc. subst.
+  - move => G. case : G => Ha' Hor. subst.
     move : Hinv. rewrite {1}/gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
     rewrite /gauss_invar. rewrite !ord_bound_convert_plus. split; try split; try split.
     + move => r'. rewrite ltnS leq_eqVlt; move => /orP[Hrr' | Hrr'].
@@ -922,9 +922,9 @@ Proof.
         by move => [H [H' H'']].
       * apply gauss_one_step_bottom_rows; try by []. by rewrite leq_eqVlt Hrr' orbT.
   - have: forall (x: 'I_m), r <= x -> A x c = 0 by apply fst_nonzero_none. move {Fz} => Fz.
-    move => G. case : G => Ha' Hor Hoc. subst.
+    move => G. case : G => Ha' Hor. subst.
     move : Hinv. rewrite {1}/gauss_invar; move => [Hleadbefore [Hincr [Hzcol Hzero]]].
-    rewrite /gauss_invar. rewrite !ord_bound_convert_plus. rewrite /ord_bound_convert. split; try split; try split.
+    rewrite /gauss_invar. split; try split; try split.
     + move => r' Hrr'.  move : Hleadbefore => /(_ r' Hrr') [c' [Hlc Hcc']]. exists c'. split. by [].
       have: (c < c.+1) by []. move : Hcc'. by apply ltn_trans.
     + by [].
@@ -941,17 +941,12 @@ Proof.
       * by apply Hzero.
 Qed.
 
-Definition fst' {A B C} (x: A * B * C) :=
-  match x with
-  | (a, _, _) => a
-  end.
-
 Lemma gauss_one_step_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (c: 'I_n),
-  row_equivalent A (fst' (gauss_one_step A r c)).
+  row_equivalent A (gauss_one_step A r c).1.
 Proof.
-  move => m n A r c. case G : (gauss_one_step A r c) => [[A' or] oc]. move : G.
+  move => m n A r c. case G : (gauss_one_step A r c) => [A' or]. move : G.
   rewrite /gauss_one_step. case Fz : (fst_nonzero A c r) => [k |]; rewrite //=;
-  move => G; case : G => Ha' Hor Hoc; subst.
+  move => G; case : G => Ha' Hor; subst.
   - apply row_equivalent_trans with (B:= (all_cols_one (xrow k r A) c)).
     apply row_equivalent_trans with (B:= xrow k r A). apply ero_row_equiv. constructor.
     apply all_cols_one_row_equiv. apply sub_all_rows_row_equiv.
@@ -963,20 +958,56 @@ Require Import Recdef.
 Require Import Lia.
 
 (** Gaussian Elimination Full Algorithm*)
+(*We have two versions: a fuel-based version that goes for s steps or finishes, whichever happens first, or
+  a version that goes to the end. We prove equivalence when s is large enough. The second version is
+  easier for proofs, but we need the first, generalized version, in GaussRestrict.v*)
+Fixpoint gauss_multiple_steps {m n} (A: 'M[F]_(m, n)) (r: option 'I_m) (c: option 'I_n) s : 'M[F]_(m, n) :=
+  match s with
+  | 0 => A
+  | s'.+1 => match r, c with
+             | Some r', Some c' => match (gauss_one_step A r' c') with
+                                   | (A', or) => gauss_multiple_steps A' or (insub (c'.+1)) s'
+                                   end
+             | _, _ => A
+             end
+  end.
+
 Function gauss_all_steps {m n} (A: 'M[F]_(m, n)) (r : option 'I_m) (c : option 'I_n) 
   {measure (fun x => (n - ord_bound_convert x)%N) c} : 'M[F]_(m, n) :=
   match r, c with
   | Some r', Some c' => match (gauss_one_step A r' c') with
-                        | (A', or, oc) => gauss_all_steps A' or oc
+                        | (A', or) => gauss_all_steps A' or (insub (c'.+1))
                         end
   | _, _ => A
   end.
 Proof.
-move => m n A r c r' Hrr' c' Hcc' p oc A' or Hp. subst.
+move => m n A r c r' Hrr' c' Hcc' A' or. subst.
 rewrite /gauss_one_step. case Fz : (fst_nonzero A c' r') => [k |]; rewrite //=;
-move => G; case : G => Ha' Hor Hoc; subst; rewrite ord_bound_convert_plus;
+move => G; case : G => Ha' Hor; subst; rewrite ord_bound_convert_plus;
 rewrite subnS; apply Lt.lt_pred_n_n; apply (elimT ltP); by rewrite subn_gt0. 
 Defined.
+
+Lemma gauss_multiple_steps_col_none: forall {m n} (A: 'M[F]_(m, n)) or s,
+  gauss_multiple_steps A or None s = A.
+Proof.
+  move => m n A or s. rewrite /gauss_multiple_steps. case : s => [//|]. by case: or.
+Qed.
+
+(*If we give enough fuel, the result will be the same using either*)
+Lemma gauss_multiple_steps_equiv: forall {m n} (A: 'M[F]_(m, n)) or (c: 'I_n) s,
+  n <= s + c ->
+  gauss_multiple_steps A or (Some c) s = gauss_all_steps A or (Some c).
+Proof.
+  move => m n A or c s. move: A or c. 
+  elim : s => [A or c| s' IH/= A or c].
+  - rewrite add0n/= leqNgt. have->//: c < n by [].
+  - rewrite gauss_all_steps_equation. case : or =>[a Hsc|//].
+    case Hg: (gauss_one_step A a c) => [A' or].
+    case Hcn : (c.+1 < n).
+    + rewrite insubT /=. apply IH. by rewrite /= -add1n addnA addn1.
+    + rewrite insubF //= gauss_multiple_steps_col_none gauss_all_steps_equation /=.
+      move: Hg. by case : or.
+Qed.
 
 (*After we run this function, the gaussian invariant is satisfied for either m or n*)
 (*We will handle the None case separately - (ie, if m = 0 or n = 0*)
@@ -990,9 +1021,10 @@ Proof.
     gauss_invar B (ord_bound_convert r') (ord_bound_convert c') ->
     (exists r'' : nat, r'' <= m /\ gauss_invar C r'' n) \/
     (exists c'' : nat, c'' <= n /\ gauss_invar C m c''))).
-  - move => A r c r' Hrr' c' Hcc' A' or oc Hgo Hind; subst.
+  - move => A r c r' Hrr' c' Hcc' A' or Hgo Hind; subst.
     rewrite /ord_bound_convert. move => Hinv.
-    apply Hind. have H := gauss_one_step_invar Hinv. by rewrite Hgo in H.
+    apply Hind. have H := gauss_one_step_invar Hinv. rewrite Hgo in H.
+    by rewrite ord_bound_convert_plus.
   - move => A r c x Hrx x' Hcx'; subst. case : x => a. case : x' => b.
     by []. rewrite /ord_bound_convert. move => H. left. exists a. split.
     rewrite leq_eqVlt. have: a < m  by []. move ->. by rewrite orbT. by [].
@@ -1006,9 +1038,9 @@ Lemma gauss_all_steps_row_equiv: forall {m n} (A: 'M[F]_(m, n)) (r : option 'I_m
   row_equivalent A (gauss_all_steps A r c).
 Proof.
   move => m n. apply (@gauss_all_steps_ind m n (fun B r' c' C => row_equivalent B C)).
-  - move => A r c r' Hrr' c' Hcc' A' or oc Hg Hre; subst.
+  - move => A r c r' Hrr' c' Hcc' A' or Hg; subst.
     apply (@row_equivalent_trans _ _ _ A'). have Hrow := (gauss_one_step_row_equiv A r' c').
-    rewrite Hg in Hrow. apply Hrow. by [].
+    rewrite Hg in Hrow. apply Hrow.
   - constructor.
 Qed.
 
@@ -1423,7 +1455,7 @@ Proof.
   move => m n Hmn A Hred. apply (rref_colsub_cases Hmn) in Hred. case : Hred.
   - move ->. by rewrite unitmx1 eq_refl.
   - move => [r Hzero]. 
-    have Hinv: (colsub (widen_ord Hmn) A \notin unitmx). { Check row_zero_not_unitmx. apply (row_zero_not_unitmx (r:=r)).
+    have Hinv: (colsub (widen_ord Hmn) A \notin unitmx). { apply (row_zero_not_unitmx (r:=r)).
       move => c. rewrite mxE. apply Hzero. by have: c < m by []. }
     rewrite (negbTE Hinv). 
     case Hid: (colsub (widen_ord Hmn) A == 1%:M).

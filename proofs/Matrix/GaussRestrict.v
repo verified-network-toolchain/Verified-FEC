@@ -329,7 +329,7 @@ Qed.
   of regular gaussian elimination iff the current matrix has a row of all zeroes (and hence iff it
   is strongly invertible)*)
 Lemma gauss_one_step_restrict_equiv_zeroes:  forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
-  ((gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
+  ((gauss_one_step_restrict A r Hmn, insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
   (forall (x : 'I_m), A x (widen_ord Hmn r) != 0).
 Proof.
   move => m n A r Hmn. split.
@@ -405,13 +405,114 @@ Qed.
 (* Now we give the condition in terms of strong invertibility*)
 Lemma gauss_one_step_restrict_equiv_iff: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
   gauss_invar A r r ->
-  ((gauss_one_step_restrict A r Hmn, insub (r.+1), insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
+  ((gauss_one_step_restrict A r Hmn, insub (r.+1)) = gauss_one_step A r (widen_ord Hmn r)) <->
   r_strong_inv A Hmn r.
 Proof.
   move => m n A r Hmn Hinv. by rewrite gauss_one_step_restrict_equiv_zeroes r_strong_inv_all_zeroes_iff.
 Qed.
 
 (* TODO: show preservation iff*)
+
+(* Now we want to generalize this result to multiple steps of Gaussian elimination. We will need a stronger
+  lemma to get the right induction hypothesis, so we define the notion of all-strong-invertibility, where
+  A is x-strongly invertible for all r <= x < r + s*)
+
+Definition all_strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) (s: nat) :=
+  forall (x: 'I_m), r <= x < r + s -> r_strong_inv A Hmn x.
+
+Lemma all_strong_inv_expand : forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) (Hr1m: r.+1 < m) (s: nat),
+  all_strong_inv A Hmn r s.+1 <-> r_strong_inv A Hmn r /\ all_strong_inv A Hmn (Ordinal Hr1m) s.
+Proof.
+  move => m n A Hmn r Hr1m s. rewrite /all_strong_inv. split.
+  - move => Hinv. split. apply Hinv. by rewrite leqnn -ltn_subLR // subnn.
+    move => x Hx. apply Hinv. move: Hx. rewrite /= => /andP[Hrx Hxr1s].
+    have->/=: r <= x by apply ltnW. move: Hxr1s. by rewrite -(addn1 r) -addnA (add1n s).
+  - move => [Hrinv Hinv] x /andP[Hrx Hxrs]. move: Hrx. rewrite leq_eqVlt => /orP[/eqP Hrx | Hrx].
+    + by have->: x = r by apply ord_inj.
+    + apply Hinv. by rewrite /= Hrx -(addn1 r) -addnA (add1n s).
+Qed.
+
+(* Analagously, we define a function to peform s steps of Restricted Gaussian Elimination*)
+Definition gauss_multiple_steps_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) r s :=
+foldl (fun A' r' => match (insub r') with
+                       | Some r'' => gauss_one_step_restrict A' r'' Hmn
+                       | None => A'
+                      end) A (iota r s).
+
+Lemma gauss_multiple_steps_restrict_expand: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r : 'I_m) s,
+  gauss_multiple_steps_restrict A Hmn r s.+1 = gauss_multiple_steps_restrict (gauss_one_step_restrict A r Hmn) Hmn r.+1 s.
+Proof.
+  move => m n A Hmn r s. rewrite /gauss_multiple_steps_restrict /= insubT //= => Hrm.
+  by have->: Ordinal Hrm = r by apply ord_inj.
+Qed.
+
+(* There is a degenerate case: when all remaining rows consist of all zeroes, [gauss_multiple_steps_restrict]
+   does not change these rows. We need to prove this because it causes a bit of a problem in the lemma we want *)
+Lemma gauss_one_step_restrict_rest_all_zero: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
+  (forall (r': 'I_m) (c: 'I_n), r <= r' -> A r' c = 0) ->
+  forall (r': 'I_m) (c: 'I_n), r <= r' -> gauss_one_step_restrict A r Hmn r' c = 0.
+Proof.
+  move => m n A r Hmn Hzero r' c Hr'. rewrite /gauss_one_step_restrict sub_all_rows_noif_val.
+  case: (r' == r) /eqP => [Hreq | Hreq]; rewrite !all_cols_one_noif_val !Hzero // GRing.invr0 GRing.mul0r //.
+  by rewrite GRing.subrr.
+Qed.
+
+Lemma gauss_multiple_steps_restrict_overflow: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) r s,
+   m <= r ->
+  gauss_multiple_steps_restrict A Hmn r s = A.
+Proof.
+  move => m n A Hmn r s Hmr. move : A r Hmr. elim : s => [A r Hmr //= | s' IH /= A r Hmr].
+  rewrite /gauss_multiple_steps_restrict /= insubF //.
+  move: IH. rewrite /gauss_multiple_steps_restrict. move ->. by []. by apply (leq_trans Hmr).
+  by rewrite ltnNge Hmr. 
+Qed.
+
+Lemma gauss_multiple_steps_restrict_rest_all_zero: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n) s,
+  (forall (r': 'I_m) (c: 'I_n), r <= r' -> A r' c = 0) ->
+  forall (r': 'I_m) (c: 'I_n), r <= r' -> gauss_multiple_steps_restrict A Hmn r s r' c = 0.
+Proof.
+  move => m n A r Hmn s. move: A r. elim : s => [/= A r Hzero r' c Hr'| s' IH /= A r Hzero r' c Hr'].
+  - by rewrite /gauss_multiple_steps_restrict /= Hzero.
+  - rewrite gauss_multiple_steps_restrict_expand.
+    (*ugh I think we need another lemma that says that previously-zero rows are not affected TODO think about this more
+      later*)
+    (*TODO: start here*)
+
+(* The lemma we want to show: [gauss_multiple_steps_restrict A r s] equals [gauss_multiple_steps A r s] iff
+  [all_strong_inv A r s] holds (as long as A satisfies the Gaussian invariant) *)
+(*TODO: maybe theorem*)
+Lemma gauss_multiple_steps_restrict_equiv_iff: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n) s,
+  gauss_invar A r r ->
+  (gauss_multiple_steps_restrict A Hmn r s = gauss_multiple_steps A (Some r) (Some (widen_ord Hmn r)) s) 
+  <-> all_strong_inv A Hmn r s.
+Proof.
+  move => m n A r Hmn s Hinv. move : A Hinv. elim : s => [/= A Hinv |s' IH /= A Hinv].
+  - rewrite /gauss_multiple_steps_restrict/=. split => [_|//]. rewrite /all_strong_inv => x.
+    rewrite addn0 => /andP[Hrx Hxr]. move: Hxr. by rewrite ltnNge Hrx.
+  - rewrite gauss_multiple_steps_restrict_expand. split.
+    + (*equality -> all_strong_inv*)
+      Print gauss_one_step.
+      (* Need to know that we do not have all rows of zeroes on row r or below - if we do, then both are
+         the same, I believe*)
+      (*ugh - need to prove that gauss_one_step does not hit None case - if it does, all values in resulting col
+        are 0 and they stay that way, in restrict - those turn into all zero rows and will be for the rest of it
+        actually not confident*)
+      (* 1 way - require that there is no row of zeroes in A - then we show that in gauss_all_steps, no row of zeroes
+         in this - if None, get that all rows become zeroes - need separate lemma, if all rows after all zeroes,
+         then matrix is unchanged (indirect) dont love it, but I think ok for now*)
+      (* To see why this is a problem - consider 2n x 2n matrix where bottom n x 2n is all zeroes - alg same on there
+         but clearly not strong inv*)
+
+ Search (_ < _) negb.
+
+
+ Search iota. 
+
+
+ split.
+  - (*equality -> all_strong_inv*)
+    
+
 
 (* Old proofs *)
 
