@@ -1,0 +1,12 @@
+#  If you define CLIGHTGEN=/path/to/clightgen
+#  (either in the CONFIGURE file or as an extra argument to 'make')
+#  then this file will make sure to rebuild fec.v from fec.c when needed
+#  (But don't add the CONFIGURE file to the repo...)
+
+-include CONFIGURE
+ifdef CLIGHTGEN
+src/fecActuator/fec.v: src/fecActuator/fec.c src/fecActuator/fec.h
+	$(CLIGHTGEN) -normalize $<
+endif
+	
+		       
