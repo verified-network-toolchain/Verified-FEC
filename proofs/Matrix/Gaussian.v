@@ -987,6 +987,12 @@ move => G; case : G => Ha' Hor; subst; rewrite ord_bound_convert_plus;
 rewrite subnS; apply Lt.lt_pred_n_n; apply (elimT ltP); by rewrite subn_gt0. 
 Defined.
 
+Lemma gauss_multiple_steps_row_none: forall {m n} (A: 'M[F]_(m, n)) oc s,
+  gauss_multiple_steps A None oc s = A.
+Proof.
+  move => m n A or s. rewrite /gauss_multiple_steps. by case : s => [//|].
+Qed.
+
 Lemma gauss_multiple_steps_col_none: forall {m n} (A: 'M[F]_(m, n)) or s,
   gauss_multiple_steps A or None s = A.
 Proof.
@@ -1007,6 +1013,27 @@ Proof.
     + rewrite insubT /=. apply IH. by rewrite /= -add1n addnA addn1.
     + rewrite insubF //= gauss_multiple_steps_col_none gauss_all_steps_equation /=.
       move: Hg. by case : or.
+Qed.
+
+(* One more needed result: [gauss_multiple_steps] is row equivalent (and therefore preserves colsub invertibility)*)
+Lemma gauss_multiple_steps_row_equiv: forall {m n} (A: 'M[F]_(m, n)) or oc s,
+  row_equivalent A (gauss_multiple_steps A or oc s).
+Proof.
+  move => m n A or oc s. move: A or oc. elim : s => [/= A or oc | s' IH /= A or oc].
+  - constructor.
+  - case : or; last first. constructor. move => or. case: oc; last first. constructor. move => oc.
+    case Hg: (gauss_one_step A or oc) => [A' or'].
+    have Hrow: row_equivalent A A'. have->: A' = (gauss_one_step A or oc).1 by rewrite Hg.
+    apply gauss_one_step_row_equiv.
+    apply (row_equivalent_trans Hrow). apply IH.
+Qed.
+
+Lemma gauss_multiple_steps_colsub_unitmx: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) or oc s,
+  (colsub (widen_ord Hmn) A) \in unitmx =
+  (colsub (widen_ord Hmn) (gauss_multiple_steps A or oc s) \in unitmx).
+Proof.
+  move => m n A Hmn or oc s. erewrite (row_equivalent_unitmx_iff); last first. apply colsub_row_equivalent.
+  apply gauss_multiple_steps_row_equiv. by [].
 Qed.
 
 (*After we run this function, the gaussian invariant is satisfied for either m or n*)
