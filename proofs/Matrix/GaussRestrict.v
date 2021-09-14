@@ -1179,3 +1179,5 @@ Proof.
         + by rewrite Hcon in Hx. }
     by rewrite unitmx_castmx.
 Qed.*)
+
+End Gauss.

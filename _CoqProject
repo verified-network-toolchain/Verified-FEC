@@ -9,6 +9,7 @@ proofs/Poly/BoolField.v
 proofs/Poly/ListPoly.v
 proofs/Poly/ByteField.v
 proofs/Matrix/Gaussian.v
+proofs/Matrix/GaussRestrict.v
 proofs/Matrix/LinIndep.v
 proofs/Matrix/Vandermonde.v
 proofs/RS/ReedSolomon.v

@@ -12,6 +12,7 @@ Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.poly.
 Require Import LinIndep.
 Require Import Gaussian.
+Require Import GaussRestrict.
 Require Import CommonSSR.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -819,7 +820,7 @@ Proof.
   - by rewrite Hnm.
 Qed. 
 
-
+Check strong_inv.
 (*As a corollary of this result, [strong_inv] is satisfied for this submatrix*)
 Lemma any_submx_strong_inv: forall {m n} (Hmn: m <= n) (Hm: 0 < m) z (l: list F) (rows: list 'I_m) (cols: list 'I_n) (r: 'I_z),
   uniq l ->
@@ -830,7 +831,7 @@ Lemma any_submx_strong_inv: forall {m n} (Hmn: m <= n) (Hm: 0 < m) z (l: list F)
   size rows = z ->
   (forall x, x \in cols -> m <= x) ->
   strong_inv (submx_rows_cols z z (gaussian_elim (vandermonde m n l)) rows cols (Ordinal Hm) (widen_ord Hmn (Ordinal Hm)))
-    (leqnn _) r.
+    (ord_nonzero r) (leqnn _).
 Proof.
   move => m n Hmn Hm z l rows cols r Hunl Hszl Hunr Hunc Hszrc Hszr Hincols.
   have H0n: 0 < n by apply (ltn_leq_trans Hm).
