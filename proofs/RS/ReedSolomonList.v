@@ -23,6 +23,7 @@ Require Import ZSeq.
 Require Import CommonSSR.
 Require Import Vandermonde.
 Require Import Gaussian.
+Require Import GaussRestrict.
 Require Import InhabOption.
 
 Lemma NoDup_app: forall {A: Type} (l1 l2:list A),
@@ -766,16 +767,6 @@ Proof.
   by rewrite /weight_list size_rev size_map size_iota.
 Qed.
 
-Lemma weight_mx_spec: lmatrix_to_mx fec_max_h (fec_n - 1) weight_mx =
-   weights (Z.to_nat fec_max_h) (Z.to_nat (fec_n - 1)) weight_list.
-Proof.
-  rewrite /weight_mx /weight_list gauss_restrict_rows_equiv. rep_lia.
-  move => Hhn. rewrite /weights gaussian_elim_equiv. f_equal. by rewrite weight_mx_list_spec; try rep_lia.
-  apply /leP. rep_lia. move => Hh. rewrite weight_mx_list_spec; try rep_lia. apply vandermonde_strong_inv.
-  apply /ltP. rep_lia.
-  apply weight_matrix_wf; rep_lia.
-Qed.
-
 Lemma h_pos: 0 < fec_max_h.
 Proof.
   rep_lia.
@@ -786,10 +777,31 @@ Proof.
   rep_lia.
 Qed.
 
+Lemma weight_mx_spec: lmatrix_to_mx fec_max_h (fec_n - 1) weight_mx =
+   weights (Z.to_nat fec_max_h) (Z.to_nat (fec_n - 1)) weight_list.
+Proof.
+  rewrite /weight_mx /weight_list /weights.
+  have Hwf: wf_lmatrix (weight_mx_list fec_max_h (fec_n - 1)) fec_max_h (fec_n - 1) by apply weight_matrix_wf; rep_lia.
+  have Hinv: all_strong_inv_list fec_max_h (fec_n - 1) (weight_mx_list fec_max_h (fec_n - 1)) 0. {
+    rewrite /all_strong_inv_list. case: (range_le_lt_dec 0 0 fec_max_h) => [H0h|]; try rep_lia.
+    case: (Z_le_lt_dec fec_max_h (fec_n - 1)) => [Hhn |]; try rep_lia. rewrite weight_mx_list_spec; try rep_lia.
+    apply vandermonde_strong_inv. apply /ltP. rep_lia. }
+  have Hmn: fec_max_h <= fec_n - 1 by rep_lia.
+  pose proof (gauss_restrict_rows_equiv Hmn Hwf Hinv) as Hwres. move: Hwres.
+  pose proof gaussian_elim_equiv.
+  have Hgauss: gaussian_elim_restrict (lmatrix_to_mx fec_max_h (fec_n - 1) (weight_mx_list fec_max_h (fec_n - 1)))
+  (le_Z_N Hmn) = Some(gaussian_elim (lmatrix_to_mx fec_max_h (fec_n - 1) (weight_mx_list fec_max_h (fec_n - 1)))). {
+    apply (gaussian_elim_equiv _ _ (ord_zero_proof h_pos)). rewrite weight_mx_list_spec; try rep_lia.
+    apply vandermonde_strong_inv. apply /ltP; rep_lia. }
+  rewrite Hgauss. move => [Hmx]. rewrite Hmx. by rewrite weight_mx_list_spec; try rep_lia.
+Qed.
+
 Lemma weight_list_uniq: uniq weight_list.
 Proof.
   rewrite /weight_list rev_uniq power_list_uniq //=. apply /leP. rep_lia.
 Qed.
+
+(*TODO: start here*)
 
 (*We need this both for correctness and for the the VST proof*)
 Lemma strong_inv_list_partial: forall k xh h stats parities,
@@ -799,11 +811,11 @@ Lemma strong_inv_list_partial: forall k xh h stats parities,
   0 <= k <= (fec_n - 1) - fec_max_h ->
   Zlength (find_parity_rows parities h) = Zlength (find_lost stats k) ->
   Zlength (find_parity_rows parities h) = xh ->
-  strong_inv_list xh xh (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) 
+  all_strong_inv_list xh xh (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) 
     (map Byte.unsigned (find_parity_rows parities h)) (map Byte.unsigned (rev (find_lost stats k)))) 0%Z.
 Proof.
   move => k xh h stats parities Hxh Hh Hhmax Hkn Hlens Hlenxh.
-  rewrite /strong_inv_list. case : (range_le_lt_dec 0 0 xh); try lia.
+  rewrite /all_strong_inv_list. case : (range_le_lt_dec 0 0 xh); try lia.
   move => Hxh0. case : (Z_le_lt_dec xh xh); try lia. move => Hxhtriv.
   remember (find_parity_rows parities h) as row.
   have Hallrow: Forall (fun x => 0 <= Byte.unsigned x < h) row.

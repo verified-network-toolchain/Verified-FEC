@@ -27,6 +27,7 @@ Require Import BoolField.
 Require Import Vandermonde.
 Require Import ByteFacts.
 Require Import Gaussian.
+Require Import GaussRestrict.
 
 (** Results about the Weight Matrix*)
 
@@ -306,7 +307,7 @@ Qed.
   satisfied [strong_inv 0]*)
 Lemma vandermonde_strong_inv: forall m n (Hmn: (m <= n)%N) (Hm: (0 < m)%N),
   (n < 256)%N ->
-  strong_inv (vandermonde_powers m n) Hmn (Ordinal Hm).
+  all_strong_inv (vandermonde_powers m n) Hmn (Ordinal Hm).
 Proof.
   move => m n Hmn Hm Hn. rewrite /strong_inv => r' H{H}.
   split; move => j Hrj.
