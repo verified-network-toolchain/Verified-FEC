@@ -780,20 +780,11 @@ Qed.
 Lemma weight_mx_spec: lmatrix_to_mx fec_max_h (fec_n - 1) weight_mx =
    weights (Z.to_nat fec_max_h) (Z.to_nat (fec_n - 1)) weight_list.
 Proof.
-  rewrite /weight_mx /weight_list /weights.
-  have Hwf: wf_lmatrix (weight_mx_list fec_max_h (fec_n - 1)) fec_max_h (fec_n - 1) by apply weight_matrix_wf; rep_lia.
-  have Hinv: all_strong_inv_list fec_max_h (fec_n - 1) (weight_mx_list fec_max_h (fec_n - 1)) 0. {
-    rewrite /all_strong_inv_list. case: (range_le_lt_dec 0 0 fec_max_h) => [H0h|]; try rep_lia.
-    case: (Z_le_lt_dec fec_max_h (fec_n - 1)) => [Hhn |]; try rep_lia. rewrite weight_mx_list_spec; try rep_lia.
-    apply vandermonde_strong_inv. apply /ltP. rep_lia. }
-  have Hmn: fec_max_h <= fec_n - 1 by rep_lia.
-  pose proof (gauss_restrict_rows_equiv Hmn Hwf Hinv) as Hwres. move: Hwres.
-  pose proof gaussian_elim_equiv.
-  have Hgauss: gaussian_elim_restrict (lmatrix_to_mx fec_max_h (fec_n - 1) (weight_mx_list fec_max_h (fec_n - 1)))
-  (le_Z_N Hmn) = Some(gaussian_elim (lmatrix_to_mx fec_max_h (fec_n - 1) (weight_mx_list fec_max_h (fec_n - 1)))). {
-    apply (gaussian_elim_equiv _ _ (ord_zero_proof h_pos)). rewrite weight_mx_list_spec; try rep_lia.
-    apply vandermonde_strong_inv. apply /ltP; rep_lia. }
-  rewrite Hgauss. move => [Hmx]. rewrite Hmx. by rewrite weight_mx_list_spec; try rep_lia.
+  rewrite /weight_mx /weight_list gauss_restrict_rows_equiv. rep_lia.
+  move => Hhn. rewrite /weights gaussian_elim_restrict_noop_equiv. f_equal. by rewrite weight_mx_list_spec; try rep_lia.
+  apply /leP. rep_lia. move => Hh. rewrite weight_mx_list_spec; try rep_lia. apply vandermonde_strong_inv.
+  apply /ltP. rep_lia.
+  apply weight_matrix_wf; rep_lia.
 Qed.
 
 Lemma weight_list_uniq: uniq weight_list.
@@ -835,6 +826,12 @@ Proof.
   (*Need to switch defaults for applying theorem*)
   rewrite (submx_rows_cols_default _ (ord_zero Hmaxh) (ord_zero Hn) (Ordinal Hhnat) ( widen_ord Hhn (Ordinal Hhnat))).
   + have->: (le_Z_N Hxhtriv) = (leqnn (Z.to_nat xh)) by apply bool_irrelevance.
+    have H0xh: (0 < Z.to_nat xh)%N by (apply /ltP; lia). have->: Z_to_ord Hxh0 = Ordinal H0xh by apply ord_inj.
+    (* for folding all_strong_inv -> strong_inv*)
+    have->: forall (F: fieldType) (m n: nat) (A: 'M[F]_(m, n)) (H0m: (0 < m)%N) (Hmn: (m <= n)%N),
+      all_strong_inv A Hmn (Ordinal H0m) = strong_inv A H0m Hmn. { move => F m n A H0m Hmn.
+      by rewrite /all_strong_inv. }
+    have->: H0xh = ord_nonzero (Ordinal H0xh) by apply bool_irrelevance.
     apply any_submx_strong_inv; rewrite //=.
     * by rewrite weight_list_uniq. 
     * apply weight_list_size.

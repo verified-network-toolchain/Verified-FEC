@@ -849,6 +849,26 @@ Proof.
   by apply Hconds. move => n' Hn'. apply Hin. by rewrite in_cons Hn' orbT.
 Qed.
 
+(*We need another, similar, weaker for functions that just use [iota]*)
+Lemma foldl_ziota_to_mx': forall m n mx f b 
+  (g: 'M[F]_(Z.to_nat m, Z.to_nat n) -> nat -> 'M[F]_(Z.to_nat m, Z.to_nat n)),
+  (forall (r: Z) (mx: lmatrix), 0 <= r < m -> wf_lmatrix mx m n ->
+      lmatrix_to_mx m n (f mx r) = g (lmatrix_to_mx m n mx) (Z.to_nat r)) ->
+  (forall mx' i, 0 <= i < m -> wf_lmatrix mx' m n -> wf_lmatrix (f mx' i) m n) ->
+  0 <= b <= m ->
+  wf_lmatrix mx m n ->
+  lmatrix_to_mx m n (fold_left f (Ziota 0 b) mx) = foldl g (lmatrix_to_mx m n mx) (iota 0 (Z.to_nat b)).
+Proof.
+  move => m n mx f b g Hcompat Hwfpres Hb Hwf. rewrite /Ziota. have ->: (Z.to_nat 0) = 0%N by lia.
+  have: forall n, n \in (iota 0 (Z.to_nat b)) -> (n < Z.to_nat b)%N. { move => n'. by rewrite mem_iota. }
+  move : mx Hwf.
+  elim: (iota 0 (Z.to_nat b)) => [//| h t IH mx Hwf Hin /=].
+  have Hhm: 0 <= Z.of_nat h < m. have /ltP Hhb : (h < Z.to_nat b)%N. apply Hin. by rewrite in_cons eq_refl. lia.
+  rewrite IH //. rewrite Hcompat //.
+  by rewrite Nat2Z.id. by apply Hwfpres. 
+  move => n' Hnin. apply Hin. by rewrite in_cons Hnin orbT.
+Qed.
+
 (*Corollaries and useful general results*)
 Lemma foldl_ziota_plus_one: forall (mx: lmatrix) (f: lmatrix -> Z -> lmatrix) (b: Z),
   0 <= b ->
@@ -1131,61 +1151,13 @@ Qed.
 
 Lemma gauss_all_steps_rows_equiv: forall m n (mx: lmatrix) (Hmn : m <= n) r,
   wf_lmatrix mx m n ->
-  all_strong_inv_list m n mx 0 ->
   0 <= r <= m ->
-  Some(lmatrix_to_mx m n (gauss_all_steps_rows_partial m n mx r)) = gauss_all_steps_restrict_beg (lmatrix_to_mx m n mx) (le_Z_N Hmn) (Z.to_nat r).
+  lmatrix_to_mx m n (gauss_all_steps_rows_partial m n mx r) = gauss_all_steps_restrict_beg_noop (lmatrix_to_mx m n mx) (le_Z_N Hmn) (Z.to_nat r).
 Proof.
-  move => m n mx Hmn r Hwf Hstr Hr.
-  (*ugh*)
-  rewrite /gauss_all_steps_rows_partial /gauss_all_steps_restrict_beg 
-   /gauss_multiple_steps_restrict /ord_enum /gauss_multiple_steps_restrict_body /Ziota.
-  have ->: (Z.to_nat 0) = 0%N by lia.
-   have: forall n, n \in (iota 0 (Z.to_nat r)) -> (n < Z.to_nat r)%N. { move => n'. by rewrite mem_iota. }
-  move: mx Hwf Hstr.
-  elim: (iota 0 (Z.to_nat r)) => [//| h t IH mx Hwf Hstr Hin /=].
-Admitted.
-(*
-
-
-
-(*We need another, similar, weaker for functions that just use [iota]*)
-Lemma foldl_ziota_to_mx': forall m n mx f b 
-  (g: 'M[F]_(Z.to_nat m, Z.to_nat n) -> nat -> 'M[F]_(Z.to_nat m, Z.to_nat n)),
-  (forall (r: Z) (mx: lmatrix), 0 <= r < m -> wf_lmatrix mx m n ->
-      lmatrix_to_mx m n (f mx r) = g (lmatrix_to_mx m n mx) (Z.to_nat r)) ->
-  (forall mx' i, 0 <= i < m -> wf_lmatrix mx' m n -> wf_lmatrix (f mx' i) m n) ->
-  0 <= b <= m ->
-  wf_lmatrix mx m n ->
-  lmatrix_to_mx m n (fold_left f (Ziota 0 b) mx) = foldl g (lmatrix_to_mx m n mx) (iota 0 (Z.to_nat b)).
-Proof.
-  move => m n mx f b g Hcompat Hwfpres Hb Hwf. rewrite /Ziota. have ->: (Z.to_nat 0) = 0%N by lia.
-  have: forall n, n \in (iota 0 (Z.to_nat b)) -> (n < Z.to_nat b)%N. { move => n'. by rewrite mem_iota. }
-  move : mx Hwf.
-  elim: (iota 0 (Z.to_nat b)) => [//| h t IH mx Hwf Hin /=].
-  have Hhm: 0 <= Z.of_nat h < m. have /ltP Hhb : (h < Z.to_nat b)%N. apply Hin. by rewrite in_cons eq_refl. lia.
-  rewrite IH //. rewrite Hcompat //.
-  by rewrite Nat2Z.id. by apply Hwfpres. 
-  move => n' Hnin. apply Hin. by rewrite in_cons Hnin orbT.
-Qed.
-  
-
-
- Check foldl_ziota_to_mx'.
- rewrite (foldl_ziota_to_mx' (g := (fun (oA : option 'M_(Z.to_nat m, Z.to_nat n)) (r' : nat) =>
-   match insub r' with
-   | Some r'' =>
-       match oA with
-       | Some A' =>
-           match gauss_one_step_restrict A' r'' (le_Z_N Hmn) with
-           | Some mx0 => Some mx0
-           | None => None
-           end
-       | None => None
-       end
-   | None => oA
-   end))). try by [].
+  move => m n mx Hmn r Hwf Hr. rewrite /gauss_all_steps_rows_partial /gauss_all_steps_restrict_beg_noop
+  /gauss_multiple_steps_restrict_noop /ord_enum. apply foldl_ziota_to_mx'; try by [].
   - move => r' mx' Hr' Hwf'. rewrite insubT. apply /ltP. lia. move => Hrm /=.
-    rewrite /gauss_one_step_restrict. rewrite sub_all_rows_equiv. f_equal.
+    rewrite /gauss_one_step_restrict_noop. rewrite sub_all_rows_equiv. f_equal.
     + rewrite all_cols_one_equiv_partial //=. lia. move => Hrn'.
       rewrite /all_cols_one_noif /ord_enum. f_equal. by apply ord_inj.
       apply lmatrix_m_pos in Hwf. lia.
@@ -1193,7 +1165,7 @@ Qed.
     + by apply all_cols_one_partial_wf.
   - move => mx' i Hi Hwf'. apply sub_all_rows_partial_wf=>[//|]. by apply all_cols_one_partial_wf.
 Qed.
-*)
+
 Lemma gauss_all_steps_rows_partial_wf: forall m n (mx: lmatrix) bound,
   0 <= bound <= m ->
   wf_lmatrix mx m n ->
@@ -1282,16 +1254,14 @@ Definition gauss_restrict_rows m n (mx: lmatrix) :=
 
 Lemma gauss_restrict_rows_equiv: forall {m n} (mx: lmatrix) (Hmn: m <= n),
   wf_lmatrix mx m n ->
-  all_strong_inv_list m n mx 0 ->
-  Some (lmatrix_to_mx m n (gauss_restrict_rows m n mx)) = gaussian_elim_restrict (lmatrix_to_mx m n mx) (le_Z_N Hmn).
+  lmatrix_to_mx m n (gauss_restrict_rows m n mx) = gaussian_elim_restrict_noop (lmatrix_to_mx m n mx) (le_Z_N Hmn).
 Proof.
-  move => m n mx Hmn Hwf Hstr.
+  move => m n mx Hmn Hwf.
   have H0m: 0 <= m by apply (lmatrix_m_pos Hwf).
-  rewrite /gauss_restrict_rows /gaussian_elim_restrict all_lc_one_rows_equiv.
-  case Hg: (gauss_all_steps_restrict (lmatrix_to_mx m n mx) (le_Z_N Hmn) ) => [mx' |];
-  move: Hg; rewrite gauss_all_steps_restrict_both_dirs -gauss_all_steps_rows_equiv //; try lia.
-  - move => [Hmx']. by rewrite -Hmx' subn1.
-  - apply gauss_all_steps_rows_partial_wf =>[|//]. lia.
+  rewrite /gauss_restrict_rows /gaussian_elim_restrict_noop all_lc_one_rows_equiv.
+  rewrite gauss_all_steps_rows_equiv //.
+  by rewrite subn1. lia.
+  apply gauss_all_steps_rows_partial_wf =>[|//]. lia.
 Qed.
 
 Lemma gauss_restrict_rows_wf: forall {m n} (mx: lmatrix),
@@ -1307,8 +1277,6 @@ Qed.
 
 End GaussFull.
 
-
-
 (*Even though we already know that the reduced Gaussian elimination is equivalent to the full algorithm
   if [strong_inv 0] is satisfied, that is not enough, since the C code checks and fails if the invariant
   is violated. So we need to use some of the intermediate theories from Gaussian.v - in particular, if we 
@@ -1321,19 +1289,16 @@ Lemma gauss_all_steps_rows_partial_strong_inv: forall m n mx r,
   all_strong_inv_list m n mx 0 ->
   all_strong_inv_list m n (gauss_all_steps_rows_partial m n mx r) r.
 Proof.
-  move => m n mx r Hwf Hrm Hstr. assert (Hstr':=Hstr). move: Hstr'. rewrite /all_strong_inv_list.
-  case : (range_le_lt_dec 0 0 m) => [H0m | //]; try lia.
-  case : (Z_le_lt_dec m n) => [Hmn | //]; try lia.
+  move => m n mx r Hwf Hrm. rewrite /all_strong_inv_list.
+  case : (range_le_lt_dec 0 0 m) => [H0m | //].
+  case : (Z_le_lt_dec m n) => [Hmn | //].
   case : (range_le_lt_dec 0 r m) => [{}Hrm | //]; try lia.
-  move => Hstr'. have Htriv: 0 <= r <= m by lia.
-  pose proof (gauss_all_steps_rows_equiv Hmn Hwf Hstr Htriv) as Hall. apply esym in Hall. 
-  rewrite {Htriv}.
-  pose proof gauss_all_steps_restrict_beg_strong.
-  have Hm: (0 < Z.to_nat m)%N by ((have Hm: 0 < m by lia); apply (ord_zero_proof Hm)).
-  move: Hstr'. have->: Z_to_ord H0m = Ordinal Hm by apply ord_inj. move => Hstr'.
-  have Hr: (Z.to_nat r < Z.to_nat m)%N by apply Z_nat_bound.
-  have->: (Z_to_ord Hrm) = (Ordinal Hr) by apply ord_inj. 
-  apply (@gauss_all_steps_restrict_beg_strong _ _ _ _ _ _ Hm _ Hr Hstr' Hall).
+  rewrite gauss_all_steps_rows_equiv => [|//|//].
+  rewrite {1}/Z_to_ord => [Hstr].
+  have Hrmnat : ((Z.to_nat r) < (Z.to_nat m))%N. apply (introT ltP). lia.
+  have Hstr': strong_inv (lmatrix_to_mx m n mx) (Z_nat_bound H0m) (le_Z_N Hmn) by [].
+  pose proof (gauss_all_steps_restrict_beg_noop_equiv (Z.to_nat r) Hstr') as Hall.
+  apply (gauss_all_steps_restrict_beg_strong Hstr' Hall). lia.
 Qed.
 
 Lemma gauss_all_steps_rows_partial_gauss_inv: forall m n mx r,
@@ -1342,17 +1307,16 @@ Lemma gauss_all_steps_rows_partial_gauss_inv: forall m n mx r,
   all_strong_inv_list m n mx 0 ->
   gauss_invar (lmatrix_to_mx m n (gauss_all_steps_rows_partial m n mx r)) (Z.to_nat r) (Z.to_nat r).
 Proof.
-  move => m n mx r Hwf Hrm Hstr. assert (Hstr':=Hstr). move: Hstr'. rewrite /all_strong_inv_list.
-  case : (range_le_lt_dec 0 0 m) => [H0m | //]; try lia.
-  case : (Z_le_lt_dec m n) => [Hmn | //]; try lia. move => Hstr'.
-  have Htriv: 0 <= r <= m by lia.
-  pose proof (gauss_all_steps_rows_equiv Hmn Hwf Hstr Htriv) as Hall. apply esym in Hall. 
-  rewrite {Htriv}.
-  have Hm: (0 < Z.to_nat m)%N by apply (ord_zero_proof); lia.
-  have Hinvar: gauss_invar (lmatrix_to_mx m n mx) (Ordinal Hm) (Ordinal Hm) by apply gauss_invar_init.
-  have Hrs: ((Ordinal Hm) + (Z.to_nat r) <= Z.to_nat m)%N. apply /leP. rewrite add0n. by lia.
-  have->: (Z.to_nat r) = ((Ordinal Hm) + (Z.to_nat r))%N by rewrite add0n.
-  apply (gauss_multiple_steps_restrict_invar Hrs Hinvar Hall).
+  move => m n mx r Hwf Hrm. rewrite /all_strong_inv_list. case : (range_le_lt_dec 0 0 m) => [H0m |//].
+  case : (Z_le_lt_dec m n) => [Hmn Hstr | //].
+  rewrite gauss_all_steps_rows_equiv => [|//|//].
+  have H0rm: ((Z_to_ord H0m) + Z.to_nat r <= Z.to_nat m)%N. rewrite add0n. apply (introT leP). lia.
+  have Hstr': strong_inv (lmatrix_to_mx m n mx) (Z_nat_bound H0m) (le_Z_N Hmn) by [].
+  pose proof (gauss_all_steps_restrict_beg_noop_equiv (Z.to_nat r) Hstr') as Hall.
+  move : Hall. rewrite /gauss_all_steps_restrict_beg /gauss_all_steps_restrict_beg_noop.
+  have->: 0%N = (Z_to_ord H0m) by [].
+  have Hr0: (Z.to_nat r) = ((Z_to_ord H0m) + (Z.to_nat r))%N by rewrite add0n. rewrite {2}Hr0 {3}Hr0. move => Hall.
+  apply (gauss_multiple_steps_restrict_invar H0rm (gauss_invar_init _) Hall). lia.
 Qed.
 
 Lemma gauss_all_steps_rows_partial_zeroes: forall m n mx r (Hr: 0 <= r < m) (Hmn : m <= n),
@@ -1691,12 +1655,12 @@ Qed.
 
 (*Need analogue of [strong_inv_row_mx]*)
 (*TODO: do this*)
-(*
+
 Lemma strong_inv_row_mx_list: forall m n left right,
-  all_strong_inv_list m n left 0 ->
-  all_strong_inv_list m (n + n) (row_mx_list left right m n n) 0.
+  strong_inv_list m n left ->
+  strong_inv_list m (n + n) (row_mx_list left right m n n).
 Proof.
-  move => m n left right. rewrite /all_strong_inv_list.
+  move => m n left right. rewrite /strong_inv_list /all_strong_inv_list.
   case : (range_le_lt_dec 0 0 m) => [/= H0m | //].
   case : (Z_le_lt_dec m n) => [/= Hmn | //].
   case : (Z_le_lt_dec m (n + n)); try lia. move => Hmnn.
@@ -1705,13 +1669,13 @@ Proof.
   have Hmnn': (Z.to_nat m <= Z.to_nat n + Z.to_nat n)%N.
     have->:(Z.to_nat n + Z.to_nat n)%N = (Z.to_nat n + Z.to_nat n)%coq_nat by [].
     apply /leP. lia.
-  apply (@all_strong_inv_row_mx _ _ _ _ (lmatrix_to_mx m n right) _ Hmnn') in Hstr.
+  apply (@strong_inv_row_mx _ _ _ _ (lmatrix_to_mx m n right) _ Hmnn') in Hstr.
   move: Hstr. rewrite (strong_inv_castmx _ (erefl (Z.to_nat m)) (Logic.eq_sym (Z2Nat.inj_add n n H0n H0n))).
   move => Hstr.
   have->:(le_Z_N Hmnn)  = (leq_subst (erefl (Z.to_nat m)) (Logic.eq_sym (Z2Nat.inj_add n n H0n H0n)) Hmnn')
    by apply bool_irrelevance.
   have->:(Z_to_ord H0m) = (eq_ord (erefl (Z.to_nat m)) (Z_to_ord H0m)) by apply ord_inj. by [].
-Qed.*)
+Qed.
   
 
 (*Concatenate two matrices - up/down*)
@@ -1801,18 +1765,16 @@ Definition find_invmx_list (mx: lmatrix) n :=
   right_submx n (gauss_restrict_rows n (n + n) (concat_mx_id mx n)).
 
 (* [find_invmx_list] computes the inverse. This is quite complicated to prove
-  because of all the casting, the proofs of which are in Gaussian.v*)
-(*TODO: need casting results*)
-(*
+  because of all the casting, the proofs of which are in GaussRestrict.v*)
 Lemma find_invmx_list_spec: forall mx n,
-  all_strong_inv_list n n mx 0 -> 
+  strong_inv_list n n mx -> 
   lmatrix_to_mx n n (find_invmx_list mx n) = invmx (lmatrix_to_mx n n mx).
 Proof.
-  move => mx n. rewrite /all_strong_inv_list. case : (range_le_lt_dec 0 0 n) => [H0n /= | //].
+  move => mx n. rewrite /strong_inv_list /all_strong_inv_list. case : (range_le_lt_dec 0 0 n) => [H0n /= | //].
   case : (Z_le_lt_dec n n) => [/= Htriv Hstr|//]. rewrite -gaussian_finds_invmx.
   - rewrite /find_invmx_list. have Hn: 0 <= n by lia. rewrite right_submx_spec /=.
     rewrite /find_invmx gauss_restrict_rows_equiv. lia. move => Hnn. 2: by apply row_mx_list_wf.
-    rewrite castmx_gaussian_restrict gaussian_elim_equiv.
+    rewrite castmx_gaussian_restrict gaussian_elim_restrict_noop_equiv.
     + f_equal. f_equal. rewrite row_mx_list_spec; try lia. rewrite id_list_spec; try lia.
       rewrite -matrixP => x y. rewrite !castmxE /=. f_equal. by apply ord_inj. by apply ord_inj.
     + apply /ltP. lia.
@@ -1821,7 +1783,7 @@ Proof.
               (cast_leq (erefl (Z.to_nat n), Z2Nat.inj_add n n Hn Hn) (le_Z_N Hnn))).
       by have ->: (Ordinal Hn') = Z_to_ord H0n by apply ord_inj.
   - by apply strong_inv_unitmx in Hstr.
-Qed.*)
+Qed.
 
 (*Lastly, fill in the input matrix with the missing data*)
 (*The first matrix is m x n, the second is some m' x n*)

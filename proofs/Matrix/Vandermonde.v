@@ -820,7 +820,6 @@ Proof.
   - by rewrite Hnm.
 Qed. 
 
-Check strong_inv.
 (*As a corollary of this result, [strong_inv] is satisfied for this submatrix*)
 Lemma any_submx_strong_inv: forall {m n} (Hmn: m <= n) (Hm: 0 < m) z (l: list F) (rows: list 'I_m) (cols: list 'I_n) (r: 'I_z),
   uniq l ->

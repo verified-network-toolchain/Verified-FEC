@@ -100,7 +100,7 @@ Proof.
       rewrite concat_rev_mx. cancel.
     }
     { split; [rep_lia | split; [ rep_lia | split]]. apply weight_matrix_wf; rep_lia.
-      unfold strong_inv_list. destruct (range_le_lt_dec 0 0 fec_max_h ); try rep_lia.
+      unfold strong_inv_list. unfold all_strong_inv_list. destruct (range_le_lt_dec 0 0 fec_max_h ); try rep_lia.
       destruct (Z_le_lt_dec fec_max_h (fec_n - 1)); try rep_lia. rewrite weight_mx_list_spec by rep_lia. split; auto.
       apply vandermonde_strong_inv. apply (ssrbool.introT (ssrnat.leP)). rep_lia. 
     }

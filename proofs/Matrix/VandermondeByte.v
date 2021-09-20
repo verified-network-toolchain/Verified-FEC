@@ -307,7 +307,7 @@ Qed.
   satisfied [strong_inv 0]*)
 Lemma vandermonde_strong_inv: forall m n (Hmn: (m <= n)%N) (Hm: (0 < m)%N),
   (n < 256)%N ->
-  all_strong_inv (vandermonde_powers m n) Hmn (Ordinal Hm).
+  strong_inv (vandermonde_powers m n) Hm Hmn.
 Proof.
   move => m n Hmn Hm Hn. rewrite /strong_inv => r' H{H}.
   split; move => j Hrj.

@@ -57,7 +57,7 @@ Definition fec_matrix_transform_spec :=
   DECLARE _fec_matrix_transform
   WITH gv: globals, m : Z, n : Z, mx : list (list byte), s : val, sh: share
   PRE [ tptr tuchar, tuchar, tuchar]
-    PROP (0 < m <= n; n <= Byte.max_unsigned; wf_lmatrix mx m n; strong_inv_list m n mx 0; writable_share sh)
+    PROP (0 < m <= n; n <= Byte.max_unsigned; wf_lmatrix mx m n; strong_inv_list m n mx; writable_share sh)
     PARAMS (s; Vubyte (Byte.repr m); Vubyte (Byte.repr n))
     GLOBALS (gv)
     SEP (FIELD_TABLES gv;

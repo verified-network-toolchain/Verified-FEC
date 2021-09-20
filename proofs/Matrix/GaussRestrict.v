@@ -828,10 +828,13 @@ Qed.
 Definition gauss_all_steps_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
   gauss_multiple_steps_restrict A Hmn r (n - r).
 
+Definition all_strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) :=
+  multi_strong_inv A Hmn r (m - r).
+
 (* Equivalence with non-restricted Gaussian elimination*)
 Lemma gauss_all_steps_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m),
   gauss_invar A r r ->
-  multi_strong_inv A Hmn r (m - r) <->
+  all_strong_inv A Hmn r <->
   gauss_all_steps_restrict A Hmn r = 
     Some (gauss_all_steps A (Some r) (Some (widen_ord Hmn r))).
 Proof.
@@ -839,83 +842,15 @@ Proof.
   have Hs: n <= (n - r) + nat_of_ord (widen_ord Hmn r). rewrite /= -subnA //.
     by rewrite subnn subn0. have Hrm: r <= m by apply ltnW. by apply (leq_trans Hrm).
   rewrite -(gauss_multiple_steps_equiv _ _ Hs) gauss_multiple_steps_restrict_equiv_iff //. 
-  rewrite /multi_strong_inv. have->: (r + (m - r))%N = m. rewrite -addnBCA //. by rewrite subnn addn0.
-    by apply ltnW.
+  rewrite /all_strong_inv /multi_strong_inv. have->: (r + (m - r))%N = m. rewrite -addnBCA //. 
+    by rewrite subnn addn0. by apply ltnW.
   have->:(r + (n - r))%N = n. rewrite -addnBCA //. by rewrite subnn addn0.
     have Hrm: r <= m by apply ltnW. by apply (leq_trans Hrm). split; move => Hstr x /andP[Hrx Hxmn].
   - apply Hstr. by rewrite Hrx andTb.
   - apply Hstr. by rewrite Hrx andTb (ltn_leq_trans Hxmn).
 Qed.
 
-(*Finally, for the C proofs, we will want a version which goes from row 0 to some row x < m (instead of the previous,
-  which goes from r to m. We will define this (virtually identically, only the bounds for iota change) and prove that
-  this is equivalent. We also want the notion of all-strong invertibility, which goes from a bound r to
-  the end of the matrix*)
-Definition gauss_all_steps_restrict_beg {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
-  gauss_multiple_steps_restrict A Hmn 0 r.
-
-Definition all_strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) :=
-  multi_strong_inv A Hmn r (m - r).
-
-(*We need to know that all_strong_inv is preserved through multiple steps of Restricted Gaussian Elimination. This
-  is not quite the same as we proved earlier, though we can use some existing results*)
-Lemma all_strong_inv_preserved: forall {m n} (A A': 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) s (Hrs: r + s < m),
-  gauss_invar A r r ->
-  all_strong_inv A Hmn r ->
-  gauss_multiple_steps_restrict A Hmn r s = Some A' ->
-  all_strong_inv A' Hmn (Ordinal Hrs).
-Proof.
-  move => m n A A' Hmn r s. move: A A' r. elim : s => [//= A A' r Hrs Hinv Hstr | s' IH /= A A' r Hrs Hinv Hstr].
-  - rewrite /gauss_multiple_steps_restrict/= => [[Haa]]. rewrite -Haa/=. have->//:(Ordinal Hrs) = r.
-    apply ord_inj. by rewrite /= addn0.
-  - rewrite gauss_multiple_steps_restrict_expand. case Hone: (gauss_one_step_restrict A r Hmn) => [mx/=|//].
-    have Hrs1: (r + s'.+1)%N = (r.+1 + s')%N by rewrite -(addn1 r) -addnA (add1n s').
-    case Hrm: (r.+1 < m); last first.
-    + rewrite gauss_multiple_steps_restrict_overflow //=. move => [Hmxa]. rewrite -Hmxa.
-      move: Hstr. rewrite /all_strong_inv /multi_strong_inv/= !subnKC//.
-      * move => Hstr x /andP[Hrsx Hxm]. have Hrs1lt: r < r + s'.+1 by rewrite -ltn_psubLR // subnn.
-        rewrite -r_strong_inv_preserved. 3: apply Hone. apply Hstr.
-        rewrite Hxm andbT. apply ltnW. all: by apply (ltn_leq_trans Hrs1lt).
-      * by apply ltnW.
-      * by apply ltnW.
-      * by rewrite leqNgt Hrm.
-    + have{1}->:r.+1 = nat_of_ord (Ordinal Hrm) by [].
-      have Hrs': (Ordinal Hrm) + s' < m by rewrite -Hrs1.  have->: (Ordinal Hrs) = (Ordinal Hrs') by apply ord_inj.
-      move => Hmul. apply (IH mx A' (Ordinal Hrm) Hrs'). apply (gauss_one_step_restrict_invar Hinv Hone).
-      2: by []. move: Hstr. rewrite /all_strong_inv /multi_strong_inv/= !subnKC//.
-      move => Hstr x /andP[Hrx Hxm]. rewrite -r_strong_inv_preserved. 3: apply Hone.
-      apply Hstr. by rewrite (ltnW Hrx). by []. by apply ltnW.
-Qed.
-
-Lemma gauss_multiple_steps_restrict_extra: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n),
-  gauss_multiple_steps_restrict A Hmn 0 n = gauss_multiple_steps_restrict A Hmn 0 m.
-Proof.
-  move => m n A Hmn. rewrite /gauss_multiple_steps_restrict. 
-  have Hn: n = (m + (n - m))%N by rewrite -addnBCA // subnn addn0.
-  have->: (iota 0 n) = (iota 0 (m + (n - m))) by rewrite {1}Hn. rewrite iotaD gauss_multiple_steps_restrict_body_cat
-    gauss_multiple_steps_restrict_body_extra //.
-  move => x. by rewrite add0n mem_iota => /andP[Hxm _].
-Qed. 
-
-Lemma gauss_all_steps_restrict_beg_strong: forall {m n } (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat) (Hm: 0 < m) mx 
-  (Hr: r < m),
-  all_strong_inv A Hmn (Ordinal Hm) ->
-  gauss_all_steps_restrict_beg A Hmn r = Some mx ->
-  all_strong_inv mx Hmn (Ordinal Hr).
-Proof.
-  move => m n A Hmn r Hm mx Hr.
-  rewrite /gauss_all_steps_restrict_beg => Hstr.
-  have->: (0%N = Ordinal Hm) by []. move => Hg.
-  have Hinv: gauss_invar A (Ordinal Hm) (Ordinal Hm). by apply gauss_invar_init.
-  by apply (all_strong_inv_preserved Hinv).
-Qed.
-
-Lemma gauss_all_steps_restrict_both_dirs: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n),
-  gauss_all_steps_restrict A Hmn 0 = gauss_all_steps_restrict_beg A Hmn m.
-Proof.
-  move => m n A Hmn. by rewrite /gauss_all_steps_restrict /gauss_all_steps_restrict_beg subn0
-    gauss_multiple_steps_restrict_extra.
-Qed.
+(** Final Algorithm *)
 
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
   which oeprates on the result of gaussian elimination*)
@@ -996,11 +931,21 @@ Definition gaussian_elim_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) :=
   | None => None
   end.
 
+Lemma gauss_multiple_steps_restrict_extra: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n),
+  gauss_multiple_steps_restrict A Hmn 0 n = gauss_multiple_steps_restrict A Hmn 0 m.
+Proof.
+  move => m n A Hmn. rewrite /gauss_multiple_steps_restrict. 
+  have Hn: n = (m + (n - m))%N by rewrite -addnBCA // subnn addn0.
+  have->: (iota 0 n) = (iota 0 (m + (n - m))) by rewrite {1}Hn. rewrite iotaD gauss_multiple_steps_restrict_body_cat
+    gauss_multiple_steps_restrict_body_extra //.
+  move => x. by rewrite add0n mem_iota => /andP[Hxm _].
+Qed. 
+
 (* The full versions are equivalent iff [strong_inv] holds*)
 Theorem gaussian_elim_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
   strong_inv A Hm Hmn <-> gaussian_elim_restrict A Hmn = Some(gaussian_elim A).
 Proof.
-  move => m n A Hmn Hm. rewrite /strong_inv /all_strong_inv.
+  move => m n A Hmn Hm. rewrite /strong_inv.
   rewrite gauss_all_steps_equiv; last first. apply gauss_invar_init.
   rewrite /gaussian_elim /gaussian_elim_restrict/=.
   case Hall: (gauss_all_steps_restrict A Hmn 0) => [mx |//]. split.
@@ -1021,12 +966,168 @@ Proof.
   - (*Easy, we can just ignore the all_lc_1 part*)
     move => _. rewrite -Hall. have{1}->: 0%N = nat_of_ord (Ordinal Hm) by [].
     rewrite -gauss_all_steps_equiv.
-    + rewrite -gauss_multiple_steps_restrict_equiv_iff.
+    + rewrite /all_strong_inv -gauss_multiple_steps_restrict_equiv_iff.
       * apply gauss_multiple_steps_restrict_some_equiv. move: Hall.
         rewrite /gauss_all_steps_restrict. rewrite !subn0 gauss_multiple_steps_restrict_extra/=.
         by move ->.
       * by apply gauss_invar_init.
     + by apply gauss_invar_init.
+Qed.
+
+(** Additional Results for VST/ListMatrix proofs*)
+
+(* For the C proofs, we don't want the option present, since it makes things much more annoying (and we are
+  only every dealing with the Some case anyway). So we define a version without Options and prove that,
+  subject to strong invertibility conditions, it is equivalent*)
+
+Definition gauss_one_step_restrict_noop {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n) :=
+  sub_all_rows_noif (all_cols_one_noif A (widen_ord Hmn r)) r.
+
+Lemma gauss_one_step_restrict_noop_equiv_aux: forall {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn: m <= n),
+  gauss_invar A r r ->
+  r_strong_inv A Hmn r ->
+  gauss_one_step_restrict A r Hmn = Some(gauss_one_step_restrict_noop A r Hmn).
+Proof.
+  move => m n A r Hmn Hinv. rewrite /gauss_one_step_restrict /gauss_one_step_restrict_noop
+  r_strong_inv_all_zeroes_iff// -all_cols_partial_some_iff. 
+  case Hcol: (all_cols_one_partial A (widen_ord Hmn r)) => [mx /= |//=]. move => _.
+  apply all_cols_one_partial_some in Hcol. by rewrite Hcol.
+Qed.
+
+Definition gauss_multiple_steps_restrict_noop {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r s: nat) :=
+  foldl (fun mx r' => match insub r' with
+                      | Some r'' => gauss_one_step_restrict_noop mx r'' Hmn
+                      | None => mx
+                      end) A (iota r s).
+
+Lemma gauss_multiple_steps_restrict_noop_expand: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) (s: nat),
+  gauss_multiple_steps_restrict_noop A Hmn r s.+1 = 
+  gauss_multiple_steps_restrict_noop (gauss_one_step_restrict_noop A r Hmn) Hmn r.+1 s.
+Proof.
+  move => m n A Hmn r s. rewrite /gauss_multiple_steps_restrict_noop /= insubT // => Hrm /=.
+  by have->: Ordinal Hrm = r by apply ord_inj.
+Qed.
+
+Lemma gauss_multiple_steps_restrict_noop_overflow: forall {m n} (A : 'M_(m, n)) (Hmn : m <= n) (r s : nat),
+  m <= r -> gauss_multiple_steps_restrict_noop A Hmn r s = A.
+Proof.
+  move => m n A Hmn r s. move: A r. elim : s => [//= | s' /= IH A r Hmr].
+  move: IH. rewrite /gauss_multiple_steps_restrict_noop => IH /=.
+  rewrite insubF. apply IH. by apply (leq_trans Hmr). by rewrite ltnNge Hmr.
+Qed. 
+
+Lemma gauss_multiple_steps_restrict_noop_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) (s: nat),
+  gauss_invar A r r ->
+  multi_strong_inv A Hmn r s ->
+  gauss_multiple_steps_restrict A Hmn r s = Some(gauss_multiple_steps_restrict_noop A Hmn r s).
+Proof.
+  move => m n A Hmn r s. move: A r. elim : s => [A r //= | s' /= IH A r Hinv Hstr].
+  rewrite gauss_multiple_steps_restrict_expand gauss_multiple_steps_restrict_noop_expand.
+  have Hg: (gauss_one_step_restrict A r Hmn = Some (gauss_one_step_restrict_noop A r Hmn)). {
+    apply gauss_one_step_restrict_noop_equiv_aux. by []. move: Hstr. rewrite /multi_strong_inv => /(_ r) Hstr.
+    apply Hstr. by rewrite leqnn /= -ltn_psubLR // subnn. }
+  rewrite Hg.
+  case Hr1: (r.+1 < m).
+  - have->: r.+1 = (Ordinal Hr1) by []. apply IH. rewrite /=.
+    apply (gauss_one_step_restrict_invar Hinv Hg).
+    rewrite -multi_strong_inv_preserved. 3: apply Hg. 2: by [].
+    move: Hstr. rewrite /multi_strong_inv/= -{2}(addn1 r) -addnA (add1n s').
+    move => Hstr x /andP[Hrx Hxrs]. apply Hstr. rewrite Hxrs andbT. by apply ltnW.
+  - rewrite gauss_multiple_steps_restrict_overflow.
+    rewrite gauss_multiple_steps_restrict_noop_overflow //. all: by rewrite leqNgt Hr1.
+Qed. 
+
+(*Finally, for the C proofs, we will want a version which goes from row 0 to some row x < m (instead of the previous,
+  which goes from r to m. We will define this (virtually identically, only the bounds for iota change) and prove that
+  this is equivalent.*)
+Definition gauss_all_steps_restrict_beg {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
+  gauss_multiple_steps_restrict A Hmn 0 r.
+
+Definition gauss_all_steps_restrict_beg_noop {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (r: nat) :=
+  gauss_multiple_steps_restrict_noop A Hmn 0 r.
+
+(*We need to know that all_strong_inv is preserved through multiple steps of Restricted Gaussian Elimination. This
+  is not quite the same as we proved earlier, though we can use some existing results*)
+Lemma all_strong_inv_preserved: forall {m n} (A A': 'M[F]_(m, n)) (Hmn: m <= n) (r: 'I_m) s (Hrs: r + s < m),
+  gauss_invar A r r ->
+  all_strong_inv A Hmn r ->
+  gauss_multiple_steps_restrict A Hmn r s = Some A' ->
+  all_strong_inv A' Hmn (Ordinal Hrs).
+Proof.
+  move => m n A A' Hmn r s. move: A A' r. elim : s => [//= A A' r Hrs Hinv Hstr | s' IH /= A A' r Hrs Hinv Hstr].
+  - rewrite /gauss_multiple_steps_restrict/= => [[Haa]]. rewrite -Haa/=. have->//:(Ordinal Hrs) = r.
+    apply ord_inj. by rewrite /= addn0.
+  - rewrite gauss_multiple_steps_restrict_expand. case Hone: (gauss_one_step_restrict A r Hmn) => [mx/=|//].
+    have Hrs1: (r + s'.+1)%N = (r.+1 + s')%N by rewrite -(addn1 r) -addnA (add1n s').
+    case Hrm: (r.+1 < m); last first.
+    + rewrite gauss_multiple_steps_restrict_overflow //=. move => [Hmxa]. rewrite -Hmxa.
+      move: Hstr. rewrite /all_strong_inv /multi_strong_inv/= !subnKC//.
+      * move => Hstr x /andP[Hrsx Hxm]. have Hrs1lt: r < r + s'.+1 by rewrite -ltn_psubLR // subnn.
+        rewrite -r_strong_inv_preserved. 3: apply Hone. apply Hstr.
+        rewrite Hxm andbT. apply ltnW. all: by apply (ltn_leq_trans Hrs1lt).
+      * by apply ltnW.
+      * by apply ltnW.
+      * by rewrite leqNgt Hrm.
+    + have{1}->:r.+1 = nat_of_ord (Ordinal Hrm) by [].
+      have Hrs': (Ordinal Hrm) + s' < m by rewrite -Hrs1.  have->: (Ordinal Hrs) = (Ordinal Hrs') by apply ord_inj.
+      move => Hmul. apply (IH mx A' (Ordinal Hrm) Hrs'). apply (gauss_one_step_restrict_invar Hinv Hone).
+      2: by []. move: Hstr. rewrite /all_strong_inv /multi_strong_inv/= !subnKC//.
+      move => Hstr x /andP[Hrx Hxm]. rewrite -r_strong_inv_preserved. 3: apply Hone.
+      apply Hstr. by rewrite (ltnW Hrx). by []. by apply ltnW.
+Qed.
+
+Lemma gauss_all_steps_restrict_beg_strong: forall {m n } (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: nat) (Hm: 0 < m) mx 
+  (Hr: r < m),
+  strong_inv A Hm Hmn ->
+  gauss_all_steps_restrict_beg A Hmn r = Some mx ->
+  all_strong_inv mx Hmn (Ordinal Hr).
+Proof.
+  move => m n A Hmn r Hm mx Hr.
+  rewrite /gauss_all_steps_restrict_beg => Hstr.
+  have->: (0%N = Ordinal Hm) by []. move => Hg.
+  have Hinv: gauss_invar A (Ordinal Hm) (Ordinal Hm). by apply gauss_invar_init.
+  by apply (all_strong_inv_preserved Hinv).
+Qed.
+
+Lemma gauss_all_steps_restrict_both_dirs: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n),
+  gauss_all_steps_restrict A Hmn 0 = gauss_all_steps_restrict_beg A Hmn m.
+Proof.
+  move => m n A Hmn. by rewrite /gauss_all_steps_restrict /gauss_all_steps_restrict_beg subn0
+    gauss_multiple_steps_restrict_extra.
+Qed.
+
+Lemma gauss_all_steps_restrict_beg_noop_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m) r,
+  strong_inv A Hm Hmn -> 
+  gauss_all_steps_restrict_beg A Hmn r = Some (gauss_all_steps_restrict_beg_noop A Hmn r).
+Proof.
+  move => m n A Hmn Hm r Hstr. rewrite /gauss_all_steps_restrict_beg /gauss_all_steps_restrict_beg_noop.
+  have->:0%N = Ordinal Hm by []. apply gauss_multiple_steps_restrict_noop_equiv.
+  apply gauss_invar_init. move: Hstr. rewrite /strong_inv /all_strong_inv /multi_strong_inv/= !add0n subn0.
+  move => Hstr x Hx. by apply Hstr.
+Qed.
+
+Definition gaussian_elim_restrict_noop {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) :=
+  mk_identity (gauss_all_steps_restrict_beg_noop A Hmn m) Hmn m.-1.
+
+Lemma gaussian_elim_restrict_noop_equiv': forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
+  strong_inv A Hm Hmn ->
+  gaussian_elim_restrict A Hmn = Some (gaussian_elim_restrict_noop A Hmn).
+Proof.
+  move => m n A Hmn Hm Hstr. rewrite /gaussian_elim_restrict /gaussian_elim_restrict_noop /gauss_all_steps_restrict
+  /gauss_all_steps_restrict_beg_noop subn0 gauss_multiple_steps_restrict_extra.
+  have->: 0%N = Ordinal Hm by []. rewrite gauss_multiple_steps_restrict_noop_equiv //.
+  move: Hstr. by rewrite /strong_inv /all_strong_inv/= subn0.
+Qed.
+
+Lemma gaussian_elim_restrict_noop_equiv: forall {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) (Hm: 0 < m),
+  strong_inv A Hm Hmn ->
+  gaussian_elim_restrict_noop A Hmn = gaussian_elim A.
+Proof.
+  move => m n A Hmn Hm Hstr. have: gaussian_elim_restrict A Hmn = gaussian_elim_restrict A Hmn by [].
+  have{1}->: gaussian_elim_restrict A Hmn = Some(gaussian_elim_restrict_noop A Hmn) by 
+    apply (gaussian_elim_restrict_noop_equiv' Hstr).
+  have->: gaussian_elim_restrict A Hmn = Some(gaussian_elim A) by rewrite -(gaussian_elim_equiv _ _ Hm).
+  by move => [Hmx].
 Qed.
 
 (** Casting Matrices*)
@@ -1071,18 +1172,15 @@ Proof.
   apply foldr_castmx => x' A'. by rewrite sc_mul_castmx castmxE !cast_ordK.
 Qed. 
 
-(*TODO: figure out what I need for casting*)
-(*
-Lemma gauss_one_step_restrict_castmx: forall  m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) 
+Lemma gauss_one_step_restrict_noop_castmx: forall  m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) 
   (A: 'M[F]_(m, n)) (x: 'I_m),
-  castmx Heq (gauss_one_step_restrict A x Hmn) =
-  gauss_one_step_restrict (castmx Heq A) (cast_ord Heq.1 x) (cast_leq Heq Hmn).
+  castmx Heq (gauss_one_step_restrict_noop A x Hmn) =
+  gauss_one_step_restrict_noop (castmx Heq A) (cast_ord Heq.1 x) (cast_leq Heq Hmn).
 Proof.
-  move => m n m' n' Heq Hmn A x. rewrite /gauss_one_step_restrict sub_all_rows_noif_castmx
+  move => m n m' n' Heq Hmn A x. rewrite /gauss_one_step_restrict_noop sub_all_rows_noif_castmx
   all_cols_one_noif_castmx //=. f_equal. f_equal. by apply ord_inj.
-Qed.*)
+Qed.
  
-
 (*foldl version, this time with a nat function for [gauss_all_steps_restrict]*)
 Lemma foldl_castmx: forall m n m' n' (A: 'M[F]_(m, n)) (Heq: (m = m') * (n = n')) 
   (f: 'M[F]_(m, n) -> nat -> 'M[F]_(m, n)) (g:  'M[F]_(m', n') -> nat -> 'M[F]_(m', n')) (l: seq nat),
@@ -1093,28 +1191,27 @@ Proof.
   by rewrite IH Hfg. 
 Qed.
 
-(*
-Lemma gauss_all_steps_restrict_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) (A: 'M[F]_(m, n)) x y,
-  castmx Heq (gauss_all_steps_restrict_aux A Hmn x y) =
-  gauss_all_steps_restrict_aux (castmx Heq A) (cast_leq Heq Hmn) x y.
+Lemma gauss_multiple_steps_restrict_noop_castmx: forall m n m' n' (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N) (A: 'M[F]_(m, n)) x y,
+  castmx Heq (gauss_multiple_steps_restrict_noop A Hmn x y) =
+  gauss_multiple_steps_restrict_noop (castmx Heq A) (cast_leq Heq Hmn) x y.
 Proof.
   move => m n m' n' Heq Hmn A x y. apply foldl_castmx => x' A'.
   case Hx': (x' < m)%N.
   - rewrite !insubT. by rewrite -(fst Heq). move => Hxm'.
-    rewrite gauss_one_step_restrict_castmx /=. f_equal. by apply ord_inj.
+    rewrite gauss_one_step_restrict_noop_castmx /=. f_equal. by apply ord_inj.
   - rewrite !insubF //. by rewrite -Heq.1.
-Qed.*)
+Qed.
 
 (*The final result we need*)
-(*
+
 Lemma castmx_gaussian_restrict: forall m n m' n' (A: 'M[F]_(m, n)) (Heq: (m = m') * (n = n')) (Hmn: (m <= n)%N),
-  castmx Heq (gaussian_elim_restrict A Hmn) = gaussian_elim_restrict (castmx Heq A) (cast_leq Heq Hmn).
+  castmx Heq (gaussian_elim_restrict_noop A Hmn) = gaussian_elim_restrict_noop (castmx Heq A) (cast_leq Heq Hmn).
 Proof.
-  move => m n m' n' A Heq Hmn. rewrite /gaussian_elim_restrict. rewrite -matrixP => x y.
+  move => m n m' n' A Heq Hmn. rewrite /gaussian_elim_restrict_noop. rewrite -matrixP => x y.
   rewrite mk_identity_castmx. f_equal. f_equal. 2: by rewrite (fst Heq).
-  rewrite /gauss_all_steps_restrict_end. rewrite gauss_all_steps_restrict_castmx. f_equal.
+  rewrite /gauss_all_steps_restrict_beg_noop. rewrite gauss_multiple_steps_restrict_noop_castmx. f_equal.
   by rewrite Heq.1.
-Qed.*)
+Qed.
 
 
 (*We also need to know that [strong_inv] does not change if we cast a matrix*)
@@ -1144,24 +1241,23 @@ Proof.
   rewrite castmxE /=. case Hyj: (x < r'); f_equal; by apply ord_inj.
 Qed.
 
-(*TODO: same*)
-(*
 Lemma strong_inv_castmx: forall {m n m' n'} (A: 'M[F]_(m, n)) (Hmm: m = m') (Hnn: n = n') (Hmn: m <= n) (x: 'I_m),
-  strong_inv A Hmn x <-> strong_inv (castmx (Hmm, Hnn) A) (leq_subst Hmm Hnn Hmn) (eq_ord Hmm x).
+  all_strong_inv A Hmn x <-> all_strong_inv (castmx (Hmm, Hnn) A) (leq_subst Hmm Hnn Hmn) (eq_ord Hmm x).
 Proof.
-  move => m n m' n' A Hmm Hnn Hmn x. rewrite /strong_inv /=. split; move => Hstr r' Hxr'.
-  - remember (eq_ord (esym Hmm) r') as r.  move: Hstr => /(_ r). rewrite Heqr /= => /(_ Hxr') => [[Hcol Hrow]].
+  move => m n m' n' A Hmm Hnn Hmn x. rewrite /all_strong_inv /multi_strong_inv /r_strong_inv /= !subnKC; last first.
+  by apply ltnW. subst. by apply ltnW. split; move => Hstr r' Hxr'.
+  - remember (eq_ord (esym Hmm) r') as r.  move: Hstr => /(_ r). rewrite -{3}Hmm in Hxr'. rewrite Heqr /= => /(_ Hxr') => [[Hcol Hrow]].
     have ->: r' = eq_ord Hmm r by subst; apply ord_inj. rewrite /=.
     split; move => j Hjr;remember (eq_ord (esym Hmm) j) as j';  have ->:j = eq_ord Hmm j' by subst; apply ord_inj.
     + rewrite -submx_remove_col_castmx Heqr. apply Hcol. by subst.
     + rewrite -submx_add_row_castmx Heqr. apply Hrow. by subst.
-  - remember (eq_ord Hmm r') as r.  move: Hstr => /(_ r). rewrite Heqr /= => /(_ Hxr') => [[Hcol Hrow]].
+  - remember (eq_ord Hmm r') as r.  move: Hstr => /(_ r). rewrite -{3}Hmm. rewrite Heqr /= => /(_ Hxr') => [[Hcol Hrow]].
     split; move => j Hjr;remember (eq_ord Hmm j) as j'.
     + move: Hcol => /(_ j'). move: Hjr. rewrite Heqj' /= => Hjr /(_ Hjr).
       by rewrite -submx_remove_col_castmx.
     + move: Hrow => /(_ j'). move: Hjr. rewrite Heqj' /= => Hjr /(_ Hjr).
       by rewrite -submx_add_row_castmx.
-Qed.*)
+Qed.
 
 Lemma castmx_twice: forall m1 m2 m3 n1 n2 n3 (A: 'M[F]_(m1, n1)) 
   (Hm12: m1 = m2) (Hm23: m2 = m3) (Hn12: n1 = n2) (Hn23: n2 = n3),
@@ -1212,18 +1308,16 @@ Proof.
     have : (n <= y)%N by rewrite Hk leq_addr. by rewrite leqNgt Hyn.
 Qed. 
 
-(*TODO: same*)
-(*
 Lemma strong_inv_row_mx: forall m n (A B: 'M[F]_(m, n)) (Hmn: (m <= n)%N) (Hmn' : (m <= n + n)%N) (r: 'I_m),
-  strong_inv A Hmn r ->
-  strong_inv (row_mx A B) Hmn' r.
+  all_strong_inv A Hmn r ->
+  all_strong_inv (row_mx A B) Hmn' r.
 Proof.
-  move => m n A B Hmn Hmn' r. rewrite /strong_inv => Hstr r' Hr'. split.
+  move => m n A B Hmn Hmn' r. rewrite /all_strong_inv /multi_strong_inv /r_strong_inv => Hstr r' Hr'. split.
   - move => j Hj. rewrite -submx_remove_col_rowmx. move : Hstr => /(_ r' Hr') => [[Hcol Hrow]].
     by apply Hcol.
   - move => j Hj. rewrite -submx_add_row_rowmx. move : Hstr => /(_ r' Hr') => [[Hcol Hrow]].
     by apply Hrow.
-Qed.*)
+Qed.
 
 (*Finally, [srong_inv] is actually a stronger condition than invertibility*)
 
@@ -1234,18 +1328,19 @@ Lemma lt_subst: forall (n m p: nat),
 Proof.
   move => n m p Hn Hmp. by rewrite -Hmp.
 Qed.
-(*
+
 Lemma strong_inv_unitmx: forall {n} (A: 'M[F]_n) (H: (n <= n)%N) (r: 'I_n),
-  strong_inv A H r ->
+  all_strong_inv A H r ->
   A \in unitmx.
 Proof.
-  move => n A H r. rewrite /strong_inv.
+  move => n A H r. rewrite /all_strong_inv /multi_strong_inv /r_strong_inv subnKC; last first. by apply ltnW.
   have: (0 <= n)%N by []. rewrite leq_eqVlt => /orP[/eqP H0n | Hn].
   -  move => Hstr. (*i guess the empty matrix is invertible?*)
      have->: A = (1%:M)%R. subst. apply matrix_zero_rows. apply unitmx1.
-  - have Hr: (r <= (pred_ord Hn))%N by rewrite /= -ltn_pred. 
-    move => /(_ (pred_ord Hn) Hr) => [[Hrow Hcol]].
-    move : Hcol => /(_ (pred_ord Hn) (leqnn _)).
+  - have Hr: (r <= (pred_ord Hn))%N by rewrite /= -ltn_pred.
+    have Htriv: r <= pred_ord Hn < n by rewrite Hr andTb. 
+    move => /(_ (pred_ord Hn) Htriv) => [[Hcol Hrow]].
+    move : Hrow => /(_ (pred_ord Hn) (leqnn _)).
     have Hpred: n = (pred_ord Hn).+1 by rewrite /= (ltn_predK Hn).
     have->: submx_add_row A H (pred_ord Hn) (pred_ord Hn) = (castmx (Hpred, Hpred) A) .
     { rewrite -matrixP => x y. rewrite !mxE castmxE /=. f_equal. 2: by apply ord_inj.
@@ -1257,6 +1352,6 @@ Proof.
         + by apply ord_inj.
         + by rewrite Hcon in Hx. }
     by rewrite unitmx_castmx.
-Qed.*)
+Qed.
 
 End Gauss.
