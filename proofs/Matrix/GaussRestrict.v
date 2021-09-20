@@ -1,3 +1,11 @@
+(* Copyright 2021 Joshua M. Cohen
+
+Licensed under the Apache License, Version 2.0 (the "License"); you may not use this file except in compliance with the License.
+You may obtain a copy of the License at
+    http://www.apache.org/licenses/LICENSE-2.0
+Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
+*)
+
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.matrix.
 Require Import mathcomp.algebra.ssralg.
@@ -202,7 +210,6 @@ Qed.
 
 (*In this version, we do not swap rows, we scalar multiply/subtract all rows, and we have r=c every time. Accordingly,
   we do not need to return all 3 elements, but instead know that the next value is r + 1*)
-(*TODO: use bind?*)
 Definition gauss_one_step_restrict {m n} (A: 'M[F]_(m, n)) (r: 'I_m) (Hmn : m <= n) : option 'M[F]_(m, n) :=
   match (all_cols_one_partial A (widen_ord Hmn r)) with
   | None => None
@@ -220,14 +227,6 @@ Proof.
   case Hcol: (all_cols_one_partial A (widen_ord Hmn r)) => [mx/= |/=].
   - have: (all_cols_one_partial A (widen_ord Hmn r)) by rewrite Hcol. by rewrite all_cols_partial_some_iff.
   - have: ~is_true (isSome(all_cols_one_partial A (widen_ord Hmn r))) by rewrite Hcol. by rewrite all_cols_partial_some_iff.
-Qed.
-
-(*TODO: move*) 
-Lemma xrow_rr : forall {m n } (A: 'M[F]_(m, n)) (r: 'I_m),
-  xrow r r A = A.
-Proof.
-  move => m n A r. rewrite -matrixP => x y. rewrite xrow_val.
-  case : (x == r) /eqP => [Hxr | Hxr//]. by rewrite Hxr.
 Qed.
 
 (*Second, if [gauss_one_step_restrict] gives Some, then it is equivalent to [gauss_one_step]*)
@@ -289,29 +288,10 @@ Definition submx_add_row {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) (j: 'I
   mxsub (fun (x : 'I_(r.+1)) => if x < r then widen_ord Hrm x else j) 
         (fun (y : 'I_(r.+1)) => widen_ord (leq_trans Hrm Hmn) y) A.
 
-(*ALT: r-strong-invertibility refers to a specific r*)
+(*r-strong-invertibility refers to a specific r*)
 Definition r_strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) :=
   (forall j : 'I_m, j < r -> (submx_remove_col A Hmn r j) \in unitmx) /\
   (forall j : 'I_m, r <= j -> (submx_add_row A Hmn r j) \in unitmx).
-
-(*
-
-(*The condition we need to have at the beginning and preserve*)
-(*Note that we only require the condition starting from a given r value. This is because the condition
-  will only be partially preserved through the gaussian steps*)
-Definition strong_inv {m n} (A: 'M[F]_(m, n)) (Hmn : m <= n) (r: 'I_m) :=
-  forall (r' : 'I_m), r <= r' ->
-    (forall (j: 'I_m), j < r' -> (submx_remove_col A Hmn r' j) \in unitmx) /\
-    (forall (j : 'I_m), r' <= j -> (submx_add_row A Hmn r' j) \in unitmx).*)
-
-(*TODO: see*)
-Lemma nat_of_ord_neq: forall {m} (x y : 'I_m),
-  x != y ->
-  nat_of_ord x != nat_of_ord y.
-Proof.
-  move => m x y Hxy. case: (nat_of_ord x == nat_of_ord y) /eqP => [/= Hyx | //].
-  have Heq: x == y. apply /eqP. by apply ord_inj. by rewrite Heq in Hxy.
-Qed.
 
 (*Now, we want to prove the condition for a single step: if the gaussian invariant is satisfied, then
   A is strongly invertible iff all entries in column r are nonzero. We do this in two pieces, one each for 
@@ -372,7 +352,7 @@ Proof.
           have->: Ordinal Hjr = x. apply ord_inj. apply /eqP. by rewrite /= Hjx.
           move => /eqP Hzero'; move: Hzero'. by rewrite GRing.mulf_eq0 Hcx/= => /eqP Hcon.
         * move => i Hij. have->: c i = 0. apply /eqP. move: Hnoy => /(_ i).
-          have->//=: (nat_of_ord i != nat_of_ord j). by apply nat_of_ord_neq in Hij.
+          have->//=: (nat_of_ord i != nat_of_ord j) by apply nat_of_ord_neq in Hij.
           by rewrite GRing.mul0r.
       - exists x. by rewrite Hcx /= eq_sym Hjx.
     }
@@ -513,8 +493,7 @@ Proof.
 Qed.
 
 (* Analagously, we define a function to peform s steps of Restricted Gaussian Elimination*)
-(*TODO: use bind, this is ugly*)
-
+(*TODO: use bind instead?*)
 (*This generic version helps for a few lemmas*)
 Definition gauss_multiple_steps_restrict_body {m n} (Hmn: m <= n) o l :=
   foldl (fun oA r' => match (insub r') with
@@ -853,7 +832,7 @@ Qed.
 (** Final Algorithm *)
 
 (*Similarly, we wrap this into a nice definition which we can then prove results about to use in the C code
-  which oeprates on the result of gaussian elimination*)
+  which operates on the result of Gaussian elimination*)
 
 (*In this case, we know all the leading coefficients are at position r (for row r). We provide a 
   generic upper bound because the last row is not needed*)
@@ -922,7 +901,6 @@ Qed.
    are equal *)
 Definition strong_inv {m n} (A: 'M[F]_(m, n)) (H0m: 0 < m) (Hmn: m <= n) :=
   all_strong_inv A Hmn (Ordinal H0m).
-  (*multi_strong_inv A Hmn (Ordinal H0m) m.*)
 
 (*The only complication is that we don't need to scalar multiply the last row*)
 Definition gaussian_elim_restrict {m n} (A: 'M[F]_(m, n)) (Hmn: m <= n) :=
@@ -1319,7 +1297,7 @@ Proof.
     by apply Hrow.
 Qed.
 
-(*Finally, [srong_inv] is actually a stronger condition than invertibility*)
+(*Finally, [strong_inv] is actually a stronger condition than invertibility*)
 
 Lemma lt_subst: forall (n m p: nat),
   (n < m)%N ->
@@ -1335,7 +1313,7 @@ Lemma strong_inv_unitmx: forall {n} (A: 'M[F]_n) (H: (n <= n)%N) (r: 'I_n),
 Proof.
   move => n A H r. rewrite /all_strong_inv /multi_strong_inv /r_strong_inv subnKC; last first. by apply ltnW.
   have: (0 <= n)%N by []. rewrite leq_eqVlt => /orP[/eqP H0n | Hn].
-  -  move => Hstr. (*i guess the empty matrix is invertible?*)
+  -  move => Hstr.
      have->: A = (1%:M)%R. subst. apply matrix_zero_rows. apply unitmx1.
   - have Hr: (r <= (pred_ord Hn))%N by rewrite /= -ltn_pred.
     have Htriv: r <= pred_ord Hn < n by rewrite Hr andTb. 

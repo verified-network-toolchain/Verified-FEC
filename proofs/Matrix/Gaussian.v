@@ -133,6 +133,13 @@ Proof.
   rewrite perm.tpermD //. all: by rewrite eq_sym; apply /eqP.
 Qed. 
 
+Lemma xrow_rr : forall {m n } (A: 'M[F]_(m, n)) (r: 'I_m),
+  xrow r r A = A.
+Proof.
+  move => m n A r. rewrite -matrixP => x y. rewrite xrow_val.
+  case : (x == r) /eqP => [Hxr | Hxr//]. by rewrite Hxr.
+Qed.
+
 (*scalar multiply row r in matrix A by scalar c*)
 Definition sc_mul {m n} (A : 'M[F]_(m, n)) (c: F) (r: 'I_m) : 'M[F]_(m, n) :=
   \matrix_(i < m, j < n) if i == r then c * (A i j) else A i j. 

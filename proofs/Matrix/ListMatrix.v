@@ -1653,9 +1653,7 @@ Proof.
   - apply Z_ord_bound. lia.
 Qed.
 
-(*Need analogue of [strong_inv_row_mx]*)
-(*TODO: do this*)
-
+(*Analogue of [strong_inv_row_mx]*)
 Lemma strong_inv_row_mx_list: forall m n left right,
   strong_inv_list m n left ->
   strong_inv_list m (n + n) (row_mx_list left right m n n).

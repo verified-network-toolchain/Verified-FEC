@@ -160,6 +160,13 @@ Proof.
   have: x == y by (apply /eqP; apply ord_inj). by rewrite Hxy.
 Qed.
 
+Lemma nat_of_ord_neq: forall {m} (x y : 'I_m),
+  x != y ->
+  nat_of_ord x != nat_of_ord y.
+Proof.
+  move => m x y Hxy. by rewrite nat_of_ord_eq.
+Qed.
+
 (** Lemmas about [iota]*)
 
 Lemma iota_plus_1: forall x y,
