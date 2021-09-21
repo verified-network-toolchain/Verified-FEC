@@ -637,6 +637,52 @@ Proof.
   move => i Hi. by apply mkseqByte_Znth_Z; rep_lia.
 Qed.
 
+(* Clear definitions of each map for paper *)
+
+(* The power map *)
+
+(*The element "x"*)
+Definition bx := qpoly_to_byte (qx p256_geq_2).
+
+Lemma byte_exp_unfold: forall (q: qpoly_p256) n,
+  qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q n) = (qpoly_to_byte q) ^+ n.
+Proof.
+  move => q n. elim : n => [//= | n' /= IH].
+  - rewrite !GRing.expr0. apply byte_to_qpoly_inj. by rewrite byte_one_qpoly qpoly_byte_cancel.
+  - rewrite !GRing.exprS -IH. apply byte_to_qpoly_inj. rewrite qpoly_byte_cancel.
+    have->: (@GRing.mul byte_fieldType (qpoly_to_byte q) (qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q n'))) = 
+      byte_mul (qpoly_to_byte q) (qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q n')) by [].
+    by rewrite /byte_mul !qpoly_byte_cancel.
+Qed.
+
+(* Describes clearly what byte_pows is*)
+Lemma byte_pows_elts: forall i,
+  0 <= i < Byte.modulus ->
+  Znth i byte_pows = bx ^+ (Z.to_nat i).
+Proof.
+  move => i Hi. rewrite byte_pows_Znth // /byte_pow_map /bx /qpow_map_full/= Byte.unsigned_repr.
+  2: rep_lia. apply byte_exp_unfold.
+Qed.
+
+(*Describes clearly what byte_logs is*)
+Lemma byte_logs_elts: forall i,
+  0 < i < Byte.modulus ->
+  bx ^+ Z.to_nat (Byte.unsigned (Znth i byte_logs)) = Byte.repr i.
+Proof.
+  move => i Hi. rewrite byte_logs_Znth // /byte_log_map; try lia. rewrite /bx/= Nat2Z.id -byte_exp_unfold find_qpow_correct.
+  - apply byte_qpoly_cancel.
+  - rewrite polyseqK. apply p256_primitive.
+  - apply negbT. rewrite byte_zero_qpoly_iff. apply /eqP. move => Hiz. apply (congr1 Byte.unsigned) in Hiz.
+    move: Hiz. rewrite Byte.unsigned_zero Byte.unsigned_repr; rep_lia.
+Qed.
+
+Lemma byte_invs_elts: forall i,
+  0 <= i < Byte.modulus ->
+  Znth i byte_invs = (Byte.repr i)^-1.
+Proof.
+  move => i Hi. by rewrite byte_invs_Znth.
+Qed.
+
 (*Lemmas about these maps*)
 Lemma byte_pow_map_zero: byte_pow_map Byte.zero = Byte.one.
 Proof.
