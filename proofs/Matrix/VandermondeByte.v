@@ -38,9 +38,6 @@ Section PrimitiveVandermonde.
 
 Local Open Scope ring_scope.
 
-
-Definition bx : byte := qpoly_to_byte (qx p256_geq_2).
-
 (*Because the C code actually reverses the rows, we need rev of the natural choice 1, x, x^2, etc*)
 Definition vandermonde_powers m n : 'M[B]_(m, n) := vandermonde m n (rev (map (fun i => (bx ^+ i)) (iota 0 n))).
 
