@@ -66,7 +66,7 @@ Definition fec_matrix_transform_spec :=
     PROP()
     RETURN (Vint Int.zero)
     SEP(FIELD_TABLES gv;
-        data_at sh (tarray tuchar (m * n))(map Vubyte (flatten_mx (gauss_restrict_rows m n mx))) s).
+        data_at sh (tarray tuchar (m * n))(map Vubyte (flatten_mx (gauss_restrict_list m n mx))) s).
 
 Definition fec_gf_mult_spec :=
   DECLARE _fec_gf_mult
@@ -157,7 +157,7 @@ Definition fec_blk_encode_spec :=
   POST [ tint ]
     PROP ()
     RETURN (Vint Int.zero)
-    SEP (iter_sepcon_arrays parity_ptrs (encode_list_mx h k c packets);
+    SEP (iter_sepcon_arrays parity_ptrs (encoder_list h k c packets);
          data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
          iter_sepcon_arrays packet_ptrs packets;
          data_at Ews (tarray tint k) (map Vint (map Int.repr (lengths))) pl;

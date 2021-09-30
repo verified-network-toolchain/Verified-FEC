@@ -219,11 +219,11 @@ Qed.
 Lemma pop_mx_mult_done: forall m n k mx1 mx2 j,
   0 <= m ->
   0 <= n ->
-  pop_mx_mult m n k mx1 mx2 m j = list_lmatrix_multiply m k n mx1 mx2.
+  pop_mx_mult m n k mx1 mx2 m j = lmatrix_multiply m k n mx1 mx2.
 Proof.
   move => m n k mx1 mx2 j Hm Hn. apply (@lmatrix_ext_eq _ m n).
   - by apply pop_mx_mult_wf.
-  - by apply list_lmatrix_multiply_wf.
+  - by apply lmatrix_multiply_wf.
   - move => x y Hx Hy. by rewrite pop_2d_arr_done // mk_lmatrix_get.
 Qed.
 
@@ -285,7 +285,7 @@ Lemma pop_mx_mult_part_done: forall m' n' k' m n mx1 mx2 j x y,
   0 <= x < m' ->
   0 <= y < n' ->
   Znth y (Znth x (pop_mx_mult_part m' n' k' m n mx1 mx2 m' j)) = 
-    Vubyte (get (list_lmatrix_multiply m' k' n' mx1 mx2) x y).
+    Vubyte (get (lmatrix_multiply m' k' n' mx1 mx2) x y).
 Proof.
   move => m' n' k' m n mx1 mx2 j x y Hm Hn Hx Hy. rewrite mk_lmatrix_get //.
   pose proof (@pop_partial_done  _ _ m' n' m n (fun x y => Vubyte (dot_prod mx1 mx2 x y k')) Vundef) as Hdone.

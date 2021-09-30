@@ -1275,7 +1275,7 @@ forward_loop (EX (i: Z),
             remember [FRZL FR1; data_at Tsh (tarray (tarray tuchar 16000) 128)
               (pop_mx_mult_part xh c k fec_max_h fec_max_cols w'' d' xh 0) v_s;
               data_at Tsh (tarray tuchar (xh * (xh + xh)))
-              (map Vubyte (flatten_mx (gauss_restrict_rows (F:=B) xh (xh + xh) (concat_mx_id (F:=B) w' xh)))) v_v;
+              (map Vubyte (flatten_mx (gauss_restrict_list (F:=B) xh (xh + xh) (concat_mx_id (F:=B) w' xh)))) v_v;
              data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (Zlength packets) fec_max_h) v_lost;
              FIELD_TABLES gv;
              data_at Ews (tarray tint (Zlength packets)) (map Vint (map Int.repr lengths)) pl;
@@ -1285,14 +1285,14 @@ forward_loop (EX (i: Z),
               PROP (0 <= i <= xh)
               (LOCALx ((temp _i (Vint (Int.repr i))) :: LOCALS)
               (SEPx (iter_sepcon_arrays packet_ptrs 
-                (pop_fill_rows_list packets (list_lmatrix_multiply xh xh c (find_invmx_list w' xh)
-                    (list_lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k))) i 0) ::
+                (pop_fill_rows_list packets (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                    (lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k))) i 0) ::
                 data_at Ews (tarray tschar (Zlength packets)) 
                   (map Vbyte (pop_stats stats (map Byte.unsigned (rev (find_lost stats k))) i)) ps :: SEPS))))
             break: (PROP () (LOCALx LOCALS
               (SEPx (iter_sepcon_arrays packet_ptrs 
-                (pop_fill_rows_list packets (list_lmatrix_multiply xh xh c (find_invmx_list w' xh)
-                    (list_lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k))) xh 0) ::
+                (pop_fill_rows_list packets (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                    (lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k))) xh 0) ::
                 data_at Ews (tarray tschar (Zlength packets)) 
                   (map Vbyte (pop_stats stats (map Byte.unsigned (rev (find_lost stats k))) xh)) ps :: SEPS)))).
             { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
@@ -1356,13 +1356,13 @@ forward_loop (EX (i: Z),
                       (PROP (0 <= j <= c)
                       (LOCALx ((temp _j (Vint (Int.repr j))) :: LOCALS1)
                       (SEPx (iter_sepcon_arrays packet_ptrs (pop_fill_rows_list packets
-                          (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                          (list_lmatrix_multiply (F:=B) xh k c w'' d')) 
+                          (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
+                          (lmatrix_multiply (F:=B) xh k c w'' d')) 
                           (map Byte.unsigned (rev (find_lost stats k))) i' j) :: SEPS1)))))
                       break: (PROP () (LOCALx LOCALS1 (SEPx 
                         (iter_sepcon_arrays packet_ptrs (pop_fill_rows_list packets
-                          (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                          (list_lmatrix_multiply (F:=B) xh k c w'' d')) 
+                          (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
+                          (lmatrix_multiply (F:=B) xh k c w'' d')) 
                           (map Byte.unsigned (rev (find_lost stats k))) i' c) :: SEPS1)))).
                     { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!. }
                     { Intros j. rewrite_eqs; forward_if.
@@ -1380,8 +1380,8 @@ forward_loop (EX (i: Z),
                         rewrite <- HeqLOCALS. rewrite <- HeqLOCALS1. rewrite <- HeqSEPS. rewrite <- HeqSEPS1.
                         (*We don't change anything in SEPS here*)
                         remember (iter_sepcon_arrays packet_ptrs (pop_fill_rows_list packets
-                          (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                          (list_lmatrix_multiply (F:=B) xh k c w'' d'))
+                          (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
+                          (lmatrix_multiply (F:=B) xh k c w'' d'))
                           (map Byte.unsigned (rev (find_lost stats k))) i' j) :: SEPS1) as SEPS2.
                         remember (temp _j (Vint (Int.repr j)) :: LOCALS1) as LOCALS2.
                         (*r is annoying. It is not always a field_address, because when we end, it is invalid. This
@@ -1390,12 +1390,12 @@ forward_loop (EX (i: Z),
                           PROP (0 <= n <= xh)
                           (LOCALx (temp _n (field_address (tarray tuchar (xh * (xh + xh))) (SUB (i' * xh * 2 + n)) v_v)
                             :: (temp _y (Vubyte (dot_prod (F:=B) (rev_cols_list xh xh (find_invmx_list w' xh)) (*dot prod is reversed*)
-                                        (rev_rows_list xh c (list_lmatrix_multiply xh k c w'' d')) i' j n))) :: 
+                                        (rev_rows_list xh c (lmatrix_multiply xh k c w'' d')) i' j n))) :: 
                             (temp _r (offset_val (((xh - 1 - n) * fec_max_cols) + j) v_s))  :: LOCALS2)
                           (SEPx SEPS2)))
                         break: (PROP () 
                           (LOCALx (temp _y (Vubyte (dot_prod (F:=B) (find_invmx_list w' xh) (*dont need other locals*)
-                                        (list_lmatrix_multiply xh k c w'' d') i' j xh)) :: LOCALS2)
+                                        (lmatrix_multiply xh k c w'' d') i' j xh)) :: LOCALS2)
                           (SEPx SEPS2))).
                         { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!. solve_offset. }
                         { Intros n. rewrite_eqs; forward_if.
@@ -1429,11 +1429,11 @@ forward_loop (EX (i: Z),
                             forward.
                             { entailer!; nia. }
                             { rewrite Znth_map. 2: { rewrite (flatten_mx_Zlength _ xh (xh + xh)). nia.
-                              apply gauss_restrict_rows_wf. apply row_mx_list_wf; lia. }
+                              apply gauss_restrict_list_wf. apply row_mx_list_wf; lia. }
                               entailer!. simpl_repr_byte.
                             }
                             { rewrite Znth_map. 2 : { rewrite (flatten_mx_Zlength _ xh (xh + xh)). nia.
-                              apply gauss_restrict_rows_wf. apply row_mx_list_wf; lia. }
+                              apply gauss_restrict_list_wf. apply row_mx_list_wf; lia. }
                               (*Takes forever with literals, need opaque constants*)
                               replace (lvar _s (tarray (tarray tuchar 16000) 128) v_s) with
                                 (lvar _s (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s) by
@@ -1447,7 +1447,7 @@ forward_loop (EX (i: Z),
                               assert (Hpopnth: forall (v: val) (l: list val),
                                 (@Znth val v j (@Znth (list val) l (xh - 1 - n) 
                                 (pop_mx_mult_part xh c k fec_max_h fec_max_cols w'' d' xh 0))) =
-                                (Vubyte (get (list_lmatrix_multiply (F:=B) xh k c w'' d') (xh - 1 - n) j))). {
+                                (Vubyte (get (lmatrix_multiply (F:=B) xh k c w'' d') (xh - 1 - n) j))). {
                                 intros v l. rewrite !(@Znth_default _ Inhabitant_val). 
                                 rewrite !(@Znth_default _  Inhabitant_list).
                                 rewrite pop_mx_mult_part_done; try rep_lia. reflexivity.
@@ -1465,8 +1465,8 @@ forward_loop (EX (i: Z),
                               { rewrite Hpopnth. entailer!; simpl_repr_byte. }
                               { rewrite Hpopnth. unfold FIELD_TABLES. Intros.
                                 forward_call(gv, (Znth (i' * xh * 2 + n)
-                                    (flatten_mx (gauss_restrict_rows (F:=B) xh (xh + xh) (concat_mx_id (F:=B) w' xh)))),
-                                    (get (list_lmatrix_multiply (F:=B) xh k c w'' d') (xh - 1 - n) j)).
+                                    (flatten_mx (gauss_restrict_list (F:=B) xh (xh + xh) (concat_mx_id (F:=B) w' xh)))),
+                                    (get (lmatrix_multiply (F:=B) xh k c w'' d') (xh - 1 - n) j)).
                                 forward. (*simplify y*) unfold Int.xor. rewrite !Int.unsigned_repr by rep_lia.
                                 rewrite byte_xor_fold. simpl_repr_byte. rewrite <- byte_int_repr by rep_lia.
                                 rewrite Byte.repr_unsigned.
@@ -1486,7 +1486,7 @@ forward_loop (EX (i: Z),
                                     unfold find_invmx_list. unfold right_submx. rewrite mk_lmatrix_get by lia.
                                     remember (Zlength (find_lost stats (Zlength packets))) as xh.
                                     rewrite (@flatten_mx_Znth' xh (xh + xh)). 3: nia. 
-                                    2 : apply gauss_restrict_rows_wf; apply row_mx_list_wf; lia.
+                                    2 : apply gauss_restrict_list_wf; apply row_mx_list_wf; lia.
                                     replace (i' * xh * 2) with (i' * (xh + xh)) by nia.
                                     f_equal.
                                     * rewrite idx_div; lia.
@@ -1511,7 +1511,7 @@ forward_loop (EX (i: Z),
                             clear Hntemp Hmtemp H6.
                             assert (Hnxh: n = xh) by lia. rewrite_eqs; entailer!. 
                             rewrite dot_prod_rev; try lia. reflexivity. apply right_submx_wf; lia.
-                            apply list_lmatrix_multiply_wf; lia.
+                            apply lmatrix_multiply_wf; lia.
                           }
                         }
                         { (*write to data - need to unfold iter_sepcon*)
@@ -1534,13 +1534,13 @@ forward_loop (EX (i: Z),
                               (Znth (Byte.unsigned (Znth (xh - i' - 1) (find_lost stats (Zlength packets)))) lengths)))
                               :: temp _data_lost_row (Vubyte (Znth (xh - i' - 1) (find_lost stats (Zlength packets))))
                               :: temp _y (Vubyte (dot_prod (F:=B) (find_invmx_list (F:=B) w' xh)
-                              (list_lmatrix_multiply (F:=B) xh k c w'' d') i' j xh)) :: LOCALS2) as LOCALS3.
+                              (lmatrix_multiply (F:=B) xh k c w'' d') i' j xh)) :: LOCALS2) as LOCALS3.
                             rewrite_eqs;
                             forward_if (PROP () (LOCALx LOCALS3 (SEPx 
                               (iter_sepcon_arrays packet_ptrs
                               (pop_fill_rows_list packets
-                                 (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                                    (list_lmatrix_multiply (F:=B) xh k c w'' d'))
+                                 (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
+                                    (lmatrix_multiply (F:=B) xh k c w'' d'))
                                  (map Byte.unsigned (rev (find_lost stats k))) i' (j + 1)) :: SEPS1)))).
                             { assert (Hilenb: 0 <= (Znth (Byte.unsigned (Znth (xh - i' - 1)
                                  (find_lost stats (Zlength packets)))) lengths) <= c). {
@@ -1550,8 +1550,8 @@ forward_loop (EX (i: Z),
                               rewrite Hlenspec in H6 by lia.
                               (*Need to unfold the [iter_sepcon_arrays]*)
                               remember (pop_fill_rows_list packets
-                               (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                                  (list_lmatrix_multiply (F:=B) xh k c w'' d'))
+                               (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
+                                  (lmatrix_multiply (F:=B) xh k c w'' d'))
                                (map Byte.unsigned (rev (find_lost stats k))) i' j) as poppack.
                               assert (Hleneq: Zlength packet_ptrs = Zlength poppack). { subst.
                                 unfold pop_fill_rows_list. rewrite mkseqZ_Zlength; lia. }
@@ -1568,8 +1568,8 @@ forward_loop (EX (i: Z),
                                   (*rewrite before entailer because everything gets subst'ed and it's impossible
                                     to read*)
                                   remember (pop_fill_rows_list packets
-                                   (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                                      (list_lmatrix_multiply (F:=B) xh k c w'' d'))
+                                   (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
+                                      (lmatrix_multiply (F:=B) xh k c w'' d'))
                                    (map Byte.unsigned (rev (find_lost stats k))) i' (j + 1)) as poppack'.
                                   assert (Hleneq': Zlength packet_ptrs = Zlength poppack'). { subst.
                                     unfold pop_fill_rows_list. rewrite mkseqZ_Zlength; lia. }
@@ -1594,15 +1594,15 @@ forward_loop (EX (i: Z),
                                         (Ziota 0 c))
                                      (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c
                                         (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) as d'.
-                                    remember (list_lmatrix_multiply (F:=B) xh k c w'' d') as s.
-                                    remember (list_lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh) s) as d.
+                                    remember (lmatrix_multiply (F:=B) xh k c w'' d') as s.
+                                    remember (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh) s) as d.
                                     rewrite Znth_map. 2: { rewrite Zlength_rev. list_solve. }
                                     rewrite Znth_rev by lia. replace (Zlength lost) with xh by lia.
                                     unfold set at 3.
                                     rewrite remove_upd_Znth by lia. cancel. apply derives_refl'.
                                     rewrite set_Zlength2. f_equal. unfold set. rewrite !upd_Znth_map.
                                     f_equal. rewrite upd_Znth_same by lia. f_equal. rewrite Heqd.
-                                    unfold list_lmatrix_multiply. rewrite (@mk_lmatrix_get B) by lia.
+                                    unfold lmatrix_multiply. rewrite (@mk_lmatrix_get B) by lia.
                                     reflexivity.
                                   - apply FinFun.Injective_map_NoDup. intros b1 b2. apply byte_unsigned_inj.
                                     apply NoDup_rev. apply find_lost_NoDup. rep_lia.
@@ -1662,7 +1662,7 @@ forward_loop (EX (i: Z),
               rewrite Hrevlen at 12.
               rewrite (@pop_fill_rows_list_done packets _ (map Byte.unsigned (rev (find_lost stats (Zlength packets))))
                 lengths 0 (Zlength packets) c (Zlength (find_lost stats (Zlength packets)))); try lia; try assumption.
-              2 : { apply (@list_lmatrix_multiply_wf B (Zlength (find_lost stats (Zlength packets)))); lia. }
+              2 : { apply (@lmatrix_multiply_wf B (Zlength (find_lost stats (Zlength packets)))); lia. }
               (*do matrix part last so we can derives_refl'*)
               rewrite !sepcon_assoc.
               apply sepcon_derives.
@@ -1706,9 +1706,9 @@ forward_loop (EX (i: Z),
                 * rewrite Zlength_app. rewrite Zlength_map.
                   rewrite (@flatten_mx_Zlength _ xh (xh + xh)).
                   rewrite zseq_Zlength. nia. assert (xh <= 128) by rep_lia. nia.
-                  apply gauss_restrict_rows_wf. apply row_mx_list_wf; lia.
+                  apply gauss_restrict_list_wf. apply row_mx_list_wf; lia.
                 * rewrite Zlength_map. rewrite (@flatten_mx_Zlength _ xh (xh + xh)). lia.
-                  apply gauss_restrict_rows_wf. apply row_mx_list_wf; lia.
+                  apply gauss_restrict_list_wf. apply row_mx_list_wf; lia.
                 * rewrite zseq_Zlength. nia. assert (xh <= 128) by rep_lia. nia.
             }
           }

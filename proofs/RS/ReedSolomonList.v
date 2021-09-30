@@ -44,8 +44,8 @@ Qed.
 Section Encoder.
 
 (* The ListMatrix version of the encoder*)
-Definition encode_list_mx (h k c : Z) (packets : lmatrix B) : lmatrix B :=
-  list_lmatrix_multiply h k c (submatrix (fec_n - 1) weight_mx h k) 
+Definition encoder_list (h k c : Z) (packets : lmatrix B) : lmatrix B :=
+  lmatrix_multiply h k c (submatrix (fec_n - 1) weight_mx h k) 
       (extend_mx k c packets).
 
 (*Lift the above into ssreflect matrices and operations*)
@@ -55,13 +55,13 @@ Lemma encoder_spec : forall (h k c : Z) (packets: lmatrix B) (Hh: h <= fec_max_h
   0 <= c ->
   Zlength packets = k ->
   Forall (fun x => Zlength x <= c) packets ->
-  lmatrix_to_mx h c (encode_list_mx h k c packets) = encoder (le_Z_N Hh) (le_Z_N Hk)
+  lmatrix_to_mx h c (encoder_list h k c packets) = encoder (le_Z_N Hh) (le_Z_N Hk)
     (lmatrix_to_mx fec_max_h (fec_n - 1) weight_mx) 
     (lmatrix_to_mx k c (extend_mx k c packets)).
 Proof.
-  move => h k c packets Hh Hk Hn0 Hk0 Hc0 Hlen Hin. rewrite /encode_list_mx /encoder.
+  move => h k c packets Hh Hk Hn0 Hk0 Hc0 Hlen Hin. rewrite /encoder_list /encoder.
   have Hwf: wf_lmatrix weight_mx fec_max_h (fec_n - 1) by apply weight_mx_wf. 
-  rewrite list_lmatrix_multiply_correct.
+  rewrite lmatrix_multiply_correct.
   by rewrite (@submatrix_to_mx _ (fec_max_h) (fec_n - 1) _ _ _ Hh Hk).
   by apply submatrix_wf.
   by apply extend_mx_wf. 
@@ -740,9 +740,9 @@ Definition decode_list_mx (k c : Z) (packets: list (list B)) (parities: list (op
   let w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row) (map Byte.unsigned found) in
   let d' := col_mx_list (submx_rows_cols_list input (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
               (submx_rows_cols_list parmx xh c (map Byte.unsigned row) (Ziota 0 c)) (k-xh) xh c in
-  let s := list_lmatrix_multiply xh k c w'' d' in
+  let s := lmatrix_multiply xh k c w'' d' in
   (*step 3: find missing packets and fill in*)
-  let d := list_lmatrix_multiply xh xh c v s in
+  let d := lmatrix_multiply xh xh c v s in
   fill_rows_list k c xh input d (map Byte.unsigned (rev lost)).
 
 
@@ -781,7 +781,7 @@ Qed.
 Lemma weight_mx_spec: lmatrix_to_mx fec_max_h (fec_n - 1) weight_mx =
    weights (Z.to_nat fec_max_h) (Z.to_nat (fec_n - 1)) weight_list.
 Proof.
-  rewrite /weight_mx /weight_list gauss_restrict_rows_equiv. rep_lia.
+  rewrite /weight_mx /weight_list gauss_restrict_list_equiv. rep_lia.
   move => Hhn. rewrite /weights gaussian_elim_restrict_noop_equiv. f_equal. by rewrite weight_mx_list_spec; try rep_lia.
   apply /leP. rep_lia. move => Hh. rewrite weight_mx_list_spec; try rep_lia. apply vandermonde_strong_inv.
   apply /ltP. rep_lia.
@@ -792,8 +792,6 @@ Lemma weight_list_uniq: uniq weight_list.
 Proof.
   rewrite /weight_list rev_uniq power_list_uniq //=. apply /leP. rep_lia.
 Qed.
-
-(*TODO: start here*)
 
 (*We need this both for correctness and for the the VST proof*)
 Lemma strong_inv_list_partial: forall k xh h stats parities,
@@ -910,8 +908,8 @@ Proof.
     (*have Hlenlost': Zlength (rev (find_lost stats k)) = xh  by rewrite rev_rev Zlength_rev.*)
     rewrite /decode_list_mx Hlenlost /decoder_mult fill_rows_list_spec //; try lia.
     move => Hk0. f_equal.
-    rewrite list_lmatrix_multiply_correct. 2: { apply right_submx_wf; rep_lia. }
-    2 : { apply list_lmatrix_multiply_wf; rep_lia. }
+    rewrite lmatrix_multiply_correct. 2: { apply right_submx_wf; rep_lia. }
+    2 : { apply lmatrix_multiply_wf; rep_lia. }
     2 : {  by apply ord_inj. }
     rewrite find_invmx_list_spec. 2 : {
       apply strong_inv_list_partial; try lia. by subst. by subst. }
@@ -930,7 +928,7 @@ Proof.
       * subst. by apply Z_byte_list_bound.
       * have Hkn: k <= fec_n - 1 by lia. apply Z_byte_list_bound.
         rewrite rev_rev. apply Forall_rev. by apply (forall_lt_leq_trans Hkn). 
-    + rewrite list_lmatrix_multiply_correct. 2: { apply submx_rows_cols_rev_list_wf; lia. }
+    + rewrite lmatrix_multiply_correct. 2: { apply submx_rows_cols_rev_list_wf; lia. }
       2 : { have Hkxh: k = (k - xh) + xh by lia. rewrite {5}Hkxh. apply col_mx_list_wf; lia. }
       rewrite (@submx_rows_cols_rev_list_spec _ _ fec_max_h) //; try lia.
       2 : {  subst; by apply Z_byte_list_bound. }
@@ -1005,7 +1003,7 @@ Qed.
 Definition parities_valid k c parities data :=
   forall i j, 0 <= i < Zlength parities -> 0 <= j < c ->
     match (Znth i parities) with
-      | Some par => Znth j par = Znth j (Znth i (encode_list_mx (Zlength parities) k c data))
+      | Some par => Znth j par = Znth j (Znth i (encoder_list (Zlength parities) k c data))
       | _ => True
     end.
 
@@ -1067,9 +1065,9 @@ Proof.
       have  Hy: (0 <= Z.of_nat y < c) by (apply Z_ord_bound; lia).
       move: Hpars; rewrite /parities_valid => /(_ (Z.of_nat x) (Z.of_nat y) Hx' Hy).
       rewrite Hnthx /= (fill_missing_mx_some Hnthx) //=.
-      * move ->. have [Henc [ Hc0 Hinenc]]: wf_lmatrix (encode_list_mx (Zlength parities) k c data) (Zlength parities) c. {
-          apply list_lmatrix_multiply_wf; lia. }
-        rewrite -(@matrix_to_mx_get _ _ _ (encode_list_mx h k c data)) //=. by rewrite Hparlen. 
+      * move ->. have [Henc [ Hc0 Hinenc]]: wf_lmatrix (encoder_list (Zlength parities) k c data) (Zlength parities) c. {
+          apply lmatrix_multiply_wf; lia. }
+        rewrite -(@matrix_to_mx_get _ _ _ (encoder_list h k c data)) //=. by rewrite Hparlen. 
         rewrite -Henc in Hx'.
         have Hkn': k <= fec_n - 1  by lia. 
         have->: (k_leq_n (k_bound_proof (proj2 Hkn))) = le_Z_N Hkn' by  apply bool_irrelevance.
@@ -1107,14 +1105,6 @@ Qed.
 
 (*Now we can state the precondition in terms of filter, so a client doesn't need to know anything about
   [find_lost]*)
-(*
-Lemma find_lost_filter: forall stats i,
-  0 <= i <= Zlength stats ->
-  Zlength (find_lost stats i) =  Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) (sublist 0 i stats)).
-Proof.
-  move => stats i Hi. have->:i = Z.of_nat (Z.to_nat i) by lia.
-  rewrite find_lost_found_aux_filter_sublist; lia.
-Qed.*)
 
 Lemma find_lost_filter: forall stats k,
   k = Zlength stats ->
@@ -1171,7 +1161,6 @@ Proof.
   move => pars i Hi. 
   have ->: i = Z.of_nat (Z.to_nat i) by lia. rewrite find_parity_aux_filter_sublist; lia.
 Qed.
-
 
 (*We also use this for an injectivity lemma we will need in the VST proof*)
 Lemma find_parity_rows_inj_aux: forall parities i j,

@@ -345,12 +345,12 @@ Proof.
   rewrite Z2Nat.inj_sub; try lia. by rewrite Nat2Z.id Nat.mul_sub_distr_l.
 Qed. 
 
-Definition weight_mx := (gauss_restrict_rows fec_max_h (fec_n -1)
+Definition weight_mx := (gauss_restrict_list fec_max_h (fec_n -1)
             (weight_mx_list fec_max_h  (fec_n - 1))).
 
 Lemma weight_mx_wf: wf_lmatrix weight_mx (fec_max_h) (fec_n - 1).
 Proof.
-  apply gauss_restrict_rows_wf. apply weight_matrix_wf; rep_lia.
+  apply gauss_restrict_list_wf. apply weight_matrix_wf; rep_lia.
 Qed.
  
 End WeightMx.

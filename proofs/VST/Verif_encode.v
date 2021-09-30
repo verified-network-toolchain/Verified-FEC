@@ -97,7 +97,7 @@ Proof.
         (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k) (extend_mx (F:=B) k c packets) i 0)  
         :: SEPS))))
       break: 
-      (PROP ()  (LOCALx LOCALS (SEPx ((iter_sepcon_arrays parity_ptrs (encode_list_mx h k c packets)) :: SEPS)))).
+      (PROP ()  (LOCALx LOCALS (SEPx ((iter_sepcon_arrays parity_ptrs (encoder_list h k c packets)) :: SEPS)))).
     { rewrite_eqs. forward. Exists (0%Z).  rewrite_eqs. entailer!. rewrite pop_mx_mult_zero by lia.
       apply derives_refl'. reflexivity. }
     { (*loop body*) Intros i. rewrite_eqs.
@@ -351,7 +351,7 @@ Proof.
       }
       { (*end of outer loop*) forward. rewrite_eqs. entailer!.
         replace i with (Zlength parity_ptrs) by lia. rewrite pop_mx_mult_done by lia.
-        unfold encode_list_mx. cancel.
+        unfold encoder_list. cancel.
       }
     }
     { (*trivial error again*) rewrite_eqs. forward_if True.
