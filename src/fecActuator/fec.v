@@ -13,7 +13,7 @@ Module Info.
   Definition abi := "standard".
   Definition bitsize := 64.
   Definition big_endian := false.
-  Definition source_file := "FEC/fec.c".
+  Definition source_file := "fec.c".
   Definition normalized := true.
 End Info.
 
@@ -461,17 +461,6 @@ Definition v___stringlit_26 := {|
   gvar_volatile := false
 |}.
 
-Definition v___stringlit_6 := {|
-  gvar_info := (tarray tschar 10);
-  gvar_init := (Init_int8 (Int.repr 70) :: Init_int8 (Int.repr 69) ::
-                Init_int8 (Int.repr 67) :: Init_int8 (Int.repr 47) ::
-                Init_int8 (Int.repr 102) :: Init_int8 (Int.repr 101) ::
-                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 46) ::
-                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 0) :: nil);
-  gvar_readonly := true;
-  gvar_volatile := false
-|}.
-
 Definition v___stringlit_15 := {|
   gvar_info := (tarray tschar 9);
   gvar_init := (Init_int8 (Int.repr 70) :: Init_int8 (Int.repr 69) ::
@@ -732,6 +721,15 @@ Definition v___stringlit_5 := {|
                 Init_int8 (Int.repr 83) :: Init_int8 (Int.repr 41) ::
                 Init_int8 (Int.repr 41) :: Init_int8 (Int.repr 32) ::
                 Init_int8 (Int.repr 0) :: nil);
+  gvar_readonly := true;
+  gvar_volatile := false
+|}.
+
+Definition v___stringlit_6 := {|
+  gvar_info := (tarray tschar 6);
+  gvar_init := (Init_int8 (Int.repr 102) :: Init_int8 (Int.repr 101) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 46) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 0) :: nil);
   gvar_readonly := true;
   gvar_volatile := false
 |}.
@@ -1117,8 +1115,8 @@ Definition f_rse_code := {|
                                                  (Tcons (tptr tschar) Tnil))))
                                            tvoid cc_default))
                     ((Evar ___stringlit_7 (tarray tschar 2)) ::
-                     (Evar ___stringlit_6 (tarray tschar 10)) ::
-                     (Econst_int (Int.repr 179) tint) ::
+                     (Evar ___stringlit_6 (tarray tschar 6)) ::
+                     (Econst_int (Int.repr 206) tint) ::
                      (Evar ___func__ (tarray tschar 9)) :: nil))
                   (Sreturn (Some (Eunop Oneg (Econst_int (Int.repr 1) tint)
                                    tint))))))))
@@ -1303,8 +1301,8 @@ Definition f_fec_blk_encode := {|
                                                          Tnil)))) tvoid
                                                  cc_default))
                           ((Evar ___stringlit_11 (tarray tschar 14)) ::
-                           (Evar ___stringlit_6 (tarray tschar 10)) ::
-                           (Econst_int (Int.repr 222) tint) ::
+                           (Evar ___stringlit_6 (tarray tschar 6)) ::
+                           (Econst_int (Int.repr 249) tint) ::
                            (Evar ___func____1 (tarray tschar 15)) :: nil)))
                       (Ssequence
                         (Sset _j (Econst_int (Int.repr 0) tint))
@@ -1665,8 +1663,8 @@ Definition f_fec_blk_decode := {|
                                                                    Tnil))))
                                                            tvoid cc_default))
                                     ((Evar ___stringlit_14 (tarray tschar 14)) ::
-                                     (Evar ___stringlit_6 (tarray tschar 10)) ::
-                                     (Econst_int (Int.repr 302) tint) ::
+                                     (Evar ___stringlit_6 (tarray tschar 6)) ::
+                                     (Econst_int (Int.repr 329) tint) ::
                                      (Evar ___func____2 (tarray tschar 15)) ::
                                      nil))))))
                           (Sset _i
@@ -2658,10 +2656,8 @@ Definition f_fec_matrix_transform := {|
                       (Econst_int (Int.repr 1) tint) (tptr tuchar)))
                   (Ssequence
                     (Sset _m
-                      (Ebinop Oadd
-                        (Ebinop Osub (Etempvar _q (tptr tuchar))
-                          (Etempvar _j_max tuchar) (tptr tuchar))
-                        (Econst_int (Int.repr 1) tint) (tptr tuchar)))
+                      (Ebinop Osub (Etempvar _q (tptr tuchar))
+                        (Etempvar _j_max tuchar) (tptr tuchar)))
                     (Ssequence
                       (Sset _w (Ecast (Etempvar _i tuchar) tuchar))
                       (Ssequence
@@ -2733,17 +2729,15 @@ Definition f_fec_matrix_transform := {|
                               (Sset _inv
                                 (Ecast (Etempvar _t'11 tuchar) tuchar))))
                           (Ssequence
-                            (Sset _n
-                              (Ebinop Oadd (Etempvar _q (tptr tuchar))
-                                (Econst_int (Int.repr 1) tint) (tptr tuchar)))
-                            (Swhile
-                              (Ebinop Ogt (Etempvar _n (tptr tuchar))
-                                (Etempvar _m (tptr tuchar)) tint)
+                            (Sset _n (Etempvar _q (tptr tuchar)))
+                            (Sloop
                               (Ssequence
-                                (Sset _n
-                                  (Ebinop Osub (Etempvar _n (tptr tuchar))
-                                    (Econst_int (Int.repr 1) tint)
-                                    (tptr tuchar)))
+                                (Sifthenelse (Ebinop Ogt
+                                               (Etempvar _n (tptr tuchar))
+                                               (Etempvar _m (tptr tuchar))
+                                               tint)
+                                  Sskip
+                                  Sbreak)
                                 (Ssequence
                                   (Ssequence
                                     (Sset _t'9
@@ -2759,7 +2753,11 @@ Definition f_fec_matrix_transform := {|
                                        (Etempvar _inv tuchar) :: nil)))
                                   (Sassign
                                     (Ederef (Etempvar _n (tptr tuchar))
-                                      tuchar) (Etempvar _t'2 tuchar))))))))))))
+                                      tuchar) (Etempvar _t'2 tuchar))))
+                              (Sset _n
+                                (Ebinop Osub (Etempvar _n (tptr tuchar))
+                                  (Econst_int (Int.repr 1) tint)
+                                  (tptr tuchar)))))))))))
               (Sset _i
                 (Ecast
                   (Ebinop Oadd (Etempvar _i tuchar)
@@ -2871,16 +2869,13 @@ Definition f_fec_matrix_transform := {|
                           (Etempvar _t'5 tuchar) (tptr tuchar)) tuchar))
                     (Sset _inv (Ecast (Etempvar _t'6 tuchar) tuchar))))
                 (Ssequence
-                  (Sset _n
-                    (Ebinop Oadd (Etempvar _q (tptr tuchar))
-                      (Econst_int (Int.repr 1) tint) (tptr tuchar)))
-                  (Swhile
-                    (Ebinop Ogt (Etempvar _n (tptr tuchar))
-                      (Etempvar _m (tptr tuchar)) tint)
+                  (Sset _n (Etempvar _q (tptr tuchar)))
+                  (Sloop
                     (Ssequence
-                      (Sset _n
-                        (Ebinop Osub (Etempvar _n (tptr tuchar))
-                          (Econst_int (Int.repr 1) tint) (tptr tuchar)))
+                      (Sifthenelse (Ebinop Ogt (Etempvar _n (tptr tuchar))
+                                     (Etempvar _m (tptr tuchar)) tint)
+                        Sskip
+                        Sbreak)
                       (Ssequence
                         (Ssequence
                           (Sset _t'4
@@ -2893,7 +2888,10 @@ Definition f_fec_matrix_transform := {|
                             ((Etempvar _t'4 tuchar) ::
                              (Etempvar _inv tuchar) :: nil)))
                         (Sassign (Ederef (Etempvar _n (tptr tuchar)) tuchar)
-                          (Etempvar _t'3 tuchar))))))))))
+                          (Etempvar _t'3 tuchar))))
+                    (Sset _n
+                      (Ebinop Osub (Etempvar _n (tptr tuchar))
+                        (Econst_int (Int.repr 1) tint) (tptr tuchar)))))))))
         (Sset _i
           (Ecast
             (Ebinop Oadd (Etempvar _i tuchar) (Econst_int (Int.repr 1) tint)
@@ -3485,7 +3483,6 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (___stringlit_25, Gvar v___stringlit_25) ::
  (___stringlit_19, Gvar v___stringlit_19) ::
  (___stringlit_26, Gvar v___stringlit_26) ::
- (___stringlit_6, Gvar v___stringlit_6) ::
  (___stringlit_15, Gvar v___stringlit_15) ::
  (___stringlit_17, Gvar v___stringlit_17) ::
  (___stringlit_21, Gvar v___stringlit_21) ::
@@ -3501,6 +3498,7 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (___stringlit_20, Gvar v___stringlit_20) ::
  (___stringlit_30, Gvar v___stringlit_30) ::
  (___stringlit_5, Gvar v___stringlit_5) ::
+ (___stringlit_6, Gvar v___stringlit_6) ::
  (___stringlit_18, Gvar v___stringlit_18) ::
  (___stringlit_3, Gvar v___stringlit_3) ::
  (___stringlit_36, Gvar v___stringlit_36) ::

@@ -159,11 +159,13 @@ Proof.
     { forward. Exists 0%Z. entailer!. }
     { Intros i. forward_if.
       { forward. pointer_to_offset s. (*simplify q*)
-        forward.
+        forward. pointer_to_offset_with s (i * n - 1).  (*Now, we will simplify pointer in m*)
+        forward. simpl_repr_byte.
+        (*
         { entailer!. solve_offset. }
-        { assert (Him: i < m) by (rewrite Byte.unsigned_repr in H1; rep_lia). clear H1. 
-          pointer_to_offset_with s (i * n).  (*Now, we will simplify pointer in m*)
-          forward.
+        { *)assert (Him: i < m) by (rewrite Byte.unsigned_repr in H1; rep_lia). clear H1. 
+          (*pointer_to_offset_with s (i * n).  (*Now, we will simplify pointer in m*)
+          forward.*)
           assert (Hwf' : wf_lmatrix (F:=B) (all_cols_one_partial (F:=B) m n
             (gauss_all_steps_list_partial (F:=B) m n mx k) k i) m n) by solve_wf.
           assert (Hikmn: 0 <= i * n + n - 1 - k < m * n) by nia. 
@@ -174,14 +176,14 @@ Proof.
           assert_PROP (force_val (sem_sub_pi tuchar Signed 
               (offset_val (i * n + n - 1) s) (Vint (Int.repr k))) =
               field_address (tarray tuchar (m * n)) (SUB  (i * n + n - 1 - k)) s) as Hptrsub. {
-            entailer!. solve_offset. }  
+            entailer!. solve_offset. }
         (*Now we are at the while loop - because of the [strong_inv] condition of the matrix,
           the loop guard is false (the loop finds the element to swap if one exists, but returns
           with an error whether or not one exists*)
         (*Because of this, we give a trivial loop invariant*)
         remember (PROP ( )
-           LOCAL (temp _w (Vint (Int.zero_ext 8 (Int.repr i)));
-           temp _m (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s);
+           LOCAL (temp _w (Vint (Int.repr i));
+           temp _m (offset_val (i * n - 1) s);
            temp _q (offset_val (i * n + n - 1) s);
            temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k)); 
            temp _p s; temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); 
@@ -190,9 +192,8 @@ Proof.
            data_at sh (tarray tuchar (m * n)) (map Vubyte (flatten_mx
               (all_cols_one_partial (F:=B) m n (gauss_all_steps_list_partial (F:=B) m n mx k) k i))) s)) as x.
          forward_loop x break: x; subst. (*so I don't have to write it twice*)
-          { entailer!. solve_offset.  } 
-          { 
-            simpl_reptype. forward.
+          { entailer!. } 
+          { simpl_reptype. forward.
             { entailer!. rewrite (@flatten_mx_Znth m n); try lia. simpl_repr_byte. solve_wf. } 
             { entailer!. solve_offset. }
             { rewrite Znth_map by rep_lia. forward_if.
@@ -217,23 +218,23 @@ Proof.
               rewrite Znth_map by rep_lia. forward.
               { entailer!. }
               { entailer!. rewrite Znth_map. simpl_repr_byte. rewrite byte_invs_Zlength. rep_lia.  } 
-              { forward. forward. rewrite Znth_map by (rewrite byte_invs_Zlength; rep_lia).
+              { forward. (*forward.*) rewrite Znth_map by (rewrite byte_invs_Zlength; rep_lia).
                 rewrite !(@flatten_mx_Znth m n); [ | solve_wf | rep_lia | rep_lia].
                 rewrite !byte_invs_Znth by rep_lia. rewrite !Byte.repr_unsigned. rewrite force_val_byte.
                 (*simplify before for loop*)
                 remember (get
                     (all_cols_one_partial (F:=B) m n (gauss_all_steps_list_partial (F:=B) m n mx k) k i)
-                    i k) as qij eqn : Hqij. pointer_to_offset_with s (i * n + n). (*simplify pointer in n*)
+                    i k) as qij eqn : Hqij. (*pointer_to_offset_with s (i * n + n). (*simplify pointer in n*)*)
                 assert (Hmn_leq: 0 <= i * n + n <= m * n) by nia. simpl_repr_byte.
                 (*Scalar multiplication loop*)
                 (*wanted to save LOCALS in a variable, but the "forward_if" doesn't work for some reason*)
                 forward_loop (EX (j : Z),
                 PROP (0 <= j <= n)
                 (LOCAL (
-                  temp _n (field_address0 (tarray tuchar (m * n)) (SUB (i * n + n - j)) s);
+                  temp _n (field_address0 (tarray tuchar (m * n)) (SUB (i * n + n - 1 - j)) s);
                   temp _q (offset_val (i * n + n - 1) s); temp _inv (Vubyte (byte_inv qij));
                   temp _t'11 (Vubyte (byte_inv qij)); temp _t'10 (Vubyte qij); temp _w (Vint (Int.repr i));
-                  temp _m (field_address (tarray tuchar (m * n)) (SUB (i * n + n - 1 - (n - 1))) s);
+                  temp _m (offset_val (i * n - 1) s);
                   temp _i (Vint (Int.repr i)); temp _k (Vint (Int.repr k));
                   temp _p s; temp _i_max (Vubyte (Byte.repr m)); temp _j_max (Vubyte (Byte.repr n)); 
                  gvars gv)
@@ -252,12 +253,18 @@ Proof.
                         data_at sh (tarray tuchar (m * n)) (map Vubyte
                         (flatten_mx (scalar_mul_list m n (all_cols_one_partial (F:=B) m n 
                         (gauss_all_steps_list_partial (F:=B) m n mx k) k i) i (byte_inv qij)))) s)))%assert5).
-                { Exists 0%Z. entailer!. solve_offset. 
+                { forward. Exists 0%Z. entailer!. solve_offset. simpl. 
                   rewrite scalar_mul_list_partial_0. unfold FIELD_TABLES. unfold INDEX_TABLES. cancel. solve_wf. }
                 { Intros j. assert (Hcn : 0 <= i * n) by nia. 
                   (*TODO: doesn't work if LOCALS are folded - why?*)
                   forward_if.
-                  { rewrite !arr_field_address0; auto;[|nia]. rewrite arr_field_address; auto;[|nia].
+                  { rewrite !arr_field_address0; auto. rewrite isptr_denote_tc_test_order; auto.
+                    unfold test_order_ptrs. rewrite sameblock_offset_val by auto.
+Abort.
+(*
+
+ Check arr_field_address0. Abort.
+Abort. (*TODO: HERE*) [|nia]. rewrite arr_field_address; auto;[|nia].
                     rewrite isptr_denote_tc_test_order; auto. unfold test_order_ptrs. rewrite sameblock_offset_val by auto.
                     repeat(sep_apply data_at_memory_block).
                     apply andp_right.
@@ -607,4 +614,4 @@ Proof.
     }
     { forward. }
   }
-Qed.
+Qed.*)

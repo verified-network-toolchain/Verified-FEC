@@ -586,7 +586,7 @@ fec_matrix_transform (fec_sym * p, fec_sym i_max, fec_sym j_max)
 	   * Multiply rows so (max - k)'th column has all 1's
 	   */
 	  q = (p + (i * j_max) + j_max - 1);	/* last row i entry */
-	  m = q - j_max + 1; //JOSH - added +1 invaid otherwise (if i = 0, m = p - 1)
+	  m = q - j_max;
 	  w = i;
 
 	  while (*(q - k) == 0)
