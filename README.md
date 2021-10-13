@@ -11,11 +11,9 @@ The algorithm was patented (#5,115,436) in 1992.  We believe the
 patent expired on May 4, 2020 -- but that's not a warranty, get your
 own lawyer.
 
-In 2021 the core of the algorithm was proved correct* by Josh
+In 2021 the core of the algorithm was proved correct (after correcting a latent undefined behavior bug) by Josh
 Cohen at Princeton University, advised by Andrew Appel 
 and with assistance from Qinshi Wang.
-*except for a latent undefined behavior bug; see the forthcoming
-technical report.
 
 Verification of other parts of the program (packet handling
 and buffer manager for sender and for receiver) are ongoing work.
