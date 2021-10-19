@@ -132,7 +132,6 @@ Definition rse_init_spec :=
     RETURN ()
     SEP (FEC_TABLES gv).
 
-(*TODO: decide whether to use FEC_TABLES, which includes inverse*)
 (*Since the packets are an unsigned char **, this is represented in memory as an array of pointers to
   arrays of unsigned chars. For our purposes, we would like to represent the contents in Coq as a list (list Z),
   so we need to iterate through each of these pointers with a [data_at]. So we additionally take in the list of pointers,
@@ -157,8 +156,7 @@ Definition fec_blk_encode_spec :=
          iter_sepcon_arrays packet_ptrs packets;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
          data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
-         INDEX_TABLES gv; 
-         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights))
+         FEC_TABLES gv)
   POST [ tint ]
     PROP ()
     RETURN (Vint Int.zero)
@@ -167,8 +165,7 @@ Definition fec_blk_encode_spec :=
          iter_sepcon_arrays packet_ptrs packets;
          data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
          data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
-         INDEX_TABLES gv;
-         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h)  (rev_mx_val weight_mx) (gv _fec_weights)).
+         FEC_TABLES gv).
 
 (*We still include h to make the spec nicer; it is not an input to the function, but we can always pass in
   Zlength parities when using the spec*)

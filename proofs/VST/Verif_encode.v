@@ -48,7 +48,7 @@ Opaque ByteField.byte_mul.
 
 Lemma body_fec_blk_encode : semax_body Vprog Gprog f_fec_blk_encode fec_blk_encode_spec.
 Proof.
-  start_function.
+  start_function. unfold FEC_TABLES. unfold FIELD_TABLES. Intros.
   assert_PROP (Zlength packets = k) as Hpack. { entailer!. rewrite !Zlength_map in H9. auto. }
   assert_PROP (Zlength parity_ptrs = h) as Hpar. { entailer!. rewrite Zlength_app in H6. lia. }
   assert (Hlenall: forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets)). {
@@ -68,6 +68,8 @@ Proof.
        iter_sepcon_arrays packet_ptrs packets;
        data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
        data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps; INDEX_TABLES gv;
+       data_at Ews (tarray tuchar fec_n) (map Vubyte ByteField.byte_invs) (gv _fec_invefec);
+       data_at Ews tint (Vint Int.zero) (gv _trace);
        data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx)
          (gv _fec_weights)] as SEPS.
   remember (iter_sepcon_arrays parity_ptrs (zseq h (zseq c Byte.zero)) :: SEPS) as SEPS1.
@@ -229,6 +231,8 @@ Proof.
                           data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl;
                           data_at Ews (tarray tschar k) (zseq k (Vbyte Byte.zero)) ps;
                           INDEX_TABLES gv;
+                          data_at Ews (tarray tuchar fec_n) (map Vubyte ByteField.byte_invs) (gv _fec_invefec);
+                          data_at Ews tint (Vint Int.zero) (gv _trace);
                           data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) 
                             (gv _fec_weights)))).
                       { (*We need to pull out the specific packet from [iter_sepcon] so we have a [data_at]*)
@@ -362,7 +366,7 @@ Proof.
     { (*trivial error again*) rewrite_eqs. forward_if True.
       { contradiction. }
       { forward. entailer!. }
-      { forward. entailer!. simpl. entailer!. }
+      { forward. entailer!. simpl. unfold FEC_TABLES. unfold FIELD_TABLES. entailer!. }
     }
   }
 Qed.
