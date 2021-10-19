@@ -39,11 +39,6 @@ Definition FEC_TABLES gv :=
   (FIELD_TABLES gv * data_at Ews tint (Vint (Int.zero)) (gv _trace) *
   data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights))%logic.
 
-Notation data_at_zeroes l v :=
-  (data_at Ews (tarray tuchar l) (zseq l (Vubyte Byte.zero)) v).
-Notation data_at_zeroes_2d m n v :=
-  (data_at Ews (tarray (tarray tuchar m) n) (zseq n (zseq m (Vubyte Byte.zero))) v).
-
 Definition fec_generate_weights_spec :=
   DECLARE _fec_generate_weights
   WITH gv : globals
@@ -52,7 +47,8 @@ Definition fec_generate_weights_spec :=
     PARAMS ()
     GLOBALS (gv)
     SEP (data_at Ews tint (Vint (Int.zero)) (gv _trace); FIELD_TABLES gv;
-         data_at_zeroes_2d (fec_n - 1) fec_max_h (gv _fec_weights))
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
+            (zseq fec_max_h (zseq (fec_n - 1) (Vubyte Byte.zero))) (gv _fec_weights))
   POST [tvoid]
     PROP ()
     RETURN ()
@@ -95,9 +91,9 @@ Definition fec_generate_math_tables_spec :=
     PROP ()
     PARAMS ()
     GLOBALS (gv)
-    SEP (data_at_zeroes fec_n (gv _fec_2_index); 
-         data_at_zeroes fec_n (gv _fec_2_power);
-         data_at_zeroes fec_n (gv _fec_invefec))
+    SEP (data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_invefec))
   POST [ tvoid ]
     PROP ()
     RETURN ()
@@ -122,11 +118,12 @@ Definition rse_init_spec :=
     PROP ()
     PARAMS ()
     GLOBALS (gv)
-    SEP (data_at_zeroes fec_n (gv _fec_2_index);
-         data_at_zeroes fec_n (gv _fec_2_power);
-         data_at_zeroes fec_n (gv _fec_invefec);
-         data_at_zeroes_2d (fec_n - 1) fec_max_h (gv _fec_weights);
-         data_at Ews tint (Vint (Int.zero)) (gv _trace))
+    SEP (data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_2_index);
+         data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_2_power);
+         data_at Ews (tarray tuchar fec_n) (zseq fec_n (Vubyte Byte.zero)) (gv _fec_invefec);
+         data_at Ews tint (Vint (Int.zero)) (gv _trace);
+         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
+            (zseq fec_max_h (zseq (fec_n - 1) (Vubyte Byte.zero))) (gv _fec_weights))
   POST [ tvoid ]
     PROP ()
     RETURN ()
