@@ -6,16 +6,53 @@
 #define BATCHES (300)
 #define MAX_PACKET_SIZE (100)
 
-unsigned char weights[FEC_H][FEC_K];
+#define FIELD_SIZE (256)
+
+unsigned char weights[FEC_H][FEC_K] = {{0x7c, 0x8c, 0x55, 0x34, 0x18, 0x7f}, {0x78, 0x93, 0x40, 0x5d, 0x2b, 0x39}, {0x8a, 0x8c, 0x60, 0xbe, 0xd, 0x85}};
 // Each buffer is a h x c matrix
 unsigned char parity_buffers[BATCHES][FEC_H][MAX_PACKET_SIZE];
-
 unsigned int packet_sizes[BATCHES];
+
+//field tables
+unsigned char fec_2_index[FIELD_SIZE];
+unsigned char fec_2_power[FIELD_SIZE];
+
+void generate_field_tables (void) {
+  int mod = 0x11d;  
+
+  for (int i = 0; i < FIELD_SIZE; i++) {
+    if (i == 0) {
+      fec_2_index[i] = i + 1;
+    }
+    else {
+      int temp = fec_2_index[i - 1] << 1; /* use temp to prevent overflow */
+      if (temp >= FIELD_SIZE)
+        fec_2_index[i] = temp ^ mod;
+      else
+        fec_2_index[i] = temp;
+    }
+    fec_2_power[fec_2_index[i]] = i;  /* 0'th index is not used */
+  }
+}
+
+unsigned char mult(unsigned char a, unsigned char b) {
+  if (a && b) {
+    if ((fec_2_power[a]+fec_2_power[b]) > FIELD_SIZE-1) {
+      return (fec_2_index[((fec_2_power[a]+fec_2_power[b])-(FIELD_SIZE-1))]);
+    }
+    else {
+      return ((fec_2_index[(fec_2_power[a]+fec_2_power[b])]));
+    }
+  }
+  else {
+    return 0;
+  }
+}
 
 // Initialize the static weight matrix
 int initialize() {
   //TODO: fill in weight matrix
-  //TODO: fill in field tables (maybe multiplication table bc we only need mult)
+  generate_field_tables();
   return 0;
 }
 
@@ -24,7 +61,7 @@ int start_batch(unsigned int batchnum, unsigned int k, unsigned int h, unsigned 
   packet_sizes[batchnum] = batch_packet_size; 
   //set the buffer to 0 (since it may have been used before) - only need to fill until h and batch_packet_size
   for(int i = 0; i < h; i++) {
-    for(int j = 0; j < batch_packet_size) {
+    for(int j = 0; j < batch_packet_size; j++) {
       parity_buffers[batchnum][i][j] = 0;
     }
   }
@@ -38,7 +75,7 @@ int start_batch(unsigned int batchnum, unsigned int k, unsigned int h, unsigned 
    Returns 0 for success. 
 */
 int encode_packet(unsigned int batchnum, unsigned int j, unsigned int packet_size, unsigned char *packet) {
-  for(int m = 0; m < h; m++) {
+  for(int m = 0; m < FEC_H; m++) {
     for(int n = 0; n < packet_size; n++) {
       parity_buffers[batchnum][m][n] ^= mult(weights[m][j], packet[n]); //TODO: field arithmetic
     }
