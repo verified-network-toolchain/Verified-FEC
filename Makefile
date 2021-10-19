@@ -204,7 +204,7 @@ DYNLIB:=.cmxs
 endif
 
 # these variables are meant to be overridden if you want to add *extra* flags
-COQEXTRAFLAGS?=-w "-ambiguous-paths, -notation-overridden"
+COQEXTRAFLAGS?=
 COQCHKEXTRAFLAGS?=
 COQDOCEXTRAFLAGS?=
 

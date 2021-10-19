@@ -11,7 +11,7 @@ Require Import VST.floyd.proofauto.
 Require Import fec.
 Require Import MatrixTransform.
 Require Import CommonVST.
-Require Import Specs.
+Require Import FEC.Specs.
 Require Import FECTactics.
 Require Import ByteFacts.
 Require Import ByteField.

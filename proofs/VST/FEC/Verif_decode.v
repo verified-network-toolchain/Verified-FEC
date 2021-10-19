@@ -12,7 +12,7 @@ Require Import fec.
 Require Import MatrixTransform.
 Require Import CommonVST.
 Require Import VandermondeByte.
-Require Import Specs.
+Require Import FEC.Specs.
 Require Import ByteFacts.
 Require Import ZSeq.
 Require Import FECTactics.

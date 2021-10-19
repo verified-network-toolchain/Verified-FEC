@@ -9,8 +9,8 @@ proofs/Poly/BoolField.v
 proofs/Poly/ListPoly.v
 proofs/Poly/ByteField.v
 proofs/Matrix/Gaussian.v
-proofs/Matrix/GaussRestrict.v
 proofs/Matrix/LinIndep.v
+proofs/Matrix/GaussRestrict.v
 proofs/Matrix/Vandermonde.v
 proofs/RS/ReedSolomon.v
 #Intermediate layer (VST + mathcomp)
@@ -20,12 +20,16 @@ proofs/Matrix/VandermondeByte.v
 proofs/VST/InhabOption.v
 proofs/RS/ReedSolomonList.v
 #VST
-src/fecActuator/fec.v
 proofs/VST/CommonVST.v
-proofs/VST/Specs.v
 proofs/VST/FECTactics.v
 proofs/VST/PopArrays.v
-proofs/VST/Verif_field.v
-proofs/VST/Verif_matrix.v
-proofs/VST/Verif_encode.v
-proofs/VST/Verif_decode.v
+#FEC-FPGA
+src/fpga_model/fpga.v
+proofs/VST/FPGA_FEC/Specs.v
+#FEC
+src/fecActuator/fec.v
+proofs/VST/FEC/Specs.v
+proofs/VST/FEC/Verif_field.v
+proofs/VST/FEC/Verif_matrix.v
+proofs/VST/FEC/Verif_encode.v
+proofs/VST/FEC/Verif_decode.v

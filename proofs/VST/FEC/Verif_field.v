@@ -8,7 +8,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 Require Import VST.floyd.proofauto.
 
-Require Import Specs.
+Require Import FEC.Specs.
 Require Import fec.
 Require Import ByteField.
 Require Import ZSeq.
