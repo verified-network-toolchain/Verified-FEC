@@ -1395,6 +1395,20 @@ Proof.
   move => m n l i j Hi Hj. by apply mk_lmatrix_get.
 Qed.
 
+(*Need for decoder proof, Coq refuses to rewrite here*)
+Lemma extend_mx_length: forall m m' n l,
+  0 <= m ->
+  0 <= n ->
+  m = m' ->
+  extend_mx m n l = extend_mx m' n l.
+Proof.
+  move => m m' n l Hm Hn Hmm'. move: Hmm' Hm -> => Hm'. apply (@lmatrix_ext_eq m' n).
+  - by apply extend_mx_wf.
+  - by apply extend_mx_wf.
+  - move => i j Hi Hj. by rewrite mk_lmatrix_get.
+Qed.
+  
+
 (* We use the above to define lmatrix multiplication of ListMatrices, since we will be setting the entries
   manually. Using mathcomp summations in VST would be
   very annoying, so we define a specialized summation for our purposes and prove them equivalent*)

@@ -107,6 +107,7 @@ Proof.
     { Intros ret. forward. forward_if True; [ contradiction | |].
       { forward. entailer!. }
       { forward. entailer!. pose proof weight_mx_wf as Hwf. pose proof (rev_mx_val_wf _ _ _ Hwf) as Hrev.
+        unfold FEC_TABLES.
         rewrite data_at_2darray_concat; auto; try apply Hrev.
         rewrite concat_rev_mx. unfold weight_mx. cancel.
       }

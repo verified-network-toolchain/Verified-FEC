@@ -48,7 +48,12 @@ Opaque ByteField.byte_mul.
 
 Lemma body_fec_blk_encode : semax_body Vprog Gprog f_fec_blk_encode fec_blk_encode_spec.
 Proof.
-  start_function. forward. forward. 
+  start_function.
+  assert_PROP (Zlength packets = k) as Hpack. { entailer!. rewrite !Zlength_map in H9. auto. }
+  assert_PROP (Zlength parity_ptrs = h) as Hpar. { entailer!. rewrite Zlength_app in H6. lia. }
+  assert (Hlenall: forall (i: Z), 0 <= i < k -> Znth i lengths = Zlength (Znth i packets)). {
+    intros i Hi. subst. rewrite Znth_map. auto. lia. }
+ forward. forward. 
   assert_PROP (force_val (sem_binary_operation' Oadd (tptr (tptr tuchar)) tint pd (Vint (Int.repr k))) =
     field_address0 (tarray (tptr (tuchar)) (k + h)) [ArraySubsc k] pd) as Hpd. { entailer!. solve_offset. } 
   rewrite Hpd.
@@ -80,7 +85,7 @@ Proof.
       { forward_if True.
         { contradiction. }
         { forward. entailer!. }
-        { rewrite zseq_Znth in H9 by lia. inversion H9. }
+        { rewrite zseq_Znth in H7 by lia. inversion H7. }
       }
       { forward. Exists (i+1)%Z. rewrite_eqs. entailer!. simpl_repr_byte. }
     }
@@ -142,7 +147,7 @@ Proof.
               }
               { apply valid_pointer_zero64; auto. (*relies on 64 bit*) }
             }
-            { forward. entailer!. rewrite H10 in H14. apply (field_compatible_nullval _ _ _ _ H14). }
+            { forward. entailer!. rewrite H8 in H12. apply (field_compatible_nullval _ _ _ _ H12). }
             { forward. rewrite_eqs; entailer!. rewrite (iter_sepcon_arrays_remove_one _ _ _ Hlens Hith). entailer!. }
             { rewrite_eqs; entailer!. }
           }
@@ -201,7 +206,7 @@ Proof.
                   { rewrite_eqs; forward. Exists 0%Z. rewrite_eqs; entailer!. }
                   { Intros n. rewrite_eqs; forward_if.
                     { assert_PROP (Zlength lengths = k) as Hlengths. { entailer!. list_solve. } 
-                      (*body of innermost loop*) forward. rewrite H6 by lia.
+                      (*body of innermost loop*) forward. rewrite Hlenall by lia.
                       (*we have 2 cases: either we are in bounds, so we do usual multiplication, or
                         we are out of bounds, so we are implicitly extending the matrix with zeroes (which of course
                         does not affect the sum). We need to handle each case separately. The important thing
@@ -232,7 +237,7 @@ Proof.
                         sep_apply (iter_sepcon_arrays_remove_one _ _ _ Hlens Hjbound). Intros. 
                         forward.
                         { rewrite Znth_app1 by list_solve. entailer!. }
-                        { assert (Hjlen: 0 <= j < Zlength (Znth n packets)). { rewrite Int.signed_repr in H13. lia.
+                        { assert (Hjlen: 0 <= j < Zlength (Znth n packets)). { rewrite Int.signed_repr in H11. lia.
                             inner_length. }
                           assert_PROP (force_val (sem_add_ptr_int tuchar Signed (Znth n (packet_ptrs ++ parity_ptrs)) 
                             (Vint (Int.repr j))) =
@@ -280,7 +285,7 @@ Proof.
                         rewrite extend_mx_spec by rep_lia. simpl.
                         destruct (Z_lt_le_dec j (Zlength (Znth n packets))); simpl.
                         assert (Hlenbound: Zlength (Znth n packets) <= c) by inner_length. 
-                        rewrite Int.signed_repr in H13; rep_lia. clear l. 
+                        rewrite Int.signed_repr in H11; rep_lia. clear l. 
                         rewrite ssralg.GRing.mulr0. rewrite ssralg.GRing.addr0. reflexivity.
                       }
                       { (*increment ptr p*) forward.
@@ -290,7 +295,7 @@ Proof.
                       }
                     }
                     { (*end of inner loop*) forward. rewrite_eqs; entailer!. 
-                      replace (Zlength packets) with n by lia. auto.
+                      replace (Zlength packet_ptrs) with n by lia. auto.
                     }
                   }
                   { (*write data back to parity*) rewrite_eqs.
@@ -305,7 +310,7 @@ Proof.
                       (field_address (tarray (tptr tuchar) (k + h)) (SUB (k + i)) pd)). { entailer!.
                       solve_offset. } forward.
                     { entailer!. rewrite Znth_app2; [ | lia]. 
-                      replace (Zlength packets + i - Zlength packet_ptrs) with i by lia.
+                      replace (Zlength packet_ptrs + i - Zlength packet_ptrs) with i by lia.
                       apply isptr_is_pointer_or_null. auto.
                     }
                     { entailer!. solve_offset. } 
@@ -317,13 +322,13 @@ Proof.
                         rewrite <- !(byte_int_repr (Byte.unsigned _)) by rep_lia.
                         rewrite Byte.repr_unsigned. rewrite upd_Znth_map. entailer!.
                         rewrite <- pop_mx_mult_set by lia.  
-                        remember (pop_mx_mult (Zlength parity_ptrs) c (Zlength packets)
-                          (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packets))
-                          (extend_mx (F:=B) (Zlength packets) c packets) i j) as mx'.
+                        remember (pop_mx_mult (Zlength parity_ptrs) c (Zlength packet_ptrs)
+                          (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packet_ptrs))
+                          (extend_mx (F:=B) (Zlength packet_ptrs) c packets) i j) as mx'.
                         rewrite (@set_default _ _ Inhabitant_byte mx') by reflexivity.
                         remember (set mx' i j (dot_prod (F:=B)
-                          (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packets))
-                          (extend_mx (F:=B) (Zlength packets) c packets) i j (Zlength packets))) as mx''. simpl in Heqmx''.
+                          (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packet_ptrs))
+                          (extend_mx (F:=B) (Zlength packet_ptrs) c packets) i j (Zlength packet_ptrs))) as mx''. simpl in Heqmx''.
                         rewrite <- Heqmx''.
                         assert (Hwf: wf_lmatrix mx'' (Zlength parity_ptrs) c). { subst. apply set_wf.
                           apply pop_mx_mult_wf; rep_lia. } destruct Hwf as [Hlenmx'' [_ Hinmx'']].
