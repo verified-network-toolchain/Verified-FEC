@@ -1214,6 +1214,52 @@ Proof.
     rewrite {1}Hib Hinvs; try rep_lia. by rewrite byte_invs_Znth.
 Qed.
 
+(*A computable version *)
+Definition populate_invs_aux_fast (pows logs: seq byte) i base :=
+  fold_left (fun acc z => 
+    let inv := Znth (255 - Byte.unsigned (Znth z logs)) pows in
+    upd_Znth (Byte.unsigned inv) acc (Byte.repr z)) (Ziota 0 i) base.
+
+Definition populate_invs_fast pows logs i :=
+  populate_invs_aux_fast pows logs i (zseq Byte.modulus Byte.zero).
+
+Lemma populate_invs_aux_fast_equiv: forall pows logs i base,
+  pows = byte_pows ->
+  logs = byte_logs ->
+  0 <= i <= Byte.modulus ->
+  populate_invs_aux_fast pows logs i base = populate_invs_aux i base.
+Proof.
+  move => pows logs i base ->-> Hi. rewrite /populate_invs_aux_fast /populate_invs_aux.
+  move : base. have: forall x, In x (Ziota 0 i) -> 0 <= x < i. { move => x. apply Ziota_In; lia. }
+  elim : (Ziota 0 i) => [//= | h t IH Hin base]. move: IH.
+  have->: 255 = (fec_n -1)%Z by rep_lia. move => IH. 
+  Opaque byte_pow_map. Opaque byte_log_map. rewrite /= !byte_pows_Znth; try rep_lia.
+  rewrite !byte_logs_Znth; try rep_lia. apply IH.
+  move => x Hinx. apply Hin. by right. have: 0 <= h < i by (apply Hin; left). lia.
+Qed.
+
+Lemma populate_invs_fast_equiv: forall pows logs i,
+  pows = byte_pows ->
+  logs = byte_logs ->
+  0 <= i <= Byte.modulus ->
+  populate_invs_fast pows logs i = populate_invs i.
+Proof.
+  move => pows logs i. apply populate_invs_aux_fast_equiv.
+Qed.
+
+Lemma populate_invs_fast_correct: forall pows logs,
+  pows = byte_pows ->
+  logs = byte_logs ->
+  populate_invs_fast pows logs Byte.modulus = byte_invs.
+Proof.
+  move => pows logs ->->. by rewrite populate_invs_fast_equiv // populate_invs_correct.
+Qed.
+
+(*
+Eval vm_compute in
+  (let (pows, logs) := (populate_pows_logs_fast Byte.modulus) in
+   populate_invs_fast pows logs Byte.modulus).*)
+
 End Pow.
 
 (*The theorems for the proof of multiplication in VST (using the pow and log tables)*)

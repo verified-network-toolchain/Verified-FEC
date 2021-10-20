@@ -3,6 +3,7 @@
 proofs/Common/ByteFacts.v
 proofs/Common/CommonSSR.v
 proofs/Common/ZSeq.v
+proofs/Common/CombineFacts.v
 #Pure mathcomp/functional model
 proofs/Poly/PolyField.v
 proofs/Poly/BoolField.v
