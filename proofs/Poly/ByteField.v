@@ -993,6 +993,62 @@ Proof.
   by [].
 Qed.
 
+(*A computable version - Coq doesn't like the opaque constant modulus *)
+Definition byte_mulX_fast (b: byte) : byte :=
+  let temp := Z.shiftl (Byte.unsigned b) 1 in
+  if Z_lt_ge_dec temp Byte.modulus then Byte.repr temp else Byte.repr (Z.lxor temp 285).
+
+Definition populate_pows_logs_aux_fast (l: seq Z) (base : (seq byte) * (seq byte)) : (seq byte) * (seq byte) :=
+  fold_left (fun (acc: seq byte * seq byte) z => 
+    let (pows, logs) := acc in
+    if Z.eq_dec z 0 then (upd_Znth z pows Byte.one, logs) else
+    let newVal := (byte_mulX_fast (Znth (z -1) pows)) in
+    let newPows := upd_Znth z pows newVal in
+    let newLogs := upd_Znth (Byte.unsigned (Znth z newPows)) logs (Byte.repr z) in
+    (newPows, newLogs)) l base.
+
+Definition populate_pows_logs_iota_aux_fast (i: Z) base : (seq byte) * (seq byte) :=
+  populate_pows_logs_aux_fast (Ziota 0 i) base.
+
+Definition populate_pows_logs_fast (i: Z) : (seq byte) * (seq byte) :=
+  populate_pows_logs_iota_aux_fast i (zseq Byte.modulus Byte.zero, zseq Byte.modulus Byte.zero).
+
+(*Equivalence with standard version*)
+Lemma byte_mulX_fast_equiv: forall b,
+  byte_mulX_fast b = byte_mulX b.
+Proof.
+  move => b. rewrite /byte_mulX /byte_mulX_fast. by have->: modulus = 285 by rep_lia.
+Qed.
+
+Lemma populate_pows_logs_aux_fast_equiv: forall l base,
+  populate_pows_logs_aux_fast l base = populate_pows_logs_aux l base.
+Proof.
+  move => l. rewrite /populate_pows_logs_aux /populate_pows_logs_aux_fast. elim: l => [//= | h t IH /= base].
+  case : base => [pows logs].
+  case : (Z.eq_dec h 0) => [Hh0 /= | Hh0 /=]. apply IH.
+  have->: (upd_Znth h pows (byte_mulX_fast (Znth (h - 1) pows))) = upd_Znth h pows (byte_mulX (Znth (h - 1) pows)). {
+    f_equal. apply byte_mulX_fast_equiv. } apply IH.
+Qed.
+
+Lemma populate_pows_logs_fast_equiv: forall i,
+  populate_pows_logs_fast i = populate_pows_logs i.
+Proof.
+  move => i. apply populate_pows_logs_aux_fast_equiv.
+Qed.
+
+Lemma populate_pows_logs_fast_correct:
+  populate_pows_logs_fast Byte.modulus = (byte_pows, byte_logs).
+Proof.
+  rewrite populate_pows_logs_fast_equiv. apply populate_pows_logs_correct.
+Qed.
+(*
+Definition map_twice (s: seq byte * seq byte) : seq Z * seq Z :=
+  match s with
+  | (a, b) => (map Byte.unsigned a, map Byte.unsigned b)
+  end.
+
+Eval vm_compute in map_twice (populate_pows_logs_fast Byte.modulus). *)
+
 (*Similarly, we will have a functional version of the VST code for generating the inverse table*)
 
 Definition populate_invs_aux i base :=
@@ -1165,6 +1221,14 @@ End Pow.
 Section Mult.
 
 Local Open Scope ring_scope.
+(*We define the multiplication function here, since it will be used for computation. The pows
+  and logs tables are inputs so we don't need to compute them each time *)
+Definition byte_mul_fast (pows logs : seq byte) (a b: byte) :=
+  if Byte.eq_dec a Byte.zero then Byte.zero
+  else if Byte.eq_dec b Byte.zero then Byte.zero
+  else let temp := (Byte.unsigned (Znth (Byte.unsigned a) logs) + Byte.unsigned (Znth (Byte.unsigned b) logs))%Z in
+    if Z_gt_le_dec temp 255%Z then Znth (temp - 255) pows
+    else Znth temp pows.
 
 Lemma ord_byte_simpl: forall (x: 'I_#|byte_finType|),
   Byte.unsigned (ord_to_byte x) = Z.of_nat (nat_of_ord x).
@@ -1253,6 +1317,28 @@ Proof.
   rewrite Byte.unsigned_repr ; try rep_lia.
   have->:(a + b)%Nrec = (a + b)%coq_nat by []. rep_lia.
 Qed.
+
+Lemma byte_mul_fast_correct: forall pows logs a b,
+  pows = byte_pows ->
+  logs = byte_logs ->
+  byte_mul_fast pows logs a b = byte_mul a b.
+Proof.
+  move => pows logs a b -> ->. rewrite /byte_mul_fast.
+  case: (Byte.eq_dec a Byte.zero) => [Ha0 /= | Ha0 /=].
+  - rewrite Ha0. have->: byte_mul Byte.zero b = (0 * b) by []. by rewrite GRing.mul0r.
+  - case: (Byte.eq_dec b Byte.zero) => [Hb0 /= | Hb0 /=].
+    + rewrite Hb0. have->: byte_mul a Byte.zero = (a * 0) by []. by rewrite GRing.mulr0.
+    + rewrite !byte_logs_Znth; try rep_lia. rewrite !Byte.repr_unsigned.
+      case: (Z_gt_le_dec (Byte.unsigned (byte_log_map a) + Byte.unsigned (byte_log_map b)) 255) => [Hb | Hb].
+      * rewrite /proj_sumbool byte_pows_Znth; try rep_lia.
+        have->:255 = (fec_n - 1)%Z by rep_lia. apply mult_large. rep_lia.
+      * rewrite /proj_sumbool byte_pows_Znth; try rep_lia. apply mult_small; try by []; rep_lia.
+Qed.
+
+(*
+Eval vm_compute in
+  (let (pows, logs) := populate_pows_logs_fast Byte.modulus in
+  byte_mul_fast pows logs (Byte.add Byte.one Byte.one) Byte.one).*)
 
 End Mult.
   
