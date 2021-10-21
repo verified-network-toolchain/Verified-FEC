@@ -21,6 +21,7 @@ Require Import ReedSolomonList.
 Require Import VandermondeByte.
 Require Import MatrixTransform.
 Require Import CommonSSR.
+Require Import ByteFacts.
   
 Section PopArr.
 
@@ -325,29 +326,6 @@ Lemma pop_weight_mx_set: forall i j,
   pop_weight_mx i (j + 1).
 Proof.
   move => i j Hi Hj. by rewrite -pop_2d_arr_set.
-Qed.
-
-(*Relate [modn] to Z.modulo*)
-
-Lemma modn_mod_nat: forall (n1 n2 : nat),
-  (0 < n2)%N ->
-  (n1 %% n2)%N = (n1 mod n2)%N.
-Proof.
-  move => n1 n2 Hn2. apply (Nat.mod_unique _ _ (n1 %/ n2)).
-  - apply /ltP. by rewrite ltn_mod.
-  - have->:(n2 * (n1 %/ n2))%coq_nat = (n2 * (n1 %/ n2))%N by [].
-    have->:(n2 * (n1 %/ n2) + n1 %% n2)%coq_nat = (n2 * (n1 %/ n2) + n1 %% n2)%N by [].
-    by rewrite mulnC -divn_eq.
-Qed.
-
-Lemma modn_mod_Z: forall (z1 z2: Z),
-  0 <= z1 ->
-  0 < z2 ->
-  Z.to_nat (z1 mod z2) = ((Z.to_nat z1) %% (Z.to_nat z2))%N.
-Proof.
-  move => z1 z2 Hz1 Hz2. rewrite modn_mod_nat; last first. apply /ltP; lia.
-  apply Nat2Z.inj. rewrite mod_Zmod; try lia. rewrite !Z2Nat.id; try lia.
-  by apply Z.mod_pos_bound.
 Qed.
 
 Lemma pop_weight_weight_done: forall j,

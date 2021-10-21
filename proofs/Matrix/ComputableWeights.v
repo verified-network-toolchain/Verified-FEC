@@ -23,12 +23,13 @@ Require Import ByteField.
 Require Import VandermondeByte.
 Require Import CombineFacts.
 Require Import ZSeq.
+Require Import ByteFacts.
 
 (*First, we need a computable version of Restricted Gaussian Elimination. We want this to be reasonably fast*)
 (*So we don't call mk_lmatrix in a loop, which is very slow, since it traverses all n^2 elements each time (and calls
   get at each one). We use direct list ops to make it faster *)
 
-Section GaussElim.
+Section Computable.
 
 Local Open Scope ring_scope.
 
@@ -242,7 +243,46 @@ Qed.
 
 End Correct.
 
-End GaussElim.
+(*Now we need to define the Vandermonde matrix. We do it like the C code, by lookup tables. Otherwise it is very slow*)
+Section Vandermonde.
+
+Definition weight_mx_list_fast m n : lmatrix B :=
+  mk_lmatrix m n (fun i j => Znth (Z.modulo (i * (n - j - 1)) 255) pows).
+
+Variable Hpows: pows = byte_pows.
+
+Lemma weight_mx_list_fast_correct: forall m n,
+  0 <= m ->
+  0 <= n ->
+  weight_mx_list_fast m n = weight_mx_list m n.
+Proof.
+  move => m n Hm Hn. rewrite /weight_mx_list_fast /weight_mx_list.
+  apply (@rect_eq_ext _ _ m n).
+  - by apply mk_lmatrix_wf.
+  - by apply mk_lmatrix_wf.
+  - move => i j Hi Hj. rewrite !mk_lmatrix_get //. subst. rewrite byte_pows_elts.
+    + rewrite /byte_pow_map /bx -qpoly_to_byte_pow -!byte_exp_unfold. f_equal. apply powX_eq_mod.
+      rewrite modn_mod_Z; try nia. have->: Z.to_nat 255 = 255%N by []. apply modn_mod.
+    + have Hmod: 0 < 255 by lia. apply (Z.mod_pos_bound (i * (n - j - 1)) 255) in Hmod. rep_lia.
+Qed.
+
+(*Generic m and n so we can test without needing all 256 x 512 elements*)
+Definition weight_mx_fast m n :=
+  gauss_restrict_list_fast m (weight_mx_list_fast m n).
+
+Variable Hlogs: logs = byte_logs.
+Variable Hinvs: invs = byte_invs.
+
+Lemma weight_mx_fast_correct: 
+  weight_mx_fast 128 255 = weight_mx.
+Proof.
+  rewrite /weight_mx_fast /weight_mx (@gauss_restrict_list_fast_correct _ _ _ 128 255) //.
+  have->: fec_max_h = 128 by rep_lia. have->:(fec_n - 1)%Z = 255 by rep_lia. f_equal.
+  apply weight_mx_list_fast_correct; lia. rewrite weight_mx_list_fast_correct; try lia.
+  apply weight_matrix_wf; lia.
+Qed.
+
+End Computable.
 
 Definition test := mk_lmatrix 10 10 (fun x y => Byte.mul (Byte.repr (x + 1)) (Byte.repr (y + 1))).
 
