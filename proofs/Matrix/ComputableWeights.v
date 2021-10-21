@@ -109,6 +109,34 @@ Proof.
   - rewrite Ziota_In; try lia. move: Hwf. rewrite /wf_lmatrix/rect. list_solve.
 Qed.
 
+(* [all_lc_one]*)
+
+(*Need slower fold_left because we need A_{r, r} in each row *)
+
+Definition all_lc_one_fast m (mx: lmatrix B) :=
+  fold_left (fun acc x => 
+    let inv := get mx x x in 
+    let old_r := Znth x acc in
+    upd_Znth x acc (map (fun y => bmul_fast (binv_fast inv) y) old_r)) (Ziota 0 (m-1)) mx.
+
+Lemma all_lc_one_fast_wf: forall m n mx,
+  0 < m ->
+  wf_lmatrix mx m n ->
+  wf_lmatrix (all_lc_one_fast m mx) m n.
+Proof.
+  move => m n mx H0m Hwf. apply mx_foldl_wf' => [|//|].
+  - move => mx' i Hi Hwf'/=. move: Hwf' Hwf. rewrite /wf_lmatrix/rect Zlength_upd_Znth; move => [Hm [Hn Hall]] [Hm' [_ Hall']].
+    repeat split => [//|]. move: Hall Hall'. rewrite !Forall_Znth => Hall Hall' j. rewrite Zlength_upd_Znth => Hj. subst.
+    case (Z.eq_dec j i) => [Hij /= | Hij /=].
+    + subst. rewrite upd_Znth_same // Zlength_map. apply Hall; lia.
+    + rewrite upd_Znth_diff //. by apply Hall.
+  - move => x. rewrite Ziota_In; lia.
+Qed.
+
+(* [gauss_restrict_list] *)
+Definition gauss_restrict_list_fast m mx :=
+  all_lc_one_fast m (gauss_all_steps_list_fast m mx).
+
 Section Correct.
 
 Variable Hpows: pows = byte_pows.
@@ -167,6 +195,51 @@ Proof.
   move => x Hint. apply Hin. by right. by apply all_cols_one_partial_wf.
 Qed.
 
+Lemma all_lc_one_fast_correct: forall m n mx,
+  0 < m <= n ->
+  wf_lmatrix mx m n ->
+  all_lc_one_fast m mx = (all_lc_one_partial m n mx (m-1)).
+Proof.
+  move => m n mx H0m Hwf. rewrite /all_lc_one_fast/all_lc_one_partial.
+  have: forall x, In x (Ziota 0 (m - 1)) -> 0 <= x < m - 1. { move => x. apply Ziota_In; try lia. }
+  remember mx as mx' eqn: Hmx. have Hwf': wf_lmatrix mx m n by subst. rewrite Hmx. rewrite -{2}Hmx -{3}Hmx {Hmx}.
+  move: mx' Hwf. elim: (Ziota 0 (m - 1)) => [//= | h t /= IH mx' Hwf Hin].
+  have Hh: 0 <= h < m - 1. apply Hin. by left. 
+  have->:(upd_Znth h mx' [seq bmul_fast (binv_fast (get mx h h)) y | y <- Znth h mx']) =
+    (scalar_mul_list m n mx' h (get mx h h)^-1). {
+    apply (@lmatrix_to_mx_inj _ _ _ m n).
+    - simpl in *.
+      move: Hwf Hwf'. rewrite /wf_lmatrix/rect.  move => [Hm [Hn Hall]] [Hm' [_ Hall']]. (*TODO: tactic for wf*)
+      rewrite upd_Znth_Zlength; try lia. subst.
+      repeat split => [//|]. move: Hall Hall'. rewrite !Forall_Znth => Hall Hall' i. rewrite Zlength_upd_Znth => Hi. subst.
+      case (Z.eq_dec i h) => [Hhi /= | Hhi /=].
+      + subst. rewrite upd_Znth_same // Zlength_map. apply Hall; lia.
+      + rewrite upd_Znth_diff //. apply Hall; try lia. simpl in *. lia.
+    - apply scalar_mul_list_partial_wf; lia.
+    - rewrite -matrixP => x y. rewrite scalar_mul_list_equiv => [||//]; try lia. move => Hh'.
+      rewrite /Gaussian.sc_mul !mxE /get/=.
+      move: Hwf. rewrite /wf_lmatrix/rect; move => [Hm [Hn Hall]].
+      case: (x == Z_to_ord Hh') /eqP => [Hhx /= | Hhx /=].
+      + rewrite Hhx/= !Z2Nat.id; try lia. 
+        subst. simpl in *. rewrite upd_Znth_same; try lia. rewrite Znth_map.
+        rewrite byte_mul_fast_correct // binv_fast_correct //. move: Hall. rewrite Forall_Znth. move ->.
+        apply Z_ord_bound; lia. by [].
+      + have Hhx': (Z.of_nat x <> h). move => Hhx'. apply Hhx. apply ord_inj. by rewrite /= -Hhx' Nat2Z.id. subst.
+        rewrite upd_Znth_diff //; try lia. apply Z_ord_bound; lia.
+  }
+  apply IH. apply scalar_mul_list_partial_wf; lia. move => x Hint. apply Hin. by right.
+Qed.
+
+Lemma gauss_restrict_list_fast_correct: forall m n mx,
+  0 < m <= n ->
+  wf_lmatrix mx m n ->
+  gauss_restrict_list_fast m mx = gauss_restrict_list m n mx.
+Proof.
+  move => m n mx Hmn Hwf. rewrite /gauss_restrict_list_fast /gauss_restrict_list.
+  rewrite (@gauss_all_steps_fast_correct m n) => [||//]; try lia. apply all_lc_one_fast_correct => [//|].
+  apply gauss_all_steps_list_partial_wf =>[|//]; lia.
+Qed.
+
 End Correct.
 
 End GaussElim.
@@ -188,3 +261,11 @@ Eval vm_compute in
   let (pows, logs) := powlog in
   let inv := invs pows logs in
    (gauss_all_steps_list_fast pows logs inv 10 test).
+Eval vm_compute in
+  let (pows, logs) := powlog in
+  let inv := invs pows logs in
+   (all_lc_one_fast pows logs inv 10 test).
+Eval vm_compute in
+  let (pows, logs) := powlog in
+  let inv := invs pows logs in
+   (gauss_restrict_list_fast pows logs inv 10 test).
