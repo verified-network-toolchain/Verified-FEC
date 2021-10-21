@@ -282,14 +282,78 @@ Proof.
   apply weight_matrix_wf; lia.
 Qed.
 
+End Vandermonde.
+
 End Computable.
 
-Definition test := mk_lmatrix 10 10 (fun x y => Byte.mul (Byte.repr (x + 1)) (Byte.repr (y + 1))).
+(*Why we wanted computable weights: show that the following static matrix is the portion of the weight
+  matrix used in the encoder:*)
+Definition static_weights_Z := 
+  [:: [:: 124; 140; 85; 52; 24; 127]; 
+      [:: 120; 147; 64; 93; 43; 57]; 
+      [:: 138; 140; 96; 190; 13; 133]].
 
-Eval vm_compute in test.
-Definition powlog := populate_pows_logs_fast Byte.modulus.
-Definition invs pows logs := populate_invs_fast pows logs Byte.modulus.
+Definition static_weights := map (fun l => map Byte.repr l) static_weights_Z.
+
+(*We use static pows and logs tables so that Coq doesn't need to compute them - seeing if this is the issue*)
+Require Import PowsLogsLiterals.
+
+Lemma pows_correct: pows = byte_pows.
+Proof.
+  remember (populate_pows_logs_fast Byte.modulus) as powlog eqn : Hpowlog.
+  move: Hpowlog. case : powlog => [pows' logs] Hpowlog. 
+  have Hpow: pows' = byte_pows by move: Hpowlog; rewrite populate_pows_logs_fast_correct => [[Hpows _]].
+  rewrite -Hpow /pows {Hpow}. have->: pows' = (populate_pows_logs_fast Byte.modulus).1 by rewrite -Hpowlog.
+  rewrite {Hpowlog}. by vm_compute.
+Qed.
+
+Lemma logs_correct: logs = byte_logs.
+Proof.
+  remember (populate_pows_logs_fast Byte.modulus) as powlog eqn : Hpowlog.
+  move: Hpowlog. case : powlog => [pows logs'] Hpowlog. 
+  have Hlog: logs' = byte_logs by move: Hpowlog; rewrite populate_pows_logs_fast_correct => [[_ Hlogs]].
+  rewrite -Hlog /logs {Hlog}. have->: logs' = (populate_pows_logs_fast Byte.modulus).2 by rewrite -Hpowlog.
+  rewrite {Hpowlog}. by vm_compute.
+Qed.
+
+Lemma invs_correct: invs = byte_invs.
+Proof.
+  rewrite -(populate_invs_fast_correct pows_correct logs_correct) /invs. by vm_compute.
+Qed. 
+
+(*
 Eval vm_compute in
+   (weight_mx_fast pows logs invs 128 255).
+*)
+
+Lemma static_weights_correct: 
+  static_weights = submatrix (fec_n - 1) weight_mx 3 6.
+Proof.
+  rewrite /static_weights /static_weights_Z/=.
+  rewrite -(weight_mx_fast_correct pows_correct logs_correct invs_correct).
+  have->:(fec_n - 1) = 255 by rep_lia.
+  by vm_compute.
+
+  (*remember (populate_pows_logs_fast Byte.modulus) as powlog eqn : Hpowlog.
+  move: Hpowlog. case : powlog => [pows logs] Hpowlog. 
+  have Hpow: pows = byte_pows by move: Hpowlog; rewrite populate_pows_logs_fast_correct => [[Hpows _]].
+  have Hlogs: logs = byte_logs by move: Hpowlog; rewrite populate_pows_logs_fast_correct => [[_ Hlogs]].
+  remember (populate_invs_fast pows logs Byte.modulus) as invs eqn : Hinvs.
+  have Hinv: invs = byte_invs by rewrite Hinvs populate_invs_fast_correct.
+  rewrite -(weight_mx_fast_correct Hpow Hlogs Hinv).
+  have->:(fec_n - 1) = 255 by rep_lia. rewrite {Hpow Hlogs Hinv}.
+  by vm_compute.*)
+Qed.
+
+
+(*Definition test := mk_lmatrix 10 10 (fun x y => Byte.mul (Byte.repr (x + 1)) (Byte.repr (y + 1))).
+
+Eval vm_compute in test.*)
+
+(*Definition powlog := populate_pows_logs_fast Byte.modulus.*)
+(*Definition invs pows logs := populate_invs_fast pows logs Byte.modulus.*)
+(*Eval vm_compute in powlog.*)
+(*Eval vm_compute in
   let (pows, logs) := powlog in
   let inv := invs pows logs in
    (all_cols_one_fast pows logs inv test 0).
@@ -308,4 +372,15 @@ Eval vm_compute in
 Eval vm_compute in
   let (pows, logs) := powlog in
   let inv := invs pows logs in
-   (gauss_restrict_list_fast pows logs inv 10 test).
+   (gauss_restrict_list_fast pows logs inv 10 test).*)
+(*Eval vm_compute in
+   let (pows, logs) := powlog in
+  (weight_mx_list_fast pows 128 255).
+  let (pows, logs) := powlog in
+  let inv := invs pows logs in
+   (weight_mx_fast pows logs inv 128 255).*)
+(*
+Eval vm_compute in
+  let (pows, logs) := powlog in
+  let inv := invs pows logs in
+   (weight_mx_fast pows logs inv 128 255).*)

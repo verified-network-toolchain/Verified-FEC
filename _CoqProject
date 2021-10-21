@@ -27,6 +27,8 @@ proofs/VST/PopArrays.v
 #FEC-FPGA
 src/fpga_model/fpga.v
 proofs/VST/FPGA_FEC/Specs.v
+proofs/Matrix/PowsLogsLiterals.v
+proofs/Matrix/ComputableWeights.v
 #FEC
 src/fecActuator/fec.v
 proofs/VST/FEC/Specs.v
