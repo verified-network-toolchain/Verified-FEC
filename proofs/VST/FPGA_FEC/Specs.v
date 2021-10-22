@@ -52,3 +52,5 @@ Definition generate_field_tables_spec :=
     RETURN ()
     SEP (INDEX_TABLES gv).
 
+Definition Gprog := [mult_spec; generate_field_tables_spec].
+

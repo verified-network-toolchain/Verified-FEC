@@ -165,7 +165,7 @@ Definition f_generate_field_tables := {|
     (Sloop
       (Ssequence
         (Sifthenelse (Ebinop Olt (Etempvar _i tint)
-                       (Econst_int (Int.repr 256) tint) tint)
+                       (Econst_int (Int.repr 256) tuint) tint)
           Sskip
           Sbreak)
         (Ssequence
@@ -189,7 +189,7 @@ Definition f_generate_field_tables := {|
                   (Ebinop Oshl (Etempvar _t'2 tuchar)
                     (Econst_int (Int.repr 1) tint) tint)))
               (Sifthenelse (Ebinop Oge (Etempvar _temp tint)
-                             (Econst_int (Int.repr 256) tint) tint)
+                             (Econst_int (Int.repr 256) tuint) tint)
                 (Sassign
                   (Ederef
                     (Ebinop Oadd (Evar _fec_2_index (tarray tuchar 256))
@@ -242,8 +242,8 @@ Definition f_mult := {|
         (Sifthenelse (Ebinop Ogt
                        (Ebinop Oadd (Etempvar _t'2 tuchar)
                          (Etempvar _t'3 tuchar) tint)
-                       (Ebinop Osub (Econst_int (Int.repr 256) tint)
-                         (Econst_int (Int.repr 1) tint) tint) tint)
+                       (Ebinop Osub (Econst_int (Int.repr 256) tuint)
+                         (Econst_int (Int.repr 1) tuint) tuint) tint)
           (Ssequence
             (Sset _t'7
               (Ederef
@@ -261,8 +261,8 @@ Definition f_mult := {|
                       (Ebinop Osub
                         (Ebinop Oadd (Etempvar _t'7 tuchar)
                           (Etempvar _t'8 tuchar) tint)
-                        (Ebinop Osub (Econst_int (Int.repr 256) tint)
-                          (Econst_int (Int.repr 1) tint) tint) tint)
+                        (Ebinop Osub (Econst_int (Int.repr 256) tuint)
+                          (Econst_int (Int.repr 1) tuint) tuint) tuint)
                       (tptr tuchar)) tuchar))
                 (Sreturn (Some (Etempvar _t'9 tuchar))))))
           (Ssequence
@@ -307,49 +307,41 @@ Definition f_start_batch := {|
   fn_temps := ((_i, tint) :: (_j, tint) :: nil);
   fn_body :=
 (Ssequence
-  (Sassign
-    (Ederef
-      (Ebinop Oadd (Evar _packet_sizes (tarray tuint 300))
-        (Etempvar _batchnum tuint) (tptr tuint)) tuint)
-    (Etempvar _batch_packet_size tuint))
   (Ssequence
-    (Ssequence
-      (Sset _i (Econst_int (Int.repr 0) tint))
-      (Sloop
+    (Sset _i (Econst_int (Int.repr 0) tint))
+    (Sloop
+      (Ssequence
+        (Sifthenelse (Ebinop Olt (Etempvar _i tint) (Etempvar _h tuint) tint)
+          Sskip
+          Sbreak)
         (Ssequence
-          (Sifthenelse (Ebinop Olt (Etempvar _i tint) (Etempvar _h tuint)
-                         tint)
-            Sskip
-            Sbreak)
-          (Ssequence
-            (Sset _j (Econst_int (Int.repr 0) tint))
-            (Sloop
-              (Ssequence
-                (Sifthenelse (Ebinop Olt (Etempvar _j tint)
-                               (Etempvar _batch_packet_size tuint) tint)
-                  Sskip
-                  Sbreak)
-                (Sassign
-                  (Ederef
-                    (Ebinop Oadd
-                      (Ederef
-                        (Ebinop Oadd
-                          (Ederef
-                            (Ebinop Oadd
-                              (Evar _parity_buffers (tarray (tarray (tarray tuchar 100) 3) 300))
-                              (Etempvar _batchnum tuint)
-                              (tptr (tarray (tarray tuchar 100) 3)))
-                            (tarray (tarray tuchar 100) 3))
-                          (Etempvar _i tint) (tptr (tarray tuchar 100)))
-                        (tarray tuchar 100)) (Etempvar _j tint)
-                      (tptr tuchar)) tuchar) (Econst_int (Int.repr 0) tint)))
-              (Sset _j
-                (Ebinop Oadd (Etempvar _j tint)
-                  (Econst_int (Int.repr 1) tint) tint)))))
-        (Sset _i
-          (Ebinop Oadd (Etempvar _i tint) (Econst_int (Int.repr 1) tint)
-            tint))))
-    (Sreturn (Some (Econst_int (Int.repr 0) tint)))))
+          (Sset _j (Econst_int (Int.repr 0) tint))
+          (Sloop
+            (Ssequence
+              (Sifthenelse (Ebinop Olt (Etempvar _j tint)
+                             (Etempvar _batch_packet_size tuint) tint)
+                Sskip
+                Sbreak)
+              (Sassign
+                (Ederef
+                  (Ebinop Oadd
+                    (Ederef
+                      (Ebinop Oadd
+                        (Ederef
+                          (Ebinop Oadd
+                            (Evar _parity_buffers (tarray (tarray (tarray tuchar 100) 3) 300))
+                            (Etempvar _batchnum tuint)
+                            (tptr (tarray (tarray tuchar 100) 3)))
+                          (tarray (tarray tuchar 100) 3)) (Etempvar _i tint)
+                        (tptr (tarray tuchar 100))) (tarray tuchar 100))
+                    (Etempvar _j tint) (tptr tuchar)) tuchar)
+                (Econst_int (Int.repr 0) tint)))
+            (Sset _j
+              (Ebinop Oadd (Etempvar _j tint) (Econst_int (Int.repr 1) tint)
+                tint)))))
+      (Sset _i
+        (Ebinop Oadd (Etempvar _i tint) (Econst_int (Int.repr 1) tint) tint))))
+  (Sreturn (Some (Econst_int (Int.repr 0) tint))))
 |}.
 
 Definition f_encode_packet := {|
@@ -442,25 +434,20 @@ Definition f_encode_packet := {|
 Definition f_encode_parity := {|
   fn_return := tint;
   fn_callconv := cc_default;
-  fn_params := ((_batchnum, tuint) :: (_i, tuint) ::
+  fn_params := ((_batchnum, tuint) :: (_packet_size, tuint) :: (_i, tuint) ::
                 (_packet, (tptr tuchar)) :: nil);
   fn_vars := nil;
-  fn_temps := ((_j, tint) :: (_t'2, tuint) :: (_t'1, tuchar) :: nil);
+  fn_temps := ((_j, tint) :: (_t'1, tuchar) :: nil);
   fn_body :=
 (Ssequence
   (Ssequence
     (Sset _j (Econst_int (Int.repr 0) tint))
     (Sloop
       (Ssequence
-        (Ssequence
-          (Sset _t'2
-            (Ederef
-              (Ebinop Oadd (Evar _packet_sizes (tarray tuint 300))
-                (Etempvar _batchnum tuint) (tptr tuint)) tuint))
-          (Sifthenelse (Ebinop Olt (Etempvar _j tint) (Etempvar _t'2 tuint)
-                         tint)
-            Sskip
-            Sbreak))
+        (Sifthenelse (Ebinop Olt (Etempvar _j tint)
+                       (Etempvar _packet_size tuint) tint)
+          Sskip
+          Sbreak)
         (Ssequence
           (Sset _t'1
             (Ederef
