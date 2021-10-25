@@ -98,5 +98,141 @@ Proof.
     + by apply Forall_inv_tail in Hall.
 Qed. 
 
-(*Next step: show that when indices is a permutation of (enum n), we get dot prod (shouldn't be too hard
-  depending on bigop stuff)*)
+Lemma dot_prod_gen_sum: forall m n p mx1 mx2 i j indices (d: 'I_(Z.to_nat n)) 
+  (Hi: 0 <= i < m) (Hj : 0 <= j < p),
+  Forall (fun i => 0 <= i < n) indices ->
+  wf_lmatrix mx1 m n ->
+  wf_lmatrix mx2 n p ->
+  dot_prod_gen mx1 mx2 i j indices = 
+  \sum_(i0 <- (map Z.to_nat indices)) 
+    lmatrix_to_mx m n mx1 (Z_to_ord Hi) (nth d (Finite.enum (ordinal_finType (Z.to_nat n))) i0) *
+    lmatrix_to_mx n p mx2 (nth d (Finite.enum (ordinal_finType (Z.to_nat n))) i0) (Z_to_ord Hj).
+Proof.
+  move => m n p mx1 mx2 i j indices d Hi Hj Hall Hwf1 Hwf2. 
+  by rewrite /dot_prod_gen (@dot_prod_gen_aux_sum m n p _ _ _ _ _ _ d) // GRing.add0r.
+Qed.
+
+(*2 parts: If indices has length n and unique elements from 0 to n-1, it is a permutation of (enum n)
+  and if this condition holds, this is equivalent to the dot product *)
+
+(*It is quite difficult to prove that if we have a list of elements from m to n-m of length n, then it is a
+  permutation of iota m n. It is a bit easier to prove a more general claim: if l and s are unique lists of the
+  same length and all elements in l are in s, then l and s are permutations. But to do this we need to define
+  a map between elements in the two lists, show that is is bijective, and use the inverse. *)
+
+Definition seq_sub_map {T: choiceType} (l s: seq T) (Hin: forall t, t \in l -> t \in s) : 
+  (seq_sub_finType l) -> (seq_sub_finType s).
+Proof.
+  move => x.
+  have y: seq_sub s. case : x => x Hl. have Hs: x \in s by apply (Hin x Hl). apply (SeqSub Hs).
+  apply y.
+Defined.
+
+Lemma seq_sub_map_inj: forall {T: choiceType} (l s: seq T) (Hin: forall t, t \in l -> t \in s),
+  injective (seq_sub_map Hin).
+Proof.
+  move => T l s Hin. rewrite /injective /seq_sub_map/= => x1 x2.
+  case : x1. case: x2. move => x Hx y Hy/=. rewrite /ssr_have.
+  move => [Hxy]. subst. by have->: Hx = Hy by apply bool_irrelevance.
+Qed.
+
+Lemma perm_conds: forall (l s: seq nat) (n: nat),
+  size l = n ->
+  size s = n ->
+  uniq l ->
+  uniq s ->
+  (forall i, i \in l -> i \in s) ->
+  perm_eq l s.
+Proof.
+  move => l s n Hszl Hszs Hunl Hsun Hall.
+  apply uniq_perm => [//|//|]. move => i.
+  have [g Hcan Hcan']: bijective (seq_sub_map Hall). { apply inj_card_bij.
+    apply seq_sub_map_inj. by rewrite !card_seq_sub // Hszl Hszs. }
+  case Hl: (i \in l).
+  - apply Hall in Hl. by rewrite Hl.
+  - case Hs: (i \in s) => [|//].
+    (*Contradiction - by inverse map, i must be in l*)
+    remember (SeqSub Hs) as sf eqn : Hsf.
+    remember (g sf) as lf eqn : Hlf.
+    move: Hcan'. rewrite /cancel => /(_ sf). rewrite -Hlf Hsf /seq_sub_map /=. move: Hlf. case : lf => [y Hy]/=.
+    rewrite /ssr_have => _ [Hiy]. subst. by rewrite Hy in Hl.
+Qed.
+
+(*Now we can prove the [iota] result*)
+Lemma perm_iota: forall (l: seq nat) (m n: nat),
+  (m <= n)%N ->
+  size l = (n - m)%N ->
+  Forall (fun i => (m <= i < n)%N) l ->
+  uniq l ->
+  perm_eq l (index_iota m n).
+Proof.
+  move => l m n Hmn Hsz Hall Huniq. apply (@perm_conds _ _ (n- m)%N) => [//||//||].
+  - by apply size_iota.
+  - by apply iota_uniq.
+  - move => i Hi. move: Hall. rewrite Forall_forall => /(_ i). rewrite -in_mem_In mem_iota subnKC //.
+    by move => /(_ Hi).
+Qed.
+
+(*And then we can lift that the Z level*)
+Lemma enum_perm_conds: forall (l: seq Z) n,
+  Zlength l = n ->
+  Forall (fun i => 0 <= i < n) l ->
+  NoDup l ->
+  perm_eq (map Z.to_nat l) (index_iota 0 (Z.to_nat n)).
+Proof.
+  move => l n. rewrite Zlength_correct -size_length => Hlen Hall Huniq.
+  apply uniq_perm.
+  - rewrite uniq_NoDup. apply NoDup_map_inj => [ x y Hinx Hiny |//].
+    move: Hall; rewrite Forall_forall => Hall. 
+    have: 0 <= x < n by apply Hall.
+    have: 0 <= y < n by apply Hall. lia.
+  - apply iota_uniq.
+  - apply perm_mem.
+    apply perm_iota.
+    + apply /leP. lia.
+    + rewrite size_map subn0. lia.
+    + move: Hall. rewrite !Forall_forall => Hall x. rewrite in_map_iff => [[y [Hy Hiny]]].
+      apply Hall in Hiny. have->/=: (0 <= x)%N by (apply /leP; lia). apply /ltP; lia.
+    + rewrite uniq_NoDup. apply NoDup_map_inj => [x y Hinx Hiny|//].
+      move: Hall. rewrite !Forall_forall => Hall. apply Hall in Hinx. apply Hall in Hiny. lia.
+Qed.
+
+(*Part 2: If the input to dot_prod_gen is a permutation of index_iota, then this equals the full dot product *)
+Lemma dot_prod_gen_perm_eq: forall m n p mx1 mx2 i j indices
+  (Hi: 0 <= i < m) (Hj : 0 <= j < p),
+  Forall (fun i => 0 <= i < n) indices ->
+  perm_eq (map Z.to_nat indices) (index_iota 0 (Z.to_nat n)) ->
+  wf_lmatrix mx1 m n ->
+  wf_lmatrix mx2 n p ->
+  dot_prod_gen mx1 mx2 i j indices = 
+    ((lmatrix_to_mx m n mx1) *m (lmatrix_to_mx n p mx2)) (Z_to_ord Hi) (Z_to_ord Hj).
+Proof.
+  move => m n p mx1 mx2 i j indices Hi Hj Hall Hperm Hwf1 Hwf2. rewrite !mxE.
+  have Hn0: 0 <= n by apply Hwf1.
+  have: n = 0%Z \/ 0 < n by lia. move => [{}Hn0 | {} Hn0].
+  - subst. rewrite /dot_prod /=. rewrite big_ord0.
+    move: Hperm. rewrite /index_iota /= => /perm_nilP Hnil. apply map_eq_nil in Hnil.
+    by rewrite Hnil /dot_prod_gen.
+  - (*Now we have an instance of an 'I_n, which we need*)
+    have Hnord: 0 <= 0 < n by lia.
+    rewrite (big_nth (Z_to_ord Hnord)) /= /index_enum /= ordinal_enum_size /dot_prod.
+    rewrite (@dot_prod_gen_sum m n p _ _ _ _ _ (Z_to_ord Hnord)) => [|//|//|//].
+    by apply perm_big.
+Qed.
+
+(*Putting it all together with useful hypotheses for the client:*)
+Lemma dot_prod_gen_eq: forall m n p mx1 mx2 i j indices
+  (Hi: 0 <= i < m) (Hj : 0 <= j < p),
+  Zlength indices = n ->
+  Forall (fun i => 0 <= i < n) indices ->
+  NoDup indices ->
+  wf_lmatrix mx1 m n ->
+  wf_lmatrix mx2 n p ->
+  dot_prod_gen mx1 mx2 i j indices = 
+    ((lmatrix_to_mx m n mx1) *m (lmatrix_to_mx n p mx2)) (Z_to_ord Hi) (Z_to_ord Hj).
+Proof.
+  move => m n p mx1 mx2 i j indices Hi Hj Hlen Hall Hnodup Hwf1 Hwf2. rewrite (@dot_prod_gen_perm_eq m n p) //.
+  by apply enum_perm_conds.
+Qed.
+
+End DotProd.
