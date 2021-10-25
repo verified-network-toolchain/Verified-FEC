@@ -15,42 +15,27 @@ Require Import CommonSSR.
 Require Import ListMatrix.
 Require Import ByteField.
 
-(*Definition fec_k : Z := proj1_sig (opaque_constant 6).
-Definition fec_k_eq : fec_k = 6%Z := proj2_sig (opaque_constant _).
-Hint Rewrite fec_k_eq : rep_lia.*)
+Definition partial_packets_max (pp: seq (seq byte)) : Z :=
+  Z.of_nat (list_max (map size pp)).
 
-Definition packet := seq byte.
-
-Definition partial_packets (m: Z) := {packs: seq packet | Zlength packs = m}.
-
-Definition partial_packets_default {m: Z} (Hm: 0 <= m) : partial_packets m :=
-  exist _ (zseq m nil) (zseq_Zlength nil Hm).
-
-(*Update the idx'th packet to p *)
-Definition partial_packets_update {m: Z} (pp: partial_packets m) (p: packet) (idx: Z) : partial_packets m :=
-  exist _ (upd_Znth idx (proj1_sig pp) p) (etrans (Zlength_upd_Znth _ idx (proj1_sig pp) p) (proj2_sig pp)).
-
-Definition partial_packets_max {m: Z} (pp: partial_packets m) : Z :=
-  Z.of_nat (list_max (map size (proj1_sig pp))).
-
-Lemma partial_packets_max_bound: forall {m: Z} (pp: partial_packets m) (bound: Z),
+Lemma partial_packets_max_bound: forall (pp: seq (seq byte)) (bound: Z),
   0 <= bound ->
-  Forall (fun p => Zlength p <= bound) (proj1_sig pp) ->
+  Forall (fun p => Zlength p <= bound) pp ->
   partial_packets_max pp <= bound.
 Proof.
-  move => m pp bound Hbound Hall. rewrite /partial_packets_max.
+  move => pp bound Hbound Hall. rewrite /partial_packets_max.
   have->: bound = Z.of_nat (Z.to_nat bound) by rewrite Z2Nat.id.
   rewrite -Nat2Z.inj_le list_max_le. move: Hall.
-  case : pp => [l Hlen]/=. rewrite !Forall_forall/= => Hall s. rewrite in_map_iff => [[s' [Hs' Hin']]].
+  rewrite !Forall_forall/= => Hall s. rewrite in_map_iff => [[s' [Hs' Hin']]].
   apply Hall in Hin'. subst. rewrite Nat2Z.inj_le. move: Hin'. rewrite Zlength_correct size_length Z2Nat.id; lia.
 Qed.
 
 (*A partial matrix fills up every row in the matrix with information from the packets we have, or zeroes otherwise*)
-Definition partial_mx {m} (pp: partial_packets m) : lmatrix B :=
-  mk_lmatrix m (partial_packets_max pp) (fun i j => 
-  if nilp (Znth i (proj1_sig pp)) then Byte.zero else
-  if Z_gt_le_dec j (Zlength (Znth i (proj1_sig pp))) then Byte.zero
-  else  Znth j (Znth i (proj1_sig pp))).
+Definition partial_mx (pp: seq (seq byte)) : lmatrix B :=
+  mk_lmatrix (Zlength pp) (partial_packets_max pp) (fun i j => 
+  if nilp (Znth i pp) then Byte.zero else
+  if Z_gt_le_dec j (Zlength (Znth i pp)) then Byte.zero
+  else Znth j (Znth i pp)).
 
 (* Predicate to describe the buffer *)
 
@@ -236,3 +221,30 @@ Proof.
 Qed.
 
 End DotProd.
+
+Require Import ComputableWeights.
+
+Section Predicate.
+
+Definition fec_k : Z := proj1_sig (opaque_constant 6).
+Definition fec_k_eq : fec_k = 6%Z := proj2_sig (opaque_constant _).
+Hint Rewrite fec_k_eq : rep_lia.
+Definition fec_h : Z := proj1_sig (opaque_constant 3).
+Definition fec_h_eq : fec_h = 3%Z := proj2_sig (opaque_constant _).
+Hint Rewrite fec_h_eq : rep_lia.
+(*Predicate *)
+(*TODO: need both indices and packets?*)
+Definition buffer_filled (buffer: seq (seq (seq byte))) (batchnum : Z) (indices: seq Z) 
+  (packets : seq (seq byte)) (bound: Z) : Prop :=
+  Zlength packets = fec_k /\
+  Zlength indices <= fec_k /\
+  NoDup indices /\
+  Forall (fun i => 0 <= i < fec_k) indices /\
+  0 <= batchnum < Zlength buffer /\
+  Forall (fun l => Zlength l <= bound) packets ->
+  forall i j, 0 <= i < fec_h -> 0 <= j < bound -> 
+    get (Znth batchnum buffer) i j = dot_prod_gen static_weights (partial_mx packets) i j indices.
+
+
+(*TODO: update lemmas as needed*)
+End Predicate.
