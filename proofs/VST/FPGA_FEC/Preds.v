@@ -232,6 +232,9 @@ Hint Rewrite fec_k_eq : rep_lia.
 Definition fec_h : Z := proj1_sig (opaque_constant 3).
 Definition fec_h_eq : fec_h = 3%Z := proj2_sig (opaque_constant _).
 Hint Rewrite fec_h_eq : rep_lia.
+
+Definition empty_packets : seq (seq byte) := zseq fec_k nil.
+
 (*Predicate *)
 (*TODO: need both indices and packets?*)
 Definition buffer_filled (buffer: seq (seq (seq byte))) (batchnum : Z) (indices: seq Z) 
@@ -245,6 +248,10 @@ Definition buffer_filled (buffer: seq (seq (seq byte))) (batchnum : Z) (indices:
   forall i j, 0 <= i < fec_h -> 0 <= j < bound -> 
     get (Znth batchnum buffer) i j = dot_prod_gen static_weights (partial_mx packets) i j indices.
 
+(*When we update a buffer, want to know that we only affected a single row*)
+Definition old_new_buffers (buffer buffer' : seq (seq (seq byte))) batchnum : Prop :=
+  Zlength buffer = Zlength buffer' /\
+  forall b, 0 <= b < Zlength buffer -> b <> batchnum -> Znth b buffer = Znth b buffer'.
 
 (*TODO: update lemmas as needed*)
 End Predicate.
