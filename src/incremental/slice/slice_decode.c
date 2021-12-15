@@ -25,7 +25,7 @@ int initialize() {
 }
 
 // The caller must ensure that k = 6, h = 3, 0 \leq slice_batchnum < SLICES
-int start_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h) {
+int start_slice_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h) {
   //set the buffer to 0 (since it may have been used before)
   for(int i = 0; i < h; i++) {
     for(int j = 0; j < SLICE_SIZE; j++) {
@@ -55,6 +55,6 @@ int get_decoded_packet_slice(unsigned int slice_batchnum, unsigned int i, unsign
   return 0;
 }
 
-int end_batch(unsigned int slice_batchnum) {
+int end_slice_batch(unsigned int slice_batchnum) {
   return 0;
 }

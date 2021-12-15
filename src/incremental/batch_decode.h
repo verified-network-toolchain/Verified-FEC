@@ -31,5 +31,5 @@ int get_decoded_packet(unsigned int batchnum, unsigned int i, unsigned int recie
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
-int end_batch(uint batchnum);
+int end_batch(unsigned int batchnum);
 

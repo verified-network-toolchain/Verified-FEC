@@ -12,7 +12,7 @@ int initialize();
    An implementation is required to insist that k=6 and h=3, and return failure otherwise.
    0 <= slice_batchnum < SLICES, where SLICES is an implementation-dependent constant.
  */
-int start_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h);
+int start_slice_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h);
 
 /* Inform the encoder that the contents of the jth slice are the bytes
    starting at slice, exactly SLICE_SIZE of them.
@@ -31,4 +31,4 @@ int encode_parity_slice(unsigned int slice_batchnum, unsigned int i, unsigned ch
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
-int end_batch(unsigned int slice_batchnum);
+int end_slice_batch(unsigned int slice_batchnum);

@@ -10,7 +10,7 @@ int initialize();
    An implementation is required to insist that k=6 and h=3, and return failure otherwise.
    0 <= slice_batchnum < SLICES, where SLICES is an implementation-dependent constant.
  */
-int start_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h);
+int start_slice_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h);
 
 /* Inform the decoder that the contents of the jth slice are the bytes
    starting at slice (of length SLICE_SIZE)
@@ -29,5 +29,5 @@ int get_decoded_packet_slice(unsigned int slice_batchnum, unsigned int i, unsign
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
-int end_batch(unsigned int slice_batchnum);
+int end_slice_batch(unsigned int slice_batchnum);
 

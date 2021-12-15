@@ -11,7 +11,7 @@ int initialize() {
 }
 
 // The caller must ensure that k = 6, h = 3, 0 \leq slice_batchnum < SLICES
-int start_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h) {
+int start_slice_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h) {
   //set the buffer to 0 (since it may have been used before)
   for(int i = 0; i < h; i++) {
     for(int j = 0; j < SLICE_SIZE; j++) {
@@ -38,6 +38,6 @@ int encode_parity_slice(unsigned int slice_batchnum, unsigned int i, unsigned ch
   return 0;
 }
 
-int end_batch(uint slice_batchnum) {
+int end_slice_batch(uint slice_batchnum) {
   return 0;
 }

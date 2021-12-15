@@ -33,7 +33,7 @@ int encode_parity(unsigned int batchnum, unsigned int i, unsigned int packet_siz
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
-int end_batch(uint batchnum);
+int end_batch(unsigned int batchnum);
 
 
 
