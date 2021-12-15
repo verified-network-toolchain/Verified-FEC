@@ -83,20 +83,20 @@ Definition buffer_vals (b: list (list (list byte))) : list (list (list val)) :=
 
 Definition start_batch_spec :=
   DECLARE _start_batch
-  WITH gv : globals, buffer : list (list (list byte)), batchnum : Z, k : Z, h : Z, batch_size : Z,
-    buffer' : list (list (list byte))
+  WITH gv : globals, old_buffer : list (list (list byte)), batchnum : Z, k : Z, h : Z, batch_size : Z,
+    new_buffer : list (list (list byte))
   PRE [ tuint, tuint, tuint, tuint ]
     PROP (0 <= k < fec_k; 0 <= h < fec_h; 0 <= batchnum < batches; 0 <= batch_size < max_packet_size)
     PARAMS (Vint (Int.repr batchnum); Vint (Int.repr k); Vint (Int.repr h); Vint (Int.repr batch_size))
     GLOBALS (gv)
     SEP (data_at Ews (tarray (tarray (tarray tuchar max_packet_size) fec_h) batches) 
-          (buffer_vals buffer) (gv _parity_buffers))
+          (buffer_vals old_buffer) (gv _parity_buffers))
   POST [ tint ]
-    PROP (buffer_filled buffer' batchnum nil empty_packets batch_size;
-          old_new_buffers buffer buffer' batchnum)
+    PROP (buffer_filled new_buffer batchnum nil empty_packets batch_size;
+          old_new_buffers old_buffer new_buffer batchnum)
     RETURN (Vint (Int.zero))
     SEP (data_at Ews (tarray (tarray (tarray tuchar max_packet_size) fec_h) batches) 
-          (buffer_vals buffer') (gv _parity_buffers)).
+          (buffer_vals new_buffer) (gv _parity_buffers)).
 
 (** encode_packet *)
 
@@ -144,5 +144,5 @@ Definition _encode_parity_spec:=
           (buffer_vals buffer) (gv _parity_buffers)).
 
 
-Definition Gprog := [mult_spec; generate_field_tables_spec].
+Definition Gprog := [mult_spec; generate_field_tables_spec; start_batch_spec; encode_packet_spec; encoder_part].
 
