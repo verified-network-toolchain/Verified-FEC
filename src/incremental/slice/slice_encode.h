@@ -4,6 +4,9 @@
 
 #include "slice_common.h"
 
+/* called once, before any of the other functions. Returns 0 on success */
+int initialize();
+
 /* Registers a new batch of slices, in which k will be the number of data slices,
    and h will be the number of parity slices.  Returns 0 on success.
    An implementation is required to insist that k=6 and h=3, and return failure otherwise.
