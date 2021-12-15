@@ -17,7 +17,7 @@ int start_batch(unsigned int slice_batchnum, unsigned int k, unsigned int h);
    0 <= j < k + h = 9
    0 <= recieved < 2^9 - this is a bitmap of the recieved packets, where the ith bit is 1 iff the ith packet is recieved
 */
-int decode_packet_slice(unsigned int slice_batchnum, unsigned int j, unsigned int recieved, unsigned char *slice);
+int decode_packet_slice(unsigned int slice_batchnum, unsigned int j, unsigned short recieved, unsigned char *slice);
 
 /* The slice pointer points to an uninitialized array of length SLICE_SIZE;
    fill it in with the bytes of the ith slice, and 0 <= i < h. 
@@ -25,9 +25,9 @@ int decode_packet_slice(unsigned int slice_batchnum, unsigned int j, unsigned in
    Return 0 on success
    Should only be called once all k slices in batch slice_batchnum have been sent to the decoder
 */ 
-int get_decoded_packet_slice(unsigned int slice_batchnum, unsigned int i, unsigned int recieved, unsigned char *slice);
+int get_decoded_packet_slice(unsigned int slice_batchnum, unsigned int i, unsigned short recieved, unsigned char *slice);
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
-int end_batch(uint slice_batchnum);
+int end_batch(unsigned int slice_batchnum);
 

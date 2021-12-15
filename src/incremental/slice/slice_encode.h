@@ -31,4 +31,4 @@ int encode_parity_slice(unsigned int slice_batchnum, unsigned int i, unsigned ch
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
-int end_batch(uint slice_batchnum);
+int end_batch(unsigned int slice_batchnum);
