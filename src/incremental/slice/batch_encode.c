@@ -19,12 +19,12 @@ unsigned int num_slices[BATCHES];
 
 
 int start_batch(unsigned int batchnum, unsigned int k, unsigned int h, unsigned int batch_packet_size) {
-    //Start the batches for the slices we know we have. We may have to add more later.
-    num_slices[batchnum] = batch_packet_size / SLICE_SIZE + 1;
-    for(int i = 0; i < batch_packet_size / SLICE_SIZE + 1) {
-      start_slice_batch(batchnum * SLICE_SIZE + i, k, h);
-    }
-    return 0;
+  //Start the batches for the slices we know we have. We may have to add more later.
+  num_slices[batchnum] = batch_packet_size / SLICE_SIZE + 1;
+  for(int i = 0; i < batch_packet_size / SLICE_SIZE + 1) {
+    start_slice_batch(batchnum * SLICE_SIZE + i, k, h);
+  }
+  return 0;
 }
 
 int encode_packet(unsigned int batchnum, unsigned int j, unsigned int packet_size, unsigned char *packet) {
