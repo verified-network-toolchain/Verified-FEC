@@ -83,7 +83,10 @@ void rse_init(void);
 // If h>0, then this function appends h parity packets to the k data packets
 // in pdata.  plen is an array of of the lengths of the data packets (with
 // headers & shim).  c is max_i(plen).  pstat is a flag, initially FEC_FLAG_KNOWN.
-int rse_code(int k, int h, int c, unsigned char **pdata, int *plen, char *pstat);
+//int rse_code(int k, int h, int c, unsigned char **pdata, int *plen, char *pstat);
+int fec_blk_encode(int k, int h, int c, unsigned char **pdata, int *plen, char *pstat);
+int fec_blk_decode(int k, int c, unsigned char **pdata, int *plen, char *pstat);
+
 
 void rse_code_print(int k, int h, int c, unsigned char **pdata, int *plen, char *pstat);
 

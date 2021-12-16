@@ -1,7 +1,7 @@
 //Slice-based implememtation of batch encoding
 //The primary purpose of this layer is to handle splitting the packet into slices and to keep track of the mapping from batchnums to slice_batchnums
 
-#include "./batch_encode.h"
+#include "../batch_encode.h"
 #include "slice_encode.h"
 
 
