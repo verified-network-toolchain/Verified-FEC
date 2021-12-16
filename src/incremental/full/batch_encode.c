@@ -7,7 +7,7 @@
 
 //Mapping from batchnums to packets and lengths
 unsigned char **packet_data[BATCHES];
-int *packet_lengths[BATCHES];
+int *packet_lengths[BATCHES]; //TODO: could be done all statically by using FEC_K + FEC_H
 //Mantain maximum packet seen so far
 unsigned int max_lengths[BATCHES];
 int parities_done[BATCHES]; //Are the parities computed for a batch?
@@ -26,7 +26,7 @@ int start_batch(unsigned int batchnum, unsigned int k, unsigned int h, unsigned 
   packet_data[batchnum] = packets;
   int *lengths = calloc(k+h, sizeof(int));
   if(lengths == NULL) return -1;
-  packet_lengths = lengths;
+  packet_lengths[batchnum] = lengths;
   max_lengths[batchnum] = 0;
   parities_done[batchnum] = 0;
   return 0;
@@ -51,13 +51,18 @@ int encode_parity(unsigned int batchnum, unsigned int i, unsigned int packet_siz
   unsigned char **packets = packet_data[batchnum];
   if(!parities_done[batchnum]) {
     //Calculate parities
+    //Fill in lengths of parities
+    for(int j = 0; j < FEC_H; j++) {
+      packet_lengths[batchnum][FEC_K + j] = max_lengths[batchnum];
+    }
     //Allocate space for pstat
     char *stats = calloc((FEC_K + FEC_H) * sizeof(char));
     if(stats == NULL) return -1;
-    fec_blk_encode(FEC_K, FEC_H, max_lengths[batchnum], packet_data[batchnum], packet_lengths[batchnum], stats);
+    fec_blk_encode(FEC_K, FEC_H, max_lengths[batchnum], packets, packet_lengths[batchnum], stats);
     //free stats because it is never used again
     //TODO: should we use a single, static stats array? It's kind of cheating, but works because we know fec_blk_encode doesn't modify it and because we assume k=6 and h=3
     free(stats);
+    parities_done[batchnum] = 1;
   }
   unsigned char *parity_packet = packets[FEC_K + i];
   //Need packet_size >= max(packets)
