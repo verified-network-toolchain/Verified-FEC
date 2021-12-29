@@ -23,8 +23,9 @@ int start_slice_batch(unsigned int slice_batchnum, unsigned int k, unsigned int 
 
 int encode_packet_slice(unsigned int slice_batchnum, unsigned int j, unsigned char *slice) {
   for(int m = 0; m < FEC_H; m++) {
+    unsigned char weight_val = weights[m][j];
     for(int n = 0; n < SLICE_SIZE; n++) {
-      parity_buffers[slice_batchnum][m][n] ^= mult(weights[m][j], slice[n]); 
+      parity_buffers[slice_batchnum][m][n] ^= mult(weight_val, slice[n]); 
     }
   }
   return 0;

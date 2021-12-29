@@ -17,17 +17,17 @@ int start_batch(unsigned int batchnum, unsigned int k, unsigned int h, unsigned 
 /* Inform the decoder that the contents of the jth packet are the bytes
    starting at packet (of length packet_size)
    0 <= j < k + h = 9
-   0 <= recieved < 2^9 - this is a bitmap of the recieved packets, where the ith bit is 1 iff the ith packet is recieved
+   0 <= recieved < 2^9 - this is a bitmap of the received packets, where the ith bit is 1 iff the ith packet is recieved
 */
-int decode_packet(unsigned int batchnum, unsigned int j, unsigned int recieved, unsigned int packet_size, unsigned char *packet);
+int decode_packet(unsigned int batchnum, unsigned int j, unsigned int received, unsigned int packet_size, unsigned char *packet);
 
 /* The packet pointer points to an uninitialized array of length batch_packet_size;
-   fill it in with the bytes of the ith packet, and 0 <= i < h. 
-   recieved is the same bitmap as above
+   fill it in with the bytes of the ith packet, and 0 <= i < k+h. 
+   received is the same bitmap as above
    Return 0 on success
    Should only be called once all k packets in batch batchnum have been sent to the decoder
 */ 
-int get_decoded_packet(unsigned int batchnum, unsigned int i, unsigned int recieved, unsigned int packet_size, unsigned char *packet);
+int get_decoded_packet(unsigned int batchnum, unsigned int i, unsigned int received, unsigned int packet_size, unsigned char *packet);
 
 /* Unregister this batch.  The same batchnum may be used again in future batches.
 */
