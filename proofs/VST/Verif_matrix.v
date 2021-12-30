@@ -99,9 +99,9 @@ Proof.
       pose proof (rev_mx_val_wf _ _ _ Hwf) as Hrev. rewrite data_at_2darray_concat; auto; try apply Hrev.
       rewrite concat_rev_mx. cancel.
     }
-    { split; [rep_lia | split; [ rep_lia | split]]. apply weight_matrix_wf; rep_lia.
+    { split. apply weight_matrix_wf; rep_lia.
       unfold strong_inv_list. unfold all_strong_inv_list. destruct (range_le_lt_dec 0 0 fec_max_h ); try rep_lia.
-      destruct (Z_le_lt_dec fec_max_h (fec_n - 1)); try rep_lia. rewrite weight_mx_list_spec by rep_lia. split; auto.
+      destruct (Z_le_lt_dec fec_max_h (fec_n - 1)); try rep_lia. rewrite weight_mx_list_spec by rep_lia.
       apply vandermonde_strong_inv. apply (ssrbool.introT (ssrnat.leP)). rep_lia. 
     }
     { Intros ret. forward. forward_if True; [ contradiction | |].
@@ -374,7 +374,7 @@ Proof.
                       (gauss_all_steps_list_partial (F:=B) m n mx k) k m) k i) k i Byte.one n)
                     ))) s))%assert5)). 
             { (*when i != k*)
-              forward.  (*simplify q*) pointer_to_offset s.
+              forward.  (*simplify q*) pointer_to_offset s. (*TODO: is it a bug that forward_loop doesn't work here?*)
               forward_for (fun (j : Z) => PROP (0 <= j <= n)
                 LOCAL (temp _q (offset_val (i * n + n - 1) s); temp _r (offset_val (k * n + n - 1) s);
                   temp _k (Vint (Int.repr k)); temp _p s; temp _i_max (Vubyte (Byte.repr m)); 

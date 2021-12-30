@@ -185,14 +185,16 @@ Proof.
   by rewrite nseqD.
 Qed.
 
-Lemma zseq_list_repeat: forall {A: Type} (x: A) (z: Z),
+(*TODO: when this was written, Zrepeat did not exist. We don't really need zseq now, should be
+  replaced.*)
+Lemma zseq_Zrepeat: forall {A: Type} (x: A) (z: Z),
   0 <= z ->
-  list_repeat (Z.to_nat z) x = zseq z x.
+  Zrepeat x z = zseq z x.
 Proof.
   move => A x z Hz. have Hinhab: Inhabitant A by apply x. apply Znth_eq_ext.
-  - by rewrite Zlength_list_repeat // zseq_Zlength.
-  - move => i. rewrite Zlength_list_repeat // => Hi. 
-    by rewrite Znth_list_repeat_inrange // zseq_Znth.
+  - by rewrite Zlength_Zrepeat // zseq_Zlength.
+  - move => i. rewrite Zlength_Zrepeat // => Hi.
+    by rewrite Znth_Zrepeat // zseq_Znth.
 Qed.
 
 Lemma zseq_app: forall {A: Type} (z1 z2: Z) (x: A),

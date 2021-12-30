@@ -24,7 +24,6 @@ Require Import CommonSSR.
 Require Import Vandermonde.
 Require Import Gaussian.
 Require Import GaussRestrict.
-Require Import InhabOption.
 Require Import ByteField.
 
 Lemma NoDup_app: forall {A: Type} (l1 l2:list A),

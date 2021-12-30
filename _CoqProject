@@ -17,7 +17,6 @@ proofs/RS/ReedSolomon.v
 proofs/Matrix/ListMatrix.v
 proofs/Matrix/MatrixTransform.v
 proofs/Matrix/VandermondeByte.v
-proofs/VST/InhabOption.v
 proofs/RS/ReedSolomonList.v
 #VST
 src/fecActuator/fec.v

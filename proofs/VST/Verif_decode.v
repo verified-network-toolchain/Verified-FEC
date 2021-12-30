@@ -93,7 +93,7 @@ Proof.
   rewrite (sublist_split 0 (Z.of_nat n) (Zlength Q)) at 1; [| lia | list_solve].
   rewrite (sublist_split (Z.of_nat n) (Z.of_nat n + 1) (Zlength Q)); [|lia|list_solve].
   rewrite (@sublist_len_1 _ d) by lia. unfold Znth.
-  destruct (zlt (Z.of_nat n) 0); [lia |]. clear g. rewrite Nat2Z.id. 
+  destruct (Z_lt_dec (Z.of_nat n) 0); [lia |]. clear n0. rewrite Nat2Z.id. 
   eapply perm_trans. apply Permutation_app_comm. simpl. 
   apply perm_skip. apply Permutation_app_comm.
 Qed.
@@ -135,90 +135,8 @@ Ltac simpl_sum_if :=
 Lemma default_arr: forall z, 0 <= z ->
   default_val (tarray tuchar z) = @zseq (reptype tuchar) z Vundef.
 Proof. 
-  intros z Hz. unfold default_val. simpl. rewrite zseq_list_repeat by lia. reflexivity.
+  intros z Hz. unfold default_val. simpl. rewrite zseq_Zrepeat by lia. reflexivity.
 Qed.
-
-Ltac prove_eqb_type :=
- match goal with |- context [eqb_type ?A ?B] => 
-  try change (eqb_type A B) with true;
-  rewrite (proj2 (eqb_type_spec A B))
-     by (repeat f_equal; rep_lia)
- end;
- cbv beta iota.
-
-Ltac simply_msubst_extract_locals ::=
-  unfold msubst_extract_locals, msubst_extract_local, VST_floyd_map;
-  cbv iota zeta beta;
-  simpl_PTree_get; 
-  try prove_eqb_type.
-
-Ltac solve_msubst_eval_LR ::=
-  (unfold msubst_eval_LR;
-  simpl;
-  cbv beta iota zeta delta [force_val2 force_val1];
-  rewrite ?isptr_force_ptr, <- ?offset_val_force_ptr by auto;
-  unfold eval_vardesc;
-  repeat match goal with |- match PTree.get ?A ?B with _ => _ end = _ =>
-         let x := fresh "x" in set (x := PTree.get A B); hnf in x; subst x;
-          cbv beta iota
-       end;
-   try prove_eqb_type;
-  reflexivity) ||
-  match goal with 
-  |- msubst_eval_LR _ _ _ _ ?e _ = _ =>
-   fail "Cannot symbolically evaluate expression" e "given the information in your LOCAL clause; did you forget a 'temp' declaration?"
-  end.
-
-Ltac solve_msubst_eval_lvalue ::=
-  (simpl;
-  cbv beta iota zeta delta [force_val2 force_val1];
-  rewrite ?isptr_force_ptr, <- ?offset_val_force_ptr by auto;
-  unfold eval_vardesc;
-  repeat match goal with |- match match PTree.get ?A ?B with _ => _ end with _ => _ end = _ =>
-         let x := fresh "x" in set (x := PTree.get A B); hnf in x; subst x;
-          cbv beta iota
-       end;
-   try prove_eqb_type;
-  reflexivity) ||
-  match goal with 
-  |- msubst_eval_lvalue _ _ _ _ ?e = _ =>
-   fail "Cannot symbolically evaluate expression" e "given the information in your LOCAL clause; did you forget a 'temp' declaration?"
-  end.
-
-Ltac solve_msubst_eval_lvar ::=
-  (unfold msubst_eval_lvar;
-   unfold eval_vardesc, eval_lvardesc;
-  repeat match goal with |- match PTree.get ?A ?B with _ => _ end = _ =>
-         let x := fresh "x" in set (x := PTree.get A B); hnf in x; subst x;
-          cbv beta iota
-       end;
-   try prove_eqb_type;
-   reflexivity) ||
-  match goal with 
-  |- msubst_eval_lvar _ _ ?id _ = _ =>
-   fail "Cannot symbolically evaluate lvar" id "given the information in your LOCAL clause; did you forget an 'lvar' declaration?"
-  end.
-
-(*Due to bug in VST (TODO: remove this once I change to master branch or update VST) *)
-Ltac no_loads_expr e as_lvalue ::=
- match e with
- | Econst_int _ _ => idtac
- | Econst_float _ _ => idtac
- | Econst_single _ _ => idtac
- | Econst_long _ _ => idtac
- | Evar _ ?t => lazymatch as_lvalue with true => idtac | false => is_array_type t end
- | Etempvar _ _ => idtac
- | Ederef ?e1 ?t => lazymatch as_lvalue with true => idtac | false => is_array_type t end;
-                               no_loads_expr e1 true
- | Eaddrof ?e1 _ => no_loads_expr e1 true
- | Eunop _ ?e1 _ => no_loads_expr e1 as_lvalue
- | Ebinop _ ?e1 ?e2 _ => no_loads_expr e1 as_lvalue ; no_loads_expr e2 as_lvalue
- | Ecast ?e1 _ => no_loads_expr e1 as_lvalue
- | Efield ?e1 _ ?t => lazymatch as_lvalue with true => idtac | false => is_array_type t end;
-                               no_loads_expr e1 true 
- | Esizeof _ _ => idtac
- | Ealignof _ _ => idtac
-end.
 
 (*small lemmas that are helpful*)
 Lemma get_inhab: forall l i j, @get byte (inhabitant_F B) l i j = 
@@ -285,7 +203,7 @@ freeze FR1 := (data_at_ Tsh (tarray tuchar fec_max_h) v_row)
        (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (FEC_TABLES gv).
 freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).
 (*First loop - populate lost/found packets*)
-rewrite !data_at__tarray. rewrite !zseq_list_repeat by rep_lia.
+rewrite !data_at__tarray. rewrite !zseq_Zrepeat by rep_lia.
 replace (default_val tuchar) with Vundef by reflexivity.
 forward_loop (EX (i: Z),
   PROP (0 <= i <= k)
@@ -417,7 +335,7 @@ forward_loop (EX (i: Z),
        (data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost).
     freeze FR2 := (FRZL FR1) (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
         (iter_sepcon_options parity_ptrs parities).
-    rewrite !data_at__tarray. rewrite !zseq_list_repeat by rep_lia.
+    rewrite !data_at__tarray. rewrite !zseq_Zrepeat by rep_lia.
     replace (default_val tuchar) with Vundef by reflexivity.
     (*In this loop, we exit once we have found xh valid parity pointers, so the
       postcondition involves an EX quantifier - we don't know exactly how many steps it will take*)
@@ -535,7 +453,7 @@ forward_loop (EX (i: Z),
         assert (Hnull: @Znth _ Vundef i parity_ptrs = nullval) by (apply Hparsconsist; [ lia | assumption]).
         rewrite_eqs; forward.
         { rewrite Znth_app2 by lia. replace (k + i - Zlength packet_ptrs) with i by lia.
-          entailer!. rewrite Hnull. auto.
+          entailer!. rewrite Hnull. reflexivity. 
         }
         { entailer!. solve_offset. }
         { forward_if Ifpost; try(rewrite Znth_app2 by lia); 
@@ -630,12 +548,12 @@ forward_loop (EX (i: Z),
       rewrite !eqb_type_refl; auto. rewrite data_at__tarray. (*Need to go 2D-1D array for loop and Gaussian elim*)
       rewrite data_at_2darray_concat. 
       { replace (fec_max_h * (fec_max_h * 2)) with (2 * fec_max_h * fec_max_h) by lia. apply derives_refl'.
-        f_equal. rewrite pop_find_inv_0 by rep_lia. rewrite zseq_list_repeat by lia. 
+        f_equal. rewrite pop_find_inv_0 by rep_lia. rewrite zseq_Zrepeat by lia. 
         rewrite default_arr by lia. rewrite (@zseq_concat (reptype tuchar)) by lia. f_equal. lia.
       }
-      { rewrite Zlength_list_repeat'; rep_lia. }
-      { rewrite Forall_Znth. rewrite Zlength_list_repeat'; try rep_lia. intros y Hy.
-        rewrite Znth_list_repeat_inrange by lia. rewrite default_arr by lia. rewrite zseq_Zlength; lia. }
+      { rewrite Zlength_Zrepeat; lia. }
+      { rewrite Forall_Znth. rewrite Zlength_Zrepeat by lia. intros y Hy.
+        rewrite Znth_Zrepeat by lia. rewrite default_arr by lia. rewrite zseq_Zlength; lia. }
       { auto. }
     }
     { Intros j. rewrite_eqs; forward_if.
@@ -837,9 +755,9 @@ forward_loop (EX (i: Z),
         f_equal. f_equal. f_equal. lia. }
       { replace (xh * (xh + xh)) with (2 * xh * xh) by lia. entailer!.
       }
-      { split; [lia | split; [ rep_lia |split]].
+      { split.
         - apply row_mx_list_wf; lia.
-        - split; auto.  apply strong_inv_row_mx_list. apply strong_inv_list_partial; lia.
+        - apply strong_inv_row_mx_list. apply strong_inv_list_partial; lia.
       }
       { forward. forward_if True; [contradiction | forward; entailer! |].
         (*start of syndrome mx (multiplication) loop*)
@@ -899,7 +817,7 @@ forward_loop (EX (i: Z),
               xh 0) v_s) :: SEPS)))).
           { rewrite_eqs; forward. Exists 0. rewrite_eqs; entailer!.
             rewrite pop_mx_mult_part_zero by rep_lia.
-            rewrite data_at__tarray. rewrite zseq_list_repeat by lia. rewrite default_arr by lia.
+            rewrite data_at__tarray. rewrite zseq_Zrepeat by lia. rewrite default_arr by lia.
             rewrite fec_max_cols_eq. rewrite fec_max_h_eq. replace (Zlength parities) with (Zlength parity_ptrs) by lia.
             cancel.
           }

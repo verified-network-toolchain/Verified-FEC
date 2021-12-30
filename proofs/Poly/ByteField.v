@@ -26,7 +26,7 @@ Require Import ByteFacts.
 Lemma Znth_nil: forall {A: Type} {d: Inhabitant A} (i: Z),
   @Znth A d i [::] = d.
 Proof.
-  move => A d i. rewrite /Znth. case : (zlt i 0) => [//= Hi0 | //= Hi0].
+  move => A d i. rewrite /Znth. case : (Z_lt_dec i 0) => [//= Hi0 | //= Hi0].
   by case : (Z.to_nat i).
 Qed.
 
@@ -84,7 +84,7 @@ Qed.
 Lemma Z_to_bits_nth: forall z i, (0 <= z)%Z ->
   ((Z_to_bits z)`_i)%R = Z.testbit z (Z.of_nat i).
 Proof.
-  move => z i Hz. rewrite Z_to_bits_spec // /Znth. case : (zlt (Z.of_nat i) 0); try lia ; move => Htriv.
+  move => z i Hz. rewrite Z_to_bits_spec // /Znth. case : (Z_lt_dec (Z.of_nat i) 0); try lia ; move => Htriv.
   by rewrite Nat2Z.id nth_nth.
 Qed.
 

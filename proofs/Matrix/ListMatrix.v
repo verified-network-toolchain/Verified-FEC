@@ -102,7 +102,7 @@ Lemma Z_ord_list_Znth: forall (l: seq Z) n i (Hn: 0 < n),
   Znth i l = Z.of_nat (nth (ord_zero Hn) (Z_ord_list l n) (Z.to_nat i)).
 Proof.
   move => l n i Hn Hi Hall. rewrite -{1}(@Z_ord_list_spec l n) //. 2: lia.
-  rewrite /Znth. case : (zlt i 0); try lia. move =>H{H}.
+  rewrite /Znth. case : (Z_lt_dec i 0); try lia. move =>H{H}.
   rewrite nth_nth.
   have <-: Z.of_nat (ord_zero Hn) = Inhabitant_Z by []. by rewrite map_nth.
 Qed.

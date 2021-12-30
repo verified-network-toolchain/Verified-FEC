@@ -20,7 +20,7 @@ Lemma Znth_default: forall {A: Type} (H2 H1: Inhabitant A) (l: list A) (i: Z),
   0 <= i < Zlength l ->
   @Znth _ H1 i l = @Znth _ H2 i l.
 Proof.
-  intros A Hin1 Hin2 l i Hi. unfold Znth. destruct (zlt i 0); try lia.
+  intros A Hin1 Hin2 l i Hi. unfold Znth. destruct (Z_lt_dec i 0); try lia.
   apply nth_indep. rewrite <-ZtoNat_Zlength. lia.
 Qed.
 

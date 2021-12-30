@@ -1,10 +1,12 @@
 From Coq Require Import String List ZArith.
 From compcert Require Import Coqlib Integers Floats AST Ctypes Cop Clight Clightdefs.
+Import Clightdefs.ClightNotations.
 Local Open Scope Z_scope.
 Local Open Scope string_scope.
+Local Open Scope clight_scope.
 
 Module Info.
-  Definition version := "3.8".
+  Definition version := "3.9".
   Definition build_number := "".
   Definition build_tag := "".
   Definition build_branch := "".
@@ -13,7 +15,7 @@ Module Info.
   Definition abi := "standard".
   Definition bitsize := 64.
   Definition big_endian := false.
-  Definition source_file := "FEC/fec.c".
+  Definition source_file := "src/fecActuator/fec.c".
   Definition normalized := true.
 End Info.
 
@@ -47,6 +49,7 @@ Definition ___builtin_ctz : ident := $"__builtin_ctz".
 Definition ___builtin_ctzl : ident := $"__builtin_ctzl".
 Definition ___builtin_ctzll : ident := $"__builtin_ctzll".
 Definition ___builtin_debug : ident := $"__builtin_debug".
+Definition ___builtin_expect : ident := $"__builtin_expect".
 Definition ___builtin_fabs : ident := $"__builtin_fabs".
 Definition ___builtin_fabsf : ident := $"__builtin_fabsf".
 Definition ___builtin_fmadd : ident := $"__builtin_fmadd".
@@ -62,6 +65,7 @@ Definition ___builtin_read16_reversed : ident := $"__builtin_read16_reversed".
 Definition ___builtin_read32_reversed : ident := $"__builtin_read32_reversed".
 Definition ___builtin_sel : ident := $"__builtin_sel".
 Definition ___builtin_sqrt : ident := $"__builtin_sqrt".
+Definition ___builtin_unreachable : ident := $"__builtin_unreachable".
 Definition ___builtin_va_arg : ident := $"__builtin_va_arg".
 Definition ___builtin_va_copy : ident := $"__builtin_va_copy".
 Definition ___builtin_va_end : ident := $"__builtin_va_end".
@@ -362,6 +366,23 @@ Definition v___stringlit_31 := {|
   gvar_volatile := false
 |}.
 
+Definition v___stringlit_6 := {|
+  gvar_info := (tarray tschar 22);
+  gvar_init := (Init_int8 (Int.repr 115) :: Init_int8 (Int.repr 114) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 47) ::
+                Init_int8 (Int.repr 102) :: Init_int8 (Int.repr 101) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 65) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 116) ::
+                Init_int8 (Int.repr 117) :: Init_int8 (Int.repr 97) ::
+                Init_int8 (Int.repr 116) :: Init_int8 (Int.repr 111) ::
+                Init_int8 (Int.repr 114) :: Init_int8 (Int.repr 47) ::
+                Init_int8 (Int.repr 102) :: Init_int8 (Int.repr 101) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 46) ::
+                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 0) :: nil);
+  gvar_readonly := true;
+  gvar_volatile := false
+|}.
+
 Definition v___stringlit_28 := {|
   gvar_info := (tarray tschar 18);
   gvar_init := (Init_int8 (Int.repr 37) :: Init_int8 (Int.repr 50) ::
@@ -457,17 +478,6 @@ Definition v___stringlit_26 := {|
   gvar_init := (Init_int8 (Int.repr 37) :: Init_int8 (Int.repr 50) ::
                 Init_int8 (Int.repr 120) :: Init_int8 (Int.repr 32) ::
                 Init_int8 (Int.repr 0) :: nil);
-  gvar_readonly := true;
-  gvar_volatile := false
-|}.
-
-Definition v___stringlit_6 := {|
-  gvar_info := (tarray tschar 10);
-  gvar_init := (Init_int8 (Int.repr 70) :: Init_int8 (Int.repr 69) ::
-                Init_int8 (Int.repr 67) :: Init_int8 (Int.repr 47) ::
-                Init_int8 (Int.repr 102) :: Init_int8 (Int.repr 101) ::
-                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 46) ::
-                Init_int8 (Int.repr 99) :: Init_int8 (Int.repr 0) :: nil);
   gvar_readonly := true;
   gvar_volatile := false
 |}.
@@ -1016,7 +1026,7 @@ Definition f_rse_code := {|
         (Evar _fprintf (Tfunction
                          (Tcons (tptr (Tstruct __IO_FILE noattr))
                            (Tcons (tptr tschar) Tnil)) tint
-                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
         ((Etempvar _t'12 (tptr (Tstruct __IO_FILE noattr))) ::
          (Evar ___stringlit_1 (tarray tschar 33)) :: (Etempvar _k tint) ::
          (Etempvar _h tint) :: (Etempvar _c tint) :: nil)))
@@ -1067,7 +1077,7 @@ Definition f_rse_code := {|
               (Evar _fprintf (Tfunction
                                (Tcons (tptr (Tstruct __IO_FILE noattr))
                                  (Tcons (tptr tschar) Tnil)) tint
-                               {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                               {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
               ((Etempvar _t'11 (tptr (Tstruct __IO_FILE noattr))) ::
                (Evar ___stringlit_2 (tarray tschar 40)) :: nil)))
           (Ssequence
@@ -1077,7 +1087,7 @@ Definition f_rse_code := {|
                 (Evar _fprintf (Tfunction
                                  (Tcons (tptr (Tstruct __IO_FILE noattr))
                                    (Tcons (tptr tschar) Tnil)) tint
-                                 {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                 {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                 ((Etempvar _t'10 (tptr (Tstruct __IO_FILE noattr))) ::
                  (Evar ___stringlit_3 (tarray tschar 42)) ::
                  (Etempvar _k tint) ::
@@ -1090,7 +1100,7 @@ Definition f_rse_code := {|
                   (Evar _fprintf (Tfunction
                                    (Tcons (tptr (Tstruct __IO_FILE noattr))
                                      (Tcons (tptr tschar) Tnil)) tint
-                                   {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                   {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                   ((Etempvar _t'9 (tptr (Tstruct __IO_FILE noattr))) ::
                    (Evar ___stringlit_4 (tarray tschar 37)) ::
                    (Etempvar _h tint) :: (Econst_int (Int.repr 128) tint) ::
@@ -1103,7 +1113,7 @@ Definition f_rse_code := {|
                     (Evar _fprintf (Tfunction
                                      (Tcons (tptr (Tstruct __IO_FILE noattr))
                                        (Tcons (tptr tschar) Tnil)) tint
-                                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                     {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                     ((Etempvar _t'8 (tptr (Tstruct __IO_FILE noattr))) ::
                      (Evar ___stringlit_5 (tarray tschar 39)) ::
                      (Etempvar _c tint) ::
@@ -1117,8 +1127,8 @@ Definition f_rse_code := {|
                                                  (Tcons (tptr tschar) Tnil))))
                                            tvoid cc_default))
                     ((Evar ___stringlit_7 (tarray tschar 2)) ::
-                     (Evar ___stringlit_6 (tarray tschar 10)) ::
-                     (Econst_int (Int.repr 179) tint) ::
+                     (Evar ___stringlit_6 (tarray tschar 22)) ::
+                     (Econst_int (Int.repr 206) tint) ::
                      (Evar ___func__ (tarray tschar 9)) :: nil))
                   (Sreturn (Some (Eunop Oneg (Econst_int (Int.repr 1) tint)
                                    tint))))))))
@@ -1222,7 +1232,7 @@ Definition f_fec_blk_encode := {|
                                          (Tcons
                                            (tptr (Tstruct __IO_FILE noattr))
                                            (Tcons (tptr tschar) Tnil)) tint
-                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                         ((Etempvar _t'13 (tptr (Tstruct __IO_FILE noattr))) ::
                          (Evar ___stringlit_8 (tarray tschar 52)) :: nil)))
                     Sskip)
@@ -1241,7 +1251,7 @@ Definition f_fec_blk_encode := {|
               (Evar _fprintf (Tfunction
                                (Tcons (tptr (Tstruct __IO_FILE noattr))
                                  (Tcons (tptr tschar) Tnil)) tint
-                               {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                               {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
               ((Etempvar _t'11 (tptr (Tstruct __IO_FILE noattr))) ::
                (Evar ___stringlit_9 (tarray tschar 24)) :: nil)))
           Sskip)
@@ -1285,7 +1295,7 @@ Definition f_fec_blk_encode := {|
                                            (Tcons
                                              (tptr (Tstruct __IO_FILE noattr))
                                              (Tcons (tptr tschar) Tnil)) tint
-                                           {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                           {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                           ((Etempvar _t'9 (tptr (Tstruct __IO_FILE noattr))) ::
                            (Evar ___stringlit_10 (tarray tschar 11)) ::
                            (Etempvar _z tuchar) :: nil)))
@@ -1303,8 +1313,8 @@ Definition f_fec_blk_encode := {|
                                                          Tnil)))) tvoid
                                                  cc_default))
                           ((Evar ___stringlit_11 (tarray tschar 14)) ::
-                           (Evar ___stringlit_6 (tarray tschar 10)) ::
-                           (Econst_int (Int.repr 222) tint) ::
+                           (Evar ___stringlit_6 (tarray tschar 22)) ::
+                           (Econst_int (Int.repr 249) tint) ::
                            (Evar ___func____1 (tarray tschar 15)) :: nil)))
                       (Ssequence
                         (Sset _j (Econst_int (Int.repr 0) tint))
@@ -1431,7 +1441,7 @@ Definition f_fec_blk_encode := {|
                   (Evar _fprintf (Tfunction
                                    (Tcons (tptr (Tstruct __IO_FILE noattr))
                                      (Tcons (tptr tschar) Tnil)) tint
-                                   {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                   {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                   ((Etempvar _t'3 (tptr (Tstruct __IO_FILE noattr))) ::
                    (Evar ___stringlit_12 (tarray tschar 24)) :: nil)))
               Sskip)
@@ -1517,7 +1527,7 @@ Definition f_fec_blk_decode := {|
                   (Evar _fprintf (Tfunction
                                    (Tcons (tptr (Tstruct __IO_FILE noattr))
                                      (Tcons (tptr tschar) Tnil)) tint
-                                   {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                   {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                   ((Etempvar _t'44 (tptr (Tstruct __IO_FILE noattr))) ::
                    (Evar ___stringlit_13 (tarray tschar 36)) ::
                    (Etempvar _k tint) :: (Etempvar _c tint) :: nil)))
@@ -1665,8 +1675,8 @@ Definition f_fec_blk_decode := {|
                                                                    Tnil))))
                                                            tvoid cc_default))
                                     ((Evar ___stringlit_14 (tarray tschar 14)) ::
-                                     (Evar ___stringlit_6 (tarray tschar 10)) ::
-                                     (Econst_int (Int.repr 302) tint) ::
+                                     (Evar ___stringlit_6 (tarray tschar 22)) ::
+                                     (Econst_int (Int.repr 329) tint) ::
                                      (Evar ___func____2 (tarray tschar 15)) ::
                                      nil))))))
                           (Sset _i
@@ -1689,7 +1699,7 @@ Definition f_fec_blk_decode := {|
                                                        (tptr (Tstruct __IO_FILE noattr))
                                                        (Tcons (tptr tschar)
                                                          Tnil)) tint
-                                                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                     {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                     ((Etempvar _t'40 (tptr (Tstruct __IO_FILE noattr))) ::
                                      (Evar ___stringlit_15 (tarray tschar 9)) ::
                                      nil)))
@@ -1726,7 +1736,7 @@ Definition f_fec_blk_decode := {|
                                                                    (tptr tschar)
                                                                    Tnil))
                                                                tint
-                                                               {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                               {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                               ((Etempvar _t'38 (tptr (Tstruct __IO_FILE noattr))) ::
                                                (Evar ___stringlit_16 (tarray tschar 5)) ::
                                                (Etempvar _t'39 tuchar) ::
@@ -1749,7 +1759,7 @@ Definition f_fec_blk_decode := {|
                                                            (Tcons
                                                              (tptr tschar)
                                                              Tnil)) tint
-                                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                         ((Etempvar _t'37 (tptr (Tstruct __IO_FILE noattr))) ::
                                          (Evar ___stringlit_17 (tarray tschar 10)) ::
                                          nil)))
@@ -1786,7 +1796,7 @@ Definition f_fec_blk_decode := {|
                                                                     (tptr tschar)
                                                                     Tnil))
                                                                    tint
-                                                                   {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                                   {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                                   ((Etempvar _t'35 (tptr (Tstruct __IO_FILE noattr))) ::
                                                    (Evar ___stringlit_18 (tarray tschar 4)) ::
                                                    (Etempvar _t'36 tuchar) ::
@@ -1809,7 +1819,7 @@ Definition f_fec_blk_decode := {|
                                                                (Tcons
                                                                  (tptr tschar)
                                                                  Tnil)) tint
-                                                             {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                             {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                             ((Etempvar _t'34 (tptr (Tstruct __IO_FILE noattr))) ::
                                              (Evar ___stringlit_19 (tarray tschar 9)) ::
                                              nil)))
@@ -1848,7 +1858,7 @@ Definition f_fec_blk_decode := {|
                                                           (Tcons
                                                             (tptr tschar)
                                                             Tnil)) tint
-                                                        {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                        {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                                       ((Etempvar _t'32 (tptr (Tstruct __IO_FILE noattr))) ::
                                                        (Evar ___stringlit_18 (tarray tschar 4)) ::
                                                        (Etempvar _t'33 tuchar) ::
@@ -1873,7 +1883,7 @@ Definition f_fec_blk_decode := {|
                                                                     (tptr tschar)
                                                                     Tnil))
                                                                  tint
-                                                                 {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                                 {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                                 ((Etempvar _t'31 (tptr (Tstruct __IO_FILE noattr))) ::
                                                  (Evar ___stringlit_20 (tarray tschar 2)) ::
                                                  nil)))
@@ -2033,7 +2043,7 @@ Definition f_fec_blk_decode := {|
                                                          (tptr (Tstruct __IO_FILE noattr))
                                                          (Tcons (tptr tschar)
                                                            Tnil)) tint
-                                                       {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                       {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                       ((Etempvar _t'25 (tptr (Tstruct __IO_FILE noattr))) ::
                                        (Evar ___stringlit_21 (tarray tschar 45)) ::
                                        (Etempvar _err tint) :: nil)))
@@ -2473,7 +2483,7 @@ Definition f_fec_blk_decode := {|
                                                                (Tcons
                                                                  (tptr tschar)
                                                                  Tnil)) tint
-                                                             {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                             {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                             ((Etempvar _t'11 (tptr (Tstruct __IO_FILE noattr))) ::
                                              (Evar ___stringlit_22 (tarray tschar 19)) ::
                                              nil)))
@@ -2570,7 +2580,7 @@ Definition f_fec_generate_weights := {|
         (Ssequence
           (Scall None
             (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                            {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                            {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
             ((Evar ___stringlit_23 (tarray tschar 23)) :: nil))
           (Scall None
             (Evar _fec_matrix_display (Tfunction
@@ -2599,7 +2609,7 @@ Definition f_fec_generate_weights := {|
           (Ssequence
             (Scall None
               (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                              {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                              {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
               ((Evar ___stringlit_24 (tarray tschar 24)) :: nil))
             (Scall None
               (Evar _fec_matrix_display (Tfunction
@@ -3039,7 +3049,7 @@ Definition f_fec_find_mod := {|
                                          (Tcons
                                            (tptr (Tstruct __IO_FILE noattr))
                                            (Tcons (tptr tschar) Tnil)) tint
-                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                         ((Etempvar _t'1 (tptr (Tstruct __IO_FILE noattr))) ::
                          (Evar ___stringlit_25 (tarray tschar 30)) ::
                          (Econst_int (Int.repr 256) tint) :: nil)))
@@ -3085,7 +3095,7 @@ Definition f_fec_matrix_display := {|
                       (Etempvar _j tint) (tptr tuchar)) tuchar))
                 (Scall None
                   (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                                  {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                  {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
                   ((Evar ___stringlit_26 (tarray tschar 5)) ::
                    (Etempvar _t'1 tuchar) :: nil))))
             (Sset _j
@@ -3093,7 +3103,7 @@ Definition f_fec_matrix_display := {|
                 tint))))
         (Scall None
           (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                          {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                          {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
           ((Evar ___stringlit_20 (tarray tschar 2)) :: nil))))
     (Sset _i
       (Ebinop Oadd (Etempvar _i tint) (Econst_int (Int.repr 1) tint) tint))))
@@ -3115,7 +3125,7 @@ Definition f_fec_display_tables := {|
   (Ssequence
     (Scall None
       (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                      {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                      {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
       ((Evar ___stringlit_27 (tarray tschar 46)) :: (Etempvar _mod tint) ::
        nil))
     (Ssequence
@@ -3135,7 +3145,7 @@ Definition f_fec_display_tables := {|
                     (Etempvar _i tint) (tptr tuchar)) tuchar))
               (Scall None
                 (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                                {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
                 ((Evar ___stringlit_28 (tarray tschar 18)) ::
                  (Etempvar _i tint) :: (Etempvar _t'4 tuchar) :: nil)))
             (Ssequence
@@ -3150,7 +3160,7 @@ Definition f_fec_display_tables := {|
                       (Etempvar _i tint) (tptr tuchar)) tuchar))
                 (Scall None
                   (Evar _printf (Tfunction (Tcons (tptr tschar) Tnil) tint
-                                  {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                  {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
                   ((Evar ___stringlit_29 (tarray tschar 14)) ::
                    (Etempvar _t'2 tuchar) :: (Etempvar _t'3 tuchar) :: nil))))))
         (Sset _i
@@ -3192,7 +3202,7 @@ Definition f_rse_code_print := {|
         (Evar _fprintf (Tfunction
                          (Tcons (tptr (Tstruct __IO_FILE noattr))
                            (Tcons (tptr tschar) Tnil)) tint
-                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
         ((Etempvar _t'22 (tptr (Tstruct __IO_FILE noattr))) ::
          (Evar ___stringlit_30 (tarray tschar 32)) :: (Etempvar _c tint) ::
          (Etempvar _h tint) :: (Etempvar _k tint) :: nil)))
@@ -3218,7 +3228,7 @@ Definition f_rse_code_print := {|
                     (Evar _fprintf (Tfunction
                                      (Tcons (tptr (Tstruct __IO_FILE noattr))
                                        (Tcons (tptr tschar) Tnil)) tint
-                                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                     {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                     ((Etempvar _t'21 (tptr (Tstruct __IO_FILE noattr))) ::
                      (Evar ___stringlit_31 (tarray tschar 23)) ::
                      (Etempvar _i tint) :: nil)))
@@ -3247,7 +3257,7 @@ Definition f_rse_code_print := {|
                                                    (tptr (Tstruct __IO_FILE noattr))
                                                    (Tcons (tptr tschar) Tnil))
                                                  tint
-                                                 {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                 {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                 ((Etempvar _t'20 (tptr (Tstruct __IO_FILE noattr))) ::
                                  (Evar ___stringlit_34 (tarray tschar 5)) ::
                                  nil)))
@@ -3283,7 +3293,7 @@ Definition f_rse_code_print := {|
                                                            (Tcons
                                                              (tptr tschar)
                                                              Tnil)) tint
-                                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                         ((Etempvar _t'17 (tptr (Tstruct __IO_FILE noattr))) ::
                                          (Evar ___stringlit_33 (tarray tschar 6)) ::
                                          (Etempvar _t'19 tuchar) :: nil)))))
@@ -3296,7 +3306,7 @@ Definition f_rse_code_print := {|
                                                        (tptr (Tstruct __IO_FILE noattr))
                                                        (Tcons (tptr tschar)
                                                          Tnil)) tint
-                                                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                     {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                     ((Etempvar _t'16 (tptr (Tstruct __IO_FILE noattr))) ::
                                      (Evar ___stringlit_32 (tarray tschar 5)) ::
                                      nil))))))))
@@ -3321,7 +3331,7 @@ Definition f_rse_code_print := {|
                                            (Tcons
                                              (tptr (Tstruct __IO_FILE noattr))
                                              (Tcons (tptr tschar) Tnil)) tint
-                                           {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                           {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                           ((Etempvar _t'11 (tptr (Tstruct __IO_FILE noattr))) ::
                            (Evar ___stringlit_35 (tarray tschar 18)) ::
                            (Etempvar _t'12 tint) ::
@@ -3336,7 +3346,7 @@ Definition f_rse_code_print := {|
               (Evar _fprintf (Tfunction
                                (Tcons (tptr (Tstruct __IO_FILE noattr))
                                  (Tcons (tptr tschar) Tnil)) tint
-                               {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                               {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
               ((Etempvar _t'10 (tptr (Tstruct __IO_FILE noattr))) ::
                (Evar ___stringlit_36 (tarray tschar 30)) :: nil)))
           (Ssequence
@@ -3357,7 +3367,7 @@ Definition f_rse_code_print := {|
                                          (Tcons
                                            (tptr (Tstruct __IO_FILE noattr))
                                            (Tcons (tptr tschar) Tnil)) tint
-                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                         ((Etempvar _t'9 (tptr (Tstruct __IO_FILE noattr))) ::
                          (Evar ___stringlit_37 (tarray tschar 18)) ::
                          (Etempvar _i tint) :: nil)))
@@ -3405,7 +3415,7 @@ Definition f_rse_code_print := {|
                                                            (Tcons
                                                              (tptr tschar)
                                                              Tnil)) tint
-                                                         {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                         {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                         ((Etempvar _t'6 (tptr (Tstruct __IO_FILE noattr))) ::
                                          (Evar ___stringlit_33 (tarray tschar 6)) ::
                                          (Etempvar _t'8 tuchar) :: nil)))))
@@ -3418,7 +3428,7 @@ Definition f_rse_code_print := {|
                                                        (tptr (Tstruct __IO_FILE noattr))
                                                        (Tcons (tptr tschar)
                                                          Tnil)) tint
-                                                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                                     {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                                     ((Etempvar _t'5 (tptr (Tstruct __IO_FILE noattr))) ::
                                      (Evar ___stringlit_34 (tarray tschar 5)) ::
                                      nil))))))
@@ -3433,7 +3443,7 @@ Definition f_rse_code_print := {|
                                            (Tcons
                                              (tptr (Tstruct __IO_FILE noattr))
                                              (Tcons (tptr tschar) Tnil)) tint
-                                           {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                           {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                           ((Etempvar _t'3 (tptr (Tstruct __IO_FILE noattr))) ::
                            (Evar ___stringlit_20 (tarray tschar 2)) :: nil))))))
                 (Sset _i
@@ -3445,7 +3455,7 @@ Definition f_rse_code_print := {|
                 (Evar _fprintf (Tfunction
                                  (Tcons (tptr (Tstruct __IO_FILE noattr))
                                    (Tcons (tptr tschar) Tnil)) tint
-                                 {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                                 {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
                 ((Etempvar _t'2 (tptr (Tstruct __IO_FILE noattr))) ::
                  (Evar ___stringlit_20 (tarray tschar 2)) :: nil))))))
       Sskip)))
@@ -3479,13 +3489,13 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (___stringlit_29, Gvar v___stringlit_29) ::
  (___stringlit_37, Gvar v___stringlit_37) ::
  (___stringlit_31, Gvar v___stringlit_31) ::
+ (___stringlit_6, Gvar v___stringlit_6) ::
  (___stringlit_28, Gvar v___stringlit_28) ::
  (___stringlit_12, Gvar v___stringlit_12) ::
  (___stringlit_4, Gvar v___stringlit_4) ::
  (___stringlit_25, Gvar v___stringlit_25) ::
  (___stringlit_19, Gvar v___stringlit_19) ::
  (___stringlit_26, Gvar v___stringlit_26) ::
- (___stringlit_6, Gvar v___stringlit_6) ::
  (___stringlit_15, Gvar v___stringlit_15) ::
  (___stringlit_17, Gvar v___stringlit_17) ::
  (___stringlit_21, Gvar v___stringlit_21) ::
@@ -3512,9 +3522,9 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (___builtin_ais_annot,
    Gfun(External (EF_builtin "__builtin_ais_annot"
                    (mksignature (AST.Tlong :: nil) AST.Tvoid
-                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
      (Tcons (tptr tschar) Tnil) tvoid
-     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|})) ::
+     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|})) ::
  (___builtin_bswap64,
    Gfun(External (EF_builtin "__builtin_bswap64"
                    (mksignature (AST.Tlong :: nil) AST.Tlong cc_default))
@@ -3582,15 +3592,15 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (___builtin_sel,
    Gfun(External (EF_builtin "__builtin_sel"
                    (mksignature (AST.Tint :: nil) AST.Tvoid
-                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
      (Tcons tbool Tnil) tvoid
-     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|})) ::
+     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|})) ::
  (___builtin_annot,
    Gfun(External (EF_builtin "__builtin_annot"
                    (mksignature (AST.Tlong :: nil) AST.Tvoid
-                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
      (Tcons (tptr tschar) Tnil) tvoid
-     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|})) ::
+     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|})) ::
  (___builtin_annot_intval,
    Gfun(External (EF_builtin "__builtin_annot_intval"
                    (mksignature (AST.Tlong :: AST.Tint :: nil) AST.Tint
@@ -3635,6 +3645,15 @@ Definition global_definitions : list (ident * globdef fundef type) :=
                    (mksignature (AST.Tlong :: AST.Tlong :: nil) AST.Tlong
                      cc_default)) (Tcons (tptr tvoid) (Tcons tulong Tnil))
      (tptr tvoid) cc_default)) ::
+ (___builtin_unreachable,
+   Gfun(External (EF_builtin "__builtin_unreachable"
+                   (mksignature nil AST.Tvoid cc_default)) Tnil tvoid
+     cc_default)) ::
+ (___builtin_expect,
+   Gfun(External (EF_builtin "__builtin_expect"
+                   (mksignature (AST.Tlong :: AST.Tlong :: nil) AST.Tlong
+                     cc_default)) (Tcons tlong (Tcons tlong Tnil)) tlong
+     cc_default)) ::
  (___compcert_i64_dtos,
    Gfun(External (EF_runtime "__compcert_i64_dtos"
                    (mksignature (AST.Tfloat :: nil) AST.Tlong cc_default))
@@ -3764,9 +3783,9 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (___builtin_debug,
    Gfun(External (EF_external "__builtin_debug"
                    (mksignature (AST.Tint :: nil) AST.Tvoid
-                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
      (Tcons tint Tnil) tvoid
-     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|})) ::
+     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|})) ::
  (_stderr, Gvar v_stderr) ::
  (_fflush,
    Gfun(External (EF_external "fflush"
@@ -3775,15 +3794,15 @@ Definition global_definitions : list (ident * globdef fundef type) :=
  (_fprintf,
    Gfun(External (EF_external "fprintf"
                    (mksignature (AST.Tlong :: AST.Tlong :: nil) AST.Tint
-                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                     {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|}))
      (Tcons (tptr (Tstruct __IO_FILE noattr)) (Tcons (tptr tschar) Tnil))
-     tint {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|})) ::
+     tint {|cc_vararg:=(Some 2); cc_unproto:=false; cc_structret:=false|})) ::
  (_printf,
    Gfun(External (EF_external "printf"
                    (mksignature (AST.Tlong :: nil) AST.Tint
-                     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|}))
+                     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|}))
      (Tcons (tptr tschar) Tnil) tint
-     {|cc_vararg:=true; cc_unproto:=false; cc_structret:=false|})) ::
+     {|cc_vararg:=(Some 1); cc_unproto:=false; cc_structret:=false|})) ::
  (___assert_fail,
    Gfun(External (EF_external "__assert_fail"
                    (mksignature
@@ -3824,16 +3843,17 @@ Definition public_idents : list ident :=
  ___compcert_i64_umod :: ___compcert_i64_smod :: ___compcert_i64_udiv ::
  ___compcert_i64_sdiv :: ___compcert_i64_utof :: ___compcert_i64_stof ::
  ___compcert_i64_utod :: ___compcert_i64_stod :: ___compcert_i64_dtou ::
- ___compcert_i64_dtos :: ___compcert_va_composite ::
- ___compcert_va_float64 :: ___compcert_va_int64 :: ___compcert_va_int32 ::
- ___builtin_va_end :: ___builtin_va_copy :: ___builtin_va_arg ::
- ___builtin_va_start :: ___builtin_membar :: ___builtin_annot_intval ::
- ___builtin_annot :: ___builtin_sel :: ___builtin_memcpy_aligned ::
- ___builtin_sqrt :: ___builtin_fsqrt :: ___builtin_fabsf ::
- ___builtin_fabs :: ___builtin_ctzll :: ___builtin_ctzl :: ___builtin_ctz ::
- ___builtin_clzll :: ___builtin_clzl :: ___builtin_clz ::
- ___builtin_bswap16 :: ___builtin_bswap32 :: ___builtin_bswap ::
- ___builtin_bswap64 :: ___builtin_ais_annot :: nil).
+ ___compcert_i64_dtos :: ___builtin_expect :: ___builtin_unreachable ::
+ ___compcert_va_composite :: ___compcert_va_float64 ::
+ ___compcert_va_int64 :: ___compcert_va_int32 :: ___builtin_va_end ::
+ ___builtin_va_copy :: ___builtin_va_arg :: ___builtin_va_start ::
+ ___builtin_membar :: ___builtin_annot_intval :: ___builtin_annot ::
+ ___builtin_sel :: ___builtin_memcpy_aligned :: ___builtin_sqrt ::
+ ___builtin_fsqrt :: ___builtin_fabsf :: ___builtin_fabs ::
+ ___builtin_ctzll :: ___builtin_ctzl :: ___builtin_ctz :: ___builtin_clzll ::
+ ___builtin_clzl :: ___builtin_clz :: ___builtin_bswap16 ::
+ ___builtin_bswap32 :: ___builtin_bswap :: ___builtin_bswap64 ::
+ ___builtin_ais_annot :: nil).
 
 Definition prog : Clight.program := 
   mkprogram composites global_definitions public_idents _main Logic.I.
