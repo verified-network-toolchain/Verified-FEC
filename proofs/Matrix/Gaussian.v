@@ -481,9 +481,11 @@ Proof.
   case : (orP (fst_nonzero_nat_bound A col r)) => [ Heq | Hlt].
   move => H{H}. move : Heq. rewrite /fst_nonzero_nat. have Hsz := size_ord_enum m. move => Hfind.
   have : (find (fun x : 'I_m => (r <= x) && (A x col != 0)) (ord_enum m) == size (ord_enum m)).
-  by rewrite Hsz. move {Hfind} => /eqP Hfind. move => x Hrx. apply find_none_iff with (x0:=x) in Hfind.
-  move : Hfind. rewrite negb_and => /orP[Hnrx | Hxcol]. by move: Hrx Hnrx ->. apply (elimT eqP).
-  move : Hxcol. by case : (A x col == 0). apply mem_ord_enum.
+  by rewrite Hsz. move {Hfind} => /eqP Hfind. move => x Hrx. rewrite find_none_iff in Hfind.
+  move : Hfind => /(_ x). have->/=: x \in ord_enum m by apply mem_ord_enum.
+  move => Hfind. apply rem_impl in Hfind. move: Hfind.
+  rewrite negb_and => /orP[Hnrx | Hxcol]. by move: Hrx Hnrx ->. apply (elimT eqP).
+  move : Hxcol. by case : (A x col == 0).
   by rewrite insubT.
 Qed. 
 

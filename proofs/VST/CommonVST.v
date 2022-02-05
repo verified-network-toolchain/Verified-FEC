@@ -337,7 +337,8 @@ Proof.
         assert (0 <= j mod m < m). { apply Z.mod_pos_bound; lia. }
         specialize (H5 _ H0). replace (Ptrofs.unsigned i + Ctypes.sizeof t * j) with
         (Ptrofs.unsigned i + Ctypes.sizeof (tarray t m) * (j / m) + Ctypes.sizeof t * (j mod m)). apply H5.
-        rewrite <- !Z.add_assoc. f_equal. simpl. rewrite <- Z.mul_assoc. rewrite <- Z.mul_add_distr_l. f_equal.
+        rewrite <- !Z.add_assoc. f_equal. simpl Ctypes.sizeof. replace (Z.max 0 m) with m by lia.
+        rewrite <- Z.mul_assoc. rewrite <- Z.mul_add_distr_l. f_equal.
         replace (Z.max 0 m) with m by lia.
         rewrite <- Z_div_mod_eq. reflexivity. lia.
     - split. assumption. inversion Hal2; subst. inversion H.

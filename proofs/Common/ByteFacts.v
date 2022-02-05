@@ -118,10 +118,10 @@ Definition fec_max_h_eq : fec_max_h = 128%Z := proj2_sig (opaque_constant _).
 Definition fec_max_cols : Z := proj1_sig (opaque_constant 16000).
 Definition fec_max_cols_eq: fec_max_cols = 16000%Z := proj2_sig(opaque_constant _).
 
-Hint Rewrite fec_n_eq : rep_lia.
-Hint Rewrite fec_max_h_eq : rep_lia.
-Hint Rewrite modulus_eq : rep_lia.
-Hint Rewrite fec_max_cols_eq : rep_lia.
+#[export] Hint Rewrite fec_n_eq : rep_lia.
+#[export] Hint Rewrite fec_max_h_eq : rep_lia.
+#[export] Hint Rewrite modulus_eq : rep_lia.
+#[export] Hint Rewrite fec_max_cols_eq : rep_lia.
 
 (*The next 3 lemmas are trying to prove that, if we take 2 integers whose logs are equal and we add them, 
   the log of the resulting integer is smaller. We need this for the field table correctness and VST proofs*)

@@ -681,6 +681,7 @@ Proof.
                have Hxcon: x = i * xh * 2 + j + xh by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
 Qed.
 
+Arguments Z.div a b : simpl never.
 
 (*I think the 2nd weights should be reversed. Because the first weights refers to the weights
   literally in the C code, which is the reverse of the weight mx that we actually care about in the
