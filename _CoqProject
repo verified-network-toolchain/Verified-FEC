@@ -18,7 +18,10 @@ proofs/Matrix/ListMatrix.v
 proofs/Matrix/MatrixTransform.v
 proofs/Matrix/VandermondeByte.v
 proofs/RS/ReedSolomonList.v
-#VST
+#Functional model for actuators
+proofs/FEC/EquivClasses.v
+proofs/FEC/AbstractEncoderDecoder.v
+#VST(core FEC)
 src/fecActuator/fec.v
 proofs/VST/CommonVST.v
 proofs/VST/Specs.v
@@ -28,3 +31,4 @@ proofs/VST/Verif_field.v
 proofs/VST/Verif_matrix.v
 proofs/VST/Verif_encode.v
 proofs/VST/Verif_decode.v
+#VST(actuators)
