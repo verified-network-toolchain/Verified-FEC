@@ -1,9 +1,6 @@
 Require Import EquivClasses.
 Require Import VST.floyd.functional_base.
-Require Import mathcomp.ssreflect.seq. (*For subseq -wont need if do permutation*)
-Require Import mathcomp.ssreflect.eqtype.
 From mathcomp Require Import all_ssreflect.
-Require Import mathcomp.algebra.ssralg.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
