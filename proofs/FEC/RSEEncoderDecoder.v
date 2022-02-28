@@ -90,10 +90,6 @@ Definition stats (b: block) : list byte :=
                 | Some _ => Byte.zero
                 end) (data_packets b).
 
-Definition lengths (b: block) : list Z :=
-  map (@Zlength byte) (packet_mx b).
-  (*map (fun x => match x with | None => 0 | Some l => Zlength l end) (parity_mx b).*)
-
 Definition num_receieved (b: block) : Z :=
   Zlength (filter isSome (data_packets b)) + Zlength (filter isSome (parity_packets b)).
 
@@ -120,6 +116,12 @@ Definition blk_c (b: block) : Z :=
                             | None => -1
                             | Some p => Zlength (p_contents (f_packet p))
                             end) (parity_packets b).
+
+Definition lengths (b: block) : list Z :=
+  map (fun o => match o with
+                | None => blk_c b
+                | Some p => Zlength (packet_bytes (f_packet p))
+                end) (data_packets b). 
 
 (*A block is complete (these imply that parities are nonempty if data is*)
 (*TODO: could make bool, have to make bool (decidable) version of parities_valid*)

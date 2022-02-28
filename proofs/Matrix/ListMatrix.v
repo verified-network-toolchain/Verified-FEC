@@ -1948,6 +1948,17 @@ Qed.
 Definition crop_mx (mx: lmatrix) (lens: list Z) :=
   map (fun x => sublist 0 (Znth x lens) (Znth x mx)) (Ziota 0 (Zlength mx)).
 
+Lemma crop_mx_length: forall (mx: lmatrix) (lens: seq Z) (i: Z),
+  0 <= i < Zlength mx ->
+  0 <= Znth i lens <= Zlength (Znth i mx) ->
+  Zlength (Znth i (crop_mx mx lens)) = Znth i lens.
+Proof.
+  move => mx lens i Hi Hlen. rewrite /crop_mx Znth_map; last first.
+  - rewrite Zlength_Ziota; lia.
+  - rewrite Znth_Ziota; try lia. have->:(0+i)%Z = i by lia.
+    rewrite Zlength_sublist; lia.
+Qed.
+
 (*As long as the lengths array is correct and all lengths are bounded by c, [crop_mx] and [extend_mx] are
   inverses*) 
 Lemma crop_extend: forall mx lens c,

@@ -1255,6 +1255,83 @@ Proof.
   - apply extend_mx_wf; list_solve.
 Qed.
 
+Definition pad_packets (packets : list(list byte)) lens c :=
+  crop_mx (extend_mx (Zlength packets) c packets) lens.
+
+(*Spec for [pad_packets]*)
+
+(*In general, we get the original packet padded with some extra zeroes based on lengths array*)
+Lemma pad_packets_nth: forall (packets: list (list byte)) lens c i,
+  0 <= i < Zlength packets ->
+  Zlength (Znth i packets) <= Znth i lens <= c ->
+  Znth i (pad_packets packets lens c) = (Znth i packets) ++ zseq ((Znth i lens) - Zlength (Znth i packets)) Byte.zero.
+Proof.
+  move => packets lens c i Hi Hlen.
+  have Hc: 0 <= c by list_solve.
+  pose proof (extend_mx_wf packets Hc (Zlength_nonneg packets)) as [Hextlen [_ Hextlens]].
+  have Hpadlen: Zlength (Znth i (pad_packets packets lens c)) = Znth i lens. {
+    rewrite /pad_packets crop_mx_length; try lia.
+    move: Hextlens. rewrite Forall_Znth Hextlen => /(_ i Hi) ->. list_solve. }
+  apply Znth_eq_ext.
+  - rewrite Hpadlen Zlength_app zseq_Zlength; try lia. by rewrite Zplus_minus. (*lia should solve*)
+  - rewrite Hpadlen => j Hj.  rewrite /pad_packets /crop_mx Znth_map; rewrite ?Zlength_Ziota; try lia.
+    rewrite Hextlen Znth_Ziota; try lia. have->:0+i = i by lia.
+    rewrite /extend_mx /mk_lmatrix mkseqZ_Znth; try lia.
+    rewrite Znth_sublist; try lia. rewrite Z.add_0_r mkseqZ_Znth; try lia.
+    case : (Z_lt_le_dec j (Zlength (Znth i packets))) => Hjlen/=.
+    + by rewrite Znth_app1.
+    + rewrite Znth_app2; simpl in *; try lia. by rewrite zseq_Znth; try lia.
+Qed.
+
+Theorem decoder_list_correct_full: forall k c h xh (data packets : list (list byte)) 
+  (parities : list (option (list byte))) (stats : list byte) (lens : list Z) (parbound: Z),
+  0 < k <= fec_n - 1 - fec_max_h ->
+  0 < c ->
+  0 < h <= fec_max_h ->
+  xh <= h ->
+  xh <= k ->
+  0 <= parbound <= h ->
+  Zlength (filter (fun x => Z.eq_dec (Byte.signed x) 1) stats) = xh ->
+  Zlength (filter isSome (sublist 0 parbound parities)) = xh ->
+  Zlength parities = h ->
+  Zlength stats = k ->
+  Zlength packets = k ->
+  Zlength data = k ->
+  Forall (fun l => Zlength l <= c) data ->
+  (forall i, 0 <= i < k -> Byte.signed (Znth i stats) <> 1%Z -> Znth i packets = Znth i data) ->
+  (forall l, In (Some l) parities -> Zlength l = c) ->
+  parities_valid k c parities data ->
+  decoder_list k c packets parities stats lens parbound = pad_packets data lens c.
+Proof.
+  move => k c h xh data packets parities stats lens parbound Hknh Hc Hh Hxhh Hxhk Hbp Hstatsxh Hparsxh Hparlen
+    Hstatlen Hpacklen Hdatalen Hdatac Hpackdata Hparlens Hparvalid.
+  rewrite /decoder_list. 
+  have Hmx: lmatrix_to_mx k c (decode_list_mx k c packets parities stats parbound) = 
+    (lmatrix_to_mx k c (extend_mx (F:=B) k c data)). { 
+    apply (decoder_list_mx_correct Hknh Hc Hh Hxhh); try by [].
+    - by rewrite find_lost_filter.
+    - rewrite find_parity_rows_filter. apply Hparsxh. lia. }
+  apply lmatrix_to_mx_inj in Hmx. 
+  - rewrite /pad_packets. f_equal. rewrite Hmx. f_equal. lia.
+  - apply fill_rows_list_wf; lia.
+  - apply extend_mx_wf; lia.
+Qed.
+
+
+
+(*If the lengths array is correct (rather than an overestimate), we get the original packet*)
+Lemma pad_packets_full: forall (packets: list (list byte)) lens c i,
+  0 <= i < Zlength packets ->
+  Zlength (Znth i packets) = Znth i lens ->
+  Zlength (Znth i packets) <= c ->
+  Znth i (pad_packets packets lens c) = Znth i packets.
+Proof.
+  move => packets lens c i Hi Hlen Hc.
+  rewrite pad_packets_nth; try lia. 
+  by rewrite Hlen Z.sub_diag /zseq /= cats0.
+Qed.
+
+(*As a corollary, if all the lengths are correct, we exactly recover the original data*)
 Theorem decoder_list_correct: forall k c h xh (data packets : list (list byte)) 
   (parities : list (option (list byte))) (stats : list byte) (lens : list Z) (parbound: Z),
   0 < k <= fec_n - 1 - fec_max_h ->
@@ -1279,16 +1356,9 @@ Theorem decoder_list_correct: forall k c h xh (data packets : list (list byte))
 Proof.
   move => k c h xh data packets parities stats lens parbound Hknh Hc Hh Hxhh Hxhk Hbp Hstatsxh Hparsxh Hparlen
     Hstatlen Hpacklen Hdatalen Hlenslen Hlens Hdatac Hpackdata Hparlens Hparvalid.
-  rewrite /decoder_list. 
-  have Hmx: lmatrix_to_mx k c (decode_list_mx k c packets parities stats parbound) = 
-    (lmatrix_to_mx k c (extend_mx (F:=B) k c data)). { 
-    apply (decoder_list_mx_correct Hknh Hc Hh Hxhh); try by [].
-    - by rewrite find_lost_filter.
-    - rewrite find_parity_rows_filter. apply Hparsxh. lia. }
-  apply lmatrix_to_mx_inj in Hmx. 
-  - rewrite Hmx -Hdatalen crop_extend //; try lia; rewrite Hdatalen //; lia. 
-  - apply fill_rows_list_wf; lia.
-  - apply extend_mx_wf; lia.
+  rewrite (decoder_list_correct_full (h:=h)(xh:=xh)(data:=data)); try by [].
+  rewrite /pad_packets. rewrite crop_extend; try by []. lia. by rewrite Hdatalen Hlenslen.
+  by rewrite Hdatalen.
 Qed.
 
 End Decoder.
