@@ -21,7 +21,11 @@ Ltac solve_inhab :=
   | |- seq ?A => apply nil
   | |- ?A option => apply None
   | |- bool => apply false
-  end. 
+  end.
+
+(** IP/UDP Packets *)
+(*Here, we require our packets to be valid IP/UDP packets*)
+(*TODO: write all conversion stuff in IP file*)
 
 (*(k, isParity, block id, blockIndex*)
 Record fec_data : Type := mk_data { fd_k : Z; fd_h : Z; fd_isParity : bool; fd_blockId: int; fd_blockIndex : int }.

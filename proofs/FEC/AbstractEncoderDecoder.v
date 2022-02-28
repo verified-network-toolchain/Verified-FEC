@@ -22,7 +22,12 @@ Section AbstractSpecs.
 
 (*Definition of packet with some sort of header*)
 
-Record packet := mk_ptk { p_header : list byte; p_contents: list byte; p_seqNum: int }.
+(*Abstract notion that a packet is valid according to its header (to allow multiple protocols)*)
+(*For decidable equality, we want this proposition to be decidable*)
+Variable packet_valid : list byte -> list byte -> bool.
+
+Record packet := mk_ptk 
+  { p_header : list byte; p_contents: list byte; p_seqNum: int ; p_valid: packet_valid p_header p_contents }.
 
 (* We need some sort of fec data associated with a packet*)
 Variable fec_data : Type.
@@ -37,17 +42,40 @@ Record fec_packet := mk_fecpkt { p_packet : packet; p_fec_data : fec_data }.
 Definition packet_bytes (p: packet): list byte :=
   p_header p ++ p_contents p.
 
-(*Decidable equality on packets *)
-Definition packet_eq_dec: forall (p1 p2: packet), {p1 = p2} + {p1 <> p2}.
-Proof. eq_dec_tac. Defined.
-
-Lemma packet_eq_axiom: Equality.axiom (fun p1 p2 => proj_sumbool (packet_eq_dec p1 p2)).
+(*Decidable equality on packets (why we need [pavket_valid] to be a bool *)
+Lemma packet_eq: forall (p1 p2: packet), 
+  p_header p1 = p_header p2 ->
+  p_contents p1 = p_contents p2 ->
+  p_seqNum p1 = p_seqNum p2 ->
+  p1 = p2.
 Proof.
-  move => p1 p2. case : (packet_eq_dec p1 p2) => [/= -> | Hneq /=].
-  by apply ReflectT. by apply ReflectF.
+  move => [h1 c1 s1 v1] [h2 c2 s2 v2]/= => Hh Hc Hs. move: v1 v2. rewrite Hh Hc Hs => v1 v2.
+  by have->: v1 = v2 by apply bool_irrelevance.
 Qed.
 
-Definition packet_eqMixin := EqMixin packet_eq_axiom.
+Definition byte_list_eq_dec : forall (l1 l2: list byte), {l1 = l2} + {l1 <> l2} :=
+  fun l1 l2 => list_eq_dec Byte.eq_dec l1 l2.
+
+Lemma packet_eq_bool: forall (p1 p2: packet),
+  reflect (p1 = p2) (proj_sumbool (byte_list_eq_dec (p_header p1) (p_header p2)) && 
+                     proj_sumbool (byte_list_eq_dec (p_contents p1) (p_contents p2)) && 
+                     proj_sumbool (Int.eq_dec (p_seqNum p1) (p_seqNum p2))).
+Proof.
+  move => p1 p2. destruct (byte_list_eq_dec (p_header p1) (p_header p2)) as [Hh | Hh] => /=; last first.
+    apply ReflectF. move => Hc. by rewrite Hc in Hh.
+  destruct (byte_list_eq_dec (p_contents p1) (p_contents p2)) as [Hp|Hp]=>/=; last first.
+    apply ReflectF. move => Hc. by rewrite Hc in Hp.
+  destruct (Int.eq_dec (p_seqNum p1) (p_seqNum p2)) as [Hi|Hi]=>/=; last first.
+    apply ReflectF. move => Hc. by rewrite Hc in Hi.
+  apply ReflectT. by apply packet_eq.
+Qed.
+
+Definition packet_eq_dec: forall (p1 p2: packet), {p1 = p2} + {p1 <> p2}.
+Proof.
+  move => p1 p2. eapply reflect_dec. apply packet_eq_bool.
+Qed.
+
+Definition packet_eqMixin := EqMixin packet_eq_bool.
 Canonical packet_eqType := EqType packet packet_eqMixin.
 
 Definition fec_packet_eq_dec: forall (p1 p2: fec_packet), {p1 = p2} + {p1 <> p2}.
@@ -64,10 +92,6 @@ Qed.
 
 Definition fec_packet_eqMixin := EqMixin fec_packet_eq_axiom.
 Canonical fec_packet_eqType := EqType fec_packet fec_packet_eqMixin.
-
-Instance packet_inhab: Inhabitant packet.
-constructor; try(apply nil); apply Int.zero.
-Defined.
 
 (** Abstract state *)
 
