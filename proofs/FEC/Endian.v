@@ -1,6 +1,7 @@
 Require Import VST.floyd.functional_base.
 Require Import compcert.common.Memdata. (*for [int_of_bytes] and [bytes_of_int]*)
 Require Import ByteFacts.
+Export ListNotations.
 Set Bullet Behavior "Strict Subproofs".
 
 (** 4 and 16-bit integers *)
@@ -25,6 +26,52 @@ End Wordsize_16.
 Module Short := (Make Wordsize_16).
 Notation short := Short.int.
 
+(** Tactics *)
+
+(* New version of [rep_lia] with this info*)
+
+(*Note: just redefining [rep_lia_setup2] does not work - does not override*)
+Ltac rep_lia_setup2 :=
+  try (rewrite !two_p_equiv in *);
+  pose_lemmas Short.unsigned Short.unsigned_range; pose_lemmas Short.signed Short.signed_range;
+  pose_lemmas Nibble.unsigned Nibble.unsigned_range; pose_lemmas Nibble.signed Nibble.signed_range;
+  pose_const_equations ([Short.zwordsize; Short.modulus; Short.half_modulus; Short.max_unsigned;
+    Short.max_signed; Short.min_signed; Nibble.zwordsize; Nibble.modulus; Nibble.half_modulus;
+    Nibble.max_unsigned; Nibble.max_signed; Nibble.min_signed]).
+
+Ltac rep_lia' :=
+  rep_lia_setup; rep_lia_setup2; lia.
+
+(*Solve Int.unsigned ?x mod ?y = Int.unsigned ?x, when y >= Int.modulus*)
+Ltac solve_unsigned_mod :=
+  lazymatch goal with
+  | [ |- Int.unsigned ?x mod ?y = Int.unsigned ?x] => rewrite Zmod_small; [reflexivity | rep_lia']
+  | [ |- Short.unsigned ?x mod ?y = Short.unsigned ?x] => rewrite Zmod_small; [reflexivity | rep_lia']
+  | [ |- Byte.unsigned ?x mod ?y = Byte.unsigned ?x] => rewrite Zmod_small; [reflexivity | rep_lia']
+  | [ |- Nibble.unsigned ?x mod ?y = Nibble.unsigned ?x] => rewrite Zmod_small; [reflexivity | rep_lia']
+  end.
+
+(*simplify trivial boolean expressions without using "simpl"*)
+Ltac simpl_bool :=
+  let inner_tac e H2 :=
+   let H := fresh in
+   assert (H: e) by (try reflexivity; auto); try(rewrite H); rewrite H2; clear H 
+  in
+  repeat match goal with
+  | [ |- context [ ?b1 && ?b2 ]] => 
+      first [ inner_tac (b1 = true) andb_true_l |
+              inner_tac (b1 = false) andb_false_l |
+              inner_tac (b2 = true) andb_true_r |
+              inner_tac (b2 = false) andb_false_r ]
+  | [ |- context [ ?b1 || ?b2 ]] => 
+      first [ inner_tac (b1 = true) orb_true_l |
+              inner_tac (b1 = false) orb_false_l |
+              inner_tac (b2 = true) orb_true_r |
+              inner_tac (b2 = false) orb_false_r ]
+  end.
+
+(** Nibbles to Byte*) 
+
 (*Combine nibbles into a byte (n1, followed by n2, in bits)*)
 Definition nibbles_to_Z (n1 n2: nibble) : Z :=
   Z.lor (Nibble.unsigned n1) (Z.shiftl (Nibble.unsigned n2) 4).
@@ -41,7 +88,7 @@ Proof.
   intros n Hn. apply Hbits. lia. apply Z.pow2_bits_true. lia.
 Qed.
 
-(*Need generic lemma about Z.lor bound*)
+(*Need generic lemma about Z.lor bound - TODO: move*)
 Lemma Z_lor_bound: forall (z1 z2 i: Z),
   0 < i ->
   0 <= z1 < 2 ^ i ->
@@ -66,14 +113,12 @@ Lemma nibbles_to_Z_bound: forall n1 n2,
 Proof.
   intros. unfold nibbles_to_Z.
   assert (0 <= Z.lor (Nibble.unsigned n1) (Z.shiftl (Nibble.unsigned n2) 4) < 2 ^ 8). {
-    assert (Nibble.modulus = 16) by reflexivity.
-    apply Z_lor_bound. lia. pose proof (Nibble.unsigned_range n1).
-    assert (Nibble.modulus = 16) by reflexivity. lia.
-    pose proof (Nibble.unsigned_range n2).
-    split. apply Z.shiftl_nonneg. lia.
+    rep_lia_setup2.
+    apply Z_lor_bound. lia. rep_lia'. 
+    split. apply Z.shiftl_nonneg. rep_lia'.
     rewrite Z.shiftl_mul_pow2 by lia. replace (2^8) with (2^4 * 2^4) by reflexivity.
-    apply Zmult_lt_compat_r; lia. }
-  replace (Byte.modulus) with 256 by reflexivity. lia.
+    apply Zmult_lt_compat_r; rep_lia'. }
+  rep_lia'.
 Qed.
 
 (*Utility lemmas: should move or something*)
@@ -93,6 +138,14 @@ Lemma short_unsigned_inj: forall (i j: short), Short.unsigned i = Short.unsigned
 Proof.
   intros.
   rewrite <- (Short.repr_unsigned i), <- (Short.repr_unsigned j).
+  rewrite H.
+  reflexivity.
+Qed.
+
+Lemma nibble_unsigned_inj: forall (i j: nibble), Nibble.unsigned i = Nibble.unsigned j -> i = j.
+Proof.
+  intros. 
+  rewrite <- (Nibble.repr_unsigned i), <- (Nibble.repr_unsigned j).
   rewrite H.
   reflexivity.
 Qed.
@@ -191,31 +244,27 @@ Qed.
 Lemma reverse_endian_int_bound: forall z,
   -1 < reverse_endian_aux 4 z < Int.modulus.
 Proof.
-  intros. pose proof (reverse_endian_aux_bound 4 z). simpl in H.
-  assert (two_power_pos 32 = Int.modulus) by reflexivity. lia.
-Qed.
+  intros. pose proof (reverse_endian_aux_bound 4 z).
+  rep_lia'.
+Qed. 
 
 Definition reverse_endian_int (i: int) : int :=
   Int.mkint _ (reverse_endian_int_bound (Int.unsigned i)).
-
-
 
 Lemma reverse_endian_int_idempotent: forall (i: int),
   reverse_endian_int (reverse_endian_int i) = i.
 Proof.
   intros. apply int_unsigned_inj. unfold Int.unsigned at 1. simpl.
-  apply reverse_endian_aux_idem_id. simpl. 
-  replace (two_power_pos 32) with Int.modulus by reflexivity.
-  apply Int.unsigned_range.
-Qed.
+  apply reverse_endian_aux_idem_id. rep_lia'.
+Qed. 
 
 (* Reverse endianness of a machine-length short *)
 
 Lemma reverse_endian_short_bound: forall z,
   -1 < reverse_endian_aux 2 z < Short.modulus.
 Proof.
-  intros. pose proof (reverse_endian_aux_bound 2 z). simpl in H.
-  assert (two_power_pos 16 = Short.modulus) by reflexivity. lia.
+  intros. pose proof (reverse_endian_aux_bound 2 z).
+  rep_lia'.
 Qed.
 
 Definition reverse_endian_short (s: short) : short :=
@@ -225,9 +274,7 @@ Lemma reverse_endian_short_idempotent: forall (s: short),
   reverse_endian_short (reverse_endian_short s) = s.
 Proof.
   intros. apply short_unsigned_inj. unfold Short.unsigned at 1. simpl.
-  apply reverse_endian_aux_idem_id. simpl. 
-  replace (two_power_pos 16) with Short.modulus by reflexivity.
-  apply Short.unsigned_range.
+  apply reverse_endian_aux_idem_id. rep_lia'. 
 Qed.
 
 End Endian.
@@ -284,48 +331,181 @@ Proof.
   intros. reflexivity.
 Qed.
 
+(*Useful lemma we need several times*)
+Lemma testbit_15: forall n,
+ Z.testbit 15 n = true <-> 0 <= n < 4.
+Proof.
+  intros n. split; intros.
+  - assert (0 <= n < 4 \/ n < 0 \/ n >= 4) as [Hin |[ Hlo | Hhi]] by lia.
+    + lia.
+    + rewrite Z.testbit_neg_r in H by lia. inversion H.
+    + rewrite Z.bits_above_log2 in H; try lia. 
+      replace (Z.log2 15) with 3 by reflexivity. lia.
+  - assert (n= 0 \/ n = 1 \/ n = 2 \/ n = 3) as [H1 | [H2 | [H3 | H4]]] by lia; subst; reflexivity.
+Qed.
+
+Lemma testbit_15_false: forall n,
+  Z.testbit 15 n = false <-> ~(0 <= n < 4).
+Proof.
+  intros n. pose proof (testbit_15 n).
+  destruct (Z.testbit 15 n) eqn : Ht; lia.
+Qed.
+
 (*This is much harder to prove than it seems
   TODO: is there an easier way?*)
 Lemma byte_to_nibbles_inv: forall b,
   let (n1, n2) := byte_to_nibbles b in
   nibbles_to_byte n1 n2 = b.
 Proof.
-  intros b. unfold byte_to_nibbles. unfold nibbles_to_byte. apply byte_unsigned_inj.
+  intros b. unfold byte_to_nibbles, nibbles_to_byte. apply byte_unsigned_inj.
   rewrite byte_simpl. unfold nibbles_to_Z.
   rewrite !Nibble.unsigned_repr.
   - apply Z.bits_inj_iff. unfold Z.eqf. intros n.
-    assert (H15n: (Z.testbit 15 n = true) <-> 0 <= n < 4). {
-      split; intros.
-      - assert (0 <= n < 4 \/ n < 0 \/ n >= 4) as [Hin |[ Hlo | Hhi]] by lia.
-        + lia.
-        + rewrite Z.testbit_neg_r in H by lia. inversion H.
-        + rewrite Z.bits_above_log2 in H; try lia. 
-          replace (Z.log2 15) with 3 by reflexivity. lia.
-      - assert (n= 0 \/ n = 1 \/ n = 2 \/ n = 3) as [H1 | [H2 | [H3 | H4]]] by lia; subst; reflexivity. } 
     rewrite Z.lor_spec,Z.land_spec.
     assert (n < 0 \/ 0 <= n < 4 \/ 4 <= n) as [Hout |[Hfst | Hsnd]] by lia.
-    + assert (Z.testbit 15 n = false). { destruct (Z.testbit 15 n) eqn : Ht; auto. lia. }
-      rewrite H,andb_false_l,orb_false_l.
-      rewrite !Z.testbit_neg_r; lia.
+    + assert (Z.testbit 15 n = false) by (apply testbit_15_false; lia).
+      simpl_bool. rewrite !Z.testbit_neg_r; lia.
     + rewrite Z.shiftl_spec by lia.
-      replace (Z.testbit 15 n) with true. 2 : { symmetry; apply H15n; lia. }
-      simpl.
+      assert (Z.testbit 15 n = true) by (apply testbit_15; lia). simpl_bool.
       assert (Z.testbit (Z.shiftr (Byte.unsigned b) 4) (n - 4) = false). {
-        rewrite Z.testbit_neg_r; auto. lia. } rewrite H. rewrite orb_false_r. reflexivity.
-    + assert (Z.testbit 15 n = false). { destruct (Z.testbit 15 n) eqn : Ht; auto. lia. }
-      rewrite H,andb_false_l,orb_false_l.
+        rewrite Z.testbit_neg_r; auto. lia. } simpl_bool. reflexivity.
+    + assert (Z.testbit 15 n = false) by (apply testbit_15_false; lia).
+      simpl_bool.
       rewrite Z.shiftl_spec by lia. rewrite Z.shiftr_spec by lia.
       f_equal. lia.
   - split.
-    + apply Z.shiftr_nonneg. pose proof (Byte.unsigned_range b); lia.
+    + apply Z.shiftr_nonneg. rep_lia'.
     + rewrite Z.shiftr_div_pow2 by lia. replace (Nibble.max_unsigned) with 15 by reflexivity.
-      pose proof (Byte.unsigned_range b). replace (Byte.modulus) with 256 in H by reflexivity.
-      eapply Z.le_trans. apply Z.div_le_mono. lia. assert (Byte.unsigned b <= 255) by lia. apply H0.
-      replace (2^4) with 16 by reflexivity. 
-      replace (255 /16) with 15 by reflexivity. lia.
+      eapply Z.le_trans. apply Z.div_le_mono. lia. instantiate (1:=255). rep_lia'.
+      reflexivity.
   - split. 
     + rewrite Z.land_nonneg. left. lia.
-    + replace (Nibble.max_unsigned) with 15 by reflexivity. apply Zbits.Ztestbit_le. lia.
+    + apply Zbits.Ztestbit_le. rep_lia'.
       intros i Hi. rewrite Z.land_spec, andb_true_iff. intros [Hi1 Hi2].
       apply Hi1.
 Qed.
+
+(*TODO: move maybe*)
+Lemma nibble_log_bound: forall (n: nibble),
+  0 <= Z.log2 (Nibble.unsigned n) < 4.
+Proof.
+  intros n. rep_lia_setup2. split. apply Z.log2_nonneg.
+  assert (Hlog: Nibble.unsigned n <= 15) by lia. apply Z.log2_le_mono in Hlog.
+  assert (Z.log2 15 = 3) by reflexivity. lia.
+Qed.
+
+
+(*The other direction*)
+Lemma nibbles_to_byte_inv: forall n1 n2,
+  byte_to_nibbles (nibbles_to_byte n1 n2) = (n1, n2).
+Proof.
+  intros n1 n2. unfold byte_to_nibbles, nibbles_to_byte. unfold Byte.unsigned. rewrite byte_simpl.
+  unfold nibbles_to_Z. f_equal; apply nibble_unsigned_inj.
+  - rewrite Nibble.unsigned_repr. 
+    + apply Z.bits_inj_iff. unfold Z.eqf. intros n.
+      rewrite Z.land_spec, Z.lor_spec.
+      assert (0 <= n < 4 \/ 0  > n \/ n >= 4) as [Hin | [Hlo | Hhi]] by lia.
+      * assert (Z.testbit 15 n = true) by (apply testbit_15; lia). simpl_bool.
+        assert (Z.testbit (Z.shiftl (Nibble.unsigned n2) 4) n = false). {
+          rewrite Z.shiftl_spec by lia. rewrite Z.testbit_neg_r; lia. }
+        simpl_bool. reflexivity.
+      * rewrite !Z.testbit_neg_r; lia.
+      * assert (Z.testbit 15 n = false) by (apply testbit_15_false; lia).
+        simpl_bool. pose proof (Nibble.unsigned_range n1). pose proof (nibble_log_bound n1).
+        rewrite Z.bits_above_log2; auto; lia.
+    + split.
+      * apply Z.land_nonneg. left. lia.
+      * apply Zlt_succ_le. replace (Z.succ Nibble.max_unsigned) with (2^4) by reflexivity.
+        apply Z_testbit_false_le; try lia. apply Z.land_nonneg;left; lia. intros i Hi.
+        rewrite Z.land_spec, Z.lor_spec.
+        assert (Z.testbit 15 i = false) by (apply testbit_15_false; lia). simpl_bool. reflexivity.
+  - rewrite Nibble.unsigned_repr.
+    + apply Z.bits_inj_iff. unfold Z.eqf. intros n.
+      assert (n < 0 \/ 0 <= n) as [Hlo | Hpos] by lia.
+      * rewrite !Z.testbit_neg_r; lia.
+      * rewrite Z.shiftr_spec by lia. rewrite Z.lor_spec, Z.shiftl_spec by lia.
+        assert (Z.testbit (Nibble.unsigned n1) (n + 4) = false). {
+          pose proof (Nibble.unsigned_range n1). pose proof (nibble_log_bound n1).
+          rewrite Z.bits_above_log2; auto; lia. }
+        simpl_bool. f_equal. lia.
+    + split.
+      * apply Z.shiftr_nonneg. apply Z.lor_nonneg. split. rep_lia'.
+        apply Z.shiftl_nonneg. rep_lia'.
+      * rewrite Z.shiftr_div_pow2 by lia. replace (Nibble.max_unsigned) with ((2^8 - 1) / 2^4) by reflexivity.
+        apply Z.div_le_mono; try lia. apply Zlt_succ_le. replace (Z.succ (2^8 - 1)) with (2^8) by reflexivity.
+        apply Z_lor_bound; try lia. rep_lia'. 
+        split. apply Z.shiftl_nonneg; rep_lia'. rewrite Z.shiftl_mul_pow2; rep_lia'.
+Qed.
+
+(*The others are simpler*)
+Section ConvertBack.
+
+Variable E: Endian.
+
+Definition bytes_to_short (b1 b2: byte) : short :=
+  Short.repr (decode_int_endian E [b1; b2]).
+
+Definition bytes_to_int (b1 b2 b3 b4: byte) : int :=
+  Int.repr (decode_int_endian E [b1;b2;b3;b4]).
+
+(*Solves bounds for int_of_bytes, present in multiple proofs*)
+Ltac int_of_bytes_bound:=
+  match goal with
+  | [ |- 0 <= int_of_bytes ?l <= ?n]  =>
+    let H := fresh in
+    pose proof (int_of_bytes_range l) as H;
+    rewrite two_p_equiv in H; simpl Datatypes.length in H; simpl Z.mul in H
+  end;
+  try rep_lia'.
+
+(*Correctness theorems*)
+Lemma bytes_to_short_inv: forall (b1 b2: byte),
+  short_to_bytes E (bytes_to_short b1 b2) = [b1; b2].
+Proof.
+  intros b1 b2. unfold short_to_bytes, bytes_to_short, encode_int_endian, decode_int_endian.
+  destruct E; rewrite Short.unsigned_repr; try (rewrite bytes_of_int_of_bytes; reflexivity);
+  int_of_bytes_bound.
+Qed.
+
+(*TODO: kind of ugly spec *)
+Lemma short_to_bytes_inv: forall (s: short),
+  match (short_to_bytes E s) with
+  | [b1; b2] => bytes_to_short b1 b2 = s
+  | _ => False
+  end.
+Proof.
+  intros s. assert (Hlen: length (short_to_bytes E s) = 2%nat). {
+    unfold short_to_bytes, encode_int_endian. destruct E; try (rewrite rev_length); apply length_bytes_of_int. }
+  remember (short_to_bytes E s) as l eqn : Hs.
+  repeat (progress (destruct l; try solve[inversion Hlen])).
+  clear Hlen. revert Hs. unfold short_to_bytes, bytes_to_short, encode_int_endian, decode_int_endian.
+  destruct E; intros Hs; apply short_unsigned_inj; rewrite Short.unsigned_repr by int_of_bytes_bound;
+  rewrite Hs, ?rev_involutive, int_of_bytes_of_int; solve_unsigned_mod.
+Qed.
+
+(* The proofs are almost exactly the same for int *)
+
+Lemma bytes_to_int_inv: forall (b1 b2 b3 b4: byte),
+  int_to_bytes E (bytes_to_int b1 b2 b3 b4) = [b1; b2; b3; b4].
+Proof.
+  intros b1 b2 b3 b4. unfold int_to_bytes, bytes_to_int, encode_int_endian, decode_int_endian.
+  destruct E; rewrite Int.unsigned_repr; try (rewrite bytes_of_int_of_bytes; reflexivity);
+  int_of_bytes_bound.
+Qed.
+
+Lemma int_to_bytes_inv: forall (i: int),
+  match (int_to_bytes E i) with
+  | [b1; b2; b3; b4] => bytes_to_int b1 b2 b3 b4 = i
+  | _ => False
+  end.
+Proof.
+  intros i. assert (Hlen: length (int_to_bytes E i) = 4%nat). {
+    unfold int_to_bytes, encode_int_endian. destruct E; try (rewrite rev_length); apply length_bytes_of_int. }
+  remember (int_to_bytes E i) as l eqn : Hs.
+  repeat (progress (destruct l; try solve[inversion Hlen])).
+  clear Hlen. revert Hs. unfold int_to_bytes, bytes_to_int, encode_int_endian, decode_int_endian.
+  destruct E; intros Hs; apply int_unsigned_inj; rewrite Int.unsigned_repr by int_of_bytes_bound;
+  rewrite Hs, ?rev_involutive, int_of_bytes_of_int; solve_unsigned_mod.
+Qed.
+
+End ConvertBack.
