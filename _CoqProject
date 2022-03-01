@@ -21,6 +21,8 @@ proofs/RS/ReedSolomonList.v
 #Functional model for actuators
 proofs/FEC/EquivClasses.v
 proofs/FEC/AbstractEncoderDecoder.v
+proofs/FEC/Endian.v
+proofs/FEC/IP.v
 proofs/FEC/RSEEncoderDecoder.v
 #VST(core FEC)
 src/fecActuator/fec.v
