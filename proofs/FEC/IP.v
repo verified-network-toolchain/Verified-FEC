@@ -38,7 +38,7 @@ Definition valid_ip_bytes (f: ip_fields) (contents: list byte) : bool :=
   define a validity predicate*)
 
 (*Get header fields from a list of bytes representing the header*)
-Definition bytes_to_header_fields (header: list byte) : option (ip_fields) :=
+Definition bytes_to_ip_header (header: list byte) : option (ip_fields) :=
   match header with
   | ip_hlv :: ip_tos :: ip_len1 :: ip_len2 :: ip_id1 :: ip_id2 :: ip_off1 :: ip_off2 ::
     ip_tll :: ip_p :: ip_sum1 :: ip_sum2 :: ip_src1 :: ip_src2 :: ip_src3 :: ip_src4 ::
@@ -53,7 +53,7 @@ Definition bytes_to_header_fields (header: list byte) : option (ip_fields) :=
   end.
 
 Definition packet_to_ip_fields (packet: list byte) : option (ip_fields * list byte) :=
-  match (bytes_to_header_fields packet) with
+  match (bytes_to_ip_header packet) with
   | Some i => 
     let realOptions := sublist 20 (4 * Nibble.unsigned (ip_hl i)) packet in
     let contents := sublist (4 * Nibble.unsigned (ip_hl i)) (Short.unsigned (ip_len i)) packet in
@@ -62,67 +62,243 @@ Definition packet_to_ip_fields (packet: list byte) : option (ip_fields * list by
   end.
 
 (*Given the header and contents, we want to define a validity predicate*)
-Definition valid_packet (header: list byte) (contents: list byte) : bool :=
-  match (bytes_to_header_fields header) with
+Definition valid_ip_packet (header: list byte) (contents: list byte) : bool :=
+  match (bytes_to_ip_header header) with
   | Some i => Z.eq_dec (4 * Nibble.unsigned (ip_hl i)) (Zlength header) &&  
               Z.eq_dec (Short.unsigned (ip_len i)) (Zlength (header ++ contents))
   | None => false
   end.
 
 (*Get header and contents from a packet*)
-Definition recover_packet (pack: list byte) : (list byte * list byte) :=
+Definition recover_ip_packet (pack: list byte) : (list byte * list byte) :=
   match (packet_to_ip_fields pack) with
   | None => (nil, nil)
   | Some (i, con) => (ip_bytes i, con)
   end.
 
+(*Now, we need to prove the correctness, in the following way: suppose we have a valid
+  header and packet contents. Then, if we have header ++ contents ++ extra bytes, we can
+  recover the original header and contents. For IP packets, this is challenging because
+  of the variable sized header. We need some intermediate lemmas first*)
+
+(*Reason about ip_fields without options*)
+Definition ip_wo_options (i: ip_fields) : ip_fields :=
+  i <| ip_options := nil |>.
+
+Lemma ip_wo_options_eq_spec: forall (i1 i2: ip_fields),
+  ip_wo_options i1 = ip_wo_options i2 ->
+  ip_options i1 = ip_options i2 ->
+  i1 = i2.
+Proof.
+  intros i1 i2. unfold ip_wo_options. intros Hwo Hopt.
+  destruct i1; destruct i2. simpl in *.
+  inversion Hwo; subst. reflexivity.
+Qed.
+
+(*Solve goals with false=true -> H, False -> H, or _ :: _ = nil -> H*)
 Ltac solve_con:=
   solve[ let H := fresh in
   intros H; inversion H].
 
-(*The main theorem we need*)
+(*Unfolding these is not needed and blows up terms*)
+Opaque bytes_to_short.
+Opaque bytes_to_int.
+Opaque byte_to_nibbles.
 
-(*KEY! what we want: bytes_to_header_fields header = Some ip <-> ip_bytes ip = header
-(maybe, not as sure although this may help me prove the next lemma)
-
-  WANT: bytes_to_header_fields header = Some ip ->
-  bytes_to_header_fields header ++ l = Some ip' ->
-  (forall fields other than contents, ip.f = ip'.f)
-
-then we reason as follows (to show that recover_packet gives (header, contents)
-  want to show that ip_bytes ip' = header - USE ABOVE LEMMA and equality from above
-  and then contents, reason about sublist and length
-
-THESE TWO LEMMAS ARE WHAT WE NEED
-
-Lemma recover_packet_correct: forall (header contents : list byte) (extra: list byte),
-  valid_packet header contents = true ->
-  recover_packet (header ++ contents ++ extra) = (header, contents).
+(*A key point: the IP header is the same if we extend the packet except for possibly the options*)
+Lemma bytes_to_header_ext: forall header ip l,
+  bytes_to_ip_header header = Some ip ->
+  bytes_to_ip_header (header ++ l) = Some (ip <| ip_options := sublist 20 (Zlength (header ++ l)) (header ++ l) |>).
 Proof.
-*)
+  intros header ip l. unfold bytes_to_ip_header. do 20 (destruct header; [solve_con |]). intros Heq. simpl.
+  destruct (byte_to_nibbles i) as [iphl ipv] eqn : Hi. inversion Heq; subst; clear Heq. f_equal.
+  apply ip_wo_options_eq_spec.
+  - reflexivity.
+  - simpl. list_solve.
+Qed.
 
-(** UDP *)
+Opaque nibbles_to_byte.
+Opaque short_to_bytes.
+Opaque int_to_bytes.
+
+(*Second important lemma: 
+ Here, we need the lemmas about (ex) [bytes_to_int] and [int_to_bytes] proved in Endian.v*)
+Lemma bytes_to_ip_header_bytes: forall header ip,
+  bytes_to_ip_header header = Some ip <-> ip_bytes ip = header.
+Proof.
+  intros header ip. unfold ip_bytes. simpl. rewrite app_nil_r.
+  unfold bytes_to_ip_header; split.
+  - do 20 (destruct header; [solve_con |]). 
+    destruct (byte_to_nibbles i) as [iphl ipv] eqn : Hi. intro Hip; inversion Hip; subst; clear Hip; simpl.
+    f_equal. pose proof (byte_to_nibbles_inv i). rewrite Hi in H. assumption.
+    f_equal.
+    rewrite !bytes_to_short_inv, !bytes_to_int_inv. reflexivity.
+  - intros Hhead. rewrite <- Hhead; clear Hhead. destruct ip; simpl.
+    (*simplify all the [short_to_bytes] and [int_to_byte]*)
+    repeat match goal with
+    | [ |- context [short_to_bytes ?e ?x ]] => 
+      let H := fresh in
+      let l := fresh in
+      pose proof (short_to_bytes_inv e x) as H;
+      remember (short_to_bytes e x) as l;
+      repeat (let i := fresh "i" in destruct l as [|i l]; try(solve[inversion H]))
+    | [ |- context [ int_to_bytes ?e ?x ]] =>
+      let H := fresh in
+      let l := fresh in
+      pose proof (int_to_bytes_inv e x) as H;
+      remember (int_to_bytes e x) as l;
+      repeat (let i := fresh "i" in destruct l as [|i l]; try(solve[inversion H]))
+    end.
+    simpl. rewrite nibbles_to_byte_inv. f_equal. congruence.
+Qed.
+
+(*Other smaller lemmas*)
+Lemma ip_header_length: forall header ip,
+  bytes_to_ip_header header = Some ip ->
+  Zlength header >= 20.
+Proof.
+  intros header ip. unfold bytes_to_ip_header. do 20 (destruct header; [solve_con |]). list_solve.
+Qed.
+
+(*Then, we can get the options list in the following way:*)
+Lemma ip_options_sublist: forall header ip,
+  bytes_to_ip_header header = Some ip ->
+  ip_options ip = sublist 20 (Zlength header) header.
+Proof.
+  intros header ip. unfold bytes_to_ip_header.
+  do 20 (destruct header; [solve_con |]). intros.
+  replace (ip_options ip) with header by (inversion H; reflexivity). list_solve.
+Qed.
+
+(*TODO: move, may be useful more generally*)
+Ltac simpl_sumbool :=
+  repeat match goal with
+  | [ H: proj_sumbool ?x = true |- _ ] => destruct x; [ clear H | solve[inversion H]]
+  | [ H: proj_sumbool ?x = false |- _] => destruct x; [solve[inversion H]|clear H]
+  end.
+
+(*Correctness theorem*)
+Lemma recover_ip_packet_correct: forall (header contents extra: list byte),
+  valid_ip_packet header contents = true ->
+  recover_ip_packet (header ++ contents ++ extra) = (header, contents).
+Proof.
+  intros ? ? ?. unfold valid_ip_packet. destruct (bytes_to_ip_header header) as [ip |] eqn : Hhead.
+  2 : intro C; inversion C.
+  intros Hlens. apply andb_prop in Hlens. destruct Hlens as [Hlen1 Hlen2].
+  simpl_sumbool.
+  unfold recover_ip_packet. unfold packet_to_ip_fields.
+  pose proof (bytes_to_header_ext _ _ (contents ++ extra) Hhead) as Happ.
+  remember (ip <| ip_options :=
+          sublist 20 (Zlength (header ++ contents ++ extra)) (header ++ contents ++ extra) |>) as ip' eqn : Heq.
+  rewrite Happ.
+  assert (Hhleq: ip_hl ip = ip_hl ip') by
+       (destruct ip; destruct ip'; subst; inversion Heq; reflexivity).
+ f_equal.
+  - rewrite <- bytes_to_ip_header_bytes. rewrite Hhead. f_equal.
+    apply ip_wo_options_eq_spec.
+    + rewrite Heq. reflexivity.
+    + rewrite <- Hhleq, e0. simpl. rewrite sublist_app1; try lia.
+      apply ip_options_sublist. assumption. apply ip_header_length in Hhead; list_solve.
+  - assert (Hleneq: ip_len ip = ip_len ip') by  (destruct ip; destruct ip'; inversion Heq; reflexivity).
+    rewrite <- Hhleq, e0, <- Hleneq, e. list_solve.
+Qed. 
+
+(** UDP Packets *)
 
 Record udp_fields :=
-  mk_udp { source: short; dest: short; len: short; check: short }.
+  mk_udp { udp_source: short; udp_dest: short; udp_len: short; udp_check: short }.
 
 Definition udp_list (u: udp_fields) :=
   let e:= BigEndian in
-  [ShortMem (source u) e; ShortMem (dest u) e; ShortMem (len u) e; ShortMem (check u) e].
+  [ShortMem (udp_source u) e; ShortMem (udp_dest u) e; ShortMem (udp_len u) e; ShortMem (udp_check u) e].
 
 Definition udp_bytes (u: udp_fields) :=
   MemBytes_to_byte_list (udp_list u).
 
 (*TODO: any other validity conditions?*)
-Definition valid_udp_bytes (u: udp_fields) (contents: list byte) :=
-  Short.unsigned (len u) = Zlength (udp_bytes u ++ contents).
+Definition valid_udp_bytes (u: udp_fields) (contents: list byte) : bool :=
+  Z.eq_dec (Short.unsigned (udp_len u)) (Zlength (udp_bytes u ++ contents)).
 
-(** IP/UDP Packets*)
+(*UDP packets are easier - header is fixed size of 8 bytes*)
 
-Definition ip_udp_bytes (i: ip_fields) (ip_options: list byte) (u: udp_fields) (data: list byte) : list byte :=
-  ip_bytes i ip_options ++ udp_bytes u ++ data.
+Definition bytes_to_udp_header (header: list byte) : option udp_fields :=
+  match header with
+  | src1 :: src2 :: dst1 :: dst2 :: len1 :: len2 :: check1 :: check2 :: nil =>
+    let E := BigEndian in
+    Some (mk_udp (bytes_to_short E src1 src2) (bytes_to_short E dst1 dst2) (bytes_to_short E len1 len2)
+      (bytes_to_short E check1 check2))
+  | _ => None
+  end.
 
-Definition valid_ip_udp_bytes (i: ip_fields) (ip_options: list byte) (u: udp_fields) (data: list byte) : Prop :=
-  valid_ip_bytes i ip_options (udp_bytes u ++ data) /\
-  valid_udp_bytes u data.
+Definition packet_to_udp_fields (packet: list byte) : option (udp_fields * list byte) :=
+  match (bytes_to_udp_header (sublist 0 8 packet)) with
+  | Some u => 
+    let contents := sublist 8 (Short.unsigned (udp_len u)) packet in 
+    Some(u, contents)
+  | None => None
+  end.
 
+(*Given the header and contents, we want to define a validity predicate*)
+Definition valid_udp_packet (header: list byte) (contents: list byte) : bool :=
+  match (bytes_to_udp_header header) with
+  | Some u => Z.eq_dec (Short.unsigned (udp_len u)) (Zlength (header ++ contents))
+  | None => false
+  end.
+
+(*Get header and contents from a packet*)
+Definition recover_udp_packet (pack: list byte) : (list byte * list byte) :=
+  match (packet_to_udp_fields pack) with
+  | None => (nil, nil)
+  | Some (u, con) => (udp_bytes u, con)
+  end.
+
+(*The correctness theorem is much, much easier this time because of the fixed header size*)
+Lemma recover_udp_packet_correct: forall (header contents extra: list byte),
+  valid_udp_packet header contents = true ->
+  recover_udp_packet (header ++ contents ++ extra) = (header, contents).
+Proof.
+  intros ? ? ?. unfold valid_udp_packet, recover_udp_packet, bytes_to_udp_header.
+  do 8 (destruct header; [solve_con|]). destruct header; [|solve_con]. simpl. intro Hlen.
+  simpl_sumbool. 
+  replace (Zlength (i :: i0 :: i1 :: i2 :: i3 :: i4 :: i5 :: i6 :: contents)) with
+  (8 + Zlength contents) in e by list_solve. rewrite e.
+  f_equal.
+  - unfold udp_bytes. simpl. rewrite !bytes_to_short_inv. reflexivity.
+  - rewrite !sublist_S_cons by lia.
+    rewrite sublist0_app1 by list_solve.
+    rewrite sublist_same by lia. reflexivity.
+Qed.
+
+
+(** IP/UDP Packets *)
+
+(*An IP/UDP packet has an IP header, followed by a UDP header. We compose the above to get
+  the final functions and predicates we need*)
+
+Definition valid_packet (header: list byte) (contents: list byte) : bool :=
+  Z_le_lt_dec 8 (Zlength header) && 
+  let ip_header := sublist 0 (Zlength header - 8) header in
+  let udp_header := sublist (Zlength header - 8) (Zlength header) header in
+  valid_ip_packet ip_header (udp_header ++ contents) &&
+  valid_udp_packet udp_header contents.
+
+Definition recover_packet (pack: list byte) : (list byte * list byte) :=
+  let (ip_head, rest) := recover_ip_packet pack in
+  let (udp_head, contents) := recover_udp_packet rest in
+  (ip_head ++ udp_head, contents).
+
+(*Now, the main theorem we need:*)
+Theorem recover_packet_correct: forall (header contents extra: list byte),
+  valid_packet header contents = true ->
+  recover_packet (header ++ contents ++ extra) = (header, contents).
+Proof.
+  intros ? ? ?. unfold valid_packet, recover_packet. intros Hvalid.
+  apply andb_prop in Hvalid. destruct Hvalid as [Hlen Hvalid].
+  apply andb_prop in Hvalid. destruct Hvalid as [Hip Hudp].
+  destruct (Z_le_lt_dec 8 (Zlength header)); try solve[inversion Hlen]. clear Hlen.
+  rewrite  <- (sublist_same 0 (Zlength header) header) by reflexivity.
+  rewrite (sublist_split 0 (Zlength header - 8) (Zlength header)); try lia.
+  rewrite <- app_assoc, (app_assoc _ contents), recover_ip_packet_correct by assumption.
+  rewrite <- (app_nil_r (_ ++ contents)), <- app_assoc, recover_udp_packet_correct; auto.
+Qed.
+ 
