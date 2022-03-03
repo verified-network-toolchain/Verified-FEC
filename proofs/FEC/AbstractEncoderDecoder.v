@@ -1,5 +1,6 @@
 Require Import EquivClasses.
 Require Import VST.floyd.functional_base.
+Require Import ZSeq.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -95,16 +96,47 @@ Canonical fec_packet_eqType := EqType fec_packet fec_packet_eqMixin.
 
 (** Abstract state *)
 
+(*The encoder and decoder might depend on some current state*)
+Variable enc_state : Type.
+Variable dec_state : Type.
+
+Variable enc_inhab: Inhabitant enc_state.
+Variable dec_inhab: Inhabitant dec_state.
+
 Record transcript := mk_tran
   { orig : list packet; (*packets received by sender from origin*)
     encoded : list fec_packet; (*encoded by sender*)
     received: list fec_packet; (*subset of encoded packets received by receiver*)
-    decoded: list packet}. (*packets send by receiver*)
+    decoded: list packet; (*packets sent by receiver*)
+    enc_states : list enc_state; (*encoder state for each packet received by sender*)
+    dec_states : list dec_state (*decoder state for each packet received by receiver*)
+  }.
 
-Definition encoder := list packet -> list fec_packet -> Prop. 
+(*An encoder takes in the list of packets seen so far and the current enc state and gives
+  some packets to be appended to the output*)
+Definition encoder := list packet -> enc_state -> list fec_packet. 
 
-Definition decoder := list fec_packet -> list packet -> Prop.
+(*Similarly, the decoder takes in the received packets so far and the current dec state
+  and gives the packets to be appended to the output*)
+Definition decoder := list fec_packet -> dec_state -> list packet. 
 
+Definition encoded_list (orig: list packet) (enc_states: list enc_state) (e: encoder) : list fec_packet :=
+  concat (mkseqZ (fun i => e (sublist 0 i orig) (Znth i enc_states)) (Zlength orig)).
+
+Definition decoded_list (received: list fec_packet) (dec_states : list dec_state) (d: decoder) : list packet :=
+  concat (mkseqZ (fun i => d (sublist 0 i received) (Znth i dec_states)) (Zlength received)).
+
+(*An encoder and decoder pair are correct if, when we decode any part of the encoded list,
+  we get packets that were present in the original stream*)
+Definition valid_encoder_decoder (e: encoder) (d: decoder) : Prop :=
+  forall (orig: list packet) (received : list fec_packet) (enc_states: list enc_state) (dec_states: list dec_state),
+    Zlength enc_states = Zlength orig ->
+    Zlength dec_states = Zlength received ->
+    subseq received (encoded_list orig enc_states e) -> (*TODO: weaken to permutation*)
+    (forall p, p \in (decoded_list received dec_states d) -> p \in orig).
+
+
+(*
 (*Encoder is monotonic - cannot change previously encoded data*)
 Definition enc_mono (e: encoder) : Prop :=
   forall (orig: list packet) (extra: list packet) (encoded encoded': list fec_packet),
@@ -130,7 +162,7 @@ Definition encode_decode_pair (e: encoder) (d: decoder) : Prop :=
 
 Definition valid_encoder_decoder (e: encoder) (d: decoder) : Prop :=
   enc_mono e /\ dec_mono d /\ encode_decode_pair e d.
-
+*)
 (*The C implementations will produce transcripts that are consistent with
   some encoder and decoder. We will say that a transcript is valid if this is the case*)
 
@@ -138,19 +170,21 @@ Variable enc: encoder.
 Variable dec: decoder.
 
 Definition valid_transcript (t : transcript) :=
-  enc (orig t) (encoded t) /\
+  Zlength (enc_states t) = Zlength (orig t) /\
+  Zlength (dec_states t) = Zlength (received t) /\
+  encoded t = encoded_list (orig t) (enc_states t) enc /\
   subseq (received t) (encoded t) /\
-  dec (received t) (decoded t).
+  decoded t = decoded_list (received t) (dec_states t) dec.
 
-(*If we have consistent transcripts and a valid encoder/decoder pair, then the decoded packets
-  are a subset of the original ones*)
-Lemma encode_decode_pair_transcript: forall (t: transcript),
-  encode_decode_pair enc dec ->
+(*If we have a valid encoder decoder pair and a valid transcript, then the decoded packets are
+  a subset of the original ones*)
+Lemma valid_encode_decode_transcript: forall (t: transcript),
+  valid_encoder_decoder enc dec ->
   valid_transcript t ->
   (forall p, p \in (decoded t) -> p \in (orig t)).
 Proof.
-  unfold encode_decode_pair. unfold valid_transcript. intros t Hval [Hoe [Hre Hrd]].
-  eauto.
+  rewrite /valid_encoder_decoder /valid_transcript => t Hval [Henclen [Hdeclen [Henc [Hsub Hdec]]]] p Hinp.
+  apply (Hval _ _ _ _ Henclen Hdeclen). by rewrite -Henc. by rewrite -Hdec.
 Qed.
 
 End AbstractSpecs.

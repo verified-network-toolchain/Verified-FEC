@@ -208,6 +208,9 @@ Qed.
 Record udp_fields :=
   mk_udp { udp_source: short; udp_dest: short; udp_len: short; udp_check: short }.
 
+#[export]Instance eta_udp_fields: Settable _ := 
+  settable! mk_udp <udp_source; udp_dest; udp_len; udp_check>.
+
 Definition udp_list (u: udp_fields) :=
   let e:= BigEndian in
   [ShortMem (udp_source u) e; ShortMem (udp_dest u) e; ShortMem (udp_len u) e; ShortMem (udp_check u) e].
@@ -301,4 +304,109 @@ Proof.
   rewrite <- app_assoc, (app_assoc _ contents), recover_ip_packet_correct by assumption.
   rewrite <- (app_nil_r (_ ++ contents)), <- app_assoc, recover_udp_packet_correct; auto.
 Qed.
- 
+
+(*Separately, we want to take a valid packet and modify the contents, changing the appropriate
+  header fields to ensure that the resulting packet is still well-formed*)
+
+Definition copy_fix_header (header: list byte) (contents : list byte) : list byte :=
+  match (bytes_to_ip_header (sublist 0 (Zlength header - 8) header)), 
+    (bytes_to_udp_header (sublist (Zlength header - 8) (Zlength header) header))  with
+  | Some i, Some u => 
+    let new_ip_len := Zlength (ip_bytes i ++ udp_bytes u ++ contents) in
+    let new_udp_len := Zlength (udp_bytes u ++ contents) in
+    ip_bytes (i <| ip_len := Short.repr new_ip_len |>) ++ udp_bytes (u <| udp_len := Short.repr new_udp_len |>) 
+  | _, _ => nil
+  end.
+
+Lemma ip_bytes_Zlength: forall (i: ip_fields),
+  Zlength (ip_bytes i) = 20 + Zlength (ip_options i).
+Proof.
+  intros i. destruct i. unfold ip_bytes. list_solve.
+Qed. 
+
+(*An easy corollary*)
+Lemma ip_bytes_len_eq: forall (i1 i2: ip_fields),
+  Zlength (ip_options i1) = Zlength (ip_options i2) ->
+  Zlength (ip_bytes i1) = Zlength (ip_bytes i2).
+Proof.
+  intros i1 i2 Hi. rewrite !ip_bytes_Zlength. lia.
+Qed.
+
+(*It helps to have this for UDP too*)
+Lemma bytes_to_udp_header_bytes: forall header u,
+  bytes_to_udp_header header = Some u <-> udp_bytes u = header.
+Proof.
+  intros header u. unfold udp_bytes. simpl. rewrite app_nil_r.
+  unfold bytes_to_udp_header; split.
+  - do 8 (destruct header; [solve_con |]). destruct header; [|solve_con].
+    intros Hu. inversion Hu; subst; clear Hu. simpl.
+    rewrite !bytes_to_short_inv. reflexivity.
+  - intros Hhead. rewrite <- Hhead; clear Hhead. destruct u; simpl.
+    (*simplify all the [short_to_bytes] and [int_to_byte]*)
+    repeat match goal with
+    | [ |- context [short_to_bytes ?e ?x ]] => 
+      let H := fresh in
+      let l := fresh in
+      pose proof (short_to_bytes_inv e x) as H;
+      remember (short_to_bytes e x) as l;
+      repeat (let i := fresh "i" in destruct l as [|i l]; try(solve[inversion H]))
+    end.
+    simpl. f_equal. congruence.
+Qed.
+
+(*TODO: where to put the boundedness assumptions?*)
+Lemma copy_fix_header_valid: forall (header con1 con2: list byte),
+  Zlength header + Zlength con2 <= Short.max_unsigned ->
+  valid_packet header con1 = true ->
+  valid_packet (copy_fix_header header con2) con2 = true.
+Proof.
+  intros h c1 c2 Hlenb. unfold valid_packet. intros Hvalid.
+  apply andb_prop in Hvalid. destruct Hvalid as [Hlen Hvalid].
+  apply andb_prop in Hvalid. destruct Hvalid as [Hip Hudp].
+  destruct (Z_le_lt_dec 8 (Zlength h)); try solve[inversion Hlen]. clear Hlen.
+  unfold valid_ip_packet in Hip.
+  unfold valid_udp_packet in Hudp.
+  repeat match goal with | [ H: (match ?x with | Some o => ?z | None => ?y end) = ?b |- _ ] => let H1 := fresh in
+    destruct x eqn : H1; try solve[inversion H]
+  end.
+  assert (Hi': Zlength (ip_bytes (i <| ip_len := Short.repr (Zlength (ip_bytes i ++ udp_bytes u ++ c2)) |>)) 
+    = Zlength (ip_bytes i)). { apply ip_bytes_len_eq. reflexivity. }
+  assert (Hilen: Zlength (ip_bytes i) = Zlength h - 8). { rewrite bytes_to_ip_header_bytes in H0.
+    rewrite H0. list_solve. }
+  assert (Hu': Zlength (udp_bytes (u <| udp_len := Short.repr (Zlength (udp_bytes u ++ c2)) |>)) = 8). {
+    destruct u; reflexivity. }
+  assert (Hlen: Zlength (copy_fix_header h c2) = Zlength h). {
+    unfold copy_fix_header. rewrite H, H0, Zlength_app, Hi', Hilen, Hu'. lia. }
+  rewrite Hlen. clear Hlen.
+  unfold copy_fix_header. rewrite H, H0. apply andb_true_intro. split.
+    destruct (Z_le_lt_dec 8 (Zlength h)); auto; lia.
+  apply andb_true_intro. split.
+  - rewrite sublist_app1 by list_solve.
+    rewrite sublist_app2 by list_solve. rewrite Hi',Hilen.
+    rewrite !sublist_same by list_solve.
+    unfold valid_ip_packet.
+    assert (Hsome:  bytes_to_ip_header
+    (ip_bytes (i <| ip_len := Short.repr (Zlength (ip_bytes i ++ udp_bytes u ++ c2)) |>)) = Some
+      (i <| ip_len := Short.repr (Zlength (ip_bytes i ++ udp_bytes u ++ c2)) |>)). {
+      rewrite bytes_to_ip_header_bytes. reflexivity. }
+    rewrite Hsome. rewrite (Zlength_app _ (ip_bytes (i <| ip_len := _ |>))), Hi', 
+      (Zlength_app _ (udp_bytes _)), Hu', Hilen.
+    apply andb_true_intro. split.
+    + apply andb_prop in Hip. destruct Hip as [Hhl _]. simpl_sumbool.
+      replace (ip_hl (i <| ip_len := Short.repr (Zlength (ip_bytes i ++ udp_bytes u ++ c2)) |>)) with
+        (ip_hl i) by reflexivity. rewrite e0, Zlength_sublist by lia. apply proj_sumbool_is_true. lia.
+    + rewrite !Zlength_app, Hilen. replace (Zlength (udp_bytes u)) with 8 by (destruct u; reflexivity).
+      replace (Zlength h - 8 + (8 + Zlength c2)) with (Zlength h + Zlength c2) by lia.
+      simpl ip_len. rewrite Short.unsigned_repr by list_solve. apply proj_sumbool_is_true. reflexivity.
+  - (*UDP packet is easier*)
+    rewrite sublist_app2 by list_solve.
+    rewrite Hi', Hilen,sublist_same by lia.
+    unfold valid_udp_packet.
+    assert (Hsome: bytes_to_udp_header (udp_bytes (u <| udp_len := Short.repr (Zlength (udp_bytes u ++ c2)) |>)) =
+      Some (u <| udp_len := Short.repr (Zlength (udp_bytes u ++ c2)) |>)). {
+      rewrite bytes_to_udp_header_bytes. reflexivity. } rewrite Hsome. clear Hsome.
+    rewrite (Zlength_app _ (udp_bytes (u <| udp_len := _ |>))), Hu', !Zlength_app.
+    replace (Zlength (udp_bytes u)) with 8 by (destruct u; reflexivity).
+    remember (8 + Zlength c2) as m. simpl udp_len. rewrite Short.unsigned_repr.
+    apply proj_sumbool_is_true. reflexivity. subst; list_solve.
+Qed.

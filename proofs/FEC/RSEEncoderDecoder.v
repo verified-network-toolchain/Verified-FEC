@@ -221,6 +221,87 @@ Definition get_blocks (l: list fec_packet_act) : list block :=
   2. All packets with same blockIndex have same h
   Then we can reason about permutation, not subseq*)
 
+Definition map_with_idx {A B: Type} (l: list A) (f: A -> Z -> B) : list B :=
+  map (fun (t : A * Z) => let (x, z) := t in f x z) (combine l (Ziota 0 (Zlength l))).
+
+Lemma map_with_idx_Znth: forall {A B} `{Inhabitant A} `{Inhabitant B} (l: list A) (f: A -> Z -> B) i,
+  0 <= i < Zlength l ->
+  Znth i (map_with_idx l f) = f (Znth i l) i.
+Proof.
+  move => A B HA HB l f i Hi. rewrite /map_with_idx Znth_map.
+  - rewrite Znth_combine.
+    + by rewrite Znth_Ziota; try lia.
+    + by rewrite Zlength_Ziota; lia.
+  - rewrite Zlength_combine Z.min_l; try lia.
+    by rewrite Zlength_Ziota; lia.
+Qed.
+
+(** Encoder function *)
+(*This bool is meant to represent if the fec parameters have changed*)
+Definition enc_state := bool.
+Print packet_act.
+Print packet.
+
+(*TODO: need to have length hypotheses involved because of validity constraints - how to best pass
+  these around? More complicated because of map*)
+
+(*Quick attempt: map with some function that requires a hypothesis*)
+Definition in_map_hyp {A B C: Type} (P: A -> Prop) (f: forall a : A, P a -> B) (l: list A) 
+  (H: forall x, In x l -> P x) : list B.
+Proof.
+induction l as [| h t IH].
+- apply nil.
+- apply cons. apply (f h). apply H. left. reflexivity.
+apply IH. intros x Hinx. apply H. right. apply Hinx.
+Defined.
+
+(*TODO: version with indices I think, look at below, see what I need exactly*)
+Print fec_data.
+
+Print packet.
+Search filter.
+
+Definition get_somes {A: Type} (s: seq (option A)) : seq A :=
+  foldr (fun x acc => match x with
+                      | None => acc
+                      | Some y => y :: acc
+                      end) nil s.
+
+(*TODO: fix packet to mk_pkt*)
+(*TODO: figure out a way to get that proof in the context, then we should be good for
+  this part at least*)
+Definition encode_block (b: block) (o: option packet_act) : list fec_packet_act :=
+  let parities := encoder_list (blk_h b) (blk_k b) (blk_c b) (packet_mx b) in
+  (*these are the contents of the parities - put each in a packet with correct values - values from
+    either p if passed in or last packet in block if not*)
+  let populate_packets (model: packet_act) : list fec_packet_act :=
+    map_with_idx parities (fun (par: list byte) (i: Z) =>
+      let new_packet := mk_ptk (blk_id b) 
+        (@copy_fix_header_valid _ _ par _ (p_valid model)) in
+      mk_fecpkt new_packet (mk_data (blk_k b) (blk_h b) true (blk_id b) (Int.repr i))) in
+    
+
+
+
+  match (get_somes (data_packets b)), o with
+  | nil, None => nil (*can't happen*)
+  | _, Some p => populate_packets p
+  | h :: t, _ => populate_packets (f_packet (last h (h :: t)))
+  end.
+
+    
+
+Definition enc : encoder valid_packet fec_data enc_state :=
+  fun (orig: list packet_act) (s: enc_state) =>
+    let curr = Znth (Zlength orig - 1) orig in
+    let blocks := get_blocks (sublist 0 (Zlength orig - 1) orig) in
+    let lastBlock := last 
+
+
+
+    let curr = Znth (Zlength orig - 1)
+
+
 (** Encoder predicate *)
 
 (*Finally, we can define the encoder predicate*)
