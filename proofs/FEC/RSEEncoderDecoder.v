@@ -1,7 +1,9 @@
 (*Implement the abstract encoder/decoder relations from AbstractEncoderDecoder with RSE algorithm *)
 Require Import VST.floyd.functional_base.
 Require Import EquivClasses.
+Require Import IP.
 Require Import AbstractEncoderDecoder.
+Require Import CommonSSR.
 Require Import ReedSolomonList.
 Require Import ZSeq.
 From mathcomp Require Import all_ssreflect.
@@ -25,7 +27,6 @@ Ltac solve_inhab :=
 
 (** IP/UDP Packets *)
 (*Here, we require our packets to be valid IP/UDP packets*)
-(*TODO: write all conversion stuff in IP file*)
 
 (*(k, isParity, block id, blockIndex*)
 Record fec_data : Type := mk_data { fd_k : Z; fd_h : Z; fd_isParity : bool; fd_blockId: int; fd_blockIndex : int }.
@@ -40,20 +41,24 @@ Proof.
 constructor; solve_inhab.
 Defined.
 
-Definition fec_packet_act := fec_packet fec_data.
+(*Packet is defined to be valid according to IP/UDP*)
+Definition packet_act := packet valid_packet.
 
-Definition f_packet : fec_packet_act -> packet := (@p_packet fec_data).
+Definition fec_packet_act := fec_packet valid_packet fec_data.
 
-Coercion f_packet : fec_packet_act >-> packet.
+Definition f_packet : fec_packet_act -> packet_act := (@p_packet valid_packet fec_data).
 
-Definition fec_packet_act_eq_axiom  := (fec_packet_eq_axiom fec_data_eq_dec).
+Coercion f_packet : fec_packet_act >-> packet_act.
+
+Definition fec_packet_act_eq_axiom  := (@fec_packet_eq_axiom valid_packet _ fec_data_eq_dec).
 
 Definition fec_packet_act_eqMixin := EqMixin fec_packet_act_eq_axiom.
 Canonical fec_packet_act_eqType := EqType fec_packet_act fec_packet_act_eqMixin.
-
+(*TODO: this if needed*)
+(*
 #[export]Instance packet_act_inhab : Inhabitant fec_packet_act := 
   mk_fecpkt packet_inhab fec_data_inhab.
-
+*)
 (** Representing Blocks *)
 
 Record block := mk_blk { blk_id: int;
@@ -61,6 +66,9 @@ Record block := mk_blk { blk_id: int;
 
 (*Well-formed block *)
 Definition block_wf (b: block) : Prop :=
+  (*k and h are within the required bounds*)
+  0 < blk_k b <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
+  0 < blk_h b <= ByteFacts.fec_max_h /\
   (*All packets store correct values of k and h*)
   (forall p, In (Some p) (data_packets b) \/ In (Some p) (parity_packets b) -> 
     (fd_k (p_fec_data p)) = blk_k b /\ (fd_h (p_fec_data p)) = blk_h b) /\
@@ -102,24 +110,56 @@ Definition list_max_nonneg {A: Type} (f: A -> Z) (l: list A) : Z :=
   fold_right (fun x y => Z.max (f x) y) (-1) l.
 
 Lemma list_max_nonneg_in: forall {A: Type} (f: A -> Z) (l: list A) (x: A),
-  Forall (fun x => 0 <= f x) l ->
+  0 <= f x ->
   In x l ->
-  f x <= (list_max_nonneg f l).
+  0 <= f x <= (list_max_nonneg f l).
 Proof.
-  move => A f l x. rewrite /list_max_nonneg. elim : l => [//= | h t /= IH Hall [Hhx | Hin]].
-  - rewrite Hhx. apply Z.le_max_l.
-  - eapply Z.le_trans. apply IH. apply (Forall_inv_tail Hall). by []. apply Z.le_max_r.
+  move => A f l x. rewrite /list_max_nonneg. elim : l => [//= | h t /= IH Hfx [Hhx | Hin]].
+  - rewrite Hhx. split. by []. apply Z.le_max_l.
+  - split. by []. eapply Z.le_trans. apply IH. by []. by []. apply Z.le_max_r.
 Qed.
-  
 
-(*Get current value of c for the block. If block is not complete, this will be -1.
-  It is OK to take max of only packet_contents because parities have Zlength (contents) = c
-  and we only care about the value once a block is complete*)
+Lemma list_max_nonneg_lb: forall {A: Type} (f: A -> Z) (l: list A),
+  -1 <= list_max_nonneg f l.
+Proof.
+  move => A f l. elim: l => [// | h t /= IH]. lia.
+Qed.
+
+Lemma list_max_nonneg_ub: forall {A: Type} (f: A -> Z) (l: list A) n,
+  0 <= n ->
+  (forall y, In y l -> f y <= n) ->
+  list_max_nonneg f l <= n.
+Proof.
+  move => A f l n Hn. elim : l => [/= Hall | h t /= IH Hall]. lia.
+  apply Z.max_lub. apply Hall. by left. apply IH. move => y Hy. apply Hall. by right.
+Qed.
+
+Lemma list_max_nonneg_eq: forall {A: Type} (f: A -> Z) (l: list A) (x: A) n,
+  In x l ->
+  0 <= f x ->
+  f x = n ->
+  (forall y, In y l -> f y <= n) ->
+  list_max_nonneg f l = n.
+Proof.
+  move => A f l x n Hin Hfx Hn Hall.
+  have Hlb:= (list_max_nonneg_in Hfx Hin). rewrite Hn in Hfx.
+  have Hub:=(list_max_nonneg_ub Hfx Hall). lia.
+Qed. 
+
+  
+(*Get value of c for the block. If a parity packet exists, take the length of its payload.
+  Otherwise, find the largest packet (with header). We need both cases: if we do not include
+  the parity, our value for incomplete blocks will be wrong, if we do not include the data
+  packet, we cannot calculate c for a completed block with no parities.
+  However, it makes the definition quite ugly*)
 Definition blk_c (b: block) : Z :=
-  list_max_nonneg (fun o => match o with
+  match [ seq x <- parity_packets b | isSome x] with
+  | Some h :: _ => Zlength (p_contents (f_packet h))
+  | _ => list_max_nonneg (fun o => match o with
                             | None => -1
-                            | Some p => Zlength (p_contents (f_packet p))
-                            end) (parity_packets b).
+                            | Some p => Zlength (p_header(f_packet p) ++ p_contents (f_packet p))
+                            end) (data_packets b)
+  end.
 
 Definition lengths (b: block) : list Z :=
   map (fun o => match o with
@@ -130,10 +170,12 @@ Definition lengths (b: block) : list Z :=
 (*A block is complete (these imply that parities are nonempty if data is*)
 (*TODO: could make bool, have to make bool (decidable) version of parities_valid*)
 Definition block_complete (b: block) : Prop :=
+  (*The block has a data packet that has length c (so c is actually the max, not just an upper bound)*)
+  (exists p, In (Some p) (data_packets b) /\ Zlength (p_header (f_packet p) ++ p_contents (f_packet p)) = blk_c b) /\
   (*All parities have length c*)
-  (forall p, In (Some p) (parity_packets b) -> Zlength (p_contents p) = blk_c b) /\
+  (forall p, In (Some p) (parity_packets b) -> Zlength (p_contents (f_packet p)) = blk_c b) /\
   (*All data packets (including headers) have length <= c*)
-  (forall p, In (Some p) (data_packets b) -> Zlength (packet_bytes p) <= blk_c b) /\
+  (forall p, In (Some p) (data_packets b) -> Zlength (packet_bytes (f_packet p)) <= blk_c b) /\
   parities_valid (blk_k b) (blk_c b) (parity_mx b) (packet_mx b).
 
 Definition isNone {A: Type} (o: option A) :=
@@ -182,8 +224,8 @@ Definition get_blocks (l: list fec_packet_act) : list block :=
 (** Encoder predicate *)
 
 (*Finally, we can define the encoder predicate*)
-Definition enc : (encoder fec_data) :=
-  fun (orig : list packet) (encoded: list fec_packet_act) =>
+Definition enc : (encoder valid_packet fec_data) :=
+  fun (orig : list packet_act) (encoded: list fec_packet_act) =>
     let blocks := (get_blocks encoded) in
     (*all blocks are valid*)
     Forall block_wf blocks /\
@@ -219,15 +261,15 @@ Definition find_decoder_list_param (b: block) : Z :=
   end.
 
 (*Lengths of stats, parity_mx*)
-Lemma parity_mx_sublist_length: forall (i: nat) (s: seq (option fec_packet_act)) (*(b: block)*),
-Zlength [seq x <- sublist 0 (Z.of_nat i) (* (Z.of_nat (nat_of_ord i))*) s (*(parity_packets b)*) | isSome x] =
+Lemma parity_mx_sublist_length: forall (i: nat) (s: seq (option fec_packet_act)),
+Zlength [seq x <- sublist 0 (Z.of_nat i) s | isSome x] =
 Zlength
-  [seq x <- sublist 0 (Z.of_nat i) (* (Z.of_nat (nat_of_ord i))*)
+  [seq x <- sublist 0 (Z.of_nat i)
               [seq match x with
                    | Some p => Some (p_contents (f_packet p))
                    | None => None
                    end
-                 | x <- s (*parity_packets b *)]
+                 | x <- s]
      | isSome x].
 Proof.
   move => i. elim : i => [s //= | i IH s].
@@ -359,33 +401,33 @@ Qed.
 Definition decoder_list_block (b: block) : list (list byte) :=
   decoder_list (blk_k b) (blk_c b) (packet_mx b) (parity_mx b) (stats b) (lengths b) (find_decoder_list_param b).
 
-(*TODO: need to transform packet bytes back to packet (with IP fields, etc) - this will be annoying
-  also may not need IP/UDP stuff here: see*)
-Definition packet_from_bytes (l: list byte) : option (packet).
-  (*assume this is IP packet: get header length from IP, know UDP header length, split into
-    header and contents, put in packet
-    return None if list empty or not long enough
-    this isn't great because of bitwise ops but not much else we can do - need headers because
-    difference between parity/data packets*)
-Admitted.
-
+(*TODO: NOTE: in black actuator, does NOT regenerate sequence number, but we know what it should be
+  based on blockIndex and blockSeq*)
+Definition packet_from_bytes (l: list byte) (i: int) : option(packet valid_packet) :=
+  let (header, contents) := recover_packet l in
+  (match (valid_packet header contents) as v 
+    return (valid_packet header contents) = v -> option (packet valid_packet) with
+  | true => fun H => Some (mk_ptk i H)
+  | false => fun _ => None
+  end) Logic.eq_refl.
 
 (*Similarly, we can define the decoder predicate*)
-Definition dec : (decoder fec_data) :=
-  fun (received : list fec_packet_act) (decoded: list packet) =>
+(*TODO: adding correct sequence number, but wont be in memory except sort of via FEC params
+  need to figure out good way to handle VST preds*)
+Definition dec : (decoder valid_packet fec_data) :=
+  fun (received : list fec_packet_act) (decoded: list packet_act) =>
   let blocks := (get_blocks received) in
   (*Because of timeouts, some ill-formed blocks, etc, we give a weak spec: only that
     everything in decoded is either (a) from a data packet in receieved or (b)
     from the decoder_list of some block that is completed. We note that NOT every completed
     block is required or guaranteed to appear*)
-  forall (p: packet), In p decoded ->
+  forall (p: packet_act), In p decoded ->
     (exists (fp: fec_packet_act), In fp received /\ (fd_isParity (p_fec_data fp)) /\
       f_packet fp = p) \/
     (exists (b: block) (i: Z), 0 <= i < (blk_k b) /\ In b blocks /\ 
-      Some p = packet_from_bytes (Znth i (decoder_list_block b))). 
+      Some p = packet_from_bytes (Znth i (decoder_list_block b)) (Int.repr (i + Int.unsigned (blk_id b)))). 
 
 (** Encoder/Decoder correctness*)
-Print block.
 (*1. Define a subblock of a block*)
 
 (*Special sublist for list of options*)
@@ -393,6 +435,17 @@ Definition subseq_option {A: Type} (l1 l2: list (option A)) : Prop :=
   Zlength l1 = Zlength l2 /\
   forall (i: Z), 0 <= i < Zlength l1 ->
   Znth i l1 = Znth i l2 \/ Znth i l1 = None.
+
+Lemma subseq_option_tl: forall {A: Type} (h1 h2: option A) (l1 l2 : list (option A)),
+  subseq_option (h1 :: l1) (h2 :: l2) ->
+  subseq_option l1 l2.
+Proof.
+  intros A h1 h2 l1 l2. rewrite /subseq_option => [[Hlen Hin]].
+  split. list_solve.
+  move => i Hi. have Hi1: 0 <= (i+1) < Zlength (h1 :: l1) by list_solve.
+  apply Hin in Hi1. rewrite !Znth_pos_cons in Hi1; try lia.
+  move: Hi1. by have->:(i + 1 - 1 = i) by lia.
+Qed.
 
 Lemma subseq_option_in: forall {A: Type} (l1 l2: list (option A)) (x: A),
   subseq_option l1 l2 ->
@@ -429,6 +482,38 @@ Proof.
     + rewrite !Znth_app2; try lia. rewrite Hlen1. apply Hnth2. lia.
 Qed.
 
+Lemma subseq_option_trans: forall {A: Type} (l1 l2 l3: list (option A)),
+  subseq_option l1 l2 ->
+  subseq_option l2 l3 ->
+  subseq_option l1 l3.
+Proof.
+  move => A l1 l2 l3. rewrite /subseq_option => [[Hlen12 Hin12] [Hlen23 Hin23]].
+  split. by rewrite Hlen12.
+  move => i Hi. have Hi': 0 <= i < Zlength l2 by rewrite -Hlen12.
+  apply Hin12 in Hi. case : Hi => [Hin1 | Hnone]; last first.
+    by right.
+  rewrite Hin1. by apply Hin23.
+Qed.
+
+(*The [list_max_nonneg] of a [subseq_option] is smaller*)
+Lemma subseq_option_list_max_nonneg: forall {A: Type} (f: option A -> Z) (s1 s2: seq (option A)),
+  subseq_option s1 s2 ->
+  f None < 0 ->
+  list_max_nonneg f s1 <= list_max_nonneg f s2.
+Proof.
+  move => A f s1. elim : s1 => [/= s2 | h t /= IH s2].
+  - rewrite /subseq_option => Hopt. by have->: s2 = [::] by list_solve.
+  - move => Hsub. have Hsub':=Hsub. move: Hsub Hsub'. rewrite {1}/subseq_option.
+    case : s2 => [|h1 t1 [Hlen Hin] Hsub Hf]; [list_solve |].
+    rewrite /=. have H0: 0 <= 0 < Zlength (h :: t) by list_solve.
+    apply Hin in H0. rewrite !Znth_0_cons in H0. case : H0 => [Hh1 | Hh].
+    + rewrite Hh1. apply Z.max_le_compat_l. apply IH.
+      by apply subseq_option_tl in Hsub. by [].
+    + rewrite Hh. have Hlb:=(@list_max_nonneg_lb _ f t).
+      have Htle: (list_max_nonneg f t <= list_max_nonneg f t1) by
+        apply IH; [ apply (subseq_option_tl Hsub) | by []]. lia.
+Qed.
+
 (*TODO: make bool instead?*)
 Definition subblock (b1 b2: block) : Prop :=
   blk_id b1 = blk_id b2 /\
@@ -444,8 +529,8 @@ Lemma subblock_wf: forall (b1 b2: block),
   block_wf b1.
 Proof.
   move => b1 b2. 
-  rewrite /block_wf /subblock => [[Hkh [Hid [Hidx [Hk Hh]]]]] [Hsubid [Hsubdata [Hsubpar [Hsubk Hsubh]]]].
-  split; [ | split; [|split; [| split]]].
+  rewrite /block_wf /subblock => [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk Hh]]]]]]] [Hsubid [Hsubdata [Hsubpar [Hsubk Hsubh]]]].
+  repeat match goal with | |- ?p /\ ?q => split; try by []; try lia end.
   - move => p Hp. rewrite Hsubk Hsubh. apply Hkh. by apply (subseq_option_in' Hsubdata Hsubpar).
   - move => p Hp. rewrite Hsubid. apply Hid. by apply (subseq_option_in' Hsubdata Hsubpar).
   - move => p i Hin. (*This one is a bit harder*)
@@ -475,7 +560,18 @@ Proof.
         rewrite Znth_app2; try lia. rewrite -Hnth. f_equal. lia.
   - move: Hsubdata. rewrite /subseq_option. lia.
   - move: Hsubpar. rewrite /subseq_option. lia.
-Qed. 
+Qed.
+
+Lemma subblock_trans: forall b1 b2 b3,
+  subblock b1 b2 ->
+  subblock b2 b3 ->
+  subblock b1 b3.
+Proof.
+  move => b1 b2 b3. rewrite /subblock => [[Hid1 [Ho1 [Ho1' [Hk1 Hh1]]]] [Hid2 [Ho2 [Ho2' [Hk2 Hh2]]]]].
+  repeat match goal with [ |- ?p /\ ?q ] => split; try congruence end. 
+  by apply (subseq_option_trans Ho1).
+  by apply (subseq_option_trans Ho1').
+Qed.
 
 (*2. Prove that if we have ANY recoverable subblock of a completed, well-formed block, 
   then decoder_list_block b gives the original packets. This is the core
@@ -485,26 +581,135 @@ Qed.
 Lemma Zlength_filter: forall {A: Type} (p: pred A) (l: list A),
   Zlength (filter p l) <= Zlength l.
 Proof.
-  move => A p l. rewrite Zlength_correct -CommonSSR.size_length size_filter.
+  move => A p l. rewrite Zlength_correct -size_length size_filter.
   rewrite -(Z2Nat.id (Zlength l)); [| list_solve]. apply inj_le. apply /leP.
-  by rewrite ZtoNat_Zlength -CommonSSR.size_length count_size.
+  by rewrite ZtoNat_Zlength -size_length count_size.
 Qed.
 
+(*For complete blocks, we can calculate blk_c just by taking max length of data packets*)
+Lemma blk_c_complete: forall b,
+  block_complete b ->
+  blk_c b = list_max_nonneg
+      (fun o : option fec_packet_act =>
+       match o with
+       | Some p => Zlength (p_header (f_packet p) ++ p_contents (f_packet p))
+       | None => -1
+       end) (data_packets b).
+Proof.
+  move => b. rewrite /block_complete => [[[p [Hinp Hlenp]] [Hparc [Hdatac _]]]].
+  symmetry. eapply list_max_nonneg_eq. apply Hinp. list_solve.
+  - by [].
+  - move => y. case : y => [y /= Hiny | _].
+    + by apply Hdatac.
+    + rewrite /blk_c. case : [seq x <- parity_packets b | isSome x] => [|/= h t].
+      apply list_max_nonneg_lb. case : h.
+      move => ?. list_solve. apply list_max_nonneg_lb.
+Qed.
 
+(*First, we need to know that blk_c of a recoverable subblock of a complete block is the same as the
+  superblock. This is surprisingly nontrivial to prove*)
+Lemma blk_c_recoverable: forall (b1 b2: block),
+  block_complete b2 ->
+  subblock b1 b2 ->
+  recoverable b1 ->
+  blk_c b1 = blk_c b2.
+Proof.
+  move => b1 b2 Hc. have Hcomp:=Hc. move: Hc. 
+  rewrite /block_complete /subblock /blk_c => [[[def [Hindef Hlendef] [Hparc [Hdatac _]]]]].
+  remember (fun o : option fec_packet_act => match o with
+                                    | Some p => Zlength (p_header (f_packet p) ++ p_contents (f_packet p))
+                                    | None => -1
+                                    end) as f eqn : Hf.
+  rewrite /recoverable => [[_ [Hsubdata [Hsubpar _]]] Hk].
+  case Hpar: [seq x <- parity_packets b1 | isSome x] => [| pa tl]; last first.
+  (*If there is a parity packet, we must show it has the same length as the parity packet in b2*)
+  - move: Hpar. case : pa => [pa Hfilt |Hfilt].
+    + have: (Some pa) \in [seq x <- parity_packets b1 | isSome x]
+        by rewrite Hfilt in_cons eq_refl orTb.
+      rewrite mem_filter. move => /andP[_ Hinpa].
+      have Hinpa': (Some pa) \in parity_packets b2. { move: Hinpa.
+        rewrite !in_mem_In. by apply subseq_option_in. }
+      have: (Some pa) \in [seq x <- parity_packets b2 | isSome x] by rewrite mem_filter.
+      case Hpar': [seq x <- parity_packets b2 | isSome x] => [//|h t]. move => _.
+      move: Hpar'. case: h => [a /= Hfilt' | // Hcon]; last first.
+        have: None \in [seq x <- parity_packets b2 | isSome x] by rewrite Hcon in_cons orTb.
+        by rewrite mem_filter.
+      rewrite in_mem_In in Hinpa'.
+      move: Hparc => /(_ _ Hinpa'). by rewrite Hfilt'.
+    + have: None \in [seq x <- parity_packets b1 | isSome x] by rewrite Hfilt in_cons orTb.
+      by rewrite mem_filter.
+  - (*In the other case, we need to show list_max of (packets b1) and (packets b2) are equal*)
+    have->//: list_max_nonneg f (data_packets b1) = blk_c b2; last first.
+      by rewrite /blk_c Hf.
+    rewrite (blk_c_complete Hcomp) -Hf.
+    move: Hk. case : (Z_ge_lt_dec 
+      (Zlength [seq x <- data_packets b1 | isSome x] + Zlength [seq x <- parity_packets b1 | isSome x])
+      (Zlength (data_packets b1))) => [Hk _ |//].
+    (*The real goal we have to prove - prove by showing <= and >=*)
+    have Hub: list_max_nonneg f (data_packets b1) <=  list_max_nonneg f (data_packets b2). {
+    apply subseq_option_list_max_nonneg. by []. by rewrite Hf. }
+    (*To show >=, need to show that all data packets in b2 are in b1 (from recoverable), so the longest
+      packet is too*)
+    move: Hk. rewrite Hpar Zlength_nil Z.add_0_r => Hlenge.
+    have: Zlength [seq x <- data_packets b1 | isSome x] = Zlength (data_packets b1). {
+      have H:=(@Zlength_filter _ isSome (data_packets b1)). (*why doesnt lia work?*)
+      have Htemp: forall (z1 z2 : Z), z1 >= z2 -> z1 <= z2 -> z1 = z2 by lia. by apply Htemp. }
+    rewrite {Hlenge} !Zlength_correct -!size_length => Hlens. apply Nat2Z.inj in Hlens.
+    move: Hlens => /eqP Hlens. move: Hlens. rewrite size_filter -all_count => Hall.
+    have Hallin: forall o, In o (data_packets b2) -> In o (data_packets b1). {
+      move => o. rewrite !In_Znth_iff. move: Hsubdata. rewrite /subseq_option => [[Hlendata Hnth] [i [Hi Hith]]].
+      have Hi':=Hi. rewrite -Hlendata in Hi. apply Hnth in Hi. case : Hi => [Hi | Hi].
+        exists i. split. by rewrite Hlendata. by rewrite Hi Hith.
+      move: Hall. rewrite all_in.
+      have Hn: None \in data_packets b1. rewrite in_mem_In In_Znth_iff. exists i. split.
+        by rewrite Hlendata. by [].
+      by move => /(_ _ Hn). }
+    have Hfp': 0 <= f (Some def) by rewrite Hf; list_solve.
+    have Hinp: In (Some def) (data_packets b1) by apply Hallin.
+    have Hlb:=(list_max_nonneg_in Hfp' Hinp).
+    have: f(Some def) = list_max_nonneg f (data_packets b2)
+      by rewrite Hf Hlendef Hf -/(blk_c b2) blk_c_complete.
+    lia.
+Qed.
+
+(*TODO: is this in ssreflect?*)
+Lemma boolP: forall (b: bool),
+  reflect (is_true b) b.
+Proof.
+  move => b. case : b. by apply ReflectT. by apply ReflectF.
+Qed.
+
+(*We need to know that c is positive - ie: some packet has nonzero length. This is a weak bound;
+  we know that each packet really has length at least 28 for IP/UDP header*)
+Lemma blk_c_pos: forall (b: block),
+  block_complete b ->
+  0 < blk_c b.
+Proof.
+  move => b. rewrite /block_complete => [[[p [Hinp Hlenp]] _]].
+  rewrite -Hlenp. rewrite {Hlenp Hinp}. case : p => [p fec]/=.
+  case: p => h c num valid /=. move: valid. rewrite /valid_packet => /andP[ /boolP Hle _ ].
+  move: Hle.
+  case : (Z_le_lt_dec 8 (Zlength h)) => [Hle _|//]. rewrite Zlength_app. list_solve.
+Qed.
+
+(* A nontrivial theorem to prove that uses [decode_list_correct_full] to show that for ANY
+  subblock of a well formed, complete block that has recieved at least k packets, we get 
+  the packets of the original packet matrix, possibly padded with some zeroes*)
 Theorem subblock_recoverable_correct: forall (b1 b2: block),
   block_wf b2 ->
   block_complete b2 ->
   subblock b1 b2 ->
   recoverable b1 ->
-  decoder_list_block b1 = packet_mx b2. 
+  decoder_list_block b1 = pad_packets (packet_mx b2) (lengths b1) (blk_c b2). 
 Proof.
   move => b1 b2 Hwf Hcomp Hsub Hrec. rewrite /decoder_list_block.
-  have Hwf': block_wf b1 by apply (subblock_wf Hwf Hsub).
-  apply (decoder_list_correct (h:=(blk_h b1)) (xh:=Zlength [seq x <- (stats b1) | Z.eq_dec (Byte.signed x) 1])
+  have Hc: blk_c b1 = blk_c b2 by rewrite (blk_c_recoverable Hcomp Hsub Hrec).
+  have Hwf': block_wf b1 by apply (subblock_wf Hwf Hsub). rewrite Hc.
+  apply (decoder_list_correct_full (h:=(blk_h b1)) (xh:=Zlength [seq x <- (stats b1) | Z.eq_dec (Byte.signed x) 1])
     (data:=(packet_mx b2))); try (move: Hwf'; rewrite /block_wf !Zlength_map; list_solve).
-  - (*TODO: limit on k*) admit.
-  - (*TODO: limit on c*) admit.
-  - (*TODO: limit on h*) admit.
+  - move: Hwf'. by rewrite /block_wf => [[Hk _]].
+  - by apply blk_c_pos.
+  - move: Hwf'. by rewrite /block_wf => [[_ [Hh _]]].
   - rewrite find_decoder_list_param_correct //. eapply Z.le_trans. apply Zlength_filter.
     eapply Z.le_trans. apply sublist_max_length. rewrite /parity_mx Zlength_map.
     move: Hwf'. rewrite /block_wf. lia.
@@ -515,19 +720,11 @@ Proof.
   - by [].
   - by rewrite find_decoder_list_param_correct.
   - move: Hwf Hsub; rewrite /block_wf /subblock /packet_mx Zlength_map; list_solve.
-  - rewrite /lengths. (*TODO: this is a problem: in the actuator, the length for these packets is
-      just set to an upper bound (may result in memory leaks) so lengths for missing is just >= length
-      of packet. Need to adjust FEC spec and decoder_correct:
-        we will get back packets which may have some zeroes on the end (of course this is OK bc length is
-        in IP header - TODO: need to fix this though ugh
-      ALSO NOTE: will have to say that in pinfo, we store SOME list which includes the valid packet (with
-        length specified in IP header) along with additional extra garbage data (we could say zeroes)
-      then in FEC, will have to say that lengths = length for present packet, length >= length for missing packet
-        say that if we do this (in decoder_list_correct), get original data except some missing data may be
-        padded with zeroes. We will have to go into IP bytes to find correct length*)
-    admit.
-  - (*TODO: need to get bound/proofs on c - maybe prove this one in separate lemma (for example, need to know c> 0
-       in goal 2)*) admit.
+  - have Hcomp':=Hcomp. move: Hcomp'. rewrite /block_complete => [[[p [Hinp Hlenp]] [_ [Hleq _]]]].
+    rewrite Forall_forall /packet_mx => s. rewrite in_map_iff => [[x]].
+    case : x => [p' [Hs Hinp'] |[Hs _]].
+    + rewrite -Hs. by apply Hleq.
+    + rewrite -Hs. have Hc':=(blk_c_pos Hcomp). list_solve.
   - move => i Hi. move: Hwf' Hsub Hwf; rewrite /block_wf /subblock => Hwf' Hsub Hwf.
     rewrite /stats /packet_mx !Znth_map; try lia.
     case Hnth: (Znth i (data_packets b1)) => [p |//].
@@ -540,17 +737,14 @@ Proof.
     have Hin': In (Some p) (parity_packets b2). { move: Hsub. rewrite /subblock => Hsub.
       eapply subseq_option_in. apply Hsub. by []. }
     rewrite -Hl.
-    move: Hcomp. rewrite /block_complete => [[Hlens _]].
-    (*TODO: need result about blk_c for completed blocks*)
-    have->:blk_c b1 = blk_c b2. { admit. }
+    move: Hcomp. rewrite /block_complete => [[ _ [Hlens _]]]. 
     by apply Hlens.
   - have Hlen: Zlength (parity_mx b1) = Zlength (parity_mx b2) by
       move: Hwf' Hwf Hsub; rewrite /block_wf /subblock /parity_mx !Zlength_map; list_solve.
-    move: Hcomp. rewrite /block_complete => [[_ [ _ Hval]]].
+    move: Hcomp. rewrite /block_complete => [[_ [ _ [ _ Hval]]]].
     move: Hval Hsub. rewrite /subblock /parities_valid => Hval [ _ [ _ [Hsub Hlens]]].
     move => i j Hi Hj.
-    have Hc: blk_c b1 = blk_c b2. { admit. (*TODO again*) }
-    move: Hval => /(_ i j). rewrite -Hlen -(proj1 Hlens) -Hc => /(_ Hi Hj).
+    move: Hval => /(_ i j). rewrite -Hc in Hj. rewrite -Hlen -(proj1 Hlens) -Hc => /(_ Hi Hj).
     move: Hsub; rewrite /subseq_option => [[_ Hsub]] Hb2.
     case Hnth: (Znth i (parity_mx b1)) => [p | //].
     have Hnth': Znth i (parity_mx b2) = Some p. { move: Hnth. rewrite /parity_mx !Znth_map.
@@ -562,8 +756,7 @@ Proof.
       move: Hi; rewrite /parity_mx Zlength_map; list_solve.
     }
     rewrite Hnth' in Hb2. by [].
-Admitted. 
-        
+Qed.
 
 (*Show that if received is a subseq of encoded, then the blocks of received are each
   subblocks of blocks in encoded*)
