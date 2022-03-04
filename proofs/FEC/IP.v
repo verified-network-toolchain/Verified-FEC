@@ -203,6 +203,20 @@ Proof.
     rewrite <- Hhleq, e0, <- Hleneq, e. list_solve.
 Qed. 
 
+Lemma ip_header_len: forall header contents,
+  valid_ip_packet header contents = true ->
+  20 <= Zlength header <= 60.
+Proof.
+  intros header contents. unfold valid_ip_packet.
+  destruct (bytes_to_ip_header header) as [i|] eqn : Hi; [|solve_con].
+  intros Hlens. apply andb_prop in Hlens. destruct Hlens; simpl_sumbool.
+  split.
+  - revert Hi. unfold bytes_to_ip_header. do 20 (destruct header; [solve_con |]). intros _.
+    list_solve.
+  - rep_lia'.
+Qed.
+
+
 (** UDP Packets *)
 
 Record udp_fields :=
@@ -271,6 +285,16 @@ Proof.
     rewrite sublist0_app1 by list_solve.
     rewrite sublist_same by lia. reflexivity.
 Qed.
+
+Lemma udp_header_len: forall header contents, 
+  valid_udp_packet header contents = true ->
+  Zlength header = 8.
+Proof.
+  intros header contents. unfold valid_udp_packet.
+  destruct (bytes_to_udp_header header) as [u |] eqn : Hu; [|solve_con].
+  intros _. revert Hu. unfold bytes_to_udp_header.
+  do 8 (destruct header; [solve_con|]). destruct header; [|solve_con]. reflexivity.
+Qed. 
 
 
 (** IP/UDP Packets *)
@@ -409,4 +433,15 @@ Proof.
     replace (Zlength (udp_bytes u)) with 8 by (destruct u; reflexivity).
     remember (8 + Zlength c2) as m. simpl udp_len. rewrite Short.unsigned_repr.
     apply proj_sumbool_is_true. reflexivity. subst; list_solve.
+Qed.
+
+(*Header length bound*)
+Lemma header_bound: forall (header: list byte) (contents: list byte),
+  valid_packet header contents = true ->
+  Zlength header <= 68.
+Proof.
+  intros header contents. unfold valid_packet. intros Hval.
+  apply andb_prop in Hval. destruct Hval as [Hb Hval]. apply andb_prop in Hval.
+  destruct Hval as [Hip Hudp].
+  apply ip_header_len in Hip. apply udp_header_len in Hudp. simpl_sumbool. list_solve.
 Qed.

@@ -6,6 +6,8 @@ Require Import AbstractEncoderDecoder.
 Require Import CommonSSR.
 Require Import ReedSolomonList.
 Require Import ZSeq.
+Require Import Endian.
+Require Import ByteFacts.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -28,6 +30,19 @@ Ltac solve_inhab :=
 (** IP/UDP Packets *)
 (*Here, we require our packets to be valid IP/UDP packets*)
 
+Definition valid_fec_packet (header: list byte) (contents: list byte) :=
+  valid_packet header contents.
+
+(*Packet is defined to be valid according to IP/UDP*)
+Definition packet_act := packet valid_packet.
+
+(*An encodable packet has its length <= fec_max_c*)
+
+Definition encodable (p: packet_act) : bool :=
+  Z_le_lt_dec (Zlength ((p_header p) ++ (p_contents p))) fec_max_cols.
+
+Definition enc_packet := encodable_packet encodable.
+
 (*(k, isParity, block id, blockIndex*)
 Record fec_data : Type := mk_data { fd_k : Z; fd_h : Z; fd_isParity : bool; fd_blockId: int; fd_blockIndex : int }.
 
@@ -40,9 +55,6 @@ Qed.
 Proof.
 constructor; solve_inhab.
 Defined.
-
-(*Packet is defined to be valid according to IP/UDP*)
-Definition packet_act := packet valid_packet.
 
 Definition fec_packet_act := fec_packet valid_packet fec_data.
 
@@ -238,9 +250,6 @@ Qed.
 
 (** Encoder function *)
 (*This bool is meant to represent if the fec parameters have changed*)
-Definition enc_state := bool.
-Print packet_act.
-Print packet.
 
 (*TODO: need to have length hypotheses involved because of validity constraints - how to best pass
   these around? More complicated because of map*)
@@ -255,11 +264,45 @@ induction l as [| h t IH].
 apply IH. intros x Hinx. apply H. right. apply Hinx.
 Defined.
 
-(*TODO: version with indices I think, look at below, see what I need exactly*)
-Print fec_data.
+(*To construct the packets for a block, we need a proof that each are valid. It would
+  be extremely difficult to do this with just a generic map, so we give a custom, dependently-typed function*)
+Definition populate_packets (id: int) (model : enc_packet) (contents: list (list byte)) 
+  (Hcon: forall l, In l contents -> Zlength l <= Short.max_unsigned - 68) : list packet_act.
+induction contents as [| h t IH].
+- apply nil.
+- apply cons.
+  + assert (Zlength (p_header (e_packet model)) + Zlength h <= Short.max_unsigned). {
+      (*wont use lia because we dont want huge proof term - TODO: see*)
+      replace (Short.max_unsigned) with (68 + (Short.max_unsigned - 68)) by reflexivity.
+      apply Z.add_le_mono. destruct model. simpl.
+      destruct e_packet. simpl. apply (header_bound _ _ p_valid).
+      apply Hcon. left. reflexivity. }
+    apply (mk_pkt id (@copy_fix_header_valid _ _ h H (p_valid (e_packet model)))).
+  + apply IH. intros l Hinl. apply Hcon. right. apply Hinl.
+Defined.
 
-Print packet.
-Search filter.
+(*Now we need to prove that all parity packet contents are within bounds. We prove this for
+  blk_c for any block
+  PROBLEM - how to define blocks? If we keep current definition of after, then we don't know that
+  data packets encodable
+  otherwise, if we require encodable, then how to get blocks after?
+  Let's say: require of wf block that all data packets are encodable
+  we build blocks from list, then in theorem, we will prove that they are all well formed
+  here, we assume we have a block that is well formed, so all data packets are encodable
+  we prove: wf_block b -> blk_c <= fec_max_cols
+  TODO: this will change proofs - need to go through and fix, but we have:
+  
+  block is same
+  wf_block is same + all data packets encodable
+  we can use previous results about existence of packet with max length to show that
+  no matter what, all parities <= fec_max_cols, so blk_c is too
+  TODO: this
+  *)
+
+
+
+
+(*TODO: version with indices I think, look at below, see what I need exactly*)
 
 Definition get_somes {A: Type} (s: seq (option A)) : seq A :=
   foldr (fun x acc => match x with
