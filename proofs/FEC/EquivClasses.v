@@ -1,5 +1,8 @@
+Require Import compcert.lib.Coqlib.
 Require Import Coq.Lists.List.
 Require Import Lia.
+
+Local Open Scope nat_scope.
 
 Definition partition {A: Type} (f: A -> bool) (l: list A) : list A * list A :=
   ((List.filter f l), (List.filter (fun x => negb (f x)) l)).
@@ -35,9 +38,6 @@ Proof.
 Qed. 
 
 From Equations Require Import Equations.
-
-Definition proj_sumbool {A B: Prop} (H: {A} + {B}) : bool :=
-  if H then true else false.
 
 Section EquivClass.
 
