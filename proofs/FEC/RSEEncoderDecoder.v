@@ -76,10 +76,11 @@ Canonical fec_packet_act_eqType := EqType fec_packet_act fec_packet_act_eqMixin.
 (** Representing Blocks *)
 
 Record block := mk_blk { blk_id: int;
-  data_packets: list (option fec_packet_act); parity_packets: list (option fec_packet_act); blk_k : Z; blk_h : Z}.
+  data_packets: list (option fec_packet_act); parity_packets: list (option fec_packet_act); blk_k : Z; blk_h : Z;
+  complete: bool}.
 
 #[export]Instance eta_block: Settable _ := 
-  settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h>.
+  settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h; complete>.
 
 (*Well-formed block *)
 Definition block_wf (b: block) : Prop :=
@@ -327,7 +328,7 @@ Definition build_block (l: list fec_packet_act) : block :=
     (fun p acc => upd_Znth (Int.unsigned (fd_blockIndex (p_fec_data p))) acc (Some p)) (zseq k None) l in
   let parities := foldr
     (fun p acc => upd_Znth (Int.unsigned (fd_blockIndex (p_fec_data p)) - k) acc (Some p)) (zseq h None) l in
-  mk_blk id data parities k h.
+  mk_blk id data parities k h false.
 
 (*Get the blocks from the stream *)
 Definition get_blocks (l: list fec_packet_act) : list block :=
@@ -357,19 +358,6 @@ Qed.
 (** Encoder function *)
 (*This bool is meant to represent if the fec parameters have changed*)
 
-(*TODO: need to have length hypotheses involved because of validity constraints - how to best pass
-  these around? More complicated because of map*)
-
-(*Quick attempt: map with some function that requires a hypothesis*)
-Definition in_map_hyp {A B C: Type} (P: A -> Prop) (f: forall a : A, P a -> B) (l: list A) 
-  (H: forall x, In x l -> P x) : list B.
-Proof.
-induction l as [| h t IH].
-- apply nil.
-- apply cons. apply (f h). apply H. left. reflexivity.
-apply IH. intros x Hinx. apply H. right. apply Hinx.
-Defined.
-
 (*To construct the packets for a block, we need a proof that each are valid. It would
   be extremely difficult to do this with just a generic map, so we give a custom, dependently-typed function*)
 Definition populate_packets (id: int) (model : packet_act) (contents: list (list byte)) 
@@ -387,22 +375,18 @@ induction contents as [| h t IH].
   + apply IH. intros l Hinl. apply Hcon. right. apply Hinl.
 Defined.
 
-(*A block for the red actuator is in progress until it is completed*)
-Definition red_block : Type := {b: block | block_in_progress b}.
-Definition red_b : red_block -> block := (@proj1_sig _ _).
-Coercion red_b : red_block >-> block.
-
-Lemma red_block_bound: forall (b: red_block),
+Lemma red_block_bound: forall (b: block),
+  block_in_progress b = true ->
   block_wf b ->
   blk_c b <= fec_max_cols.
 Proof.
-  move => [r Hr]/=. move: Hr.
+  move => b. 
   rewrite /block_in_progress /block_wf => [Hprog [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh Henc]]]]]]]].
   rewrite /blk_c.
-  case Hpars: [seq x <- parity_packets r | isSome x] => [/= | h t /=]; last first.
-    have: h \in [seq x <- parity_packets r | isSome x] by rewrite Hpars in_cons eq_refl orTb.
+  case Hpars: [seq x <- parity_packets b | isSome x] => [/= | h t /=]; last first.
+    have: h \in [seq x <- parity_packets b | isSome x] by rewrite Hpars in_cons eq_refl orTb.
     rewrite mem_filter => /andP[Hhsome Hinpar].
-    have: isNone h. { have Hall: forallb isNone (parity_packets r) = true by rewrite Hprog. 
+    have: isNone h. { have Hall: forallb isNone (parity_packets b) = true by rewrite Hprog. 
       rewrite forallb_forall in Hall. by rewrite Hall // -in_mem_In. } by rewrite /isNone Hhsome.
   apply list_max_nonneg_ub. rep_lia.
   move => y. case: y => [p Hinp | //]; [|rep_lia].
@@ -410,11 +394,12 @@ Proof.
   by case: (Z_le_lt_dec (Zlength (p_header (f_packet p) ++ p_contents (f_packet p))) fec_max_cols).
 Qed.
 
-Lemma red_block_bound': forall (b: red_block),
+Lemma red_block_bound': forall (b: block),
+  block_in_progress b = true ->
   block_wf_bool b = true ->
   blk_c b <= fec_max_cols.
 Proof.
-  move => b /block_wf_bool_reflect Hb. by apply red_block_bound.
+  move => b Hprog /block_wf_bool_reflect Hb. by apply red_block_bound.
 Qed.
 
 (*TODO: move this section*)
@@ -437,10 +422,7 @@ Lemma parities_bound: forall (b: block) (Hp: block_in_progress b = true) (Hwf: b
 Proof.
   move => b Hprog Hwf l. rewrite /encoder_list /ListMatrix.lmatrix_multiply => Hin.
   apply (@mk_lmatrix_In ByteField.byte_fieldType) in Hin.
-  - rewrite Hin. remember (exist (fun x => block_in_progress x) b Hprog) as r.
-    have->: blk_c b = blk_c (red_b r) by rewrite Heqr.
-    have Hwf': block_wf_bool (red_b r) = true by rewrite Heqr.
-    apply red_block_bound' in Hwf'. rep_lia'.
+  - rewrite Hin. eapply Z.le_trans. apply red_block_bound'; by []. rep_lia'.
   - apply blk_c_nonneg.
   - move: Hwf => /block_wf_bool_reflect Hwf.
     move: Hwf. rewrite /block_wf. lia.
@@ -461,9 +443,6 @@ Definition encode_block_aux (b: block) (model: packet_act) :=
   map_with_idx packetsNoFec (fun p i => 
     mk_fecpkt p (mk_data (blk_k b) (blk_h b) true (blk_id b) (Int.repr ((blk_k b) + i)))).
 
-Definition get_somes {A: Type} (l: list (option A)) : list A :=
-  pmap id l.
-
 (*Encoding a block chooses an appropriate model packet - either the inputted packet
   or the last packet in the block*)
 Definition encode_block (b: block) (o: option packet_act) : list fec_packet_act :=
@@ -480,13 +459,13 @@ Definition get_fec_packet (p: packet_act) (b: block) : fec_packet_act :=
 Definition new_fec_packet (p: packet_act) (k: Z) (h: Z) : fec_packet_act :=
   mk_fecpkt p (mk_data k h false (p_seqNum p) Int.zero).
 
-Definition add_packet_to_block (p: packet_act) (b: block) : block :=
+Definition add_packet_to_block_red (p: packet_act) (b: block) : block :=
   let f := get_fec_packet p b in
   b <| data_packets := upd_Znth (Int.unsigned (fd_blockIndex (p_fec_data f))) (data_packets b) (Some f) |>.
 
 Definition new_block_packet (p: packet_act) (k: Z) (h: Z) : block :=
   let f := new_fec_packet p k h in
-  mk_blk (p_seqNum p) (upd_Znth 0 (zseq k None) (Some f)) (zseq h None) k h.
+  mk_blk (p_seqNum p) (upd_Znth 0 (zseq k None) (Some f)) (zseq h None) k h false.
 
 (** Encoder predicate*)
 
@@ -503,7 +482,7 @@ Definition rse_encode_func (orig: list enc_packet) (encoded: list fec_packet_act
 
   (*For the situation when we add to an existing block*)
   let encode_exist (e: enc_packet) (b: block) :=
-    let newBlock := add_packet_to_block (e_packet e) b in
+    let newBlock := add_packet_to_block_red (e_packet e) b in
     get_fec_packet (e_packet e) b ::
     if Z.eq_dec (Zlength (filter isSome (data_packets newBlock))) (blk_k newBlock) then
       encode_block newBlock (Some (e_packet e)) else nil
@@ -538,16 +517,10 @@ Definition rse_encoder : (@encoder valid_packet encodable fec_data) :=
   fun (orig: list enc_packet) (encoded: list fec_packet_act) (curr: enc_packet) (new: list fec_packet_act) =>
     exists (k: Z) (h: Z),
     new = rse_encode_func orig encoded curr k h.
-    
-(*TODO: start here:*)
 
-(** Decoder predicate *)
+(** The Decoder*)
 
-(*A block is "recoverable" if we have at least k total packets*)
-Definition recoverable (b: block) : bool :=
-  Z_ge_lt_dec (Zlength (filter isSome (data_packets b)) + Zlength (filter isSome (parity_packets b))) 
-    (Zlength (data_packets b)) .
-
+(*First major step: what does it mean to decode a block?*)
 (*[decoder_list] takes in a value i, representing the sublist of parities that we will look at
   to find xh parity packets. We will write a function to find that value so the user doesn't need
   to know it. TODO: maybe move to ReedSolomonList.v*)
@@ -603,6 +576,11 @@ Qed.
 
 Definition nat_pred_ord {n : nat} (x: 'I_n) : 'I_n :=
   Ordinal (nat_pred_bound (ltn_ord x)).
+
+(*A block is "recoverable" if we have at least k total packets*)
+Definition recoverable (b: block) : bool :=
+  Z_ge_lt_dec (Zlength (filter isSome (data_packets b)) + Zlength (filter isSome (parity_packets b))) 
+    (Zlength (data_packets b)) .
   
 (*The condition we need for [decoder_list_correct]*)
 Lemma find_decoder_list_param_correct_aux: forall (b: block),
@@ -703,13 +681,72 @@ Definition decoder_list_block (b: block) : list (list byte) :=
 
 (*TODO: NOTE: in black actuator, does NOT regenerate sequence number, but we know what it should be
   based on blockIndex and blockSeq*)
-Definition packet_from_bytes (l: list byte) (i: int) : option(packet valid_packet) :=
+Definition packet_from_bytes (l: list byte) (i: int) : option(packet_act) :=
   let (header, contents) := recover_packet l in
   (match (valid_packet header contents) as v 
     return (valid_packet header contents) = v -> option (packet valid_packet) with
-  | true => fun H => Some (mk_ptk i H)
+  | true => fun H => Some (mk_pkt i H)
   | false => fun _ => None
   end) Logic.eq_refl.
+
+(*If the block is well-formed, all the packets will be valid. But we prove this later*)
+Definition decode_block (b: block) : list packet_act :=
+  (*Only add missing packets*)
+  foldl (fun acc i => if isNone (Znth i (data_packets b)) then 
+                      match (packet_from_bytes (Znth i (decoder_list_block b)) Int.zero) with
+                      | Some p => acc ++ [p]
+                      | None => acc
+                      end else acc) nil (Ziota 0 (blk_c b)).
+
+(*TODO: have to deal with deduce headers once I hear back from Peraton people*)
+
+(*Now we define the different parts, we want several functions that update state (blocks) and give packets to return*)
+
+(*TODO: need to deal with isParity/ordering issue - here we assume that issue doesnt exist*)
+
+(*1. create block with packet*)
+Definition create_block_with_packet (p: fec_packet_act) : block * list packet_act :=
+  let k := fd_k (p_fec_data p) in
+  let h := fd_h (p_fec_data p) in
+  let allPackets := upd_Znth (Int.unsigned (fd_blockIndex (p_fec_data p))) (zseq (k + h) None) (Some p) in
+  let new_block := mk_blk (fd_blockId (p_fec_data p)) (sublist 0 k allPackets) (sublist k (k+h) allPackets) k h false in
+  let packets := (if (fd_isParity (p_fec_data p)) then nil else [p_packet p]) ++
+    (if Z.eq_dec k 1 then (decode_block new_block) else nil) in
+  let marked_block := if Z.eq_dec k 1 then new_block <| complete := true |> else new_block in
+  (marked_block, packets).
+
+(*2. add packet to block*)
+Definition add_packet_to_block_black (p: fec_packet_act) (b: block) : block * list packet_act :=
+  if complete b then (b, nil) else (*TODO: if this is a data packet, should it still be released?*)
+    let new_packets := upd_Znth (Int.unsigned (fd_blockIndex (p_fec_data p))) (data_packets b ++ parity_packets b) (Some p) in
+    let new_block := b <| data_packets := sublist 0 (blk_k b) new_packets |> 
+      <| parity_packets := sublist (blk_k b) (blk_k b + blk_h b) new_packets |> in
+    let packets := (if (fd_isParity (p_fec_data p)) then nil else [p_packet p]) ++
+      (if recoverable new_block then (decode_block new_block) else nil) in
+    let marked_block := if recoverable new_block then new_block <| complete := true |> else new_block in
+    (marked_block, packets).
+
+(*TODO: start here*)
+
+
+(*The decoder is more complicated because of timeouts. We include a list of values indicating whether a timeout
+  has occurred*)
+
+(*Create a block with a packet*)
+
+(*We cannot build the blocks in 1 go since we must take into account timeouts. Instead, we build it up
+  incrementally*)
+Definition update_dec_state (blocks: list block) (curr: fec_packet_act) (state: list bool) : 
+  (list block * list fec_packet_act) :=
+  
+
+    
+
+(** Decoder predicate *)
+
+
+
+
 
 (*Similarly, we can define the decoder predicate*)
 (*TODO: adding correct sequence number, but wont be in memory except sort of via FEC params
