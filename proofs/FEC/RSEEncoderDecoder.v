@@ -358,6 +358,9 @@ Qed.
 (** Encoder function *)
 (*This bool is meant to represent if the fec parameters have changed*)
 
+(*TODO: do with options instead and defer proofs until later? Then don't need messy dependent type?
+  Would that make VST proofs harder?*)
+
 (*To construct the packets for a block, we need a proof that each are valid. It would
   be extremely difficult to do this with just a generic map, so we give a custom, dependently-typed function*)
 Definition populate_packets (id: int) (model : packet_act) (contents: list (list byte)) 
@@ -726,45 +729,86 @@ Definition add_packet_to_block_black (p: fec_packet_act) (b: block) : block * li
     let marked_block := if recoverable new_block then new_block <| complete := true |> else new_block in
     (marked_block, packets).
 
-(*TODO: start here*)
-
-
 (*The decoder is more complicated because of timeouts. We include a list of values indicating whether a timeout
   has occurred*)
+Definition int_le (x y: int) := Int.lt x y || Int.eq x y.
 
-(*Create a block with a packet*)
+(*The timeout part: we take in the state representing whether each block is timed out or not
+  and we update the state as the actuator does*)
+(*Note: since the state is abstract, we will assume it is long enough*)
+Fixpoint update_past_blocks (blocks: list block) (curr: fec_packet_act) (state: list bool) :
+  (list block * list packet_act) :=
+  match blocks, state with
+  | bl :: tl, s :: stl =>
+    if s && int_le (fd_blockIndex (p_fec_data curr)) (blk_id bl) then
+      (tl, if fd_isParity (p_fec_data curr) then nil else [p_packet curr])
+    else if Int.lt (fd_blockIndex (p_fec_data curr)) (blk_id bl) then
+      let (b, l) := create_block_with_packet curr in
+      (b :: blocks, l)
+    else if Int.eq (fd_blockIndex (p_fec_data curr)) (blk_id bl) then
+      let (b, l) := add_packet_to_block_black curr bl in
+      (b :: tl, l)
+    else
+      let (bs, l) := update_past_blocks tl curr stl in
+      (bl :: bs, l)
+  | _ :: _, _ => (nil, nil) (*should never reach here*)
+  | _, _ => (*not sure we can reach here - should prove*)
+      (nil,  if fd_isParity (p_fec_data curr) then nil else [p_packet curr])
+  end. 
+  
+(*TODO: move*)
+Instance block_inhab: Inhabitant block :=
+  mk_blk Int.zero nil nil 0 0 false.
+
 
 (*We cannot build the blocks in 1 go since we must take into account timeouts. Instead, we build it up
   incrementally*)
 Definition update_dec_state (blocks: list block) (curr: fec_packet_act) (state: list bool) : 
-  (list block * list fec_packet_act) :=
-  
+  (list block * list packet_act) :=
+  match blocks with
+  | nil => let (b, l) := create_block_with_packet curr in ([b], l)
+  | bl :: tl => 
+    let currBlock := Znth (Zlength blocks - 1) blocks in
+    let currSeq := fd_blockIndex (p_fec_data curr) in
+    if Int.eq currSeq (blk_id currBlock) then
+      let (b, l) := add_packet_to_block_black curr currBlock in
+      (upd_Znth (Zlength blocks - 1) blocks b, l)
+    else if Int.lt (blk_id currBlock) currSeq then 
+      let (b, l) := create_block_with_packet curr in (blocks ++ [b], l)
+    else
+      (*here we have to deal with timeouts*)
+      update_past_blocks (sublist 0 (Zlength blocks - 1) blocks) curr state
+  end.
 
-    
+(*The decoder simply repeatedly applies the above function, generating output packets and updating the state*)
+Definition decoder_all_steps (received: list fec_packet_act) (states: list (list bool)) : (list block * list packet_act) :=
+  foldl (fun (acc: list block * list packet_act) (x: fec_packet_act * list bool) =>
+    let (blks, pkts) := update_dec_state acc.1 x.1 x.2 in
+    (blks, acc.2 ++ pkts)) (nil, nil) (combine received states).
 
-(** Decoder predicate *)
+(*Now we can define the decoder function and predicate*)
+Definition rse_decode_func (received: list fec_packet_act) (curr: fec_packet_act) 
+  (states: list (list bool)) (state: list bool) : list packet_act :=
+  let (blocks, _) := decoder_all_steps received states in
+  let (_, pkts) := update_dec_state blocks curr state in
+  pkts.
+
+Definition rse_decoder : (@decoder valid_packet encodable fec_data) :=
+  fun (received: list fec_packet_act) (decoded: list enc_packet) (curr: fec_packet_act) (new: list enc_packet) =>
+    exists (states: list (list bool)) (state: list bool),
+      map (@e_packet _ _) new = rse_decode_func received curr states state.
+
+(** Correctness Theorems*)
+
+(*It is difficult to say much about the correctness of the decoder, since because of timeouts we cannot be
+  sure of much. However, we can prove 2 basic theorems:
+  1. The decoder does not produce any bad packets - ie: all returned packets were originally sent.
+  2. Subject to (TODO) some conditions on h and k, each original packet is returned at most twice
+*)
 
 
 
-
-
-(*Similarly, we can define the decoder predicate*)
-(*TODO: adding correct sequence number, but wont be in memory except sort of via FEC params
-  need to figure out good way to handle VST preds*)
-Definition dec : (decoder valid_packet fec_data) :=
-  fun (received : list fec_packet_act) (decoded: list packet_act) =>
-  let blocks := (get_blocks received) in
-  (*Because of timeouts, some ill-formed blocks, etc, we give a weak spec: only that
-    everything in decoded is either (a) from a data packet in receieved or (b)
-    from the decoder_list of some block that is completed. We note that NOT every completed
-    block is required or guaranteed to appear*)
-  forall (p: packet_act), In p decoded ->
-    (exists (fp: fec_packet_act), In fp received /\ (fd_isParity (p_fec_data fp)) /\
-      f_packet fp = p) \/
-    (exists (b: block) (i: Z), 0 <= i < (blk_k b) /\ In b blocks /\ 
-      Some p = packet_from_bytes (Znth i (decoder_list_block b)) (Int.repr (i + Int.unsigned (blk_id b)))). 
-
-(** Encoder/Decoder correctness*)
+(** Encoder/Decoder correctness (old)*)
 (*1. Define a subblock of a block*)
 
 (*Special sublist for list of options*)
