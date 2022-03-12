@@ -699,7 +699,7 @@ Definition decode_block (b: block) : list packet_act :=
                       match (packet_from_bytes (Znth i (decoder_list_block b)) Int.zero) with
                       | Some p => acc ++ [p]
                       | None => acc
-                      end else acc) nil (Ziota 0 (blk_c b)).
+                      end else acc) nil (Ziota 0 (blk_k b)).
 
 (*TODO: have to deal with deduce headers once I hear back from Peraton people*)
 
@@ -806,9 +806,14 @@ Definition rse_decoder : (@decoder valid_packet encodable fec_data) :=
   2. Subject to (TODO) some conditions on h and k, each original packet is returned at most twice
 *)
 
+(*Part 1: Prove that all outputted packets are from the original input*)
 
+(*Basic argument is: we will prove that each block formed in the decoder is a subblock of a
+  block from the encoder, and any recoverable subblock must be a subblock of a completed block.
+  We will show that decode_block of any recoverable subblock of a completed block gives back
+  the original data packets (possibly with some extra zeroes at the end), and thus we can 
+  recover the original missing packets. This takes a lot of steps*)
 
-(** Encoder/Decoder correctness (old)*)
 (*1. Define a subblock of a block*)
 
 (*Special sublist for list of options*)
@@ -879,7 +884,7 @@ Qed.
 (*The [list_max_nonneg] of a [subseq_option] is smaller*)
 Lemma subseq_option_list_max_nonneg: forall {A: Type} (f: option A -> Z) (s1 s2: seq (option A)),
   subseq_option s1 s2 ->
-  f None < 0 ->
+  f None <= 0 ->
   list_max_nonneg f s1 <= list_max_nonneg f s2.
 Proof.
   move => A f s1. elim : s1 => [/= s2 | h t /= IH s2].
@@ -910,7 +915,7 @@ Lemma subblock_wf: forall (b1 b2: block),
   block_wf b1.
 Proof.
   move => b1 b2. 
-  rewrite /block_wf /subblock => [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk Hh]]]]]]] [Hsubid [Hsubdata [Hsubpar [Hsubk Hsubh]]]].
+  rewrite /block_wf /subblock => [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh Henc]]]]]]]] [Hsubid [Hsubdata [Hsubpar [Hsubk Hsubh]]]].
   repeat match goal with | |- ?p /\ ?q => split; try by []; try lia end.
   - move => p Hp. rewrite Hsubk Hsubh. apply Hkh. by apply (subseq_option_in' Hsubdata Hsubpar).
   - move => p Hp. rewrite Hsubid. apply Hid. by apply (subseq_option_in' Hsubdata Hsubpar).
@@ -941,6 +946,7 @@ Proof.
         rewrite Znth_app2; try lia. rewrite -Hnth. f_equal. lia.
   - move: Hsubdata. rewrite /subseq_option. lia.
   - move: Hsubpar. rewrite /subseq_option. lia.
+  - move => p Hp. apply Henc. by apply (subseq_option_in Hsubdata).
 Qed.
 
 Lemma subblock_trans: forall b1 b2 b3,
@@ -974,7 +980,7 @@ Lemma blk_c_complete: forall b,
       (fun o : option fec_packet_act =>
        match o with
        | Some p => Zlength (p_header (f_packet p) ++ p_contents (f_packet p))
-       | None => -1
+       | None => 0
        end) (data_packets b).
 Proof.
   move => b. rewrite /block_complete => [[[p [Hinp Hlenp]] [Hparc [Hdatac _]]]].
@@ -999,7 +1005,7 @@ Proof.
   rewrite /block_complete /subblock /blk_c => [[[def [Hindef Hlendef] [Hparc [Hdatac _]]]]].
   remember (fun o : option fec_packet_act => match o with
                                     | Some p => Zlength (p_header (f_packet p) ++ p_contents (f_packet p))
-                                    | None => -1
+                                    | None => 0
                                     end) as f eqn : Hf.
   rewrite /recoverable => [[_ [Hsubdata [Hsubpar _]]] Hk].
   case Hpar: [seq x <- parity_packets b1 | isSome x] => [| pa tl]; last first.
@@ -1138,6 +1144,149 @@ Proof.
     }
     rewrite Hnth' in Hb2. by [].
 Qed.
+
+(*From two blocks, get the packets that are in 1 but not the other*)
+Definition get_diff {A: Type} (l1 l2: list (option A)) : list A :=
+ pmap id (map (fun (x: option A * option A) =>
+    match x with
+    | (None, Some y) => Some y
+    | (_, _) => None
+    end) (zip l1 l2)).
+
+Definition get_block_diff (b1 b2: block) : list packet_act :=
+  map (@p_packet _ _) (get_diff (data_packets b1) (data_packets b2)).
+
+(*An alternate formation of [decode_block] - TODO: is this better to use originally?*)
+Definition decode_block' (b: block) : list packet_act :=
+  pmap id (map (fun i =>
+      if isNone (Znth i (data_packets b)) then
+      (packet_from_bytes (Znth i (decoder_list_block b)) Int.zero) else None) (Ziota 0 (blk_k b))).
+
+Lemma decode_block_equiv: forall b,
+  decode_block b = decode_block' b.
+Proof.
+  move => b. rewrite /decode_block /decode_block'.
+  rewrite -(cat0s (pmap _ _)). remember (@nil packet_act) as base eqn : Hb. rewrite {1}Hb {Hb}. 
+  move: base.
+  elim (Ziota 0 (blk_k b)) => [//= base | h t /= IH base].
+  - by rewrite cats0.
+  - rewrite IH {IH}. case : (Znth h (data_packets b)) => [p// | /=].
+    case : (packet_from_bytes (Znth h (decoder_list_block b)) Int.zero) => [p' /= | //].
+    by rewrite -catA.
+Qed.
+
+(*TODO: do we need this?*)
+Lemma map_pmap: forall {A B C: Type} (f: A -> option B) (g: B -> C) (l: list A),
+  map g (pmap f l) = pmap (fun x => match (f x) with
+                                    | Some b => Some (g b)
+                                    | None => None
+                                    end) l.
+Proof.
+  move => A B C f g l. elim : l => [//| h t /= IH].
+  case (f h) => [a/= | //=]. by rewrite IH.
+Qed.
+
+Lemma map_pmap_id: forall {A B: Type} (f: A -> B) (l: list (option A)),
+  map f (pmap id l) = pmap id (map (omap f) l).
+Proof.
+  move => A B f l. elim : l => [//| h t /= IH].
+  case : h => [a //= | //=]. by rewrite IH.
+Qed.
+
+Lemma subblock_c: forall (b1 b2: block),
+  block_complete b2 ->
+  subblock b1 b2 ->
+  (forall p, In (Some p) (data_packets b1) -> Zlength (packet_bytes (f_packet p)) <= blk_c b2) /\
+  (forall p, In (Some p) (parity_packets b1) -> Zlength (p_contents (f_packet p)) = blk_c b2).
+Proof.
+  move => b1 b2. rewrite /block_complete /subblock => [[_ [Hpars [Hdata _]]]] [_ [Hsubdata [Hsubpar _]]].
+  split; move => p Hinp.
+  - move: Hsubdata; rewrite /subseq_option => [[Hlens His]]. move: Hinp. rewrite In_Znth_iff => [[i [Hi Hp]]].
+    have Hi':=Hi.
+    apply His in Hi. rewrite Hp in Hi. case: Hi => [Hp'|//].
+    apply Hdata. rewrite Hp'. apply Znth_In. lia.
+  - move: Hsubpar; rewrite /subseq_option => [[Hlens His]]. move: Hinp. rewrite In_Znth_iff => [[i [Hi Hp]]].
+    have Hi':=Hi.
+    apply His in Hi. rewrite Hp in Hi. case: Hi => [Hp'|//].
+    apply Hpars. rewrite Hp'. apply Znth_In. lia.
+Qed.
+
+(*TODO: move to CommonSSR*)
+Lemma zip_combine: forall {A B: Type} (l1 : list A) (l2: list B),
+  zip l1 l2 = combine l1 l2.
+Proof.
+  move => A B l1. elim : l1 => [//= l2 | h t /= IH l2].
+  - by case : l2.
+  - case : l2 => [//|h' t'/=]. by rewrite IH.
+Qed.
+
+
+(*We extend this to show that [decode_block] gives all packets in the original block not in the subblock*)
+Theorem decode_block_correct: forall (b1 b2: block),
+  block_wf b2 ->
+  block_complete b2 ->
+  subblock b1 b2 ->
+  recoverable b1 ->
+  decode_block b1 = get_block_diff b1 b2.
+Proof.
+  move => b1 b2 Hwf Hcomp Hsub Hrec. rewrite decode_block_equiv /decode_block' /get_block_diff /get_diff.
+  rewrite map_pmap_id. f_equal.
+  rewrite (subblock_recoverable_correct Hwf Hcomp Hsub Hrec).
+  (*TODO: easier to use induction?*) (*some results about lengths*)
+  have H0k: 0 <= blk_k b1. move: Hwf Hsub. rewrite /block_wf /subblock. lia.
+  have Hwf': block_wf b1 by apply (subblock_wf Hwf).
+  have Hlenb1: Zlength (data_packets b1) = blk_k b1. move: Hwf'. rewrite /block_wf. lia.
+  have Hb12: blk_k b1 = blk_k b2. move: Hsub. rewrite /subblock. lia.
+  have Hlenb2: Zlength (data_packets b2) = blk_k b2. move: Hwf. rewrite /block_wf. lia.
+  have Hlenzip: Zlength (zip (data_packets b1) (data_packets b2)) = blk_k b1.
+    rewrite zip_combine Zlength_combine. lia. 
+  apply Znth_eq_ext; rewrite Zlength_map; rewrite Zlength_Ziota; try lia. 
+  - by rewrite !Zlength_map.
+  - move => i Hi. rewrite Znth_map; [|rewrite Zlength_Ziota; lia].
+    rewrite Znth_Ziota; try lia. rewrite Z.add_0_l pad_packets_nth.
+    2 : { rewrite /packet_mx. rewrite Zlength_map. lia. }
+    2 : { rewrite /packet_mx /lengths. rewrite !Znth_map; try lia.
+      case Hith: (Znth i (data_packets b1)) => [p/=|//=].
+      - have->: Znth i (data_packets b2) = Some p. {
+          move: Hsub. rewrite /subblock => [[_ [Hsub _]]]. move: Hsub. rewrite /subseq_option => [[_ His]].
+          have Hi': 0 <= i < Zlength (data_packets b1). apply Znth_inbounds. by rewrite Hith.
+          apply His in Hi'. by case : Hi'; rewrite Hith. }
+        split; try lia. apply (proj1 (subblock_c Hcomp Hsub)). rewrite -Hith.
+        apply Znth_In. lia.
+      - have->:blk_c b1 = blk_c b2. by apply blk_c_recoverable. split; try lia.
+        case Hp: (Znth i (data_packets b2)) => [p|].
+        + move: Hcomp. rewrite /block_complete => [[_ [_ [Hin _]]]]. apply Hin. rewrite -Hp.
+          apply Znth_In. lia.
+        + rewrite Zlength_nil. by apply blk_c_nonneg. }
+    rewrite !Znth_map; try lia. 2: by rewrite Zlength_map; lia.
+    rewrite zip_combine Znth_combine; try lia.
+    (*Now, we can prove the actual equivalence*)
+    case Hib1 : (Znth i (data_packets b1)) => [p1 // | /=].
+    case Hib2: (Znth i (data_packets b2)) => [p2 /= | /=].
+    + rewrite /packet_from_bytes. 
+      case Hre: (recover_packet (packet_bytes (f_packet p2) ++ 
+        zseq (blk_c b1 - Zlength (packet_bytes (f_packet p2))) Byte.zero)) => [h con].
+        (*TODO: figure out what to do about sequence number issue*)
+      have Hval: valid_packet (p_header (f_packet p2)) (p_contents (f_packet p2)). {
+        rewrite {Hib2 Hre}. case : p2 => [p2 pfec]/=. by case : p2 => [head cont seq val]/=. }
+      move: Hre.
+      rewrite {1}/packet_bytes -catA recover_packet_correct. 2: by rewrite Hval.
+      move => [Hh] Hcon. rewrite -Hh -Hcon. 
+      (*dependent type trickery from 
+        https://stackoverflow.com/questions/47345174/using-destruct-on-pattern-match-expression-with-convoy-pattern*)
+      move: erefl. 
+      case: {2 3} (valid_packet (p_header (f_packet p2)) (p_contents (f_packet p2)) ) => [Hval'|].
+      * f_equal. apply packet_eq; rewrite //=. (*TODO: sequence number issue*) admit.
+      * by rewrite Hval.
+    + have->:(blk_c b1 - Zlength [::]) = blk_c b1 by list_solve.
+      rewrite /packet_from_bytes.
+      (*This packet is not valid, but we have to show this*)
+      case Hre: (recover_packet (zseq (blk_c b1) Byte.zero)) => [h con].
+      move: erefl. case: {2 3}(valid_packet h con) => [Hval|//].
+      move: Hre. rewrite /recover_packet.
+      (*TODO: show that this cannot be valid*)
+
+
 
 (*Show that if received is a subseq of encoded, then the blocks of received are each
   subblocks of blocks in encoded*)
