@@ -21,8 +21,6 @@ Require Import PopArrays.
 
 Set Bullet Behavior "Strict Subproofs".
 
-Section Decoder.
-
 Opaque ByteField.byte_mul.
 
 Lemma int_byte_zero: Vint (Int.repr 0) = Vubyte Byte.zero.
@@ -145,6 +143,158 @@ Proof.
   reflexivity.
 Qed.
 
+Definition fec_blk_decode_loop1 :=
+              Sfor 
+                (Sset _i (Ecast (Econst_int (Int.repr 0) tint) tuchar))
+                (Ebinop Olt (Etempvar _i tuchar) (Etempvar _k tint) tint)
+                (Ssequence
+                        (Sset _t'42
+                          (Ederef
+                            (Ebinop Oadd (Etempvar _pstat (tptr tschar))
+                              (Etempvar _i tuchar) (tptr tschar)) tschar))
+                        (Sifthenelse (Ebinop Oeq (Etempvar _t'42 tschar)
+                                       (Econst_int (Int.repr 1) tint) tint)
+                          (Ssequence
+                            (Ssequence
+                              (Sset _t'1 (Etempvar _xh tuchar))
+                              (Sset _xh
+                                (Ecast
+                                  (Ebinop Oadd (Etempvar _t'1 tuchar)
+                                    (Econst_int (Int.repr 1) tint) tint)
+                                  tuchar)))
+                            (Sassign
+                              (Ederef
+                                (Ebinop Oadd (Evar _lost (tarray tuchar 128))
+                                  (Etempvar _t'1 tuchar) (tptr tuchar))
+                                tuchar) (Etempvar _i tuchar)))
+                          (Ssequence
+                            (Ssequence
+                              (Sset _t'2 (Etempvar _xk tuchar))
+                              (Sset _xk
+                                (Ecast
+                                  (Ebinop Oadd (Etempvar _t'2 tuchar)
+                                    (Econst_int (Int.repr 1) tint) tint)
+                                  tuchar)))
+                            (Sassign
+                              (Ederef
+                                (Ebinop Oadd
+                                  (Evar _found (tarray tuchar 128))
+                                  (Etempvar _t'2 tuchar) (tptr tuchar))
+                                tuchar) (Etempvar _i tuchar)))))
+                (Sset _i (Ecast (Ebinop Oadd (Etempvar _i tuchar)
+                          (Econst_int (Int.repr 1) tint) tint) tuchar)).
+
+Lemma body_fec_blk_decode_loop1: 
+ forall (Espec: OracleKind) (k : Z)
+   (pd pl ps : val)
+   (stats : list byte)
+  (v_v v_s v_lost v_found v_row : val)
+  (Hknh : 0 < k < fec_n - fec_max_h)
+  (Hstatsvals : Forall (fun x : byte => x = Byte.zero \/ x = Byte.one) stats)
+  (Hstatlen : Zlength stats = k),
+semax (func_tycontext f_fec_blk_decode Vprog Gprog [])
+  (PROP ( )
+   LOCAL (temp _xh (Vubyte Byte.zero); temp _xk (Vubyte Byte.zero);
+   temp _k (Vint (Int.repr k)); temp _pstat ps; lvar _found (tarray tuchar fec_max_h) v_found;
+   lvar _lost (tarray tuchar fec_max_h) v_lost)
+   SEP (data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+   data_at Tsh (tarray tuchar fec_max_h) (zseq fec_max_h Vundef) v_found;
+   data_at Tsh (tarray tuchar fec_max_h) (zseq fec_max_h Vundef) v_lost))
+  fec_blk_decode_loop1
+  (normal_ret_assert
+     (PROP ( )
+      LOCAL (temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats k))));
+      temp _xk (Vubyte (Byte.repr (Zlength (find_found stats k))));
+      temp _k (Vint (Int.repr k)); temp _pstat ps;
+      lvar _found (tarray tuchar fec_max_h) v_found;
+      lvar _lost (tarray tuchar fec_max_h) v_lost)
+      SEP (data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+      data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost;
+      data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h) v_found))).
+Proof.
+intros.
+unfold fec_blk_decode_loop1.
+abbreviate_semax.
+
+(* Work around VST bug #553 *) Ltac check_nocontinue s ::= idtac.
+forward_loop (EX (i: Z),
+  PROP (0 <= i <= k)
+  LOCAL (temp _i (Vubyte (Byte.repr i)); 
+               temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats i))));
+               temp _xk (Vubyte (Byte.repr (Zlength (find_found stats i))));
+               temp _k (Vint (Int.repr k)); temp _pstat ps;
+               lvar _found (tarray tuchar fec_max_h) v_found;
+               lvar _lost (tarray tuchar fec_max_h) v_lost)
+  SEP (data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats i fec_max_h) v_lost;
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats i fec_max_h) v_found))%assert5.
+
+{ forward. Exists 0. rewrite_eqs. entailer!.
+(*  { rewrite !eqb_type_refl; split; reflexivity.  } *)
+  { rewrite pop_find_lost_0. rewrite pop_find_found_0. cancel. }
+}
+{ unfold app. rewrite_eqs. 
+   Intros i. forward_if.
+  { rewrite Byte.unsigned_repr in H0 by rep_lia.
+    assert (Hilen: (0 <= Byte.unsigned (Byte.repr i) < Zlength stats)) by simpl_repr_byte.
+    forward. simpl_repr_byte.
+    forward_if (PROP ()
+      LOCAL (temp _i (Vubyte (Byte.repr i));
+                   temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats (i + 1)))));
+                   temp _xk (Vubyte (Byte.repr (Zlength (find_found stats (i + 1)))));
+                   temp _k (Vint (Int.repr k)); temp _pstat ps;
+                     lvar _found (tarray tuchar fec_max_h) v_found;
+                     lvar _lost (tarray tuchar fec_max_h) v_lost)
+      SEP (data_at Ews (tarray tschar k) (map Vbyte stats) ps; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (i + 1) fec_max_h) v_lost; 
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats (i + 1) fec_max_h) v_found)%assert5).
+    { (*xh case*) forward. pose proof (@find_lost_Zlength stats i (proj1 H)) as Hlostlen.
+      forward. simpl_repr_byte. unfold Int.add. rewrite (Int.unsigned_repr (Zlength _)) by rep_lia.
+      rewrite (Int.unsigned_repr 1) by rep_lia. rewrite Int.unsigned_repr by rep_lia. simpl_repr_byte.
+      rewrite <- (byte_int_repr (Zlength (find_lost stats i))) by rep_lia.
+      forward. (*TODO: this was the problematic one*)
+      { entailer!. simpl_repr_byte. }
+      { simpl_repr_byte. rewrite_eqs; entailer!.
+        { rewrite <- byte_int_repr by rep_lia.
+          rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
+          repeat split; try reflexivity. f_equal; f_equal.  
+          rewrite <- cat_app. list_solve.
+        }
+        { rewrite pop_find_lost_plus_1 by rep_lia.
+          rewrite pop_find_found_plus_1 by rep_lia. repeat simpl_sum_if.
+          rewrite <- byte_int_repr by rep_lia. cancel.
+        }
+      }
+    }
+    { (*xk case*) forward. pose proof (@find_found_Zlength stats i (proj1 H)) as Hfoundlen.
+      forward. simpl_repr_byte. unfold Int.add. rewrite (Int.unsigned_repr (Zlength _)) by rep_lia.
+      rewrite (Int.unsigned_repr 1) by rep_lia. rewrite Int.unsigned_repr by rep_lia. simpl_repr_byte.
+      rewrite <- (byte_int_repr (Zlength (find_found stats i))) by rep_lia.
+      forward.
+      { entailer!. simpl_repr_byte. }
+      { simpl_repr_byte. rewrite_eqs; entailer!.
+        { rewrite <- byte_int_repr by rep_lia.
+          rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
+          repeat split; try reflexivity. f_equal; f_equal.  
+          rewrite <- cat_app. list_solve.
+        }
+        { rewrite pop_find_lost_plus_1 by rep_lia.
+          rewrite pop_find_found_plus_1 by rep_lia. repeat simpl_sum_if.
+          rewrite <- byte_int_repr by rep_lia. cancel.
+        }
+      }
+    }
+    { rewrite_eqs; forward. Exists (i+1). simpl_repr_byte. unfold Int.add.
+      rewrite (Int.unsigned_repr 1) by rep_lia. rewrite (Int.unsigned_repr i) by rep_lia. simpl_repr_byte.
+      rewrite_eqs; entailer!.
+      rewrite <- byte_int_repr by rep_lia; repeat split; reflexivity.
+    }
+  }
+  { (*first loop postcondition*) forward. rewrite Byte.unsigned_repr in H0 by rep_lia.
+    replace i with k by lia. rewrite_eqs; entailer!.
+  }
+}
+Qed.
+
 
 Lemma body_fec_blk_decode : semax_body Vprog Gprog f_fec_blk_decode fec_blk_decode_spec.
 Proof.
@@ -201,89 +351,65 @@ freeze FR1 := (data_at_ Tsh (tarray tuchar fec_max_h) v_row)
        (iter_sepcon_arrays packet_ptrs packets) (iter_sepcon_options parity_ptrs parities)
        (data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd)
        (data_at Ews (tarray tint k) (map Vint (map Int.repr lengths)) pl) (FEC_TABLES gv).
-freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).
+(*freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).*)
 (*First loop - populate lost/found packets*)
 rewrite !data_at__tarray. rewrite !zseq_Zrepeat by rep_lia.
-replace (default_val tuchar) with Vundef by reflexivity.
-forward_loop (EX (i: Z),
-  PROP (0 <= i <= k)
-  (LOCALx (temp _i (Vubyte (Byte.repr i)) :: temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats i)))) 
-    :: temp _xk (Vubyte (Byte.repr (Zlength (find_found stats i)))) :: LOCALS)
-  (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats i fec_max_h) v_lost;
-         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats i fec_max_h) v_found))%assert5))
-  break: 
-    (PROP ()
-    (LOCALx (temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats k)))) :: 
-             temp _xk (Vubyte (Byte.repr (Zlength (find_found stats k)))) :: LOCALS)
-    (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h)  v_lost;
-         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h)  v_found )%assert5))).
-{ rewrite_eqs. forward. Exists 0. rewrite_eqs. entailer!.
-  { rewrite !eqb_type_refl; split; reflexivity.  }
-  { rewrite pop_find_lost_0. rewrite pop_find_found_0. cancel. }
-}
-{ Intros i. rewrite_eqs; forward_if.
-  { rewrite Byte.unsigned_repr in H0 by rep_lia.
-    assert (Hilen: (0 <= Byte.unsigned (Byte.repr i) < Zlength stats)) by simpl_repr_byte.
-    thaw FR2.
-    forward. simpl_repr_byte. freeze FR2 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps) (FRZL FR1).
-    forward_if (PROP ()
-      (LOCALx (temp _i (Vubyte (Byte.repr i)) :: temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats (i + 1))))) 
-        :: temp _xk (Vubyte (Byte.repr (Zlength (find_found stats (i + 1))))) :: LOCALS)
-      (SEP (FRZL FR2; data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (i + 1) fec_max_h) v_lost; 
-         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats (i + 1) fec_max_h) v_found)%assert5))).
-    { (*xh case*) forward. pose proof (@find_lost_Zlength stats i (proj1 H)) as Hlostlen.
-      forward. simpl_repr_byte. unfold Int.add. rewrite (Int.unsigned_repr (Zlength _)) by rep_lia.
-      rewrite (Int.unsigned_repr 1) by rep_lia. rewrite Int.unsigned_repr by rep_lia. simpl_repr_byte.
-      rewrite <- (byte_int_repr (Zlength (find_lost stats i))) by rep_lia.
-      forward. (*TODO: this was the problematic one*)
-      { entailer!. simpl_repr_byte. }
-      { simpl_repr_byte. rewrite_eqs; entailer!.
-        { rewrite !eqb_type_refl. rewrite <- byte_int_repr by rep_lia.
-          rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
-          repeat split; try reflexivity. f_equal; f_equal.  
-          rewrite <- cat_app. list_solve.
-        }
-        { rewrite pop_find_lost_plus_1 by rep_lia.
-          rewrite pop_find_found_plus_1 by rep_lia. repeat simpl_sum_if.
-          rewrite <- byte_int_repr by rep_lia. cancel.
-        }
-      }
-    }
-    { (*xk case*) forward. pose proof (@find_found_Zlength stats i (proj1 H)) as Hfoundlen.
-      forward. simpl_repr_byte. unfold Int.add. rewrite (Int.unsigned_repr (Zlength _)) by rep_lia.
-      rewrite (Int.unsigned_repr 1) by rep_lia. rewrite Int.unsigned_repr by rep_lia. simpl_repr_byte.
-      rewrite <- (byte_int_repr (Zlength (find_found stats i))) by rep_lia.
-      forward.
-      { entailer!. simpl_repr_byte. }
-      { simpl_repr_byte. rewrite_eqs; entailer!.
-        { rewrite !eqb_type_refl. rewrite <- byte_int_repr by rep_lia.
-          rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
-          repeat split; try reflexivity. f_equal; f_equal.  
-          rewrite <- cat_app. list_solve.
-        }
-        { rewrite pop_find_lost_plus_1 by rep_lia.
-          rewrite pop_find_found_plus_1 by rep_lia. repeat simpl_sum_if.
-          rewrite <- byte_int_repr by rep_lia. cancel.
-        }
-      }
-    }
-    { rewrite_eqs; forward. Exists (i+1). simpl_repr_byte. unfold Int.add.
-      rewrite (Int.unsigned_repr 1) by rep_lia. rewrite (Int.unsigned_repr i) by rep_lia. simpl_repr_byte.
-      rewrite_eqs; entailer!. rewrite !eqb_type_refl.
-      rewrite <- byte_int_repr by rep_lia; repeat split; reflexivity. thaw FR2. cancel.
-    }
-  }
-  { (*first loop postcondition*) forward. rewrite Byte.unsigned_repr in H0 by rep_lia.
-    replace i with k by lia. rewrite_eqs; entailer!. rewrite !eqb_type_refl; split; reflexivity.
-  }
-}
-{ remember (Zlength (find_lost stats k)) as xh.
+change (default_val tuchar) with Vundef.
+apply (semax_frame_seq 
+                    [temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd);
+                     temp _xr (Vubyte Byte.zero); temp _err (Vubyte Byte.zero);
+                     lvar _row (tarray tuchar fec_max_h) v_row;
+                     lvar _s (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s;
+                     lvar _v (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v; 
+                     gvars gv; temp _c (Vint (Int.repr c));
+                     temp _pdata pd; temp _plen pl]
+              [FRZL FR1]) with (P1 := []) (P2 := [])
+ (Q1 := [temp _xh (Vubyte Byte.zero); temp _xk (Vubyte Byte.zero);
+                   temp _k (Vint (Int.repr k)); temp _pstat ps;
+                     lvar _found (tarray tuchar fec_max_h) v_found;
+                     lvar _lost (tarray tuchar fec_max_h) v_lost  ])
+ (Q2 := [temp _xh (Vubyte (Byte.repr (Zlength (find_lost stats k))));
+             temp _xk (Vubyte (Byte.repr (Zlength (find_found stats k))));
+                 temp _k (Vint (Int.repr k)); temp _pstat ps;
+                     lvar _found (tarray tuchar fec_max_h) v_found;
+                     lvar _lost (tarray tuchar fec_max_h) v_lost  ])
+ (R1 := [ data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+            data_at Tsh (tarray tuchar fec_max_h) (zseq fec_max_h Vundef) v_found;
+       data_at Tsh (tarray tuchar fec_max_h) (zseq fec_max_h Vundef) v_lost])
+ (R2 := [ data_at Ews (tarray tschar k) (map Vbyte stats) ps;
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h)  v_lost;
+         data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h)  v_found]);
+  [ | solve [rewrite HeqLOCALS; unfold app; entailer!;  rewrite !eqb_type_refl; auto]
+    | solve [auto 50 with closed]
+    | ].
+
+
+(*
+clear LOCALS HeqLOCALS FR1.
+clear MORE_COMMANDS POSTCONDITION.
+clear dependent lengths.
+clear dependent parities.
+clear dependent packets.
+clear dependent packet_ptrs.
+clear dependent parity_ptrs.
+clear dependent parbound.
+clear dependent c.
+clear dependent h.
+clear gv.
+change Delta with (func_tycontext f_fec_blk_decode Vprog Gprog nil).
+clear Delta Delta_specs.
+*)
+apply body_fec_blk_decode_loop1; auto.
+
+  abbreviate_semax.
+  remember (Zlength (find_lost stats k)) as xh.
   remember (Zlength (find_found stats k)) as xk. assert (Hk: 0 <= k) by lia.
   pose proof (@find_lost_Zlength stats k Hk) as Hxh. rewrite <-Heqxh in Hxh.
   pose proof (@find_found_Zlength stats k Hk) as Hxk. rewrite <-Heqxk in Hxk. clear Hk.
-  rewrite_eqs; forward_if.
-  { rewrite_eqs. forward.
-    thaw FR2. thaw FR1. (*TODO: this didn't doesn't work ( in [solve_Forall2_fn_data_at]) with opaque constants*)
+  unfold app. rewrite_eqs. forward_if.
+ +
+    rewrite_eqs. forward.
+    thaw FR1. (*TODO: this didn't doesn't work ( in [solve_Forall2_fn_data_at]) with opaque constants*)
     rewrite Byte.unsigned_repr in H by rep_lia. rewrite Int_repr_zero in H by rep_lia.
     entailer!.
     { rewrite <- (@find_lost_filter _ (Zlength packet_ptrs)). rewrite H. reflexivity. lia. }
@@ -306,10 +432,10 @@ forward_loop (EX (i: Z),
           rewrite Hith. destruct (Z.eq_dec (Byte.signed Byte.one) 1); auto. }
         apply Zlength_nil_inv in H. rewrite H in Hinlost. contradiction.
     }
-  }
-  { forward. unfold Int.sub. rewrite !Int.unsigned_repr by rep_lia. simpl_repr_byte.
+ +
+    forward. unfold Int.sub. rewrite !Int.unsigned_repr by rep_lia. simpl_repr_byte.
     (*Second loop - populate parity packet row/found*) 
-    clear HeqLOCALS. clear LOCALS. 
+    clear HeqLOCALS LOCALS. 
     rewrite (grab_nth_LOCAL 6 (gvars gv)); simpl; [| list_solve]. 
     rewrite (grab_nth_LOCAL 7 (gvars gv)); simpl; [| list_solve].
     rewrite (grab_nth_LOCAL 2 (gvars gv)); simpl; [| list_solve]. 
@@ -325,7 +451,7 @@ forward_loop (EX (i: Z),
     remember (lvar _found (tarray tuchar fec_max_h) v_found :: lvar _row (tarray tuchar fec_max_h) v_row
               :: temp _xh (Vubyte (Byte.repr xh))
               :: temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd):: LOCALS) as LOCALS1.
-    thaw FR2. thaw FR1.
+    thaw FR1.
     freeze FR1 := (data_at Ews (tarray tschar k) (map Vbyte stats) ps)
        (data_at_ Tsh (tarray (tarray tuchar fec_max_cols) fec_max_h) v_s)
        (data_at_ Tsh (tarray (tarray tuchar (fec_max_h * 2)) fec_max_h) v_v)
