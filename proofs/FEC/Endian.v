@@ -437,6 +437,23 @@ Proof.
         split. apply Z.shiftl_nonneg; rep_lia'. rewrite Z.shiftl_mul_pow2; rep_lia'.
 Qed.
 
+(*We need this for IP results*)
+Lemma nibbles_byte_zero: forall (n1 n2: nibble),
+  nibbles_to_byte n1 n2 = Byte.zero <-> n1 = Nibble.zero /\ n2 = Nibble.zero.
+Proof.
+  intros n1 n2. split; intros Hn.
+  - unfold nibbles_to_byte in Hn. apply (f_equal Byte.unsigned) in Hn. simpl in Hn.
+    replace (Byte.unsigned Byte.zero) with 0 in Hn by reflexivity.
+    assert (Htest: forall n, Z.testbit (nibbles_to_Z n1 n2) n = false). { rewrite Hn. apply Z.testbit_0_l. }
+    clear Hn. revert Htest. unfold nibbles_to_Z. setoid_rewrite Z.lor_spec. intros Hn.
+    split; apply nibble_unsigned_inj; simpl; apply Z.bits_inj_0; intros n.
+    + specialize (Hn n). rewrite orb_false_iff in Hn. apply Hn.
+    + assert (n < 0 \/ 0 <= n) by lia. destruct H. apply Z.testbit_neg_r. assumption.
+      specialize (Hn (n+4)). rewrite Z.shiftl_spec in Hn by lia.
+      replace (n + 4 - 4) with n in Hn by lia. rewrite orb_false_iff in Hn. apply Hn.
+  - destruct Hn; subst. apply byte_unsigned_inj. reflexivity.
+Qed. 
+
 (*The others are simpler*)
 Section ConvertBack.
 

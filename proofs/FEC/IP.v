@@ -446,42 +446,26 @@ Proof.
   apply ip_header_len in Hip. apply udp_header_len in Hudp. simpl_sumbool. list_solve.
 Qed.
 
-(*A packet with zero in the first byte cannot be valid*)
+Ltac simpl_and :=
+  repeat match goal with
+  | [H : ?p /\ ?q |- _ ] => destruct H
+  | [H: ?p && ?q = true |- _ ] => apply andb_prop in H
+  end.
 
-(*TODO: does this exist?*)
-Lemma sublist_flip: forall {A: Type} (lo hi: Z) (l: list A),
-  0 <= hi < lo ->
-  sublist lo hi l = nil.
+Lemma valid_not_zero: forall (header: list byte) (contents: list byte),
+  valid_packet header contents = true ->
+  Znth 0 (header ++ contents) <> Byte.zero.
 Proof.
-  intros. unfold sublist. apply skipn_short.
-  pose proof (firstn_le_length (Z.to_nat hi) l). lia.
+  intros header contents. unfold valid_packet. intros Hval. simpl_and.
+  simpl_sumbool. unfold valid_ip_packet in H0. 
+  destruct (bytes_to_ip_header (sublist 0 (Zlength header - 8) header)) as [i |] eqn : Hb; [|solve[inversion H0]].
+  pose proof (ip_header_length _ _ Hb).
+  rewrite bytes_to_ip_header_bytes in Hb.
+  rewrite Znth_app1 by lia. 
+  replace (Znth 0 header) with (Znth 0 (sublist 0 (Zlength header - 8) header)) by list_solve.
+  rewrite <- Hb. unfold ip_bytes. rewrite Znth_app1 by (simpl; list_solve).
+  simpl. rewrite app_nil_r, Znth_0_cons.
+  destruct (Byte.eq_dec (nibbles_to_byte (ip_hl i) (ip_v i)) Byte.zero); auto.
+  apply nibbles_byte_zero in e. simpl_and. rewrite H2 in H0.
+  replace (4 * Nibble.unsigned Nibble.zero) with 0 in H0 by reflexivity. simpl_sumbool. list_solve.
 Qed.
-
-(*Intermediate lemmas*)
-Lemma recover_ip_packet_first: forall packet,
-  Zlength packet >= 20 ->
-  Znth 0 (fst (recover_ip_packet packet)) = Znth 0 packet.
-Proof.
-  intros packet Hlen.
-  unfold recover_ip_packet. unfold packet_to_ip_fields.
-  destruct (bytes_to_ip_header packet) as [i|] eqn : Hb.
-  - revert Hb. unfold bytes_to_ip_header.
-    do 20 (destruct packet; [solve_con |]). intros Hi.
-    remember ([i0; i1; i2; i3; i4; i5; i6; i7; i8; i9; i10; i11; i12; i13; i14; i15; i16; i17; i18; i19]) as x.
-    replace (i0 :: i1 :: i2 :: i3 :: i4 :: i5 :: i6 :: i7 :: i8 :: i9 :: i10:: i11:: i12
-                :: i13 :: i14 :: i15 :: i16 :: i17 :: i18 :: i19 :: packet) with (x ++ packet) 
-      by (subst; reflexivity).
-    unfold ip_bytes. simpl. rewrite Znth_0_cons. rewrite Heqx. simpl. rewrite Znth_0_cons.
-    destruct (byte_to_nibbles i0) as [iphl ipv] eqn : Hnib. inversion Hi; subst. simpl.
-    pose proof (byte_to_nibbles_inv i0). rewrite Hnib in H. apply H.
-  - revert Hb. unfold bytes_to_ip_header.
-    do 20 (destruct packet; [list_solve|]). intros Hi. destruct (byte_to_nibbles i). inversion Hi.
-Qed.
-
-Lemma zero_packet_not_valid: forall (packet head con: list byte),
-  Znth 0 packet = Byte.zero ->
-  (head, con) = recover_packet packet ->
-  valid_packet head con = false.
-Proof.
-  intros packet head con Hfst. unfold recover_packet. unfold valid_packet.
-(*TODO: start here*0
