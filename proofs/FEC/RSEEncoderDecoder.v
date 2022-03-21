@@ -76,10 +76,10 @@ Definition fec_packet_act_eq_axiom  := (@fec_packet_eqP _ fec_data_eq_dec).
 Definition fec_packet_act_eqMixin := EqMixin fec_packet_act_eq_axiom.
 Canonical fec_packet_act_eqType := EqType fec_packet_act fec_packet_act_eqMixin.
 (*TODO: this if needed*)
-(*
-#[export]Instance packet_act_inhab : Inhabitant fec_packet_act := 
+
+#[export]Instance fec_packet_act_inhab : Inhabitant fec_packet_act := 
   mk_fecpkt packet_inhab fec_data_inhab.
-*)
+
 (** Representing Blocks *)
 
 Record block := mk_blk { blk_id: int;
@@ -1205,5 +1205,33 @@ Qed.
 
 (*Show that if received is a subseq of encoded, then the blocks of received are each
   subblocks of blocks in encoded*)
+
+(*Let's see - want to show that [get_blocks decoded] and blocks formed by decoder function are the same (really permutations)*)
+Print rse_decode_func.
+Print decoder_all_steps.
+
+(*TODO: I think it would be easier to do the encoder like the decoder (in terms of updating state, folding over, continue)
+  I believe for induction that would make things nicer
+
+becase with decoder: can give alternate version where we append all lists
+then prove decoder_list is equivalent to this function
+
+what is it that we want to show ultimately?
+
+1. in decoder, the blocks that we work with (from decoder_all_steps and update_dec_state) are each a subblock of some block in
+  (get_blocks received)
+2. Since received is a subseq_gen of encoded, each of these blocks is a subblock of some block from (get_blocks encoded)
+3. If a block is recoverable, its parent must be complete (we will prove for encoder - every block is either <k or complete)
+4. Therefore, at every step, the decoder produces valid packets (using above lemma)
+
+question: for get_blocks, why cant we just iterate over a list, add each one to its block in correct place
+then prove - resulting blocks are well formed, every packet is in a block, no duplicate blocks
+
+for lemma #1, I think we can prove by induction for decoder_all_steps, can prove for update_dec_state
+for lemma #2, we will need to prove this about [equiv_classes]
+for lemma #3, this is difficult, and we might need a different version of the encoder for this (similar to decoder, then we
+  again prove with induction like lemma #1)
+lemma #4 should be a relatively simple extnesion of this result, prove by induction over all steps of decoder*)
+
 
 (*Compose these to get the final theorem*)

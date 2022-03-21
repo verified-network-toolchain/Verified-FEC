@@ -123,11 +123,60 @@ Definition decoder_list (dec: decoder) (received: list fec_packet) (decoded: lis
 (*loss_r l1 l2 means that we dropped/reordered l1 to get l2*)
 Definition loss_r := list fec_packet -> list fec_packet -> Prop.
 
+(*A more generic notion of a subsequence - we do not require the same order*)
+(*TODO: move this*)
+Definition subseq_gen {A: eqType} (l1 l2: seq A) : bool :=
+  all (fun x => (count_mem x l1 <= count_mem x l2)%N) l1.
+
+(*TODO: this has to be somehwere*)
+Lemma is_true_eq: forall (b: bool),
+  is_true b <-> b = true.
+Proof.
+  move => b. by case : b.
+Qed.
+
+Lemma subseq_genP: forall {A: eqType} (l1 l2: seq A),
+  reflect (forall x, (count_mem x l1 <= count_mem x l2)%N) (subseq_gen l1 l2).
+Proof.
+  move => A l1 l2. apply iff_reflect. rewrite /subseq_gen -is_true_eq CommonSSR.all_in. split => Hmem x.
+  - move => _. apply Hmem.
+  - case Hin: (x \in l1).
+    + by apply Hmem.
+    + have /count_memPn Hc: x \notin l1 by rewrite Hin. by rewrite Hc.
+Qed. 
+
+Lemma subseq_gen_subseq: forall {A: eqType} (l1 l2: seq A),
+  subseq l1 l2 ->
+  subseq_gen l1 l2.
+Proof.
+  move => A l1 l2. move: l1. elim : l2 => [//=l1 /eqP Hl1| h1 t1 /= IH l1].
+    by rewrite Hl1.
+  case : l1 => [//= | h t /=].
+  rewrite /subseq_gen /= eq_refl /=.
+  case Hh: (h == h1); move: Hh => /eqP Hh Hsub.
+  - rewrite Hh eq_refl /= leq_add2l leq_count_subseq //=.
+    move: IH => /(_ t Hsub). rewrite /subseq_gen => Hall.
+    erewrite eq_in_all. apply Hall. move => y. by rewrite leq_add2l.
+  - move: IH => /(_ _ Hsub) => /subseq_genP Hcount.
+    have->/=: (h1 == h) = false by rewrite eq_sym; apply /eqP.
+    rewrite add0n.
+    have->/=: (1 + count_mem h t <= count_mem h t1)%N = true.
+      move: Hcount => /(_ h)/=. by rewrite eq_refl.
+    rewrite CommonSSR.all_in => x Hinx. 
+    case: (h == x) /eqP => Hhx /=.
+    + have->/=:(h1 == x) = false by rewrite -Hhx eq_sym; apply /eqP.
+      rewrite add0n. move: Hcount => /(_ h)/=. by rewrite eq_refl Hhx.
+    + rewrite add0n. move: Hcount => /(_ x)/=.
+      have->/=:(h==x)=false by apply /eqP. rewrite add0n => Hle.
+      apply (leq_trans Hle). by rewrite leq_addl.
+Qed. 
+
 (*A general loss relation does not add packets*)
+(*TODO: should we just make this the definition of loss (subseq_gen) or do we want to say anything about more specific kinds of loss?*)
 Definition valid_loss (r: loss_r) : Prop :=
   forall (l1 l2: list fec_packet),
     r l1 l2 ->
-    forall x, (count_mem x l2 <= count_mem x l2)%N.
+    subseq_gen l1 l2.
 
 Definition loss := {r: loss_r | valid_loss r }.
 
