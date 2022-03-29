@@ -1862,7 +1862,7 @@ Lemma fill_rows_list_in':  forall m n xh d r to_fill x y,
 Proof.
   move => m n xh d r to_fill x t Hnodup Hlen Hin Hx Hnthx Hy.
   rewrite mk_lmatrix_get //.
-  rewrite Zindex_Znth //; try lia. case : (Z_lt_le_dec x xh) => [//|]; lia.
+  rewrite Zindex_Znth //; try lia. case : (Z_lt_le_dec x xh) => [//|]; lia. rewrite Hlen. lia.
 Qed.
 
 Lemma Z_ord_list_index: forall (n: Z) (l: list Z) (x: 'I_(Z.to_nat n)),

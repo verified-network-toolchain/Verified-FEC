@@ -104,8 +104,8 @@ Qed.
 Definition int_eqMixin := EqMixin (fun i1 i2 => reflect_proj_sumbool (Int.eq_dec i1 i2)).
 Canonical int_eqType := EqType int int_eqMixin.
 (*Then Z*)
-Definition Z_eqMixin := EqMixin (fun z1 z2 => reflect_proj_sumbool (Z.eq_dec z1 z2)).
-Canonical Z_eqType := EqType Z Z_eqMixin.
+(*Definition Z_eqMixin := EqMixin (fun z1 z2 => reflect_proj_sumbool (Z.eq_dec z1 z2)).
+Canonical Z_eqType := EqType Z Z_eqMixin.*)
 
 Definition block_to_tuple (b: block) : (int * seq (option fec_packet_act) * seq (option fec_packet_act) * 
   Z * Z * bool) :=
@@ -454,10 +454,14 @@ Definition create_block_with_packet_red (p: packet) (k: Z) (h: Z) : block :=
   Might be nicer to work with
   Can we prove that the current paradigm is, in some sense, equivalent?*)
 
+Definition get_blocks (l: list fec_packet_act) : list block.
+Admitted.
+
 
 
 (*We first write our encoder as a function (inputted with k and h). We do this in a slightly more
   complicated way than needed - utilizing a 
+TODO*)
 
 (*We will write our encoder first as a function (with inputted k and h), then write the predicate, where
   we quantify over k and h*)
@@ -775,14 +779,39 @@ Definition decoder_all_steps (received: list fec_packet_act) (states: list (list
 (*Now we can define the decoder function and predicate*)
 Definition rse_decode_func (received: list fec_packet_act) (curr: fec_packet_act) 
   (states: list (list bool)) (state: list bool) : list packet :=
-  let (blocks, _) := decoder_all_steps received states in
-  let (_, pkts) := update_dec_state blocks curr state in
-  pkts.
+  (update_dec_state (decoder_all_steps received states).1 curr state).2.
 
 Definition rse_decoder : (@decoder fec_data) :=
   fun (received: list fec_packet_act) (decoded: list packet) (curr: fec_packet_act) (new: list packet) =>
     exists (states: list (list bool)) (state: list bool),
       new = rse_decode_func received curr states state.
+
+Definition rse_decoder_list := AbstractEncoderDecoder.decoder_list fec_packet_act_inhab rse_decoder.
+
+(*This shows that the rse_decoder_list definition is usable: for any possible states, if we 
+  decode using those states, we still get the predicate*)
+(*NOTE (TODO): This actually indicates a problem, I think - this is such a weak spec that we don't
+  even have to add states that are consistent with the previous.
+  I think the other definition should really be used - TODO: figure this out*)
+Lemma rse_decoder_list_add: forall (received : list fec_packet_act) (curr: fec_packet_act)
+  (decoded: list packet),
+  rse_decoder_list received decoded ->
+  forall (s: list bool) (sts: list (list bool)),
+    rse_decoder_list (received ++ [curr]) (decoded ++ rse_decode_func received curr sts s).
+Proof.
+  move => received curr decoded. rewrite /rse_decoder_list /AbstractEncoderDecoder.decoder_list 
+    => [[l [Hdec [Hllen Hith]]]] s sts. exists (l ++ [rse_decode_func received curr sts s]).
+  split; [|split].
+  - by rewrite concat_app Hdec //= app_nil_r.
+  - rewrite !Zlength_app. list_solve.
+  - move => i. rewrite Zlength_app Zlength_cons /= => Hi. have Hi' := (z_leq_n_1 (proj2 Hi)). (*why cant lia do this*)
+    case Hi' => [Hiprev | Hicurr].
+    + rewrite !sublist_app1; try lia. rewrite !Znth_app1; try lia. apply Hith. lia.
+    + rewrite Hicurr. rewrite !sublist_app1; try lia. rewrite !sublist_same //.
+      rewrite !Znth_app2; try lia. rewrite Hllen !Z.sub_diag !Znth_0_cons.
+      rewrite /rse_decoder. exists sts. exists s. by [].
+Qed.
+
 
 (** Correctness Theorems*)
 
@@ -1265,21 +1294,37 @@ Qed.
 (*The next big step is to show that, at all points, the blocks in the decoder are subblocks of
   some completed block produced by the encoder. This requires many steps*)
 
-(*1. At all points during the decoder, all of the blocks in the current state of subblocks
-  of the blocks formed directly from the received list*)
+(*The idea is to be smart in our characterization of [get_blocks] - the function that takes a list of
+  fec packets and divides up into blocks appropriately. We need to prove 3 main results
+  1. get_blocks of the encoded list gives back the original blocks produced by the encoder
+  2. after some packets are lost/duplicated in transit, get_blocks of the resulting list
+     gives subblocks of the original list
+  3. at all points in the decoder, the current decoder state consists of subblocks of
+      get_blocks (received)
+
+  Since things can be reordered, it is difficult to prove these directly (as in, it is hard to
+  get a good IH). Instead, we do the following:
+  1. Note that a block can be uniquely defined by its id and its contents list (assuming the stream of
+      fec packets is well formed - all packets with same id have same k and h, and so on)
+    So we focus on just constructing these lists appropriately
+  2. We give a list of propositions that (get_block_lists) should satisfy, and show that any list
+    which satisfies these conditions must be a permutation of (get_block_lists). This allows us to
+    use these propositions, which describe the contents of all of the blocks, rather than needing to
+    prove everything inductively every time*)
 
 (*TODO: cannot find in ssreflect, I think it should exist: finType for elements in list*)
 (*Since we don't have that, write "pick" directly:*)
+
 Definition pickSeq {A: eqType} (p: pred A) (s: seq A) : option A :=
   foldr (fun x acc => if p x then Some x else acc) None s.
 
-Print pick_spec.
+(*Could use pick with ordinal, but dependent types are VERY messy*)
 
-Variant pickSeq_spec (T: finType) (p: pred T) (s: seq T) : option T -> Type :=
+Variant pickSeq_spec (T: eqType) (p: pred T) (s: seq T) : option T -> Type :=
   | Pick : forall x : T, x \in s -> p x -> pickSeq_spec p s (Some x)
   | Nopick: { in s, p =1 xpred0 } -> pickSeq_spec p s None.
 
-Lemma pickSeqP: forall {T: finType} (p: pred T) (s: seq T),
+Lemma pickSeqP: forall {T: eqType} (p: pred T) (s: seq T),
   pickSeq_spec p s (pickSeq p s).
 Proof.
   move => T p s. elim : s => [//= | h t /= IH].
@@ -1295,416 +1340,542 @@ Qed.
 Definition decoder_block_state (received: list fec_packet_act) (states: list (list bool)) :=
   (decoder_all_steps received states).1.
 
-(*TODO: replace encoder once we get there*)
-Definition get_blocks' (l: list fec_packet_act) : list block :=
-  foldl (fun acc (p: fec_packet_act) =>
-    match [ pick i in ordinal (size acc) | Int.eq_dec (blk_id (Znth (Z.of_nat i) acc)) (fd_blockId p) ] with
-    | None => acc ++ [create_block_with_fec_packet p]
-    | Some i => upd_Znth (Z.of_nat i) acc (add_fec_packet_to_block p (Znth (Z.of_nat i) acc))
-    end) nil l.
+(*First, we want to define a special association list with 1 operation: update_or_add, which updates
+  an element if there using some function or adds if not*)
+Section AssocList.
 
-Lemma let_tuple_fst {A B: Type}: forall (t: A * B) (f: B -> B),
-  (let (x, y) := t in (x, f y)).1 = t.1.
+Variable K: eqType.
+Variable V : Type.
+
+Definition assoc_list := list (K * V).
+
+Definition empty': assoc_list := nil.
+
+Lemma empty_uniq: uniq (map fst empty').
 Proof.
-  move => t f. by case : t.
+  by [].
 Qed.
 
-Check subseq_option.
-(*TODO: move*)
-Lemma subseq_option_refl: forall {A: Type} (s : seq (option A)),
-  subseq_option s s.
+Fixpoint updateWith (k: K) (f: V -> V) (a: assoc_list) : assoc_list :=
+  match a with
+  | nil => nil
+  | (k', v') :: tl => if k == k' then (k, f v') :: tl else (k', v') :: updateWith k f tl
+  end.
+
+Lemma updateWith_same: forall k f a v',
+  uniq (map fst a) ->
+  In (k, v') (updateWith k f a) ->
+  exists v, In (k, v) a /\ v' = f v.
 Proof.
-  move => A s. rewrite /subseq_option. split. by []. move => i Hi. by left.
+  move => k f a v'. elim : a => [//= | h t /= IH]. case : h => [kh vh]/=.
+  move => /andP[Hnotin Huniq]. case: (k == kh) /eqP => Hkkh/=.
+  - move => [Heq | Hin].
+    + case : Heq =><-. rewrite Hkkh. exists vh. split. by left. by [].
+    + move: Hnotin. rewrite -Hkkh.
+      have->//: k \in [seq i.1 | i <- t]. rewrite in_mem_In in_map_iff. by exists (k, v').
+  - move => [Heq | Hin]. case: Heq => Hkkh'. by rewrite Hkkh' in Hkkh.
+    apply IH in Hin. case : Hin => [v [Hinv Hv']]. exists v. split. by right. by []. by [].
 Qed.
 
-(*TODO: move*)
-
-Lemma subblock_eq_complete: forall (b1 b2 : block),
-  b1 <| complete := true |> = b2 <| complete := true |> ->
-  subblock b1 b2.
+Lemma updateWith_diff: forall k f a k' v',
+  k != k' ->
+  In (k', v') (updateWith k f a) <->
+  In (k', v') a.
 Proof.
-  move => b1 b2. case : b1; case : b2 => [id1 dat1 par1 k1 h1 c1] id2 dat2 par2 k2 h2 c2 /= => 
-    [[]]->->->->->. rewrite /subblock /=. split => [//|].
-  split. apply subseq_option_refl. split => [|//]. apply subseq_option_refl.
+  move => k f a k' v'. elim : a => [//= | h t /= IH]. case : h => [kh vh]/=.
+  move => (*/andP[Hnotin Huniq]*) Hkk'. case: (k == kh) /eqP => Hkkh/=.
+  - split; move => [Heq | Hin].
+    + case: Heq => Hk. move: Hkk'. by rewrite Hk eq_refl.
+    + by right.
+    + case : Heq => Hk. subst. by rewrite eq_refl in Hkk'.
+    + by right.
+  - split; move => [Heq | Hin]; try (by left); by (right; apply IH).
 Qed.
 
-Lemma or_impl_right: forall (P Q R: Prop),
-  (P -> R) ->
-  (P \/ Q) ->
-  R \/ Q.
+Lemma updateWith_keys: forall k f a,
+  map fst a = map fst (updateWith k f a).
 Proof.
-  tauto.
+  move => k f a. elim : a => [//= | h t /= IH].
+  case : h => [kh kt]/=. case Hkkh: (k == kh) => /=.
+  - f_equal. symmetry. by apply /eqP.
+  - by rewrite IH.
+Qed. 
+
+Definition get (k: K) (a: assoc_list) : option V :=
+  foldr (fun x acc => if k == x.1 then Some x.2 else acc) None a.
+
+Lemma get_some: forall (k: K) (v: V) (a: assoc_list),
+  uniq (map fst a) ->
+  get k a = Some v <-> In (k, v) a.
+Proof.
+  move => k v a. elim : a => [//= | h t /= IH]. case : h => [kh vh]/=.
+  move => /andP[Hnotin Huniq]. case Hkkh: (k == kh).
+  - move: Hkkh => /eqP Hkkh. rewrite Hkkh. split.
+    + move => [Hvh]. rewrite Hvh. by left.
+    + move => [[Heq] | Hin]. by rewrite Heq. 
+      move: Hnotin. have->//: kh \in [seq i.1 | i <- t]. rewrite in_mem_In in_map_iff.
+      by exists (kh, v).
+  - move: Hkkh => /eqP Hkkh. rewrite IH //. split.
+    + move => Hin //. by right.
+    + move => [[Heq] | Hin //]. by rewrite Heq in Hkkh.
 Qed.
 
-
-(*TODO: move to above maybe*)
-(*TODO: this is getting super ugly, let's think about this better - maybe reformulate
-  block_wf condition instead of that iff and everything*)
-Lemma add_fec_packet_to_block_wf: forall (p: fec_packet_act) (b: block),
-  fd_blockId p = blk_id b ->
-  fd_k p = blk_k b ->
-  fd_h p = blk_h b ->
-  Int.unsigned (fd_blockIndex p) < fd_k p + fd_h p ->
-  packet_valid p ->
-  (forall (p': fec_packet_act), (Some p') \in (data_packets b ++ parity_packets b) -> fd_blockIndex p != fd_blockIndex p') ->
-  block_wf b ->
-  block_wf (add_fec_packet_to_block p b).
+Lemma get_none: forall (k: K) (a: assoc_list),
+  get k a = None <-> (forall v, ~In(k, v) a).
 Proof.
-  move => p b Hids Hks Hhs Hidxb Hval Hidxdiff. rewrite /block_wf /add_fec_packet_to_block /= =>
-    [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]]].
-  have [Hidx1 | Hindx2]: (0 <= Int.unsigned (fd_blockIndex p) < fd_k p \/ 
-    fd_k p <= Int.unsigned (fd_blockIndex p) < fd_k p + fd_h p) by rep_lia.
-  - rewrite !upd_Znth_app1;[|lia]. rewrite !(sublist_app1 _ 0);[|lia|list_solve].
-    rewrite !sublist_app2;[|list_solve].
-    have->: Zlength (upd_Znth (Int.unsigned (fd_blockIndex (p_fec_data' p))) (data_packets b) (Some p)) =
-      blk_k b by list_solve.
-    rewrite !Z.sub_diag !Z.add_simpl_l !sublist_same; try lia; [|list_solve].
-    repeat match goal with | |- ?x /\ ?y => split; try by [] end. 4: list_solve.
-    all: move => p'.
-    (*3 of the cases are nearly identical*)
-    all: try solve [move => Hin; apply (or_impl_right (In_upd_Znth _ _ _ _)) in Hin; rewrite or_assoc in Hin;
-      case: Hin => [Hp' | Hold]; last first; [ eauto |  by case: Hp' => ->]].
-    + move => i Hin.
-(*  case (Z.eq_dec i (Int.unsigned (fd_blockIndex (p_fec_data' p')))) => [Hieq | Hineq].*)
-      apply (or_impl_right (In_upd_Znth _ _ _ _)) in Hin; rewrite or_assoc in Hin.
-      case: Hin => [Hp' | Hold]. case : Hp' => ->. split.
-      have [Hi | [Hi | Hi]]: (0 <= i < blk_k b \/ blk_k b <= i < blk_k b + blk_h b \/ (i < 0 \/ i >= blk_k b + blk_h b)) by lia.
-      rewrite Znth_app1; [|list_solve].
-      case : (Z.eq_dec i (Int.unsigned (fd_blockIndex (p_fec_data' p)))) => [// | Hneq].
-      rewrite upd_Znth_diff; try list_solve. 
-      move => Hnth. have Hnth': Znth i (data_packets b ++ parity_packets b) = Some p by list_solve.
-      apply (Hidx _ i) in Hnth'. by []. left. rewrite -Hnth. apply Znth_In. list_solve.
-      rewrite Znth_app2. list_simplify. apply Hidx. right. rewrite -H. apply Znth_In. list_solve. list_solve.
-      list_solve. rewrite Znth_outofbounds. by []. rewrite Zlength_app; list_solve. (*list_solve should do this*)
-      move ->. rewrite Znth_app1; [|list_solve]. rewrite upd_Znth_same //. list_solve. (*should fix levels - also
-      lots of repetition, should fix*)
-      case : (Z.eq_dec i (Int.unsigned (fd_blockIndex (p_fec_data' p)))) => [// | Hneq].
-      * move ->. rewrite Znth_app1; [|list_solve]. rewrite upd_Znth_same; [|list_solve].
-        (*OH: this causes problems if block indices are not unique - but that should be ok, need assumption*)
-        split
+  move => k a. elim : a => [//= | h t /= IH].
+  - split => //. auto.
+  - case : h => [kh vh]/=. case Hkkh: (k == kh).
+    + move : Hkkh => /eqP Hkkh. split => //.
+      move => /(_ vh). rewrite Hkkh. tauto.
+    + rewrite IH. move : Hkkh => /eqP Hkkh. split => Hallin v.
+      * move => [[Heq] | Hc]. auto. by apply (Hallin v).
+      * move => Hc. move: Hallin => /(_ v) Hor. apply Decidable.not_or in Hor. by apply (proj2 Hor).
+Qed.
 
+(*Add entry (k, v) to front of list*)
+Definition add (k: K) (v: V) (a: assoc_list) : assoc_list :=
+  (k, v) :: a.
 
- tauto.
-        intuition.
-        eauto.
-      
-        by [].
-
-
-
- rewrite upd_Znth_same.
-
-
-
- Search Znth (_ < _).
-
-
- list_solve. 
-
-
-
- 2: list_solve.
-
-
- apply In_Znth.
-
-
-
- list_solve. by left.
-
-
-
- apply Hidx.
-      Check Znth_upd_Znth_diff.
-     rewrite (Znth_upd_Znth_diff _  _ i (Int.unsigned (fd_blockIndex (p_fec_data' p)))).
-      Search upd_Znth Znth.
-
-
-
-Znth_upd_Znth_diff:
-  forall (A : Type) (d : Inhabitant A) (i j : Z) (l : seq A) (x : A),
-  i <> j -> Znth i (upd_Znth j l x) = Znth i l
-      rewrite upd_Znth_diff.
-      
-
-
-
-
-
-
- Search ( (?P -> ?R) -> (?P \/ ?Q)). apply In_upd_Znth in Hin. [Hupd | Hpar]. apply In_upd_Znth in Hupd.
-      case : Hupd
-
-
- case (Z.eq_dec i (Int.unsigned (fd_blockIndex (p_fec_data p')))) => [Hieq | Hineq].
-      * rewrite Hieq. upd_Znth_same.
-
-
-
- move => i [Hupd | Hpar]; last first.
-
-
-
- apply Hidx. by right.
-      apply In_upd_Znth in Hupd. case : Hupd => [Hp' | Hinp'].
-      case: Hp' => ->. by []. apply Hkh. by left.
-
-    Search In upd_Znth.
-
-
-In_upd_Znth
-
-
-
- Search (?x + ?y - ?x).
-
-
-
- list_simplify.
-
-
-
- try list_solve.
-
-
-
- 2: { rewrite Hk -Hks. lia. apply Hidx1.
-
-
- [|rep_lia].
-  
-
-
-block_wf (add_fec_packet_to_block h (Znth (Z.of_nat i) base))
-
-(*First, we need results about get_blocks*)
-Lemma get_blocks_wf: forall (l: list fec_packet_act),
-  (forall (p1 p2 : fec_packet_act), p1 \in l -> p2 \in l -> fd_blockId p1 = fd_blockId p2 ->
-    fd_k p1 = fd_k p2 /\ fd_h p1 = fd_h p2) ->
-  forall b, b \in (get_blocks' l) -> block_wf b.
+Lemma add_uniq: forall (k: K) (v: V) (a: assoc_list),
+  uniq (map fst a) ->
+  get k a = None ->
+  uniq (map fst (add k v a)).
 Proof.
-  move => l Hall b. rewrite /get_blocks'. remember (@nil block) as base eqn : Hb.
-  rewrite {1}Hb. have Hbase: forall bl, bl \in base -> block_wf bl by move => bl; rewrite Hb.
-  rewrite {Hb}. move: Hall base Hbase.
-  elim : l => [//= Hall base Hbase | h t /= IH Hall base Hbase].
-  - apply Hbase.
-  - apply IH.
-    + move => p1 p2 Hin1 Hin2 Hid. apply Hall. by rewrite in_cons Hin1 orbT.
-      by rewrite in_cons Hin2 orbT. by [].
-    + move => bl.
-      case Hpick: [pick i | Int.eq_dec (blk_id (Znth (Z.of_nat (nat_of_ord i)) base)) (fd_blockId (p_fec_data h)) ] 
-        => [i|].
-        * rewrite in_mem_In. move => Hin. apply In_upd_Znth in Hin. case : Hin => [Hbl | Hinbl].
-          { rewrite Hbl.
+  move => k v a Huniq Hget. rewrite /add/=. apply /andP. split => //.
+  case Hin: (k \in [seq i.1 | i <- a]) => //.
+  move: Hin. rewrite -is_true_true in_mem_In in_map_iff => [[x [Hx1 Hin]]].
+  move: Hx1 Hin. case : x => [k' v']/=-> => Hin.
+  rewrite get_none in Hget. exfalso. by apply (Hget v').
+Qed.
 
-
-
-block_wf (add_fec_packet_to_block h (Znth (Z.of_nat i) base))
-
-
-
- Search In upd_Znth.
-    
-
-
-
- forget [::] as base.
-  have: (forall b b \in
-
- move: Hall. elim : l => .
-
-
-        (*basically - only problem is that we need to know that k(block) = k(packet)
-          should say: assumption: forall p1 p2, p1 \in r -> p2 \in r -> k(p1) = k(p2)
-          then have other lemma: IF this condition holds, then getBlocks creates well-formed blocks
-          furthermore, for all blocks in getBlocks, there is a packet in it - then compose to prove this
-
-
-Lemma decoder_blocks_subblock_received: forall (received: list fec_packet_act) (states: list (list bool)),
-  size received = size states ->
-  forall (b: block), b \in (decoder_block_state received states) ->
-  exists b', (b' \in get_blocks' received) /\ subblock b b'.
+Lemma add_in_same: forall (k: K) (v: V) (a: assoc_list) (v': V),
+  uniq (map fst a) ->
+  get k a = None ->
+  In (k, v') (add k v a) ->
+  v = v'.
 Proof.
-  move => received states Hsz b. rewrite /decoder_block_state /decoder_all_steps /get_blocks'.
-  rewrite -zip_combine. rewrite -(revK (zip _ _)) -{2}(revK received) !foldl_rev rev_zip //.
-  (*TODO: OK?*) forget (rev states) as s. rewrite {Hsz states}. move: s.
-  elim : (rev received) => [//= s | h t /= IH s].
-  - by case : s.
-  - move: IH. case : s => [//=| sh st /=]. 
-    (*move => Hin.*) 
-    set acc := (foldr
-                 (fun (x : fec_packet fec_data) (z : seq block) =>
-                  match
-                    [pick i0 | Int.eq_dec (blk_id (Znth (Z.of_nat (nat_of_ord i0)) z))
-                                 (fd_blockId (p_fec_data x)) ]
-                  with
-                  | Some i0 =>
-                      upd_Znth (Z.of_nat i0) z
-                        (add_fec_packet_to_block x (Znth (Z.of_nat i0) z))
-                  | None => z ++ [:: create_block_with_fec_packet x]
-                  end) [::] t).
-    rewrite -/(zip t (sh :: st)) => IH/=.
-    rewrite let_tuple_fst.
-    remember (foldr
-            (fun (x : fec_packet_act * seq bool) (z : seq block * seq packet) =>
-             let (blks, pkts) := update_dec_state z.1 x.1 x.2 in (blks, z.2 ++ pkts)) 
-            ([::], [::]) (zip t st)) as rest eqn : Hr.
-    rewrite /update_dec_state. move: Hr. case : rest => [blocks packs]/=.
-    case : blocks => [|blockshd blockstl] Hr/=.
-    + case: (Z.eq_dec (fd_k (p_fec_data h)) 1) => /= [Hk1 | Hknot1]; rewrite in_cons orbF => /eqP Hb.
-      * (*TODO: order of cases?*)
-        case Hpick : [pick i | Int.eq_dec (blk_id (Znth (Z.of_nat (nat_of_ord i)) acc)) 
-          (fd_blockId (p_fec_data h)) ] => [i|]; last first.
-          exists (create_block_with_fec_packet h). rewrite mem_cat in_cons eq_refl orTb orbT //= Hb.
-          split => [//|]. by apply subblock_eq_complete.
-        exists (add_fec_packet_to_block h (Znth (Z.of_nat i) acc)).
-        split. rewrite in_mem_In. apply upd_Znth_In.
-        rewrite Zlength_correct -size_length. have /ltP Hi: (i < size acc)%N by [].
-        split; try lia. by apply inj_lt.
-        (*Need to prove that this is a subblock of adding - relies on fact that input
-          stream is well-formed*)
-         rewrite /subblock.
+  move => k v a v' Huniq Hget. rewrite /add /= => [[[Heq] // | Hin]].
+  rewrite get_none in Hget. exfalso. by apply (Hget v').
+Qed.
+
+(*If (k, v1) is in list, update with (k, f v1). Otherwise, add (k, v) to list*)
+Definition update_or_add' (k: K) (v: V) (f: V -> V) (a: assoc_list) : assoc_list :=
+  match (get k a) with
+  | None => add k v a
+  | Some _ => updateWith k f a
+  end.
+
+Lemma update_or_add_same': forall (k: K) (v: V) (f: V -> V) (a: assoc_list) (v': V),
+  uniq (map fst a) ->
+  In (k, v') (update_or_add' k v f a) ->
+  (exists oldV, In (k, oldV) a /\ v' = f oldV) \/
+  (v' = v /\ (forall oldV, ~In(k, oldV) a)).
+Proof.
+  move => k v f a v' Huniq. rewrite /update_or_add'. case Hget : (get k a) => [vd | ].
+  - move => Hin. apply (updateWith_same Huniq) in Hin. by left.
+  - move => Hin. apply (add_in_same Huniq Hget) in Hin. right. split => //.
+    by apply get_none.
+Qed.
+
+Lemma update_or_add_diff': forall (k: K) (v: V) (f: V -> V) (a: assoc_list) k' v',
+  k != k' ->
+  In (k', v') (update_or_add' k v f a) <->
+  In (k', v') a.
+Proof.
+  move => k v f a k' v' Hkk'. rewrite /update_or_add'. case Hget: (get k a) => [vd |].
+  - by apply updateWith_diff.
+  - rewrite /add/=. split.
+    + move => [[Heq] | Hin //]. move: Hkk'. by rewrite Heq eq_refl.
+    + move => Hin. by right.
+Qed.
+
+Lemma update_or_add_uniq: forall (k: K) (v: V) (f: V -> V) (a: assoc_list),
+  uniq (map fst a) ->
+  uniq (map fst (update_or_add' k v f a)).
+Proof.
+  move => k v f a. rewrite /update_or_add' /=. case Hget : (get k a).
+  - by rewrite -updateWith_keys.
+  - move => Huniq. by apply add_uniq.
+Qed.
+
+Lemma update_or_add_exists': forall (k: K) (v: V) (f: V -> V) (a: assoc_list),
+  uniq (map fst a) -> (*technically don't need but makes proofs easier*)
+  exists v', In (k, v') (update_or_add' k v f a).
+Proof.
+  move => k v f a Huniq. rewrite /update_or_add'. case Hget: (get k a) => [d |].
+  - rewrite (get_some _ _ Huniq) in Hget. have: k \in map fst a. { rewrite in_mem_In in_map_iff. by exists (k, d). }
+    rewrite (updateWith_keys k f a) in_mem_In in_map_iff => [[[k1 v1]/= [Hk Hin]]]. rewrite Hk in Hin.
+    by exists v1.
+  - rewrite /add. exists v. by left.
+Qed.
+
+(*Now we should package this into a nicer association list that has uniq keys*)
+
+Inductive alist := Alist (al: assoc_list) of (uniq (map fst al)).
+Coercion al (a: alist) : list (K * V) := let: Alist x _ := a in x.
+Definition al_uniq (a: alist) : uniq (map fst a) := let :Alist _ x := a in x.
+Canonical alist_subType := [subType for al].
+
+Definition empty : alist := Alist empty_uniq.
+Definition update_or_add (k: K) (v: V) (f: V -> V) (a: alist) : alist :=
+  Alist (update_or_add_uniq k v f (al_uniq a)).
+
+(*Now, we provide lemmas for export*)
+Lemma update_or_add_same: forall (k: K) (v: V) (f: V -> V) (a: alist) (v': V),
+  In (k, v') (update_or_add k v f a) ->
+  (exists oldV, In (k, oldV) a /\ v' = f oldV) \/
+  (v' = v /\ (forall oldV, ~In(k, oldV) a)).
+Proof.
+  move => k v f a v' Hin. apply update_or_add_same'. apply (al_uniq a).
+  by [].
+Qed.
+
+Lemma update_or_add_diff: forall (k: K) (v: V) (f: V -> V) (a: alist) k' v',
+  k != k' ->
+  In (k', v') (update_or_add k v f a) <->
+  In (k', v') a.
+Proof.
+  move => k v f a k' v'.
+  apply update_or_add_diff'.
+Qed.
+
+Lemma update_or_add_exists: forall (k: K) (v: V) (f: V -> V) (a: alist),
+  exists v', In (k, v') (update_or_add' k v f a).
+Proof.
+  move => k v f a. apply update_or_add_exists'. apply (al_uniq a).
+Qed.
+
+End AssocList.
+
+Opaque update_or_add.
+
+(*A valid stream of packets that will eventually produce well-formed blocks*)
+Definition wf_packet_stream (l: list fec_packet_act) :=
+  (forall (p1 p2 : fec_packet_act), p1 \in l -> p2 \in l -> 
+    fd_blockId p1 = fd_blockId p2 -> fd_k p1 = fd_k p2 /\ fd_h p1 = fd_h p2) /\
+  (forall (p1 p2: fec_packet_act), p1 \in l -> p2 \in l -> 
+    fd_blockId p1 = fd_blockId p2 -> fd_blockIndex p1 = fd_blockIndex p2 -> p1 = p2) /\
+  (forall (p: fec_packet_act), p \in l -> 0 <= Int.unsigned (fd_blockIndex p) < fd_k p + fd_h p).
+
+Lemma wf_packet_stream_tl: forall h t,
+  wf_packet_stream (h :: t) ->
+  wf_packet_stream t.
+Proof.
+  move => h t. rewrite /wf_packet_stream => [[Hkh [Huniq Hidx]]].
+  split; [|split].
+  - move => p1 p2 Hp1 Hp2. apply Hkh; rewrite in_cons. by rewrite Hp1 orbT. by rewrite Hp2 orbT.
+  - move => p1 p2 Hp1 Hp2. apply Huniq; rewrite in_cons. by rewrite Hp1 orbT. by rewrite Hp2 orbT.
+  - move => p Hp. apply Hidx. by rewrite in_cons Hp orbT.
+Qed. 
+
+(*This implies the following useful condition*)
+Lemma wf_all_nonneg: forall (l: list fec_packet_act),
+  wf_packet_stream l ->
+  (forall (x: fec_packet_act), x \in l -> 0 <= fd_k x + fd_h x).
+Proof.
+  move => l [_ [_ Hbounds]] x Hinx. move: Hbounds => /(_ x Hinx). lia.
+Qed. 
+
+(*Here, we reason about the lists for each block, not the full structure*)
+Section BlockList.
+
+Definition block_list := alist int_eqType (list (option fec_packet_act)).
+
+(*Packet should have same blockId*)
+Definition update_packet_list (p: fec_packet_act) (l: list (option fec_packet_act)) :=
+  upd_Znth (Int.unsigned (fd_blockIndex p)) l (Some p).
+
+Definition new_packet_list (p: fec_packet_act) : list (option fec_packet_act) :=
+  upd_Znth (Int.unsigned (fd_blockIndex p)) (zseq (fd_k p + fd_h p) None) (Some p).
+
+Definition update_block_list (idx: int) (p: fec_packet_act) (b: block_list) :=
+  update_or_add idx (new_packet_list p) (update_packet_list p) b.
+
+(*Use this to get lists for each block*)
+Definition get_block_lists (l: list fec_packet_act) : block_list :=
+  foldr (fun (p: fec_packet_act) acc => update_block_list (fd_blockId p) p acc) (@empty _ _) l.
+
+(*Theorems about this*)
+
+(*TODO: move block stuff to different file probably*)
+(*The above function is unwieldy to use directly for all the theorems we need. Instead, we give 5 
+  conditions that (get_blocks l) satisfies. Then we prove that any 2 lists that satisfy these 5
+  conditions are equal up to permutation. With only 1 exception (TODO: ensure), we will only need
+  these 5 conditions for all subsequent proofs; it is much nicer than needing induction and to
+  reason about association lists for everything*)
+
+(*Prop1: Every packet in the input belongs to some (unique, as we will show) list in the output. We need this
+  first to prove the second property*)
+Lemma get_blocks_list_allin: forall (l: list fec_packet_act) (p: fec_packet_act),
+  In p l ->
+  exists pkts, In (fd_blockId p, pkts) (get_block_lists l).
+Proof.
+  move => l p. rewrite /get_block_lists. elim : l => [//= | h t /=].
+  rewrite /update_block_list => IH. move => Hor.
+  case Hhp: (fd_blockId h == fd_blockId p).
+  - move: Hhp => /eqP Hhp. rewrite Hhp. apply update_or_add_exists.
+  - move: Hhp => /eqP Hhp. case : Hor => [Heq // | Hin]. by rewrite Heq in Hhp.
+    setoid_rewrite update_or_add_diff; last first. by apply /eqP.
+    by apply IH.
+Qed.
+
+(*We need a few auxilliary lemmas to prove the rest*)
+
+(*This will follow from later propositions, but we need it now first*)
+Lemma get_blocks_list_from_src: forall (l: list fec_packet_act) (i: int) (pkts: list (option (fec_packet_act)))
+  (p: fec_packet_act),
+  (forall (x: fec_packet_act), x \in l -> 0 <= fd_k x + fd_h x) ->
+  In (i, pkts) (get_block_lists l) ->
+  In (Some p) pkts ->
+  In p l.
+Proof.
+  move => l i pkts p. move: pkts. elim : l => [//= | h t /=].
+  rewrite /update_block_list. move => IH pkts Hbound.
+  case: (Int.eq_dec i (fd_blockId h)) => [Hih | Hih].
+  - rewrite -Hih/=. move => Hin. apply update_or_add_same in Hin.
+    case : Hin => [[oldV [Hin Hpkts]] | [Hpkts Hnotin]].
+    + rewrite Hpkts. rewrite /update_packet_list. move => Hinp.
+      apply In_upd_Znth in Hinp. case : Hinp => [[Hhp] // | Hinp]. by left.
+      right. apply (IH oldV) => //. move => x Hinx. apply Hbound. by rewrite in_cons Hinx orbT.
+    + rewrite Hpkts /new_packet_list => Hin. apply In_upd_Znth in Hin.
+      case : Hin => [[Hinp] // | Hinp]. by left. move: Hinp.
+      have H0kh: 0 <= fd_k h + fd_h h. apply Hbound. by rewrite in_cons eq_refl.
+      rewrite In_Znth_iff zseq_Zlength // => [[j [Hj Hnth]]]. 
+      by rewrite zseq_Znth in Hnth.
+  - move => Hin. apply update_or_add_diff in Hin; last first. rewrite eq_sym. by apply /eqP. 
+    move => Hinp. right. apply (IH pkts) => //. move => x Hinx. apply Hbound. by rewrite in_cons Hinx orbT.
+Qed.
+
+(*1.5: all lists are nonempty; this element also has the same blockId and can be used to calculate the length*)
+Lemma get_blocks_list_nonempty: forall (l: list fec_packet_act) (i: int) (pkts: list (option (fec_packet_act))),
+  wf_packet_stream l ->
+  In (i, pkts) (get_block_lists l) ->
+  exists (p: fec_packet_act), In (Some p) pkts /\ fd_blockId p = i /\ Zlength pkts = fd_k p + fd_h p.
+Proof.
+  move => l i. elim : l => [//= | h t /=].
+  rewrite /update_block_list. move => IH pkts Hwf. 
+  case: (Int.eq_dec i (fd_blockId h)) => [Hih | Hih].
+  - rewrite -Hih/=. move => Hin. apply update_or_add_same in Hin.
+    case : Hin => [[oldV [Hin Hpkts]] | [Hpkts Hnotin]].
+    + have Hin':=Hin. apply IH in Hin => //; last first. by apply (wf_packet_stream_tl Hwf).
+      case : Hin => [p [Hinp [Hidp Hlenp]]]. rewrite Hpkts /update_packet_list Zlength_upd_Znth.
+      have Hinpt: p \in t. { rewrite in_mem_In. apply (@get_blocks_list_from_src t i oldV) => //.
+        apply wf_all_nonneg. apply (wf_packet_stream_tl Hwf). } 
+      exists h. have [Hk Hh]: fd_k p = fd_k h /\ fd_h p = fd_h h. {
+        move: Hwf; rewrite /wf_packet_stream => [[Hkh _]].
+        apply Hkh. by rewrite in_cons Hinpt orbT. by rewrite in_cons eq_refl.
+        by rewrite -Hih Hidp. }
+      repeat split => //; try lia. apply upd_Znth_In. move: Hwf.
+      rewrite /wf_packet_stream => [[_ [_ /(_ h)]]]. rewrite in_cons eq_refl/= => Hb.
+      rewrite Hlenp Hk Hh. by apply Hb.
+    + rewrite Hpkts /new_packet_list. exists h.
+      have Hbound: 0 <= Int.unsigned (fd_blockIndex h) < fd_k h + fd_h h. {
+        move: Hwf; rewrite /wf_packet_stream => [[_ [_ /(_ h)]]]. rewrite in_cons eq_refl/= => Hb.
+        by apply Hb. }
+      repeat split => //. 2: rewrite upd_Znth_Zlength zseq_Zlength.
+      apply upd_Znth_In. rewrite zseq_Zlength. all: lia.
+  - move => Hin. apply update_or_add_diff in Hin; last first. by rewrite eq_sym; apply /eqP.
+    apply IH => //. by apply (wf_packet_stream_tl Hwf).
+Qed.
+
+(*Prop2: All lists are nonempty (each contains at least 1 packet). We need extra information which will be
+  useful later, so we first prove a larger auxilliary lemma. We just proved a stronger version of this*)
+
+(*Prop3: for every entry in the block list, its length is k+h for ANY packet in it*)
+Lemma get_blocks_lists_lens: forall (l: list fec_packet_act) (i: int) (pkts: list (option (fec_packet_act)))
+  (p: fec_packet_act),
+  wf_packet_stream l ->
+  In (i, pkts) (get_block_lists l) ->
+  In (Some p) pkts ->
+  Zlength pkts = (fd_k p + fd_h p).
+Proof.
+  move => l i pkts p. move: pkts p. elim : l => [//= | h t /=].
+  rewrite /update_block_list. move => IH pkts p Hwf.
+  case: (Int.eq_dec i (fd_blockId h)) => [Hih | Hih].
+  - rewrite -Hih/=. move => Hin. apply update_or_add_same in Hin.
+    case : Hin => [[oldV [Hin Hpkts]] | [Hpkts Hnotin]].
+    + rewrite Hpkts /update_packet_list Zlength_upd_Znth => Hinp.
+      apply In_upd_Znth in Hinp. case : Hinp => [[Hhp] | Hinp].
+      * rewrite Hhp.
+        have Hin':=Hin.
+        apply get_blocks_list_nonempty in Hin; last first. by apply (wf_packet_stream_tl Hwf).
+        case : Hin => [p' [Hinp' [Hidp' Hlenold]]]. rewrite Hlenold.
+        have [Hk Hh]: fd_k p' = fd_k h /\ fd_h p' = fd_h h. { have Hwf':=Hwf.
+          move: Hwf' => [Hkh [_ Hbounds]]. apply Hkh.
+          - rewrite in_cons. have->: p' \in t; last first. by rewrite orbT.
+            rewrite in_mem_In. eapply (get_blocks_list_from_src).
+            apply wf_all_nonneg. apply (wf_packet_stream_tl Hwf).
+            apply Hin'. by [].
+          - by rewrite in_cons eq_refl.
+          - by rewrite Hidp'. }
+        by rewrite Hk Hh.
+      * apply IH => //. by apply (wf_packet_stream_tl Hwf).
+    + have H0kh: 0 <= fd_k h + fd_h h. move: Hwf => [_[_ Hbound]].
+        have: 0 <= Int.unsigned (fd_blockIndex h) < fd_k h + fd_h h. apply Hbound. by rewrite in_cons eq_refl. lia.
+      rewrite Hpkts /new_packet_list Zlength_upd_Znth zseq_Zlength // => Hin.
+      apply In_upd_Znth in Hin. move: Hin => [[Hph] |]. by rewrite Hph.
+      rewrite In_Znth_iff zseq_Zlength //. move => [j [Hj Hnth]].
+      by rewrite zseq_Znth in Hnth.
+  - move => Hin. rewrite update_or_add_diff in Hin; last first. rewrite eq_sym. by apply /eqP.
+    apply IH => //. apply (wf_packet_stream_tl Hwf).
+Qed.
+
+(*Prop3: For every entry in the block list, we give the list explicitly: (this is the most important one)*)
+Lemma get_block_lists_in: forall (l: list fec_packet_act) (i: int) (pkts: list (option (fec_packet_act))),
+  wf_packet_stream l ->
+  In (i, pkts) (get_block_lists l) ->
+  pkts = mkseqZ (fun j => 
+    pickSeq (fun (p': fec_packet_act) => (fd_blockId p' == i) &&
+      Z.eq_dec j (Int.unsigned (fd_blockIndex p'))) l) (Zlength pkts).
+Proof.
+  move => l i pkts. move: pkts. elim : l => [//=| h t /=].
+  rewrite /update_block_list. move => IH pkts Hwf. case: (Int.eq_dec i (fd_blockId h)) => [Hih | Hih].
+  - rewrite -Hih eq_refl /=. move => Hin. apply update_or_add_same in Hin.
+    case : Hin => [[oldV [Holdv Hpkts]] | Hnew].
+    + have Holdv':=Holdv. apply IH in Holdv.
+      * rewrite {1}Hpkts Holdv /update_packet_list. 
+        (*To show these are equal, we will compare element-wise*)
+        have Hnonneg: 0 <= Zlength oldV by list_solve.
+        have Hlens: Zlength oldV = Zlength pkts. { rewrite Hpkts. rewrite /update_packet_list. list_solve. }
+        apply Znth_eq_ext; rewrite Zlength_upd_Znth !mkseqZ_Zlength //. list_solve.
+        move => j Hj. rewrite mkseqZ_Znth; [|lia]. rewrite (upd_Znth_lookup' (Zlength oldV)); try lia. 
+        rewrite mkseqZ_Znth; try lia.
+        by case : (Z.eq_dec j (Int.unsigned (fd_blockIndex h))). rewrite mkseqZ_Zlength. lia. list_solve.
+        (*to prove length, we use fact that there is some element there*)
+        have Holdv'':=Holdv'.
+        apply get_blocks_list_nonempty in Holdv'; last first.
+          apply (wf_packet_stream_tl Hwf).
+        case : Holdv' => [p [Hinp [Hpid Holdlen]]].
+        rewrite Holdlen. have Hwf':=Hwf. move: Hwf' => [Hkh [_ Hbounds]].
+        have [Hk Hh]: fd_k p = fd_k h /\ fd_h p = fd_h h. { apply Hkh.
+          rewrite in_cons. have->: p \in t; last first. by apply orbT.
+          rewrite in_mem_In. eapply get_blocks_list_from_src. apply wf_all_nonneg.
+          apply (wf_packet_stream_tl Hwf). apply Holdv''. by []. by rewrite in_cons eq_refl.
+          by rewrite Hpid. }
+        rewrite Hk Hh. apply Hbounds. by rewrite in_cons eq_refl.
+      * apply (wf_packet_stream_tl Hwf).
+    + case : Hnew => [Hpkts Hnotin].
+      have Hidxb: 0 <= Int.unsigned (fd_blockIndex h) < fd_k h + fd_h h. {
+        move: Hwf => [_ [_ Hbounds]]. apply Hbounds. by rewrite in_cons eq_refl. }
+      rewrite Hpkts /new_packet_list Zlength_upd_Znth zseq_Zlength; try lia.
+      (*once again, compare elementwise*)
+      apply Znth_eq_ext; rewrite Zlength_upd_Znth zseq_Zlength; try lia.
+      rewrite mkseqZ_Zlength; lia. move => j Hj.
+      rewrite mkseqZ_Znth // (upd_Znth_lookup' (fd_k h + fd_h h)) //; last first.
+        rewrite zseq_Zlength; lia.
+      case (Z.eq_dec j (Int.unsigned (fd_blockIndex h))) => Hjh//=.
+      rewrite zseq_Znth; try lia.
+      (*contradiction: we know no packets can exist in tail, so pickSeq must be None*)
+      have Hpick:= 
+        (pickSeqP (fun p' : fec_packet_act => (fd_blockId p' == i) && Z.eq_dec j (Int.unsigned (fd_blockIndex p'))) t).
+      case: Hpick => [x Hinx /andP[/eqP Hxid Hjx] |//]. rewrite in_mem_In in Hinx.
+      apply get_blocks_list_allin in Hinx. case : Hinx => [pkts' Hpkts']. exfalso.
+      apply (Hnotin pkts'). by rewrite -Hxid.
+  - move => Hin. apply update_or_add_diff in Hin. apply IH in Hin.
+    + rewrite Hin. rewrite mkseqZ_Zlength; [|list_solve]. 
+      have->//=: (fd_blockId h == i) = false. apply /eqP. auto.
+    + by apply (wf_packet_stream_tl Hwf).
+    + apply /eqP. auto.
+Qed.
+
+(*Prop4: The output list is unique by blockId*)
+Lemma get_blocks_list_uniq: forall (l: list fec_packet_act),
+  uniq (map fst (get_block_lists l)).
+Proof.
+  move => l. elim : l => [//= | h t /= IH].
+  rewrite /update_block_list. apply al_uniq.
+Qed.
+
+(*We bundle these into a single relation*)
+Definition get_block_lists_prop (l: list fec_packet_act) (blks: block_list) : Prop :=
+  (forall (p: fec_packet_act), In p l -> exists pkts, In (fd_blockId p, pkts) blks) /\
+  (forall (i: int) (pkts: list (option (fec_packet_act))),
+    In (i, pkts) blks -> exists (p: fec_packet_act), In (Some p) pkts) /\
+  (forall (i: int) (pkts: list (option (fec_packet_act))) (p: fec_packet_act),
+    In (i, pkts) blks -> In (Some p) pkts -> Zlength pkts = (fd_k p + fd_h p)) /\
+  (forall (i: int) (pkts: list (option (fec_packet_act))),
+    In (i, pkts) blks -> pkts = mkseqZ (fun j => 
+    pickSeq (fun (p': fec_packet_act) => (fd_blockId p' == i) &&
+      Z.eq_dec j (Int.unsigned (fd_blockIndex p'))) l) (Zlength pkts)) /\
+  uniq (map fst blks).
+
+Lemma get_block_lists_spec: forall (l: list fec_packet_act),
+  wf_packet_stream l ->
+  get_block_lists_prop l (get_block_lists l).
+Proof.
+  move => l Hwf. repeat split.
+  - apply get_blocks_list_allin.
+  - move => i pkts Hin. apply get_blocks_list_nonempty in Hin => //. case : Hin => [p [Hinp _]].
+    by exists p.
+  - move => i pkts p. by apply get_blocks_lists_lens.
+  - move => i pkts. by apply get_block_lists_in.
+  - apply get_blocks_list_uniq.
+Qed.
+
+(*Now we want to show that if we have any two lists satisfying [get_block_lists_prop], then they are
+  unique up to permutation*)
+
+(*Do all the hard work here, so we don't have to repeat twice*)
+Lemma get_block_lists_prop_in: forall (l: list fec_packet_act) (blks1 blks2 : block_list) b,
+  wf_packet_stream l ->
+  get_block_lists_prop l blks1 ->
+  get_block_lists_prop l blks2 ->
+  b \in (al blks1) ->
+  b \in (al blks2).
+Proof.
+  move => l b1 b2 b Hwf [Hallin1 [Hnonemp1 [Hlen1 [Heq1 Huniq1]]]] [Hallin2 [Hnonemp2 [Hlen2 [Heq2 Huniq2]]]] Hin1.
+  move: Hin1. rewrite in_mem_In. case: b => [i1 pkts1] Hin1.
+  have Hpkts1:=Hin1. apply Heq1 in Hpkts1. 
+  (*Idea: get packet from pkts1, it must have id i and it must be in l, so there must be some pkts2
+    such that (i, pkts2) is in b2. But by the equality lemma, pkts2 = pkts1*)
+  have Hin1':=Hin1. apply Hnonemp1 in Hin1'. case: Hin1' => [p Hinp].
+  have [Hidp Hinlp]: fd_blockId p = i1 /\ In p l. {
+    move: Hinp. rewrite Hpkts1. rewrite In_Znth_iff mkseqZ_Zlength; [|list_solve].
+    move => [i [Hi Hith]]. move: Hith. rewrite mkseqZ_Znth //.
+    have Hpick:= 
+        (pickSeqP (fun p' : fec_packet_act => (fd_blockId p' == i1) && 
+            Z.eq_dec i (Int.unsigned (fd_blockIndex p'))) l).
+    case: Hpick => [x Hinx /andP[/eqP Hxid _] [Hxp] | //].
+    rewrite -Hxp. split => //. by rewrite -in_mem_In. }
+  have Hinlp':=Hinlp. apply Hallin2 in Hinlp'.
+  case Hinlp' => [pkts2 Hin2].
+  rewrite Hidp in Hin2. have Hpkts2:=Hin2.
+  apply Heq2 in Hpkts2. rewrite in_mem_In.
+  (*only thing left- show lengths are same*) 
+  have->//: pkts1 = pkts2. rewrite Hpkts1 Hpkts2. f_equal.
+  rewrite (Hlen1 _ _ _ Hin1 Hinp). 
+  have Hin2' := Hin2. apply Hnonemp2 in Hin2'. case : Hin2' => [p2 Hinp2].
+  (*Now we have to know that id is same again - TODO: can we reduce duplication?*)
+  have [Hidp2 Hinlp2]: fd_blockId p2 = i1 /\ In p2 l. {
+    move: Hinp2. rewrite Hpkts2. rewrite In_Znth_iff mkseqZ_Zlength; [|list_solve].
+    move => [i [Hi Hith]]. move: Hith. rewrite mkseqZ_Znth //.
+    have Hpick:= 
+        (pickSeqP (fun p' : fec_packet_act => (fd_blockId p' == i1) && 
+            Z.eq_dec i (Int.unsigned (fd_blockIndex p'))) l).
+    case: Hpick => [x Hinx /andP[/eqP Hxid _] [Hxp] | //].
+    rewrite -Hxp. split => //. by rewrite -in_mem_In. }
+  rewrite (Hlen2 _ _ _ Hin2 Hinp2).
+  have [Hk Hh]: fd_k p = fd_k p2 /\ fd_h p = fd_h p2. {
+    move: Hwf => [Hkh _]. apply Hkh. by apply in_mem_In. by apply in_mem_In.
+    by rewrite Hidp Hidp2. }
+  by rewrite Hk Hh.
+Qed.
+
+Lemma get_block_lists_prop_perm: forall (l: list fec_packet_act) (blks1 blks2 : block_list),
+  wf_packet_stream l ->
+  get_block_lists_prop l blks1 ->
+  get_block_lists_prop l blks2 ->
+  perm_eq blks1 blks2.
+Proof.
+  move => l b1 b2 Hwf [Hallin1 [Hnonemp1 [Hlen1 [Heq1 Huniq1]]]] [Hallin2 [Hnonemp2 [Hlen2 [Heq2 Huniq2]]]].
+  apply uniq_perm. apply (map_uniq Huniq1). apply (map_uniq Huniq2).
+  move => b. 
+  case Hin1: (b \in (al b1)); symmetry.
+  - move: Hin1. rewrite -!is_true_true. by apply (get_block_lists_prop_in Hwf).
+  - case Hin2: (b \in (al b2)) => //. move: Hin2. rewrite -is_true_true => Hin2.
+    apply (@get_block_lists_prop_in l b2 b1 b Hwf) in Hin2 => //. by rewrite Hin1 in Hin2.
+Qed.
+
+End BlockList.
 
-        (*basically - only problem is that we need to know that k(block) = k(packet)
-          should say: assumption: forall p1 p2, p1 \in r -> p2 \in r -> k(p1) = k(p2)
-          then have other lemma: IF this condition holds, then getBlocks creates well-formed blocks
-          furthermore, for all blocks in getBlocks, there is a packet in it - then compose to prove this
-
-        (forall p1 p2, p1 \in received -> p2 \in received -> 
-
-
-        need to prove that get_blocks is uniq
-
-           
-
-
-
-           rewrite Hb /subblock /=.
-
-
- Search Z.of_nat (_ < _).
-
-
-
- list_solve. lia.
-
-
- lia.
-           Search Zlength length.
-           Search Zlength size.
- 
-           Search Z ordinal.
-
-
-
- Search upd_Znth In.
-
-
- Search In in_mem. rewrite In_in_iff.
-    -
-
-
- case: (rest.1).
-    
-
-    case: (rest.1).
-
-
- move: rest. case : rest.
-
-
- Print update_dec_state.
-
-
-
-
- {1}/update_dec_state. 
-
-
-
-
- move: IH.
-    
-
-
-
- 
-    have Hin': b \in (update_dec_state (foldr
-                    (fun (x : fec_packet_act * seq bool) (z : seq block * seq packet) =>
-                     let (blks, pkts) := update_dec_state z.1 x.1 x.2 in (blks, z.2 ++ pkts))
-                    ([::], [::]) (zip t st)).1 h sh).1. {
-      
-
-
-
-      case : apply Hin.
-    
-
-
- Print zip.
-
-
- simpl zip. rewrite /zip /=. Print zip. rewrite /=. 
-
-
- Search foldl foldr.
-
-
- Search zip rev.
-
-
- Search combine rev.
-
-
-
- pickSeq (fun b => Int.eq_dec (blk_id b) (fd_blockId (p_fec_data p))) acc with
-    | None => acc ++ [create_new_block_with_fec_packet p]
-    | Some b => 
-    end) nil l.
-
-Lemma decoder_blocks_subblocks
-
-
-Definition rse_decode_func (received: list fec_packet_act) (curr: fec_packet_act) 
-  (states: list (list bool)) (state: list bool) : list packet :=
-  let (blocks, _) := decoder_all_steps received states in
-  let (_, pkts) := update_dec_state blocks curr state in
-  pkts.
-
-
-  blocks produced by the encoder. With a few aditional
-
-
-
-(*Show that if received is a subseq of encoded, then the blocks of received are each
-  subblocks of blocks in encoded*)
-
-(*Let's see - want to show that [get_blocks decoded] and blocks formed by decoder function are the same (really permutations)*)
-Print rse_decode_func.
-Print decoder_all_steps.
-
-(*TODO: I think it would be easier to do the encoder like the decoder (in terms of updating state, folding over, continue)
-  I believe for induction that would make things nicer
-
-becase with decoder: can give alternate version where we append all lists
-then prove decoder_list is equivalent to this function
-
-what is it that we want to show ultimately?
-
-1. in decoder, the blocks that we work with (from decoder_all_steps and update_dec_state) are each a subblock of some block in
-  (get_blocks received)
-2. Since received is a subseq_gen of encoded, each of these blocks is a subblock of some block from (get_blocks encoded)
-3. If a block is recoverable, its parent must be complete (we will prove for encoder - every block is either <k or complete)
-4. Therefore, at every step, the decoder produces valid packets (using above lemma)
-
-question: for get_blocks, why cant we just iterate over a list, add each one to its block in correct place
-then prove - resulting blocks are well formed, every packet is in a block, no duplicate blocks
-
-for lemma #1, I think we can prove by induction for decoder_all_steps, can prove for update_dec_state
-for lemma #2, we will need to prove this about [equiv_classes]
-for lemma #3, this is difficult, and we might need a different version of the encoder for this (similar to decoder, then we
-  again prove with induction like lemma #1)
-lemma #4 should be a relatively simple extnesion of this result, prove by induction over all steps of decoder*)
-
-
-(*Compose these to get the final theorem*)

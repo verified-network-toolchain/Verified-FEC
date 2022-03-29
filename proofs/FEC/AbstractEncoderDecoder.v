@@ -283,7 +283,7 @@ Proof.
       rewrite !sublist_0_cons; [|lia]. rewrite /= Z.add_simpl_r. move => Hlen' Hith.
       exists st2'. exists state. split_all. list_solve.
       rewrite Hith. f_equal. f_equal. f_equal. f_equal.*)
-
+End Alt.
 
 (*Finally, we need a loss relation that drops and/or reorders some packets over the channel*)
 (*loss_r l1 l2 means that we dropped/reordered l1 to get l2*)

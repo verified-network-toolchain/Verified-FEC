@@ -235,53 +235,51 @@ Qed.
 
 End ZSeq.
 
+(*TODO: where to put this?*)
+Definition Z_eq_mixin := EqMixin Z.eqb_spec.
+Canonical Z_eqtype := EqType Z Z_eq_mixin. (*dont want canonical*)
+
 Section Zindex.
 
-Lemma Z_eq_axiom: Equality.axiom (Z.eqb).
-Proof.
-  move => x y.
-  apply Z.eqb_spec.
-Qed.
+Definition Zindex {A: eqType} (x: A) (l: seq A) := Z.of_nat (index x l).
 
-Definition Z_eq_mixin := EqMixin Z_eq_axiom.
-Definition Z_eqtype := EqType Z Z_eq_mixin. (*dont want canonical*)
-
-(*Unfortunately, using Z_eqtype screws up lia, but we need this for "index" definition*)
-Definition Zindex (x: Z_eqtype) (l: seq Z) := Z.of_nat (index x l).
-
-Lemma Zindex_Znth: forall (i: Z) (l: list Z),
+Lemma Zindex_Znth: forall {A: eqType} `{Inhabitant A} (i: Z) (l: list A),
   NoDup l ->
   0 <= i < Zlength l ->
   Zindex (Znth i l) l = i.
 Proof.
-  move => i l Hi Hnodup. rewrite /Zindex - nth_Znth // -nth_nth index_uniq; try lia.
-  rewrite size_length -ZtoNat_Zlength. apply /ltP. (*Why doesn't lia work?*)
-  apply Z2Nat.inj_lt. apply (proj1 Hnodup). eapply Z.le_trans. apply (proj1 Hnodup).
-  apply Z.lt_le_incl. apply (proj2 Hnodup). apply (proj2 Hnodup).
+  move => A Hinhab i l Hi Hnodup. rewrite /Zindex - nth_Znth // -nth_nth index_uniq; try lia.
+  rewrite size_length -ZtoNat_Zlength. apply /ltP. lia.
   by apply uniq_NoDup.
 Qed.
 
-Lemma Zindex_In: forall (x: Z) (l: list Z),
+Lemma Zindex_In: forall {A: eqType} (x: A) (l: list A),
   (Zindex x l) < Zlength l <-> In x l.
 Proof.
-  move => x l. 
+  move => A x l. 
   by rewrite /Zindex Zlength_correct -size_length -Nat2Z.inj_lt (rwP ltP) index_mem in_mem_In.
 Qed.
 
-Lemma Zindex_notin: forall (x: Z) (l: list Z),
+Lemma Zindex_notin: forall {A: eqType} (x: A) (l: list A),
   (Zindex x l) = Zlength l <-> ~(In x l).
 Proof.
-  move => x l. 
-  by rewrite /Zindex Zlength_correct -size_length Nat2Z.inj_iff (rwP eqP) index_notin -(@in_mem_In Z_eqtype) (rwP negP).
+  move => A x l. 
+  by rewrite /Zindex Zlength_correct -size_length Nat2Z.inj_iff (rwP eqP) index_notin -(@in_mem_In A) (rwP negP).
 Qed.
 
-Lemma Znth_Zindex: forall (x: Z) (l: list Z),
+Lemma Znth_Zindex: forall {A: eqType} `{Inhabitant A} (x: A) (l: list A),
   In x l ->
   Znth (Zindex x l) l = x.
 Proof.
-  move => x l Hin. rewrite /Zindex -nth_Znth; last first.
-  split; try lia. by apply Zindex_In. rewrite Nat2Z.id -nth_nth. apply (@nth_index Z_eqtype).
+  move => A Hinhab x l Hin. rewrite /Zindex -nth_Znth; last first.
+  split; try lia. by apply Zindex_In. rewrite Nat2Z.id -nth_nth. apply nth_index.
   by apply in_mem_In.
+Qed.
+
+Lemma Zindex_nonneg: forall {A: eqType} (x: A) (l: seq A),
+  0 <= Zindex x l.
+Proof.
+  move => A x l. rewrite /Zindex. lia.
 Qed.
 
 End Zindex.
