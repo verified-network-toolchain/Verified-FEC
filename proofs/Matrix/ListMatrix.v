@@ -122,7 +122,7 @@ Proof.
   move => n l Hall. rewrite /Z_ord_list !Zlength_correct -!size_length. f_equal.
   rewrite size_pmap_sub. 
   have->: count (fun x : nat => (x < Z.to_nat n)%N) [seq Z.to_nat i | i <- l] = size [seq Z.to_nat i | i <- l].
-  { apply /eqP. rewrite -all_count all_in => x Hin. apply in_mem_In in Hin. move: Hin; rewrite in_map_iff =>
+  { apply /eqP. rewrite -all_count; apply /allP => x Hin. apply in_mem_In in Hin. move: Hin; rewrite in_map_iff =>
     [[x' [Hx' Hin]]]. subst. move: Hall; rewrite Forall_forall => /(_ x' Hin) => Hx'. apply /ltP; lia. }
   by rewrite size_map.
 Qed.
@@ -141,7 +141,7 @@ Proof.
       -- rewrite nth_nth nth_Znth. 2: lia. by apply Z_list_bound.
       -- move => Hord. rewrite /=. f_equal. apply ord_inj.
          by rewrite /= nth_nth nth_Znth.
-    * rewrite all_in => x. rewrite in_mem_In in_map_iff => [[x' [Hx' Hin]]]. subst.
+    * apply /allP => x. rewrite in_mem_In in_map_iff => [[x' [Hx' Hin]]]. subst.
       rewrite insubT =>[|//]. apply /ltP. move: Hall; rewrite Forall_forall => /(_ x' Hin). lia.
     * rewrite size_map size_length -ZtoNat_Zlength. apply /ltP. lia.
 Qed.
@@ -1872,7 +1872,7 @@ Proof.
   move => n l x Hall. have Hcancel: pcancel (@nat_of_ord (Z.to_nat n)) insub. {
     move => m. rewrite insubT. by []. move => Hlt. rewrite /=. f_equal. by apply ord_inj. }
   rewrite -(index_pmap _ Hcancel); last first.
-  - rewrite all_in => y. move => /(@mapP Z_eqtype) [z Hin Hz].
+  - apply /allP => y. move => /(@mapP Z_eqtype) [z Hin Hz].
     subst. have Hzn: 0 <= z < n. move: Hall. move: Hin. rewrite in_mem_In => Hin. 
     by rewrite Forall_forall => /(_ z Hin).
     rewrite insubT. apply /ltP. lia. by [].
@@ -1886,7 +1886,7 @@ Proof.
     rewrite {2}Hxz (@index_map' Z_eqtype nat_eqType Z.to_nat _ (fun x => Z.leb 0 x)).
     + by [].
     + move => z1 z2 /Z.leb_spec0 Hz1 /Z.leb_spec0 Hz2. lia.
-    + rewrite all_in => z. rewrite in_mem_In => Hin. apply /Z.leb_spec0. move: Hall.
+    + apply /allP => z. rewrite in_mem_In => Hin. apply /Z.leb_spec0. move: Hall.
       rewrite Forall_forall => /(_ _ Hin). lia.
     + apply /Z.leb_spec0. lia.
 Qed. 

@@ -213,6 +213,12 @@ Proof.
   move => A x y Hop. by case : Hop.
 Qed.
 
+Lemma is_true_true_eq: forall (b: bool),
+  is_true b <-> b = true.
+Proof.
+  move => b. by case: b.
+Qed.
+
 (** Lemmas about [find] *)
 
 (*Results about [find] that mostly put the library lemmas into a more convenient form*)
@@ -222,8 +228,8 @@ Lemma find_iff: forall {T: eqType} (a: pred T) (s: seq T) (r : nat) (t: T),
   find a s = r <-> (forall x, a (nth x s r)) /\ forall x y, y < r -> (a (nth x s y) = false).
 Proof.
   move => T a s r t Hsz. split.
-  - move => Hfind. subst. split. move => x. apply nth_find. by rewrite has_find.
-    move => x. apply before_find.
+  - move => Hfind. subst. split => x. apply nth_find. by rewrite has_find.
+    apply before_find.
   - move => [Ha Hbef]. have Hfind := (findP a s). case : Hfind.
     + move => Hhas. have H := (rwN (@hasP T a s)). rewrite Hhas in H.
       have:~ (exists2 x : T, x \in s & a x) by rewrite H. move : H => H{H} Hex.
@@ -242,92 +248,64 @@ Lemma find_none_iff: forall {T: eqType} (a: pred T) (s: seq T),
   find a s = size s <-> (forall x, x \in s -> ~~ (a x)).
 Proof.
   move => T a s. split.
-  - move => Hfind. have: ~~ has a s. case Hhas : (has a s). 
-    move : Hhas. rewrite has_find Hfind ltnn. by []. by [].
-    move => Hhas. by apply (elimT hasPn).
-  - move => Hnotin. apply hasNfind. apply (introT hasPn). move => x. apply Hnotin. 
+  - move => Hfind. have: ~~ has a s. case Hhas : (has a s) => //. 
+    move : Hhas. by rewrite has_find Hfind ltnn.
+    by move => /hasPn Hhas.
+  - move => Hnotin. apply hasNfind. by apply (introT hasPn). 
 Qed.
 
-(** [find] but for values rather than indices*)
+(** Variant of [pick] for finding elements in a list *)
+Definition pickSeq {A: Type} (p: pred A) (s: seq A) : option A :=
+  foldr (fun x acc => if p x then Some x else acc) None s.
 
-Definition find_val_option {T: Type} (p: pred T) (s: seq T) : option T :=
-  match (filter p s) with
-  | nil => None
-  | h :: _ => Some h
+(*Could use pick with ordinal, but dependent types are VERY messy*)
+
+Variant pickSeq_spec (T: eqType) (p: pred T) (s: seq T) : option T -> Type :=
+  | Pick : forall x : T, x \in s -> p x -> pickSeq_spec p s (Some x)
+  | Nopick: { in s, p =1 xpred0 } -> pickSeq_spec p s None.
+
+Lemma pickSeqP: forall {T: eqType} (p: pred T) (s: seq T),
+  pickSeq_spec p s (pickSeq p s).
+Proof.
+  move => T p s. elim : s => [//= | h t /= IH].
+  - by apply Nopick.
+  - case Hp: (p h).
+    + apply Pick. by rewrite in_cons eq_refl orTb. by apply Hp.
+    + case : IH.
+      * move => x Hinx Hpx. apply Pick. by rewrite in_cons Hinx orbT. by [].
+      * move => Hin. apply Nopick. move => y. rewrite in_cons => /orP[/eqP Hyh | Hyt].
+        by rewrite Hyh. by apply Hin.
+Qed.
+
+Ltac case_pickSeq l :=
+  match goal with
+  | |- context [ pickSeq ?p l ] => let H := fresh "Hpick" in
+                                   let x := fresh "x" in
+                                   let Hinx := fresh "Hinx" in
+                                   let Hxp := fresh "Hxp" in
+    have H:= (pickSeqP p l); case : H => [ x Hinx Hxp // | //]
   end.
 
-Definition find_val {T: Type} (p: pred T) (s: seq T) (d: T) : T :=
-  match (find_val_option p s) with
-  | None => d
+Definition pickSeq_val {T: Type} (a: pred T) (s: seq T) (d: T) : T :=
+  match (pickSeq a s) with
   | Some h => h
+  | None => d
   end.
 
-Lemma find_val_option_none: forall {T: Type} (p: pred T) s,
-  all (fun x => ~~ p x) s = ~~ (isSome (find_val_option p s)).
-Proof.
-  move => T p s. elim : s => [//= | h t /=].
-  rewrite /find_val_option /= => IH.
-  case Hh: (p h) =>[//|/=].
-  by rewrite IH.
-Qed.
-
-Lemma find_val_none: forall {T: Type} (p: pred T) s d,
+Lemma pickSeq_val_none: forall {T: eqType} (p: pred T) s d,
   all (fun x => ~~ p x) s ->
-  find_val p s d = d.
+  pickSeq_val p s d = d.
 Proof.
-  move => T p s d. rewrite find_val_option_none /find_val.
-  by case (find_val_option).
+  move => T p s d. rewrite /pickSeq_val => /allP Hall. case_pickSeq s.
+  move: Hall => /(_ x Hinx). by rewrite Hxp.
 Qed.
 
-Lemma find_val_option_some_in: forall {T: eqType} (p: pred T) s h,
-  (find_val_option p s) = Some h ->
-  h \in s.
-Proof.
-  move => T p s. elim : s =>[// | x t /=].
-  rewrite /find_val_option/= => IH h. case Hx: (p x) => [/= |/=].
-  move => [Hxh]. subst. by rewrite in_cons eq_refl. move => Hh. apply IH in Hh.
-  by rewrite in_cons Hh orbT.
-Qed.
-
-Lemma find_val_option_some: forall {T: Type} (p: pred T) s h,
-  (find_val_option p s) = Some h ->
-  p h.
-Proof.
-  move => T p s. elim : s =>[// | x t /=].
-  rewrite /find_val_option/= => IH h. case Hx: (p x) => [/= |/=].
-  move => [Hxh]. by subst. apply IH.
-Qed.
-
-Lemma find_val_option_exists: forall {T: eqType} (p: pred T) s,
+Lemma pickSeq_val_exists: forall {T: eqType} (p: pred T) s d,
   (exists x, (x \in s) && p x) ->
-  exists h, ((find_val_option p s == Some h) && p h).
+  p (pickSeq_val p s d).
 Proof.
-  move => T p s. elim : s => [//= | h t /=].
-  rewrite /find_val_option/= => IH [x /andP[Hin Hpx]].
-  move: Hin; rewrite in_cons => /orP[/eqP Hxh | Hxt].
-  - subst. rewrite Hpx. exists h. by rewrite Hpx eq_refl.
-  - case Hh: (p h). exists h. by rewrite Hh eq_refl. apply IH.
-    exists x. by rewrite Hxt Hpx.
-Qed.
-
-Lemma find_val_exists: forall {T: eqType} (p: pred T) s d,
-  (exists x, (x \in s) && p x) ->
-  p (find_val p s d).
-Proof.
-  move => T p s d Hex. rewrite /find_val. apply find_val_option_exists in Hex.
-  case : Hex => [h /andP[/eqP Hfind Hph]]. by rewrite Hfind Hph.
-Qed.
-
-(** Lemmas about [all]*)
-
-Lemma all_in: forall {A: eqType} (l: seq A) (p: pred A),
-  all p l <-> forall x, x \in l -> p x.
-Proof.
-  move => A l. elim: l =>[p // | h t IH p /=].
-  split. move => /andP[Hh Htl x]. rewrite in_cons => /orP[/eqP Hxh | Hxt].
-  by subst. by apply IH.
-  move => Hall. rewrite Hall. rewrite IH. move => x Hint. apply Hall. by rewrite in_cons Hint orbT.
-  by rewrite in_cons eq_refl.
+  move => T p s d [x /andP[Hinx Hps]]. rewrite /pickSeq_val.
+  case_pickSeq s => /(_ x Hinx). by rewrite Hps.
 Qed.
 
 (** Lemmas about [rem]*)
@@ -379,6 +357,21 @@ Proof.
   case Hf: (f h) =>[/= u|/=].
   - by rewrite rev_cons -cats1.
   - by rewrite cats0.
+Qed.
+
+Lemma pmap_id_some: forall {aT: eqType} (s: seq (option aT)) (a: aT),
+  (Some a) \in s = (a \in (pmap id s)).
+Proof.
+  move => A s a. elim : s => [//| h t /= IH].
+  rewrite in_cons IH. case: h => [h/=|//].
+  by rewrite in_cons.
+Qed.
+
+Lemma map_pmap_id: forall {A B: Type} (f: A -> B) (l: list (option A)),
+  map f (pmap id l) = pmap id (map (omap f) l).
+Proof.
+  move => A B f l. elim : l => [//| h t /= IH].
+  case : h => [a //= | //=]. by rewrite IH.
 Qed.
 
 (** Lemmas about [index]*)
@@ -467,6 +460,20 @@ Lemma filter_filter: forall {A: Type} (f: A -> bool) (s: seq A),
   filter f s = List.filter f s.
 Proof.
   by [].
+Qed.
+
+Lemma zip_combine: forall {A B: Type} (l1 : list A) (l2: list B),
+  zip l1 l2 = combine l1 l2.
+Proof.
+  move => A B l1. elim : l1 => [//= l2 | h t /= IH l2].
+  - by case : l2.
+  - case : l2 => [//|h' t'/=]. by rewrite IH.
+Qed.
+
+Lemma cat_app: forall {A: Type} (s1 s2: seq A),
+  s1 ++ s2 = (s1 ++ s2)%list.
+Proof.
+   by [].
 Qed.
 
 (** Other list lemmas*)
@@ -593,18 +600,18 @@ Proof.
   - case Hdrop: (nilp (dropWhileEnd p t)) => [//= | //=].
     + case Hph : ( p h) => [/= | /=].
       * move <-. rewrite /=. split. exists (h :: t). split. by [].
-        have Ht: forall x, x \in t -> p x. apply all_in. apply /dropWhileEnd_nil. by apply /nilP.
+        have Ht: forall x, x \in t -> p x. apply /allP. apply /dropWhileEnd_nil. by apply /nilP.
         move => y. rewrite in_cons => /orP[/eqP Hyh | Hyt]. by subst. by apply Ht. by [].
       * case : res => [// | r1 t1 /= [Hhr1 Htl]]. rewrite Hhr1. move: Htl; rewrite IH => [[[l1 [Hl1 Hinl1]] Hlast]].
         subst. split. by exists l1. move => {Hdrop} {IH}. move: Hlast. case : t1 => [//= | //=].
         move => Htriv Htriv1. by rewrite Hph.
     + case : res => [//= | r1 t1 /= [Hhr1 Hdt1]]. rewrite Hhr1.
       move: Hdt1; rewrite IH => [[[l1 [Hl1 Hinl1]] Hlast]]. subst. split. by exists l1.
-      move: Hdrop. rewrite dropWhileEnd_end. move : Hlast => {IH}. by case : t1. by rewrite all_in.
+      move: Hdrop. rewrite dropWhileEnd_end. move : Hlast => {IH}. by case : t1. by apply /allP.
   - move => [[l1 [Hl1 Hinl1]] Hlast]. move: Hl1 Hlast. case : res => [//= Hl1 | r1 t1 /=[Hhr1 Ht]].
-    + subst. move => Htriv. rewrite Hinl1. rewrite andbT.
-      have->: nilp (dropWhileEnd p t). apply /nilP. apply /dropWhileEnd_nil. rewrite all_in.
-      move => y Hy. apply Hinl1. by rewrite in_cons Hy orbT. by []. by rewrite in_cons eq_refl.
+    + subst. move => Htriv. rewrite Hinl1. rewrite andbT //.
+      have->//: nilp (dropWhileEnd p t). apply /nilP. apply /dropWhileEnd_nil. apply /allP.
+      move => y Hy. apply Hinl1. by rewrite in_cons Hy orbT. by rewrite in_cons eq_refl.
     + move => Hlast. subst. have Hdrop: dropWhileEnd p (t1 ++ l1) = t1. apply IH. split.
       by exists l1. move: Hlast {IH}. by case : t1.
       rewrite Hdrop. case Hnil: (nilp t1) => [/= | //=].
@@ -661,7 +668,7 @@ Proof.
   - by [].
   - rewrite (@nth_default _ 0 (dropWhileEnd (eq_op^~ 0) s) i). 
     case Hi': (i - size (dropWhileEnd (eq_op^~ 0) s) < size l1).
-    + move: Hinl1. rewrite -all_in => /all_nthP Hall. apply /eqP. by apply Hall.
+    + move: Hinl1 => /allP /all_nthP Hall. apply /eqP. by apply Hall.
     + by rewrite nth_default // leqNgt Hi'.
     + by rewrite leqNgt Hi.
 Qed.

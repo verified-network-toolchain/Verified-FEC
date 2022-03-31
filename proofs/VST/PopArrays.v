@@ -835,7 +835,7 @@ Proof.
       * have->//: (Zindex x to_fill <? i + 1) = true by lia.
       * case : (Zindex x to_fill <? i + 1) /Z.ltb_spec0 => [/= Hxi' | //].
         have Hieq: Zindex x to_fill = i by lia. subst. 
-        move: Hix. rewrite Znth_Zindex //. apply Zindex_In. lia.
+        move: Hix. rewrite Znth_Zindex //. apply Zindex_In. apply (proj2 Hi).
 Qed.
 
 Lemma pop_stats_done: forall stats to_fill,
@@ -938,7 +938,7 @@ Proof.
     rewrite !mkseqZ_Znth //.
     have->//=:(Zindex x rows =? i) = false. case : (Z.eq_dec (Zindex x rows) i); try lia.
     move => Hieq. subst. rewrite Znth_Zindex in Hxi. by []. 
-    apply Zindex_In. lia.
+    apply Zindex_In. apply (proj2 Hi). 
 Qed.
 
 Lemma pop_fill_rows_list_set_over: forall input rec rows i j,

@@ -187,7 +187,7 @@ Proof.
     have->: (nth j (index_enum (ordinal_finType n)) i) = (nth j (index_enum (ordinal_finType n)) (Ordinal Hin))
     by apply (elimT eqP). rewrite !ordinal_enum. rewrite Heqp coef_poly Hin /=. 
     by have->: c' i = c (Ordinal Hin) by rewrite Heqc' insubT /=. }
-  have Hallroot: all (root p) l. { rewrite all_in => x Hxin. rewrite /root. apply (introT eqP).
+  have Hallroot: all (root p) l. { apply /allP => x Hxin. rewrite /root. apply /eqP.
     have <-: nth 0 l (index x l) = x by apply nth_index.
     have Hidx: (index x l) < n by rewrite Hlen index_mem.
     have ->: l`_(index x l) = l`_(Ordinal Hidx) by []. apply Hroots. }

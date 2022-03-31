@@ -568,7 +568,7 @@ Qed.
 Lemma seq_of_polyseqs_all_last: forall n,
   all (fun x => last 1 x != 0) (seq_of_polyseqs n).1.
 Proof.
-  move => n. rewrite all_in => x Hin. apply (@seq_of_polyseqs_last n).
+  move => n. apply /allP => x Hin. apply (@seq_of_polyseqs_last n).
   by rewrite Hin.
 Qed.
 
@@ -726,7 +726,7 @@ Qed.
 
 (*Finally, a (computable) function to find irreducible polynomials of lpolys*)
 Definition find_irred (l: lpoly F) (n: nat) : option (lpoly F) :=
-  find_val_option (fun q => ~~ (isOne q) && (bool_dvdp q l)) (seq_of_lpoly n).
+  pickSeq (fun q => ~~ (isOne q) && (bool_dvdp q l)) (seq_of_lpoly n).
 
 Lemma find_irredP: forall (l: lpoly F) n,
   1 < size l ->
@@ -734,27 +734,27 @@ Lemma find_irredP: forall (l: lpoly F) n,
   reflect (irreducible_poly (Poly l)) ((find_irred l n == None)).
 Proof.
   move => l n Hl Hn. case Hfind: (find_irred l n) => [p /= | /=].
-  - move: Hfind; rewrite /find_irred => Hfind.
-    have Hin: p \in (seq_of_lpoly n) by apply (find_val_option_some_in Hfind). 
-    apply find_val_option_some in Hfind.
+  - move: Hfind; rewrite /find_irred. case_pickSeq (seq_of_lpoly n) => [[Hpx]]. subst.
+    (*have Hin: p \in (seq_of_lpoly n) by apply (find_val_option_some_in Hfind). 
+    apply find_val_option_some in Hfind.*)
     apply ReflectF. rewrite (@irreducible_poly_factor_small _ n); last first.
     by rewrite size_Poly_lpoly. by rewrite size_Poly_lpoly.
-    move => Hall; move: Hfind => /andP[Hone Hdiv].
-    rewrite seq_of_lpoly_in in Hin. move: Hin => /andP[Hp0 Hpn].
+    move => Hall; move: Hxp => /andP[Hone Hdiv].
+    rewrite seq_of_lpoly_in in Hinx. move: Hinx => /andP[Hp0 Hpn].
     apply Hall in Hpn. move: Hpn => /orP [Hp1 | Hpdiv].
     + rewrite isOne_spec in Hone. by rewrite Hp1 in Hone.
     + rewrite bool_dvdp_spec in Hdiv. rewrite polyseqK in Hdiv. by rewrite Hdiv in Hpdiv.
   - apply ReflectT. rewrite (@irreducible_poly_factor_small _ n); last first.
     by rewrite size_Poly_lpoly. by rewrite size_Poly_lpoly.
-    have: (find_irred l n) == None. by apply /eqP. rewrite -isSome_none /find_irred -find_val_option_none 
-    all_in => Hall f Hszf.
+    have: (find_irred l n) == None by apply /eqP. rewrite -isSome_none /find_irred.
+    case_pickSeq (seq_of_lpoly n)  => Hall _ f Hszf.
     case Hf: (f == 0). apply (elimT eqP) in Hf. subst. rewrite dvd0p.
-    case Hl0 : (Poly l == 0) => [//= | //=]. rewrite lpoly_zero in Hl0. apply (elimT nilP) in Hl0.
+    case Hl0 : (Poly l == 0) => /=. rewrite lpoly_zero in Hl0. apply (elimT nilP) in Hl0.
     move: Hl. by rewrite Hl0 /=. by rewrite orbT.
-    have Hinf: (f \in (seq_of_lpoly n)). by rewrite seq_of_lpoly_in Hszf size_poly_gt0 Hf.
-    apply Hall in Hinf. move: Hinf. rewrite negb_and negbK => /orP[Hone | Hdiv].
+    have Hinf: (f \in (seq_of_lpoly n)) by rewrite seq_of_lpoly_in Hszf size_poly_gt0 Hf.
+    apply Hall in Hinf. apply negbT in Hinf. move: Hinf. rewrite negb_and negbK => /orP[Hone | Hdiv].
     + by rewrite -isOne_spec Hone.
-    + move: Hdiv; rewrite bool_dvdp_spec polyseqK. move ->. by rewrite orbT.
+    + move: Hdiv; rewrite bool_dvdp_spec polyseqK => ->. by rewrite orbT.
 Qed.
 
 (** Testing for Primitive lpolys*)
@@ -808,26 +808,25 @@ Proof.
 Qed.
 
 Definition prim_div_check (l: lpoly F) : option (lpoly F) :=
-  find_val_option (bool_dvdp l) (all_xn1 (2%N ^ ((size l).-1)).-1).
+  pickSeq (bool_dvdp l) (all_xn1 (2%N ^ ((size l).-1)).-1).
 
 Lemma prim_div_check_spec: forall (l: lpoly F),
   reflect (forall n, (Poly l) %| 'X^n - 1 -> (n == 0%N) || (((#|F|^((size (Poly l)).-1)).-1) <= n)) 
     (prim_div_check l == None).
 Proof.
   move => l. case Hcheck : (prim_div_check l ) => [q /= | /=].
-  - apply ReflectF. move: Hcheck; rewrite /prim_div_check => Hcheck.
-    have Hinq: q \in (all_xn1 (2 ^ (size l).-1).-1) by apply (find_val_option_some_in Hcheck).
-    apply find_val_option_some in Hcheck. rewrite card_bool. move => Hall.
-    apply (elimT (all_xn1_in ((2 ^ (size l).-1).-1) _)) in Hinq.
-    case : Hinq => [i /andP[Hi0 Hisz] Hqi]. subst.
+  - apply ReflectF. move: Hcheck; rewrite /prim_div_check.
+    case_pickSeq (all_xn1 (2 ^ (size l).-1).-1) => [[Hxq]]. subst.
+    rewrite card_bool. move => Hall.
+    apply (elimT (all_xn1_in ((2 ^ (size l).-1).-1) _)) in Hinx.
+    case : Hinx => [i /andP[Hi0 Hisz] Hqi]. subst.
     have Hi0f: (i == 0%N) = false by rewrite eqn0Ngt Hi0.
-    move : Hcheck; rewrite bool_dvdp_spec xn1_lpoly_spec; last first. by rewrite Hi0f.
+    move : Hxp; rewrite bool_dvdp_spec xn1_lpoly_spec; last first. by rewrite Hi0f.
     move => Hdiv. apply Hall in Hdiv. move: Hdiv => /orP [Hi0t | Hiszbig].
     + by rewrite Hi0t in Hi0f.
     + move: Hiszbig. by rewrite size_Poly_lpoly leqNgt Hisz.
   - apply ReflectT. move => n Hdiv.
-    move: Hcheck; rewrite /prim_div_check => /eqP Hcheck.
-    move: Hcheck; rewrite -isSome_none -find_val_option_none all_in => Hall.
+    move: Hcheck; rewrite /prim_div_check. case_pickSeq (all_xn1 (2 ^ (size l).-1).-1) => Hall _.
     have: 0 <= n by []. rewrite leq_eqVlt => /orP[Hn0 | Hn0]. by rewrite eq_sym Hn0.
     have->/=: (n == 0%N) = false by rewrite eqn0Ngt Hn0. rewrite card_bool size_Poly_lpoly. 
     case (orP (ltn_leq_total n ((2 ^ (size l).-1).-1))) => [Hin | //].

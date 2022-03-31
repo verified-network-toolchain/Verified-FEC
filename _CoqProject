@@ -19,7 +19,7 @@ proofs/Matrix/MatrixTransform.v
 proofs/Matrix/VandermondeByte.v
 proofs/RS/ReedSolomonList.v
 #Functional model for actuators
-proofs/FEC/EquivClasses.v
+proofs/FEC/AssocList.v
 proofs/FEC/AbstractEncoderDecoder.v
 proofs/FEC/Endian.v
 proofs/FEC/IP.v

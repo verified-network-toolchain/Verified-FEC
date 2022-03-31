@@ -120,7 +120,7 @@ Proof.
   move => x. rewrite /qpoly_to_tuple /tuple_to_qpoly /=. apply qpoly_eq'. rewrite /=.
   rewrite /tuple_to_poly /= /qpoly_to_n_seq /=. rewrite /rem_trail_zero dropWhileEnd_end.
   rewrite (@dropWhileEnd_last _ _ _ 1). by rewrite polyseqK. case : x => [x' Hx']. rewrite /=. move : Hx'.
-  by case : x'. rewrite all_in => a. by rewrite mem_nseq => /andP[H Ha].
+  by case : x'. apply /allP => a. by rewrite mem_nseq => /andP[H Ha].
 Qed.
 
 Lemma qpoly_to_tuple_bijective: bijective (qpoly_to_tuple).
@@ -313,20 +313,20 @@ Qed.
 (*Now we need a computable inverse function. This is relatively straightforward*)
 
 Definition find_inv (q: qpoly) :=
-  find_val (fun x => x * q == 1) (enum qpoly) 0.
+  pickSeq_val (fun x => x * q == 1) (enum qpoly) 0.
 
 Lemma find_inv_correct: forall q,
   q != 0 ->
   (find_inv q) * q = 1.
 Proof.
   move => q Hq. apply /eqP. rewrite /find_inv. 
-  pose proof (@find_val_exists _ (fun x => x * q == 1) (enum qpoly) 0) as Hfind. rewrite /= in Hfind.
+  pose proof (@pickSeq_val_exists _ (fun x => x * q == 1) (enum qpoly) 0) as Hfind. rewrite /= in Hfind.
   apply Hfind. pose proof (inverses_exist Hq) as [inv Hinv]. exists inv. by rewrite in_enum /= Hinv eq_refl.
 Qed.
 
 Lemma find_inv_zero: find_inv 0 = 0.
 Proof.
-  rewrite /find_inv. apply find_val_none. rewrite all_in => x Hx. by rewrite GRing.mulr0 eq_sym GRing.oner_neq0.
+  rewrite /find_inv. apply pickSeq_val_none. apply /allP => x Hx. by rewrite GRing.mulr0 eq_sym GRing.oner_neq0.
 Qed.
 
 (*Now, we can finish the Canonical instances*)
@@ -510,7 +510,7 @@ Qed.
 
 (*Computable function version*)
 Definition find_qpow (q: qpoly) : 'I_(#|F|^((size p).-1)) :=
-  find_val (fun i => (nat_of_ord i != 0%N) && (qx ^+ (nat_of_ord i) == q)) (enum  'I_(#|F|^((size p).-1))) 
+  pickSeq_val (fun i => (nat_of_ord i != 0%N) && (qx ^+ (nat_of_ord i) == q)) (enum  'I_(#|F|^((size p).-1))) 
   (Ordinal field_geq_0).
 
 Lemma find_qpow_correct_aux: forall q,
@@ -518,7 +518,7 @@ Lemma find_qpow_correct_aux: forall q,
   (nat_of_ord (find_qpow q) != 0%N) && (qx ^+ (find_qpow q) == q).
 Proof.
   move => q Hq. rewrite /find_qpow. 
-  apply (@find_val_exists _ (fun i : 'I_(#|F| ^ (size p).-1) => (nat_of_ord i != 0%N) && (qx ^+ i == q))).
+  apply (@pickSeq_val_exists _ (fun i : 'I_(#|F| ^ (size p).-1) => (nat_of_ord i != 0%N) && (qx ^+ i == q))).
   rewrite /=. apply qpow_exist in Hq. case : Hq => [i /andP[Hi0 Hqx]].
   exists i. by rewrite in_enum Hi0 Hqx.
 Qed.
@@ -539,11 +539,10 @@ Qed.
 
 Lemma find_qpow_zero: nat_of_ord (find_qpow 0) == 0%N.
 Proof.
-  have Hfind: find_qpow 0 = (Ordinal field_geq_0). apply find_val_none. rewrite all_in.
-  move => x Hx. 
+  have Hfind: find_qpow 0 = (Ordinal field_geq_0). apply pickSeq_val_none. apply /allP => x Hx. 
   have Hnz: (qx ^+ x != 0). apply GRing.expf_neq0. apply qx_0.
   have->: (qx ^+ x == 0) = false by apply negbTE. by rewrite andbF.
-  by rewrite Hfind /=.
+  by rewrite Hfind.
 Qed.
 
 Lemma find_qpow_zero_iff: forall q, (nat_of_ord (find_qpow q) == 0%N) = (q == 0%R).
