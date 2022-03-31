@@ -901,24 +901,24 @@ Definition create_block_with_packet_red (p: packet) (k: Z) (h: Z) : block :=
 
 (*We will write our encoder first as a function (with inputted k and h), then write the predicate, where
   we quantify over k and h*)
-Definition rse_encode_func (orig: list packet) (encoded: list fec_packet_act) (curr: packet)
-  (k h: Z) : list fec_packet_act :=
+Definition rse_encode_gen (blocks: list block) (orig: list packet) (curr: packet)
+  (k h: Z) : list block * list fec_packet_act :=
 
   (*For the situations when we start a new block*)
   let encode_new (p: packet) (k' h': Z) :=
-    new_fec_packet p k' h' ::
-    if Z.eq_dec k' 1 then (encode_block (create_block_with_packet_red p k' h') (Some p)) else nil
+    let blk := create_block_with_packet_red p k' h' in
+    ([blk], new_fec_packet p k' h' ::
+    if Z.eq_dec k' 1 then (encode_block blk (Some p)) else nil)
   in
 
   (*For the situation when we add to an existing block*)
   let encode_exist (p :packet) (b: block) :=
     let newBlock := add_packet_to_block_red p b in
-    get_fec_packet p b ::
+    ([newBlock], get_fec_packet p b ::
     if Z.eq_dec (Zlength (filter isSome (data_packets newBlock))) (blk_k newBlock) then
-      encode_block newBlock (Some p) else nil
+      encode_block newBlock (Some p) else nil)
   in
 
-  let blocks := get_blocks encoded in
   match blocks with
   | nil => (*no blocks, need to create a new one*) encode_new curr k h
   | b :: _ => 
@@ -928,17 +928,23 @@ Definition rse_encode_func (orig: list packet) (encoded: list fec_packet_act) (c
         then encode_block currBlock None else nil
     in
 
-    let newPackets :=
+    let (newBlocks, newPackets) :=
       if Z.eq_dec (Zlength (filter isSome (data_packets currBlock))) (blk_k currBlock) then
-        encode_new curr k h
+        (blocks ++ (encode_new curr k h).1, (encode_new curr k h).2)
       else 
-        if Z.eq_dec (Zlength (filter isSome (data_packets currBlock)) + 1) (blk_k currBlock) then
-          encode_exist curr currBlock
-        else 
-          [get_fec_packet curr b]
+          ((belast b blocks) ++ (encode_exist curr currBlock).1, (encode_exist curr currBlock).2)
       in
-    init ++ newPackets
+    (newBlocks, init ++ newPackets)
     end.
+
+(*TODO: what we want to prove: get_blocks (b ++ [(rse_encode_gen b orig curr k h).2]) =
+  (rse_encode_gen b orig curr k h).1 (or similar - figure out exactly)
+Alternative: make a recursive function keeping track of all previous states - concat all
+output, show that get_blocks of this output equal to update state (DO THIS ONE)
+TODO: START HERE*)
+
+Definition rse_encode_func orig encoded curr k h :=
+  (rse_encode_gen (get_blocks encoded) orig curr k h).2.
 
 (*The final predicate is simple*)
 
