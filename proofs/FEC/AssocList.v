@@ -207,7 +207,7 @@ Proof.
 Qed.
 
 Lemma update_or_add_exists: forall (k: K) (v: V) (f: V -> V) (a: alist),
-  exists v', In (k, v') (update_or_add' k v f a).
+  exists v', In (k, v') (update_or_add k v f a).
 Proof.
   move => k v f a. apply update_or_add_exists'. apply (al_uniq a).
 Qed.

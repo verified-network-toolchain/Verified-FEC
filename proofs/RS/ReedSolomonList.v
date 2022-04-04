@@ -66,6 +66,14 @@ Proof.
   by apply extend_mx_wf. 
 Qed.
 
+Lemma encoder_wf: forall (h k c: Z) (packets: lmatrix B),
+  0 <= h ->
+  0 <= c ->
+  wf_lmatrix (encoder_list h k c packets) h c.
+Proof.
+  move => h k c packets Hh Hc. by apply lmatrix_multiply_wf.
+Qed. 
+
 End Encoder.
 
 Section Decoder.
