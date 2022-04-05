@@ -97,13 +97,13 @@ Section Block.
 
 Record block := mk_blk { blk_id: int;
   data_packets: list (option fec_packet_act); parity_packets: list (option fec_packet_act); blk_k : Z; blk_h : Z;
-  complete: bool}.
+  black_complete: bool}.
 
 #[export]Instance block_inhab: Inhabitant block :=
   mk_blk Int.zero nil nil 0 0 false.
 
 #[export]Instance eta_block: Settable _ := 
-  settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h; complete>.
+  settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h; black_complete>.
 
 (*Need an eqType*)
 Lemma reflect_proj_sumbool: forall (P: Prop) (H: {P} + {~P}),
@@ -119,7 +119,7 @@ Canonical int_eqType := EqType int int_eqMixin.
 
 Definition block_to_tuple (b: block) : (int * seq (option fec_packet_act) * seq (option fec_packet_act) * 
   Z * Z * bool) :=
-  (blk_id b, data_packets b, parity_packets b, blk_k b, blk_h b, complete b).
+  (blk_id b, data_packets b, parity_packets b, blk_k b, blk_h b, black_complete b).
 
 Definition tuple_to_block (t: (int * seq (option fec_packet_act) * seq (option fec_packet_act) * Z * Z * bool)) :
   block :=
@@ -338,7 +338,7 @@ Definition lengths (b: block) : list Z :=
 
 (*A block is complete (these imply that parities are nonempty if data is*)
 (*TODO: could make bool, have to make bool (decidable) version of parities_valid*)
-Definition block_complete (b: block) : Prop :=
+Definition block_encoded (b: block) : Prop :=
   (*The block has a data packet that has length c (so c is actually the max, not just an upper bound)*)
   (exists p, In (Some p) (data_packets b) /\ Zlength (p_header (f_packet p) ++ p_contents (f_packet p)) = blk_c b) /\
   (*All parities have length c*)
@@ -1158,7 +1158,7 @@ Definition create_block_with_packet_black (p: fec_packet_act) : block * list pac
   let new_block := create_block_with_fec_packet p in
   let packets := (if (fd_isParity p) then nil else [p_packet p]) ++
     (if Z.eq_dec (fd_k p) 1 then (decode_block new_block) else nil) in
-  let marked_block := if Z.eq_dec (fd_k p) 1 then new_block <| complete := true |> else new_block in
+  let marked_block := if Z.eq_dec (fd_k p) 1 then new_block <| black_complete := true |> else new_block in
   (marked_block, packets).
 
 (*2. add packet to block*)
@@ -1169,11 +1169,11 @@ Definition add_fec_packet_to_block (p: fec_packet_act) (b: block) : block :=
       <| parity_packets := sublist (blk_k b) (blk_k b + blk_h b) new_packets |>.
 
 Definition add_packet_to_block_black (p: fec_packet_act) (b: block) : block * list packet :=
-  if complete b then (b, nil) else (*TODO: if this is a data packet, should it still be released?*)
+  if black_complete b then (b, nil) else (*TODO: if this is a data packet, should it still be released?*)
     let new_block := add_fec_packet_to_block p b in 
     let packets := (if (fd_isParity p) then nil else [p_packet p]) ++
       (if recoverable new_block then (decode_block new_block) else nil) in
-    let marked_block := if recoverable new_block then new_block <| complete := true |> else new_block in
+    let marked_block := if recoverable new_block then new_block <| black_complete := true |> else new_block in
     (marked_block, packets).
 
 (*The decoder is more complicated because of timeouts. We include a list of values indicating whether a timeout
@@ -1503,8 +1503,8 @@ Proof.
 Qed.
 
 (*For complete blocks, we can calculate blk_c just by taking max length of data packets*)
-Lemma blk_c_complete: forall b,
-  block_complete b ->
+Lemma blk_c_encoded: forall b,
+  block_encoded b ->
   blk_c b = list_max_nonneg
       (fun o : option fec_packet_act =>
        match o with
@@ -1512,7 +1512,7 @@ Lemma blk_c_complete: forall b,
        | None => 0
        end) (data_packets b).
 Proof.
-  move => b. rewrite /block_complete => [[[p [Hinp Hlenp]] [Hparc [Hdatac _]]]].
+  move => b. rewrite /block_encoded => [[[p [Hinp Hlenp]] [Hparc [Hdatac _]]]].
   symmetry. eapply list_max_nonneg_eq. apply Hinp. list_solve.
   - by [].
   - move => y. case : y => [y /= Hiny | _].
@@ -1525,13 +1525,13 @@ Qed.
 (*First, we need to know that blk_c of a recoverable subblock of a complete block is the same as the
   superblock. This is surprisingly nontrivial to prove*)
 Lemma blk_c_recoverable: forall (b1 b2: block),
-  block_complete b2 ->
+  block_encoded b2 ->
   subblock b1 b2 ->
   recoverable b1 ->
   blk_c b1 = blk_c b2.
 Proof.
   move => b1 b2 Hc. have Hcomp:=Hc. move: Hc. 
-  rewrite /block_complete /subblock /blk_c => [[[def [Hindef Hlendef] [Hparc [Hdatac _]]]]].
+  rewrite /block_encoded /subblock /blk_c => [[[def [Hindef Hlendef] [Hparc [Hdatac _]]]]].
   remember (fun o : option fec_packet_act => match o with
                                     | Some p => Zlength (p_header (f_packet p) ++ p_contents (f_packet p))
                                     | None => 0
@@ -1557,7 +1557,7 @@ Proof.
   - (*In the other case, we need to show list_max of (packets b1) and (packets b2) are equal*)
     have->//: list_max_nonneg f (data_packets b1) = blk_c b2; last first.
       by rewrite /blk_c Hf.
-    rewrite (blk_c_complete Hcomp) -Hf.
+    rewrite (blk_c_encoded Hcomp) -Hf.
     move: Hk. case : (Z_ge_lt_dec 
       (Zlength [seq x <- data_packets b1 | isSome x] + Zlength [seq x <- parity_packets b1 | isSome x])
       (Zlength (data_packets b1))) => [Hk _ |//].
@@ -1583,7 +1583,7 @@ Proof.
     have Hinp: In (Some def) (data_packets b1) by apply Hallin.
     have Hlb:=(list_max_nonneg_in Hfp' Hinp).
     have: f(Some def) = list_max_nonneg f (data_packets b2)
-      by rewrite Hf Hlendef Hf -/(blk_c b2) blk_c_complete.
+      by rewrite Hf Hlendef Hf -/(blk_c b2) blk_c_encoded.
     lia.
 Qed.
 
@@ -1591,10 +1591,10 @@ Qed.
   we know that each packet really has length at least 28 for IP/UDP header*)
 Lemma blk_c_pos: forall (b: block),
   block_wf b ->
-  block_complete b ->
+  block_encoded b ->
   0 < blk_c b.
 Proof.
-  move => b. rewrite /block_wf /block_complete => 
+  move => b. rewrite /block_wf /block_encoded => 
     [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]]] [[p [Hinp Hlenp]] _].
   rewrite -Hlenp. have: packet_valid p. apply Hvalid. by left. rewrite /packet_valid /valid_fec_packet.
   move => /andP[ Hle _]. move: Hle. 
@@ -1607,7 +1607,7 @@ Qed.
   the packets of the original packet matrix, possibly padded with some zeroes*)
 Theorem subblock_recoverable_correct: forall (b1 b2: block),
   block_wf b2 ->
-  block_complete b2 ->
+  block_encoded b2 ->
   subblock b1 b2 ->
   recoverable b1 ->
   decoder_list_block b1 = pad_packets (packet_mx b2) (lengths b1) (blk_c b2). 
@@ -1630,7 +1630,7 @@ Proof.
   - by [].
   - by rewrite find_decoder_list_param_correct.
   - move: Hwf Hsub; rewrite /block_wf /subblock /packet_mx Zlength_map; list_solve.
-  - have Hcomp':=Hcomp. move: Hcomp'. rewrite /block_complete => [[[p [Hinp Hlenp]] [_ [Hleq _]]]].
+  - have Hcomp':=Hcomp. move: Hcomp'. rewrite /block_encoded => [[[p [Hinp Hlenp]] [_ [Hleq _]]]].
     rewrite Forall_forall /packet_mx => s. rewrite in_map_iff => [[x]].
     case : x => [p' [Hs Hinp'] |[Hs _]].
     + rewrite -Hs. by apply Hleq.
@@ -1647,11 +1647,11 @@ Proof.
     have Hin': In (Some p) (parity_packets b2). { move: Hsub. rewrite /subblock => Hsub.
       eapply subseq_option_in. apply Hsub. by []. }
     rewrite -Hl.
-    move: Hcomp. rewrite /block_complete => [[ _ [Hlens _]]]. 
+    move: Hcomp. rewrite /block_encoded => [[ _ [Hlens _]]]. 
     by apply Hlens.
   - have Hlen: Zlength (parity_mx b1) = Zlength (parity_mx b2) by
       move: Hwf' Hwf Hsub; rewrite /block_wf /subblock /parity_mx !Zlength_map; list_solve.
-    move: Hcomp. rewrite /block_complete => [[_ [ _ [ _ Hval]]]].
+    move: Hcomp. rewrite /block_encoded => [[_ [ _ [ _ Hval]]]].
     move: Hval Hsub. rewrite /subblock /parities_valid => Hval [ _ [ _ [Hsub Hlens]]].
     move => i j Hi Hj.
     move: Hval => /(_ i j). rewrite -Hc in Hj. rewrite -Hlen -(proj1 Hlens) -Hc => /(_ Hi Hj).
@@ -1701,12 +1701,12 @@ Proof.
 Qed.
 
 Lemma subblock_c: forall (b1 b2: block),
-  block_complete b2 ->
+  block_encoded b2 ->
   subblock b1 b2 ->
   (forall p, In (Some p) (data_packets b1) -> Zlength (packet_bytes (f_packet p)) <= blk_c b2) /\
   (forall p, In (Some p) (parity_packets b1) -> Zlength (p_contents (f_packet p)) = blk_c b2).
 Proof.
-  move => b1 b2. rewrite /block_complete /subblock => [[_ [Hpars [Hdata _]]]] [_ [Hsubdata [Hsubpar _]]].
+  move => b1 b2. rewrite /block_encoded /subblock => [[_ [Hpars [Hdata _]]]] [_ [Hsubdata [Hsubpar _]]].
   split; move => p Hinp.
   - move: Hsubdata; rewrite /subseq_option => [[Hlens His]]. move: Hinp. rewrite In_Znth_iff => [[i [Hi Hp]]].
     have Hi':=Hi.
@@ -1721,7 +1721,7 @@ Qed.
 (*We extend this to show that [decode_block] gives all packets in the original block not in the subblock*)
 Theorem decode_block_correct: forall (b1 b2: block),
   block_wf b2 ->
-  block_complete b2 ->
+  block_encoded b2 ->
   subblock b1 b2 ->
   recoverable b1 ->
   decode_block b1 = get_block_diff b1 b2.
@@ -1752,7 +1752,7 @@ Proof.
         apply Znth_In. lia.
       - have->:blk_c b1 = blk_c b2. by apply blk_c_recoverable. split; try lia.
         case Hp: (Znth i (data_packets b2)) => [p|].
-        + move: Hcomp. rewrite /block_complete => [[_ [_ [Hin _]]]]. apply Hin. rewrite -Hp.
+        + move: Hcomp. rewrite /block_encoded => [[_ [_ [Hin _]]]]. apply Hin. rewrite -Hp.
           apply Znth_In. lia.
         + rewrite Zlength_nil. by apply blk_c_nonneg. }
     rewrite !Znth_map; try lia. 2: by rewrite Zlength_map; lia.
@@ -1990,7 +1990,7 @@ Proof.
     have->: (forall (A: Type) (a1 a2: seq A), a1 ++ a2 = (a1 ++ a2)%list) by [].
     move: Hpos => /( _ h (in_eq _ _ )) => Hpos.
     rewrite -!sublist_split; try lia. by rewrite (sublist_same 0 (fd_k h + fd_h h)).
-  - rewrite /add_packet_to_block_black. case Hcomp: (complete b1); last first.
+  - rewrite /add_packet_to_block_black. case Hcomp: (black_complete b1); last first.
       case Hrec: (recoverable (add_fec_packet_to_block h b1)).
       apply subblock_add. by rewrite Hb2. apply subblock_add. by rewrite Hb2.
     (*If it was complete, we don't change anything. Proving the subblock relation is a bit harder*)
@@ -2192,6 +2192,30 @@ Proof.
   rewrite Hupd in Hex. by case : Hex => [x Hinx].
 Qed.
 
+(*TODO: MOVE*)
+Lemma Zlength_map_with_idx : forall {A B: Type} (l: seq A) (f: A -> Z -> B),
+  Zlength (map_with_idx l f) = Zlength l.
+Proof.
+  move => A B l f. rewrite Zlength_map Zlength_combine Zlength_Ziota; try lia. list_solve.
+Qed.
+
+Ltac zlist_simpl :=
+  repeat (match goal with
+  | |- context [Zlength (Ziota ?a ?b) ] => rewrite Zlength_Ziota
+  | |- context [Zlength (zseq ?z ?x) ] => rewrite zseq_Zlength
+  | |- context [Zlength (combine ?l1 ?l2) ] => rewrite Zlength_combine
+  | |- context [Zlength (map_with_idx ?l ?f) ] => rewrite Zlength_map_with_idx
+  | |- context [Znth ?i (Ziota ?a ?b) ] => rewrite Znth_Ziota
+  | |- context [Znth ?i (zseq ?z ?x) ] => rewrite zseq_Znth
+  | |- context [Znth ?i (combine ?l1 ?l2) ] => rewrite Znth_combine
+  | |- context [Znth ?i (map_with_idx ?l ?f) ] => rewrite map_with_idx_Znth
+  | |- context [Zlength (map ?f ?l) ] => rewrite Zlength_map
+  | |- context [Zlength (upd_Znth ?i ?l ?x) ] => rewrite Zlength_upd_Znth
+  | |- context [Znth ?i (map ?f ?l)]=> rewrite Znth_map
+  | |- 0 <= Zlength ?x => list_solve
+  | |- context [Z.min ?x ?x] => rewrite Z.min_id
+  end; try lia); try lia.
+
 Lemma mapWithIdxP: forall {T1 T2: eqType} `{Inhabitant T1} {f: T1 -> Z -> T2} {s: seq T1} {y: T2},
   reflect (exists i x, 0 <= i < Zlength s /\ Znth i s = x /\ y = f x i) (y \in map_with_idx s f).
 Proof.
@@ -2199,20 +2223,15 @@ Proof.
   case : (y \in [seq (let (x, z) := (t: T1 * Z) in f x z) | t <- combine s (Ziota 0 (Zlength s))]) /mapP.
   - move => Hx. apply ReflectT. case : Hx => [x Hinx Hy]. subst. move: Hinx. case : x => [x i].
     rewrite in_mem_In => Hin. apply In_Znth in Hin. case: Hin => [j [Hj Hjth]].
-    rewrite Znth_combine in Hjth; last first.
-      rewrite Zlength_Ziota; try lia. list_solve.
-    move: Hj Hjth. rewrite Zlength_combine Zlength_Ziota; try lia; [|list_solve]. rewrite Z.min_id => Hj.
-    rewrite Znth_Ziota/=; try lia. rewrite Z.add_0_l => [[Hx Hi]]. subst.
+    move: Hj. zlist_simpl => Hj. move: Hjth. zlist_simpl. rewrite Z.add_0_l => [[Hx Hi]]. subst.
     exists i. by exists (Znth i s).
   - move => Hc. apply ReflectF. move => Hc'. apply Hc. rewrite {Hc}.
     case: Hc' => [i [x [Hi [Hith Hy]]]]. subst.
-    exists ((Znth i s), i) => //=. rewrite in_mem_In. rewrite In_Znth_iff. exists i.
-    rewrite Zlength_combine Zlength_Ziota; try lia. rewrite Z.min_id Znth_combine; last first.
-      rewrite Zlength_Ziota; lia.
-    by rewrite Znth_Ziota; try lia.
+    exists ((Znth i s), i) => //=. rewrite in_mem_In. rewrite In_Znth_iff. exists i. by zlist_simpl.
 Qed.
 
 Ltac len_encode :=
+  zlist_simpl;
   repeat match goal with
   | [H: context [Zlength (populate_packets _ _ _) ] |- _] => move: H
   | |- context [Zlength (populate_packets ?i ?p ?s) ]  => rewrite /populate_packets Zlength_map
@@ -2260,11 +2279,9 @@ Proof.
           (0 > i \/ i >= blk_k b + blk_h b) by lia.
         -- rewrite Znth_app1; try lia. move: Hidx => /(_ p' i (or_introl Hdat)). rewrite Znth_app1; try lia. move => H.
            by apply H.
-        -- rewrite Znth_app2; try lia. rewrite Znth_map; last first.
-             rewrite Zlength_map Zlength_combine. len_encode. rewrite Zlength_Ziota; lia.
-           rewrite map_with_idx_Znth; [|len_encode].
+        -- rewrite Znth_app2; try lia. len_encode. 
            move => [Hp']. subst => //=. rewrite Int.unsigned_repr; rep_lia.
-        -- rewrite Znth_outofbounds // Zlength_app !Zlength_map Zlength_combine. len_encode.
+        -- rewrite Znth_outofbounds // Zlength_app. len_encode.
       * move ->. have Hj': j = Int.unsigned (fd_blockIndex p'). apply Hidx. by left. by rewrite Znth_app1 //; lia.
         rewrite Znth_app1; try lia. by subst.
     + move: Hpar. rewrite in_map_iff => [[x [[Hxp] Hinx]]]. subst. move: Hinx.
@@ -2288,26 +2305,13 @@ Proof.
             move: Hith. subst p'.
             rewrite -((Znth_app1 _ _ _ (parity_packets b))); try lia.
             rewrite Hidx/=. rep_lia. by left.
-        -- rewrite Znth_app2; try lia. rewrite Znth_map; last first.
-             rewrite Zlength_map Zlength_combine. len_encode. rewrite Zlength_Ziota; try lia.
-           rewrite Znth_map; last first.
-             rewrite Zlength_combine Zlength_Ziota; try lia; len_encode.
-           rewrite Znth_combine; last first.
-             rewrite Zlength_Ziota; try lia. len_encode.
-           move => [Heq]. rewrite Znth_Ziota; try lia; len_encode.
+        -- rewrite Znth_app2; try lia. len_encode.
+           move => [Heq].
            rewrite !Int.Z_mod_modulus_eq !Zmod_small; try rep_lia. rewrite Int.unsigned_repr; rep_lia.
-        -- rewrite Znth_outofbounds // Zlength_app !Zlength_map Zlength_combine. len_encode.
+        -- rewrite Znth_outofbounds // Zlength_app. len_encode.
       * move ->. rewrite Znth_app2; rewrite Int.unsigned_repr; try rep_lia.
-        have->:(blk_k b + j - Zlength (data_packets b)) = j by lia.
-        rewrite Znth_map; last first.
-          rewrite Zlength_map Zlength_combine Zlength_Ziota; len_encode.
-        rewrite Znth_map; last first.
-          rewrite Zlength_combine Zlength_Ziota; len_encode.
-        rewrite Znth_combine; last first.
-          rewrite Zlength_Ziota; len_encode.
-        rewrite Znth_Ziota; last first; try lia; try len_encode.
-        by rewrite Z.add_0_l.
-  - rewrite Zlength_map Zlength_map Zlength_combine Zlength_Ziota; try lia; len_encode.
+        have->:(blk_k b + j - Zlength (data_packets b)) = j by lia. by len_encode.
+  - len_encode.
   - move => p' [Hdat | Hpar].
     + apply Hvalid. by left.
     + move: Hpar. rewrite -in_mem_In mem_map; last first. apply some_inj.
@@ -2367,34 +2371,27 @@ Proof.
   have Hin1: forall p',
     In (Some p') (upd_Znth 0 (zseq k None) (Some (new_fec_packet p k h))) -> p' = (new_fec_packet p k h). {
     move => p' Hin. apply In_upd_Znth in Hin. case : Hin => [[Hp']// | Hin].
-    move: Hin. rewrite In_Znth_iff => [[i]]. rewrite zseq_Zlength; try lia; move => [Hi].
-    by rewrite zseq_Znth; try lia. }
+    move: Hin. rewrite In_Znth_iff => [[i]]. rewrite zseq_Zlength; try lia; move => [Hi]. by zlist_simpl. }
   have Hin2: forall p', 
     In (Some p') (upd_Znth 0 (zseq k None) (Some (new_fec_packet p k h))) \/ In (Some p') (zseq h None) ->
     p' = (new_fec_packet p k h). {
     move => p' [Hinp' | Hinp']. by apply Hin1. move: Hinp'. rewrite In_Znth_iff => [[i]]. 
-    rewrite zseq_Zlength; try lia; move => [Hi]. by rewrite zseq_Znth; try lia. }
+    rewrite zseq_Zlength; try lia; move => [Hi]. by zlist_simpl. }
   split_all => //; try lia.
   - move => p' Hinp'. apply Hin2 in Hinp'. by subst.
   - move => p' Hinp'. apply Hin2 in Hinp'. by subst.
   - move => p' i Hinp'. apply Hin2 in Hinp'. subst => /=.
     rewrite Int.unsigned_zero. split.
     + have [Hi1 | [Hi2 | Hiout]]: (0 <= i < k \/ k <= i < k + h \/ (i < 0 \/ i >= k + h)) by lia.
-      * rewrite Znth_app1; last first.
-          rewrite Zlength_upd_Znth zseq_Zlength; lia.
-        rewrite (upd_Znth_lookup' k); try lia; last first.
-          rewrite zseq_Zlength; try lia.
-        case : (Z.eq_dec i 0) => [// | Hi /=].
-        by rewrite zseq_Znth; try lia.
-      * rewrite Znth_app2; rewrite Zlength_upd_Znth zseq_Zlength; try lia.
-        (*TODO: should really automate this - either custom tactic or try to add to list_solve*)
-        by rewrite zseq_Znth; try lia.
-      * rewrite Znth_outofbounds //. rewrite Zlength_app Zlength_upd_Znth !zseq_Zlength; lia.
-    + move ->. rewrite Znth_app1; last first.
-        rewrite upd_Znth_Zlength zseq_Zlength; lia.
-      rewrite upd_Znth_same //. by rewrite zseq_Zlength; lia.
-  - rewrite upd_Znth_Zlength zseq_Zlength; lia.
-  - rewrite zseq_Zlength; lia.
+      * rewrite Znth_app1; zlist_simpl.
+        rewrite (upd_Znth_lookup' k); zlist_simpl.
+        by case : (Z.eq_dec i 0).
+      * by rewrite Znth_app2; zlist_simpl. 
+      * rewrite Znth_outofbounds // Zlength_app. by zlist_simpl.
+    + move ->. rewrite Znth_app1; zlist_simpl.
+      rewrite upd_Znth_same //. by zlist_simpl. 
+  - by zlist_simpl.
+  - by zlist_simpl.
   - move => p' Hinp'. apply Hin1 in Hinp'. by subst.
   - move => p' Hinp'. apply Hin2 in Hinp'. by subst.
 Qed.
@@ -2435,7 +2432,7 @@ Definition data_elt (b: block): option fec_packet_act :=
 (*Let's see: TODO: move*)
 Lemma btuple_block_inv: forall b,
   block_wf b ->
-  complete b = false ->
+  black_complete b = false ->
   (*block must be nonempty*)
   isSome (block_elt b) ->
   btuple_to_block (block_to_btuple b) = b.
@@ -2457,12 +2454,11 @@ Qed.
 
 (*here, show that [encode_block] is nonempty and that this doesnt affect completeness. The latter is very easy*)
 Lemma encode_block_aux_comp: forall b p,
-  complete (encode_block_aux b p).1 = complete b.
+  black_complete (encode_block_aux b p).1 = black_complete b.
 Proof.
   move => b p. by [].
 Qed.
 
-Check pmap.
 Lemma pmap_nil: forall {aT rT: Type} (p: aT -> option rT) (s: seq aT),
   pmap p s = [::] <-> all isNone (map p s).
 Proof.
@@ -2484,8 +2480,7 @@ Proof.
   move => b p [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]].
   rewrite/block_elt.
   case Helt: (pmap id (data_packets (encode_block_aux b p).1 ++ parity_packets (encode_block_aux b p).1)) => [|//].
-  move: Helt. rewrite /=.
-  rewrite pmap_nil. apply neg_impl_false. apply /allPn.
+  move: Helt. rewrite /= pmap_nil. apply neg_impl_false. apply /allPn.
   exists (Some
     {|
       p_packet :=
@@ -2498,16 +2493,12 @@ Proof.
           fd_blockId := blk_id b;
           fd_blockIndex := Int.repr (blk_k b + (0 + 0))
         |}
-    |}).
-  - rewrite map_id. rewrite mem_cat. apply /orP. right.
-    apply (map_f (fun x => Some x)). (*weird error without arg*)
-    rewrite in_mem_In In_Znth_iff Zlength_map Zlength_combine Zlength_Ziota; try lia;[|len_encode].
-    have->:(Zlength (populate_packets (blk_id b) p (encoder_list (blk_h b) (blk_k b) (blk_c b) (packet_mx b)))) =
-      blk_h b by len_encode.
-    rewrite Znth_map;[|len_encode]. exists 0.
-    rewrite map_with_idx_Znth; [|len_encode]. split. lia.
-    rewrite Znth_map//=. len_encode.
-  - by [].
+    |}) => //.
+  rewrite map_id mem_cat. apply /orP. right.
+  apply (map_f (fun x => Some x)). (*weird error without arg*)
+  rewrite in_mem_In In_Znth_iff. zlist_simpl.
+  have->:(Zlength (populate_packets (blk_id b) p (encoder_list (blk_h b) (blk_k b) (blk_c b) (packet_mx b)))) =
+    blk_h b by len_encode. exists 0. len_encode => /=. split => //. lia.
 Qed.
 
 (*TODO: move*)
@@ -2537,7 +2528,7 @@ Theorem rse_encode_all_blocks: forall (orig: list packet) (params: list (Z * Z))
   perm_eq (get_blocks (rse_encode_all orig params).2) (rse_encode_all orig params).1 /\
   (forall b, In b (rse_encode_all orig params).1 -> block_wf b) /\
   (forall b, In b (rse_encode_all orig params).1 -> 
-    block_in_progress b \/ block_complete b) /\
+    block_in_progress b \/ block_encoded b) /\
   wf_packet_stream (rse_encode_all orig params).2.
 Proof.
   move => orig params Hparam Hvalid Henc Hsz.
