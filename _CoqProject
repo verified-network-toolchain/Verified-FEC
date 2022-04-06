@@ -23,6 +23,7 @@ proofs/FEC/AssocList.v
 proofs/FEC/AbstractEncoderDecoder.v
 proofs/FEC/Endian.v
 proofs/FEC/IP.v
+proofs/FEC/Block.v
 proofs/FEC/RSEEncoderDecoder.v
 #VST(core FEC)
 src/fecActuator/fec.v

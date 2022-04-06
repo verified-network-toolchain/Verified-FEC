@@ -67,24 +67,52 @@ Proof.
   - by rewrite IH.
 Qed. 
 
+Lemma updateWith_notin: forall k f a,
+  ~In k (map fst a) ->
+  updateWith k f a = a.
+Proof.
+  move => k f a. elim : a => [//= | h t /= IH].
+  case : h => [k1 v1]/= => Hin. apply Decidable.not_or in Hin.
+  case : Hin => [Hkk1 Hin].
+  have->: k == k1 = false by apply negbTE; apply /eqP; auto.
+  by rewrite IH.
+Qed.
+
+Lemma updateWith_app: forall k f a1 a2,
+  ~ In k (map fst a2) ->
+  updateWith k f (a1 ++ a2) = updateWith k f a1 ++ a2.
+Proof.
+  move => k f a1. elim : a1 => [/= a2 Hin | h t /= IH a2 Hin].
+  - by apply updateWith_notin.
+  - case: h => [k1 v1].
+    case : (k == k1) /eqP => [->// | Hkk1].
+    by rewrite IH.
+Qed.
+
 Definition get (k: K) (a: assoc_list) : option V :=
   foldr (fun x acc => if k == x.1 then Some x.2 else acc) None a.
 
-Lemma get_some: forall (k: K) (v: V) (a: assoc_list),
-  uniq (map fst a) ->
-  get k a = Some v <-> In (k, v) a.
+Lemma get_some_in: forall (k : K) (v: V) (a: assoc_list),
+  get k a = Some v -> In (k, v) a.
 Proof.
   move => k v a. elim : a => [//= | h t /= IH]. case : h => [kh vh]/=.
-  move => /andP[Hnotin Huniq]. case Hkkh: (k == kh).
-  - move: Hkkh => /eqP Hkkh. rewrite Hkkh. split.
-    + move => [Hvh]. rewrite Hvh. by left.
-    + move => [[Heq] | Hin]. by rewrite Heq. 
-      move: Hnotin. have->//: kh \in [seq i.1 | i <- t]. rewrite in_mem_In in_map_iff.
-      by exists (kh, v).
-  - move: Hkkh => /eqP Hkkh. rewrite IH //. split.
-    + move => Hin //. by right.
-    + move => [[Heq] | Hin //]. by rewrite Heq in Hkkh.
+  case :(k == kh) /eqP => [->|Hkkh].
+  - move => [Hvh]. subst. by left.
+  - move => Hget. right. by apply IH.
 Qed.
+
+Lemma get_in_some: forall (k : K) (v: V) (a: assoc_list),
+  uniq (map fst a) ->
+  In (k, v) a ->
+  get k a = Some v.
+Proof.
+  move => k v a. elim : a => [//= | h t /= IH]. case : h => [kh vh]/=.
+  move => /andP[Hnotin Huniq]. case: (k == kh) /eqP => [->|Hkkh].
+  - move => [[Heq] | Hin]. by rewrite Heq. 
+    move: Hnotin. have->//: kh \in [seq i.1 | i <- t]. rewrite in_mem_In in_map_iff.
+    by exists (kh, v).
+  - move => [[Heq] | Hin //]. by subst. by apply IH.
+Qed. 
 
 Lemma get_none: forall (k: K) (a: assoc_list),
   get k a = None <-> (forall v, ~In(k, v) a).
@@ -170,10 +198,25 @@ Lemma update_or_add_exists': forall (k: K) (v: V) (f: V -> V) (a: assoc_list),
   exists v', In (k, v') (update_or_add' k v f a).
 Proof.
   move => k v f a Huniq. rewrite /update_or_add'. case Hget: (get k a) => [d |].
-  - rewrite (get_some _ _ Huniq) in Hget. have: k \in map fst a. { rewrite in_mem_In in_map_iff. by exists (k, d). }
+  - apply get_some_in in Hget. have: k \in map fst a. { rewrite in_mem_In in_map_iff. by exists (k, d). }
     rewrite (updateWith_keys k f a) in_mem_In in_map_iff => [[[k1 v1]/= [Hk Hin]]]. rewrite Hk in Hin.
     by exists v1.
   - rewrite /add. exists v. by left.
+Qed.
+
+Lemma update_or_add_app': forall (k: K) (v: V) (f: V -> V) (a1 a2: assoc_list),
+  ~ In k (map fst a2) ->
+  update_or_add' k v f (a1 ++ a2) = update_or_add' k v f a1 ++ a2.
+Proof.
+  move => k c f a1 a2 Hin. rewrite /update_or_add'.
+  case Hg1: (get k a1) => [v |/=].
+  - case Hg2: (get k (a1 ++ a2)) => [v2 |/=].
+    + by apply updateWith_app.
+    + rewrite get_none in Hg2. exfalso. apply (Hg2 v). apply in_or_app. left. by apply get_some_in.
+  - case Hg2: (get k (a1 ++ a2)) => [v2 |//].
+    apply get_some_in in Hg2. apply in_app_or in Hg2. case: Hg2 => [Hin1 | Hin2].
+    + rewrite get_none in Hg1. exfalso. by apply (Hg1 v2).
+    + exfalso. apply Hin. rewrite in_map_iff. by exists (k, v2).
 Qed.
 
 (*Now we should package this into a nicer association list that has uniq keys*)
