@@ -41,8 +41,7 @@ Definition encode_block (b: block) (o: option packet) : block * list fec_packet_
   | _, Some p => encode_block_aux b p
   | h :: t, _ => encode_block_aux b (f_packet (last h (h :: t)))
   end.
-Check Zindex.
-Print fec_data.
+
 (*From here, we need a few utility functions for block so we can create the encoder predicate*)
 
 Definition get_fec_packet (p: packet) (b: block) : fec_packet_act :=
@@ -1090,8 +1089,6 @@ Proof.
   rewrite in_mem_In => Hin. apply Hvalid. by left.
 Qed.
 
-Print create_block_with_packet_red.
-
 Lemma create_block_red_wf: forall p k h,
   packet_valid p ->
   encodable p ->
@@ -1178,63 +1175,6 @@ Lemma encode_block_nonempty: forall b o,
 Proof.
   move => b o. by rewrite /data_elt data_packets_encode.
 Qed.
-  
-(*
-Lemma pmap_nil: forall {aT rT: Type} (p: aT -> option rT) (s: seq aT),
-  pmap p s = [::] <-> all isNone (map p s).
-Proof.
-  move => A B p s. elim : s => [//| h t /= IH].
-  by case : (p h).
-Qed. 
-
-Lemma neg_impl_false: forall (b: bool),
-  ~~ b ->
-  (b -> false).
-Proof.
-  move => b. by case: b.
-Qed.
- 
-Lemma encode_block_aux_nonempty: forall b p,
-  block_wf b ->
-  isSome (block_elt (encode_block_aux b p).1).
-Proof.
-  move => b p [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]].
-  rewrite/block_elt.
-  case Helt: (pmap id (data_packets (encode_block_aux b p).1 ++ parity_packets (encode_block_aux b p).1)) => [|//].
-  move: Helt. rewrite /= pmap_nil. apply neg_impl_false. apply /allPn.
-  exists (Some
-    {|
-      p_packet :=
-        Znth 0 (populate_packets (blk_id b) p (encoder_list (blk_h b) (blk_k b) (blk_c b) (packet_mx b)));
-      p_fec_data :=
-        {|
-          fd_k := blk_k b;
-          fd_h := blk_h b;
-          fd_isParity := true;
-          fd_blockId := blk_id b;
-          fd_blockIndex := Int.repr (blk_k b + (0 + 0))
-        |}
-    |}) => //.
-  rewrite map_id mem_cat. apply /orP. right.
-  apply (map_f (fun x => Some x)). (*weird error without arg*)
-  rewrite in_mem_In In_Znth_iff. zlist_simpl.
-  have->:(Zlength (populate_packets (blk_id b) p (encoder_list (blk_h b) (blk_k b) (blk_c b) (packet_mx b)))) =
-    blk_h b by len_encode. exists 0. len_encode => /=. split => //. lia.
-Qed.
-
-(*TODO: move*)
-(*TODO: condition too weak: need to know we have a data packet in b*)
-Lemma encode_block_nonempty: forall b o,
-  block_wf b ->
-  isSome (data_elt b) ->
-  isSome (block_elt (encode_block b o).1).
-Proof.
-  move => b o Hwf. rewrite /encode_block/data_elt.
-  case Hdat: (pmap id (data_packets b)) => [//=|h t /=].
-  move => _. case : o => [p |];
-  by apply encode_block_aux_nonempty.
-Qed.
-*)
 
 (*move prob*)
 Lemma create_red_nonempty: forall p h k,
@@ -1483,21 +1423,6 @@ Definition block_option_list (x: list block * option block) : list block :=
 (*also TODO: lots of previous lemmas may no longer be needed*)
 Section Temp.
 
-(*TODO: really move*)
-(*want a version of nonempty lemma without assumptions*)
-(*OK, can't prove this bc need length stuff and index stuff*)
-(*
-Lemma get_block_lists_nonempty': forall (l: seq fec_packet_act) (i: int) (pkts: seq (option fec_packet_act)),
-  In (i, pkts) (get_block_lists l) ->
-  exists p, In (Some p) pkts.
-Proof.
-  move => l. elim : l => [//= | h t /= IH i pkts].
-  rewrite /update_block_list.
-  case : (i == fd_blockId h) /eqP => [-> /= Hin | Hih Hin].
-  - apply update_or_add_same in Hin. case : Hin => [[oldV] [Hin Hpkts] | [Hpkts Hold]].
-    + subst. exists h. rewrite /update_packet_list. apply upd_Znth_In.
-*)
-
 Transparent update_or_add.
 (*TODO: come back to this, might need wf assumption*)
 
@@ -1541,7 +1466,6 @@ Proof.
 Qed.
 
 
-Check block_option_list.
 (*To prove the main theorem about the encoder, we need to show that a number of properties are preserved in
   each run of rse_encode_gen. To reduce repetition and make things
   cleaner, we group the properties together and prove the 3 different cases we need before proving the full theorem*)
@@ -1613,6 +1537,17 @@ Proof.
   by apply map_f.
 Qed.
 
+Lemma create_red_Zindex: forall p k h,
+  1 <= k ->
+  Zindex None (data_packets (create_block_with_packet_red p k h)) = 1.
+Proof.
+  move => p k h Hk. rewrite /Zindex /index/=.
+  rewrite zseq_hd; try lia. rewrite upd_Znth0.
+  simpl find.
+  have [Hk1 | Hk1]: k = 1 \/ k > 1 by lia.
+  - subst. by have->:1-1 = 0 by [].
+  - by rewrite zseq_hd; try lia.
+Qed. 
 
 (*Case 1: If there is no block in progress, we can add a new block and packet, preserving the invariant*)
 Lemma encoder_props_new_block: forall p orig blks pkts k h,
@@ -1674,19 +1609,29 @@ Proof.
 Qed.
 
 Lemma encode_in_aux: forall b m (p: fec_packet_act),
-  p \in (encode_block_aux b m).2 ->
-  (Some p) \in (parity_packets (encode_block_aux b m).1).
+  (p \in (encode_block_aux b m).2) =
+  ((Some p) \in (parity_packets (encode_block_aux b m).1)).
 Proof.
-  move => b m p. rewrite /= => Hin. by apply (map_f Some).
-Qed. 
+  move => b m p. rewrite /= mem_map //. apply some_inj.
+Qed.
 
 Lemma encode_in: forall b o (p: fec_packet_act),
   p \in (encode_block b o).2 ->
   (Some p) \in (parity_packets (encode_block b o).1).
 Proof.
   move => b o p. rewrite /encode_block.
-  case Hpmap:(pmap id (data_packets b)) => [//= | hd tl /=]; case o => [p' | //]; apply encode_in_aux.
+  by case Hpmap:(pmap id (data_packets b)) => [//= | hd tl /=]; case o => [p' | //]; rewrite encode_in_aux.
 Qed.
+
+Lemma in_encode: forall b o (p: fec_packet_act),
+  data_elt b ->
+  (Some p) \in (parity_packets (encode_block b o).1) ->
+  p \in (encode_block b o).2.
+Proof.
+  move => b o p. rewrite /data_elt /encode_block.
+  by case Hmap: (pmap id (data_packets b)) => [//= | hd tl /=] _; case o => [p' |//]; rewrite encode_in_aux.
+Qed.
+  
 
 (*TODO: move*)
 Lemma encode_block_k: forall (b: block) (o: option packet),
@@ -1827,9 +1772,329 @@ Proof.
     rewrite in_mem_In in_map_iff. by exists (fd_blockId x, pkts').
 Qed.
 
+(*Lemmas for adding packet - TODO move of course*)
+Lemma add_red_k: forall p b,
+  blk_k (add_packet_to_block_red p b) = blk_k b.
+Proof.
+  by [].
+Qed.
 
-(*Prove the get_blocks separately, because it's quite ugly*)
-(*The hypotheses show why we need such a large prop; they are all interconnected*)
+Lemma add_red_h: forall p b,
+  blk_h (add_packet_to_block_red p b) = blk_h b.
+Proof.
+  by [].
+Qed.
+
+Lemma add_red_id: forall p b,
+  blk_id (add_packet_to_block_red p b) = blk_id b.
+Proof.
+  by [].
+Qed.
+
+Lemma add_red_parity: forall p b,
+  parity_packets (add_packet_to_block_red p b) = parity_packets b.
+Proof.
+  by [].
+Qed.
+
+(*For dealing with wf, we can limit ourselves to i values in the correct range*)
+Lemma block_wf_list_equiv: forall (l: list (option fec_packet_act)),
+  (forall (p: fec_packet_act) i, In (Some p) l -> Znth i l = Some p <-> i = Int.unsigned (fd_blockIndex p)) <->
+  (forall (p: fec_packet_act) i, 0 <= i < Zlength l ->
+    In (Some p) l -> Znth i l = Some p <-> i = Int.unsigned (fd_blockIndex p)).
+Proof.
+  move => l. split.
+  - move => Hcon p i Hi. by apply Hcon.
+  - move => Hcon p i Hi. split.
+    + move => Hith. have Hib: 0 <= i < Zlength l. apply Znth_inbounds. by rewrite Hith.
+      by apply Hcon.
+    + move => Hidx.
+      have [j [Hj Hjth]]: exists j, 0 <= j < Zlength l /\ Znth j l = Some p by rewrite -In_Znth_iff.
+      have: j = Int.unsigned (fd_blockIndex p) by apply Hcon. by move => Hj'; subst.
+Qed.
+
+(*A generic way to handle the iff condition in block_wf when adding a new element*)
+Lemma block_wf_list_upd_Znth: forall (l: list (option fec_packet_act)) (p: fec_packet_act) j,
+  (forall (p: fec_packet_act) i, In (Some p) l -> Znth i l = Some p <-> i = Int.unsigned (fd_blockIndex p)) ->
+  0 <= j < Zlength l ->
+  Znth j l = None ->
+  j = Int.unsigned (fd_blockIndex p) ->
+  (forall (p': fec_packet_act) i, In (Some p') (upd_Znth j l (Some p)) -> 
+    Znth i (upd_Znth j l (Some p)) = Some p' <-> i = Int.unsigned (fd_blockIndex p')).
+Proof.
+  move => l p j Hall Hj Hjidx Hjth. rewrite block_wf_list_equiv.
+  move => p' i. zlist_simpl. move => Hi Hin.
+  apply In_upd_Znth in Hin. case: Hin => [[Hp''] | Hin].
+  - subst. split.
+    + rewrite (upd_Znth_lookup' (Zlength l)); try lia.
+      case : (Z.eq_dec i (Int.unsigned (fd_blockIndex p))) => //= Hij Hith.
+      apply Hall => //. rewrite In_Znth_iff. by exists i.
+    + move ->. by rewrite upd_Znth_same.
+  - subst. split.
+    + rewrite (upd_Znth_lookup' (Zlength l)); try lia.
+      case : (Z.eq_dec i (Int.unsigned (fd_blockIndex p))) => //=.
+      * move => Hi' [Hp]. by subst.
+      * move => Hi' Hith. by apply Hall.
+    + move ->. have Hnth: Znth (Int.unsigned (fd_blockIndex p')) l = Some p' by apply Hall.
+      have Hbound: 0 <= (Int.unsigned (fd_blockIndex p')) < Zlength l by apply Znth_inbounds; rewrite Hnth.
+      rewrite upd_Znth_diff //; try lia. move => Heq.
+      rewrite Heq in Hnth. by rewrite Hjidx in Hnth.
+Qed.
+
+(*TODO: move these to zseq*)
+
+Lemma nth_Znth': forall {A: Type} {d: Inhabitant A} (n: Z) (xs: seq A),
+  0 <= n < Zlength xs ->
+  Znth n xs = nth d xs (Z.to_nat n).
+Proof.
+  move => A d n xs Hn. by rewrite -nth_Znth // nth_nth.
+Qed.
+
+Lemma Zindex_app2: forall {A: eqType} (l1 l2: seq A) (x: A),
+  ~In x l1 ->
+  Zindex x (l1 ++ l2) = Zlength l1 + Zindex x l2.
+Proof.
+  move => A l1 l2 x. rewrite -in_mem_In => Hnotin.
+  rewrite /Zindex index_cat. move: Hnotin.
+  case Hin: (x \in l1) => // _. rewrite Nat2Z.inj_add.
+  by rewrite size_length Zlength_correct.
+Qed.
+
+Lemma Zindex_leq_Zlength: forall {A: eqType} (l: seq A) (x: A),
+  Zindex x l <= Zlength l.
+Proof.
+  move => A l x. rewrite /Zindex Zlength_correct -size_length. apply inj_le.
+  apply /leP. apply index_size.
+Qed. 
+
+Lemma Zindex_bounds: forall {A: eqType} (l: seq A) (x: A),
+  0 <= Zindex x l <= Zlength l.
+Proof.
+  move => A l x. split. apply Zindex_nonneg. apply Zindex_leq_Zlength.
+Qed.
+
+Lemma Zindex_before: forall {A: eqType} `{Inhabitant A} (l: seq A) (x: A) i,
+  0 <= i < Zindex x l ->
+  Znth i l <> x.
+Proof.
+  move => A Hinhab l x i Hidx. have Hilen: 0 <= i < Zlength l. {
+    have H:=(@Zindex_leq_Zlength _ l x). lia. } move: Hidx.
+  rewrite /Zindex /index/= => Hi.
+  have Hi': (Z.to_nat i < find (pred1 x) l)%N. apply /ltP. lia.
+  apply (before_find Hinhab) in Hi'. move: Hi'. by rewrite /= nth_Znth' // => /eqP Hneq.
+Qed.
+
+Lemma Zindex_cons: forall {A: eqType} (l: seq A) (x: A) (y: A),
+  x <> y ->
+  Zindex x (y :: l) = 1 + Zindex x l.
+Proof.
+  move => A l x y Hxy. rewrite /Zindex /=.
+  have->: y == x = false. by apply /eqP; auto.
+  lia.
+Qed. 
+
+Lemma upd_Znth_Zindex_Zlength: forall {A: eqType} (x y: A) (p: pred A) (l: list A),
+  Zindex x l < Zlength l ->
+  ~~ p x ->
+  p y ->
+  Zlength (filter p (upd_Znth (Zindex x l) l y)) = 1 + Zlength (filter p l).
+Proof.
+  move => A x y p l Hidx Hpx Hpy.
+   have Hnonneg:=(@Zindex_nonneg _ x l).
+  rewrite upd_Znth_unfold; try lia. rewrite !filter_cat/=. move: Hpy.
+  case Hpy: (p y) => //= _.
+  have Hl: l = sublist 0 (Zindex x l) l ++ [@Znth _ x (Zindex x l) l] ++ sublist (Zindex x l + 1) (Zlength l) l. {
+    rewrite /= -sublist_next; try lia. rewrite cat_app -(sublist_split 0 (Zindex x l)); try lia.
+    by rewrite sublist_same. }
+  rewrite Znth_Zindex in Hl; last first.
+    by apply Zindex_In.
+  rewrite {6}Hl. rewrite !filter_cat/=. move: Hpx. case Hpx: (p x) => //= _.
+  rewrite !Zlength_app !Zlength_cons. lia.
+Qed.
+
+Lemma add_red_wf: forall p b,
+  block_wf b ->
+  packet_valid p ->
+  encodable p ->
+  Zindex None (data_packets b) < blk_k b ->
+  block_wf (add_packet_to_block_red p b).
+Proof.
+  move => p b Hwf Hval Henc Hzidx. rewrite /block_wf add_red_k add_red_h add_red_parity/=.
+  case : Hwf => [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc' Hvalid]]]]]]]].
+  have Hnonneg:=(@Zindex_nonneg _ None (data_packets b)).
+  split_all => //; try lia.
+  - move => p' [Hinp | Hinp]; last first. by apply Hkh; right.
+    apply In_upd_Znth in Hinp. case: Hinp => [[Hp'] | Hinp']; subst => //. by apply Hkh; left.
+  - move => p' [Hinp | Hinp]; last first. by apply Hid; right.
+    apply In_upd_Znth in Hinp. case: Hinp => [[Hp'] | Hinp']; subst => //. by apply Hid; left.
+  - simpl in *.
+    setoid_rewrite <- in_app_iff. rewrite -!upd_Znth_app1; try lia. setoid_rewrite <- upd_Znth_app1; try lia.
+    apply block_wf_list_upd_Znth. move => p' i Hin. apply Hidx. by apply in_app_or. list_solve.
+    rewrite Znth_app1; try lia. apply Znth_Zindex. apply Zindex_In. simpl in *; lia.
+    rewrite/= Int.unsigned_repr; rep_lia.
+  - rewrite upd_Znth_Zlength; simpl in *; try lia.
+  - move => p' Hinp. apply In_upd_Znth in Hinp. case: Hinp => [[Hp'] | Hinp']; subst => //. by apply Henc'.
+  - move => p' [Hinp | Hinp]; last first. by apply Hvalid; right.
+    apply In_upd_Znth in Hinp. case: Hinp => [[Hp'] | Hinp']; subst => //. by apply Hvalid; left.
+Qed.
+
+(*Let's try more general version - we will use this for 2 cases. It is a long, ugly proof and we
+  don't really want to repeat it*)
+Lemma get_blocks_expand: forall pkts p1 blks b b1 (*model*),
+  wf_packet_stream (pkts ++ p1) ->
+  (forall b', b = b' \/ In b' blks -> block_wf b') ->
+  (forall b', b = b' \/ In b' blks -> black_complete b' = false) ->
+  (forall b', b = b' \/ In b' blks -> data_elt b') ->
+  (*packet_valid model ->*)
+  block_in_progress b ->
+  (*If b1 and p1 satisfy some reasonable properties with b and each other:*)
+  block_wf b1 ->  
+  blk_id b1 = blk_id b ->
+  blk_k b1 = blk_k b ->
+  blk_h b1 = blk_h b ->
+  black_complete b1 = false ->
+  (forall p, In (Some p) (data_packets b) -> In (Some p) (data_packets b1)) (*TODO: subseq option?*) ->
+  (forall p, In p p1 -> In (Some p) (data_packets b1 ++ parity_packets b1)) ->
+  (forall p, In (Some p) (data_packets b1 ++ parity_packets b1) -> In (Some p) (data_packets b) \/ In p p1) -> (*TODO: ensure we use this*)
+  (forall p p', In (Some p) (data_packets b) -> In p' p1 -> fd_blockIndex p != fd_blockIndex p') ->
+  perm_eq (get_blocks pkts) (b :: blks) ->
+  perm_eq (get_blocks (pkts ++ p1)) (b1 :: blks).
+Proof.
+  move => pkts p1 blks b b1 Hwf Hallwf Hallblack Hnonemp Hprog Hwfb1 Hidb1 Hkb1 Hhb1 Hblackb1 Hinb Hinp1 
+    Hiniff Hdisj Hperm.
+  have Hwfb : block_wf b by apply Hallwf; left.
+  have Hwfp: wf_packet_stream pkts. apply (wf_substream Hwf). move => x Hinx. by rewrite mem_cat Hinx.
+  have Hinpkts: forall (x: fec_packet_act), x \in pkts -> fd_blockId x = blk_id b ->
+    In (Some x) (data_packets b). {
+    move => x Hpkts Hid. by apply (in_old_block Hwfp Hperm). }
+    (*Int.unsigned (fd_blockIndex x) < blk_k b. {
+    move => x Hinx Hidx. apply (in_data_idx_bound Hwfb). by apply (in_old_block Hwfp Hperm). }*)
+  have Hinp1': forall (x: fec_packet_act), x \in p1 -> fd_blockId x = blk_id b /\
+    fd_k x = blk_k b /\ fd_h x = blk_h b. {
+    move => x. rewrite in_mem_In => Hin. apply Hinp1 in Hin. rewrite -Hidb1 -Hkb1 -Hhb1.
+    by split; apply Hwfb1; apply in_app_or. }
+  have Hdatab1: data_elt b1. { have: data_elt b by apply Hnonemp; left. rewrite /data_elt.
+    case Hmap: (pmap id (data_packets b)) => [// | h t /=] _.
+    have: h \in pmap id (data_packets b1). rewrite -pmap_id_some in_mem_In. apply Hinb.
+      by rewrite -in_mem_In pmap_id_some Hmap in_cons eq_refl.
+    by case: (pmap id (data_packets b1)).
+  }
+  move: Hperm. rewrite /get_blocks. move => Hperm.
+  apply (perm_map block_to_btuple) in Hperm. move: Hperm. rewrite -map_comp.
+  rewrite (btuple_block_inv_list Hwfp) //; last first.
+    by apply get_block_lists_spec. (*NOTE: Hwfb1 <-> Hwfenc*)
+  rewrite -(@block_btuple_inv_list (b1 :: blks)).
+  2 : { move => b' /= [Hb |Hin// ]; subst => //. by apply Hallwf; right.  }
+  2 : { move => b'/= [Hb' |Hin]; subst => //. by apply Hallblack; right. }
+  2 : { move => b'/= [Hb' |Hin]; subst => //; apply data_block_elt => //.
+        by apply Hnonemp; right.  }
+  move => Hperm. rewrite (map_comp btuple_to_block). apply perm_map.
+  (*Now we finally have things just in terms of block lists*)
+  move: Hperm => /=Hperm.
+  apply (get_block_lists_prop_perm Hwf). by apply get_block_lists_spec.
+  apply (perm_get_block_lists_prop (get_block_lists_spec Hwfp)) in Hperm.
+  (*We have now reduced this to a problem just about [get_block_lists_prop], which is tedious
+    but possible to work with*)
+  case Hperm => [Hallin1 [Hnonemp1 [Hlen1 [Heq1 Huniq1]]]].
+  (*One more lemma before continuing case-by-case*)
+  have Hinborig: forall (x: fec_packet_act), In (Some x) (data_packets b ++ parity_packets b) ->
+    In x pkts. {
+    have Hinb': In (blk_id b, data_packets b ++ parity_packets b) 
+      (block_to_btuple b :: [seq block_to_btuple i | i <- blks]) by left.
+    move => x Hinx. apply (get_block_lists_prop_packets Hperm Hinb' Hinx). }
+  rewrite /get_block_lists_prop; split_all.
+  - move => p Hinp. apply in_app_or in Hinp. case: Hinp => [Hinp | Hinp].
+    + apply Hallin1 in Hinp. case: Hinp => /=[pkts' [Hinb' | Hinb']].
+      * exists (block_to_btuple b1).2. left.
+        move: Hinb'. rewrite /block_to_btuple/= Hidb1 => [[Hid Hpkts]]. by rewrite Hid.
+      * exists pkts'. by right.
+    + exists (block_to_btuple b1).2. left.
+      rewrite /block_to_btuple/= Hidb1.
+      f_equal. rewrite -in_mem_In in Hinp. apply Hinp1' in Hinp. by case: Hinp => [Hinp _].
+  - move => i' pkts'/= [Hin1 | Hin2].
+    + move: Hin1. rewrite /block_to_btuple/= Hidb1 => [[Hid Hpkts']].
+      subst. move: Hdatab1. rewrite /data_elt.
+      case Hmap: (pmap id (data_packets b1)) => [//| h tl /=] _.
+      exists h. apply in_or_app. left. by rewrite -in_mem_In pmap_id_some Hmap in_cons eq_refl.
+    + apply (Hnonemp1 i' pkts'). by right.
+  - move => i' pkts' p/= [Hin1 | Hin2] Hinp.
+    + move: Hin1. rewrite /block_to_btuple/= Hidb1 => [[Hid Hpkts']].
+      subst. apply in_app_or in Hinp.
+      rewrite Zlength_app //.
+      have->:Zlength(data_packets b1) = blk_k b1 by apply Hwfb1.
+      have->:Zlength(parity_packets b1) = blk_h b1 by apply Hwfb1.
+      have [Hkeq Hheq]: fd_k p = blk_k b /\ fd_h p = blk_h b. {
+        rewrite -Hkb1 -Hhb1. by apply Hwfb1.  }
+      by rewrite Hkeq Hheq Hkb1 Hhb1.
+    + apply (Hlen1 i') => //. by right.
+  - case Hwfb1 => [Hhbound [Hkbound [_ [_ [_ [Hdat1 [Hpar1 _]]]]]]].
+    (*Now we can prove this*)
+    move => i' pkts'/= [Hin1 | Hin2].
+    + move: Hin1. rewrite /block_to_btuple/= Hidb1.
+      have Hinb': In (blk_id b, data_packets b ++ parity_packets b) 
+        (block_to_btuple b :: [seq block_to_btuple i | i <- blks]) by left.
+      apply Heq1 in Hinb'.
+      move => [Hid Hpkts']; subst.
+      apply Znth_eq_ext; zlist_simpl.
+      (*TODO: will we need these*)
+      have Hdatlen:Zlength(data_packets b) = blk_k b by apply Hwfb.
+      have Hparlen: Zlength (parity_packets b) = blk_h b by apply Hwfb.
+      rewrite Hdat1 Hpar1 => i Hi. zlist_simpl.
+      case_pickSeq (pkts ++ p1).
+      { move: Hinx. rewrite mem_cat => /orP[Hinx | Hinx].
+        { case Hwfb1 => [_ [_ [_ [_ [Hidxb1 _]]]]].
+          solve_sumbool. apply Hidxb1 in e => //.
+          apply Hinpkts in Hinx. left. by apply Hinb. by [].
+        }
+        { case Hwfb1 => [_ [_ [_ [_ [Hidxb1 _]]]]].
+          solve_sumbool. apply Hidxb1 in e => //.
+          apply in_app_or. apply Hinp1. by rewrite -in_mem_In.
+        }
+      }
+      { move => Hall. case Hith: (Znth i (data_packets b1 ++ parity_packets b1)) => [p' |//].
+        have Hinp': In (Some p') (data_packets b1 ++ parity_packets b1). { 
+          rewrite -Hith. apply Znth_In. rewrite Zlength_app; lia. }
+        have Hidp': fd_blockId p' = blk_id b. { rewrite -Hidb1. apply Hwfb1. by apply in_app_or. }
+        have Hidxp': i = (Int.unsigned (fd_blockIndex p')). { apply Hwfb1 => //. by apply in_app_or. }
+        have Hincat: p' \in (pkts ++ p1). { (*NOTE: here is where we need iff condition*)
+          have [Hinpb | Hinpp1]: In (Some p') (data_packets b) \/ In p' p1. apply Hiniff => //.
+          - rewrite mem_cat. apply /orP. left. rewrite in_mem_In. apply Hinborig. apply in_or_app. by left.
+          - rewrite mem_cat. apply /orP. right. by rewrite in_mem_In.
+        }
+        move: Hall => /( _ _ Hincat). rewrite -Hidxp' Hidp' eq_refl. by case: (Z.eq_dec i i).
+      }
+    +  (*now at the other case, just need to know no tuple has this id*)
+      have Hin2': In (i', pkts') (block_to_btuple b :: [seq block_to_btuple i | i <- blks]) by right.
+      apply Heq1 in Hin2'. rewrite {1}Hin2'. apply Znth_eq_ext; zlist_simpl. move => i Hi.
+      zlist_simpl. case_pickSeq pkts.
+      * case_pickSeq (pkts ++ p1).
+        { move: Hinx0. rewrite mem_cat => /orP[Hinx0 | Hinx0].
+          { f_equal. apply Hwfp => //. congruence. solve_sumbool. subst.
+            apply (f_equal Int.repr) in e. by rewrite !Int.repr_unsigned in e.
+          }
+          { have Hinx0':=Hinx0. apply Hinp1' in Hinx0'. case: Hinx0' => [Hblkidx0 [Hkx0 Hhx0]].
+            apply Hinpkts in Hinx => //; [|congruence]. solve_sumbool. subst.
+            apply (f_equal Int.repr) in e. rewrite !Int.repr_unsigned in e.
+            rewrite in_mem_In in Hinx0.
+            move: Hdisj => /( _ _ _ Hinx Hinx0). by rewrite e eq_refl.
+          }
+        }
+        { have Hinxapp: x \in pkts ++ p1 by rewrite mem_cat Hinx.
+          move => /(_  _ Hinxapp). by rewrite Hxid Hidx eq_refl.
+        }
+      * case_pickSeq (pkts ++ p1) => //.
+        move: Hinx. rewrite mem_cat => /orP[Hinx0 | Hinx0].
+        { move => /( _ _ Hinx0). by rewrite Hxid Hidx eq_refl. }
+        { apply Hinp1' in Hinx0. case : Hinx0 => [Hxblkid [Hxk Hxh]].
+          (*by uniqueness of idx*)
+          move: Huniq1 => /=.
+          have->//: (blk_id b \in [seq i.1 | i <- [seq block_to_btuple i | i <- blks]]).
+          rewrite in_mem_In in_map_iff. exists (i', pkts') => /=. split => //. congruence.
+        }
+  - rewrite /= Hidb1. apply Huniq1.
+Qed.
+
+(*Let's see if this is strong enough to prove what we want first*)
 Lemma get_blocks_encode: forall pkts blks b model,
   wf_packet_stream (pkts ++ (encode_block b (Some model)).2) ->
   (forall b', b = b' \/ In b' blks -> block_wf b') ->
@@ -1842,169 +2107,94 @@ Lemma get_blocks_encode: forall pkts blks b model,
 Proof.
   move => pkts blks b model Hwf Hallwf Hallblack Hnonemp Hvalid Hprog Hperm.
   have Hwfb : block_wf b by apply Hallwf; left.
-  have Hwfp: wf_packet_stream pkts. apply (wf_substream Hwf). move => x Hinx. by rewrite mem_cat Hinx.
-  have Hpktsidx: forall (x: fec_packet_act), x \in pkts -> fd_blockId x = blk_id b ->
-    Int.unsigned (fd_blockIndex x) < blk_k b. {
-    move => x Hinx Hidx. apply (in_data_idx_bound Hwfb). by apply (in_old_block Hwfp Hperm). }
-  move: Hperm. rewrite /get_blocks. move => Hperm.
-  apply (perm_map block_to_btuple) in Hperm. move: Hperm. rewrite -map_comp.
-  rewrite (btuple_block_inv_list Hwfp) //; last first.
-    by apply get_block_lists_spec.
-  have Hwfenc: block_wf (encode_block b (Some model)).1 by
-     by apply encode_block_some_wf.
-  rewrite -(@block_btuple_inv_list ((encode_block b (Some model)).1 :: blks)).
-  2 : { move => b' /= [Hb |Hin// ]; subst => //. by apply Hallwf; right.  }
-  2 : { move => b'/= [Hb' |Hin]; subst. rewrite encode_block_black_comp. by apply Hallblack; left.
-        by apply Hallblack; right. }
-  2 : { move => b'/= [Hb' |Hin]; subst. apply data_block_elt. apply encode_block_nonempty.
-        by apply Hnonemp; left. 
-        apply data_block_elt. by apply Hnonemp; right. }
-  move => Hperm. rewrite (map_comp btuple_to_block). apply perm_map.
-  (*Now we finally have things just in terms of block lists*)
-  move: Hperm => /=Hperm.
-  apply (get_block_lists_prop_perm Hwf). by apply get_block_lists_spec.
-  apply (perm_get_block_lists_prop (get_block_lists_spec Hwfp)) in Hperm.
-  (*We have now reduced this to a problem just about [get_block_lists_prop], which is tedious
-    but possible to work with*)
-  case Hperm => [Hallin1 [Hnonemp1 [Hlen1 [Heq1 Huniq1]]]].
-  rewrite /get_block_lists_prop; split_all.
-  - move => p Hinp. apply in_app_or in Hinp. case: Hinp => [Hinp | Hinp].
-    + apply Hallin1 in Hinp. case: Hinp => /=[pkts' [Hinb | Hinb]].
-      * exists (block_to_btuple (encode_block b (Some model)).1).2. left.
-        move: Hinb. rewrite /block_to_btuple/= encode_block_id => [[Hid Hpkts]]. by rewrite Hid.
-      * exists pkts'. by right.
-    + exists (block_to_btuple (encode_block b (Some model)).1).2. left.
-      rewrite /block_to_btuple/= encode_block_id.
-      f_equal. case : Hwfenc => [_ [ _ [ _ [Hids _]]]]. rewrite Hids.
-      by rewrite encode_block_id. right. rewrite -in_mem_In. apply encode_in. by rewrite in_mem_In.
-  - move => i' pkts'/= [Hin1 | Hin2].
-    + move: Hin1. rewrite /block_to_btuple/= encode_block_id data_packets_encode => [[Hid Hpkts']].
-      subst. have: data_elt b. apply Hnonemp. by left. rewrite /data_elt.
-      case Hmap: (pmap id (data_packets b)) => [//| h tl /=] _.
-      exists h. apply in_or_app. left. by rewrite -in_mem_In pmap_id_some Hmap in_cons eq_refl.
-    + apply (Hnonemp1 i' pkts'). by right.
-  - move => i' pkts' p/= [Hin1 | Hin2] Hinp.
-    + move: Hin1. rewrite /block_to_btuple/= encode_block_id data_packets_encode => [[Hid Hpkts']].
-      subst. apply in_app_or in Hinp.
-      rewrite Zlength_app encode_parities_Zlength //.
-      have->:Zlength(data_packets b) = blk_k b by apply Hwfb.
-      have [Hkeq Hheq]: fd_k p = blk_k b /\ fd_h p = blk_h b. {
-        case: Hinp => [Hindat | Hinpar].
-        - apply Hwfb. by left.
-        - move: Hinpar. rewrite encode_some/= in_map_iff => [[x]][[Hx]]; subst.
-          rewrite In_Znth_iff; len_encode. move => [i [Hi]]. len_encode. by move <-.
-        case Hwfb; lia. }
-      by rewrite Hkeq Hheq.
-    + apply (Hlen1 i') => //. by right.
-  - case Hwfb => [Hhbound [Hkbound _]].
-    (*A useful lemma:*)
-    have Hencidx: forall (x: fec_packet_act), x \in (encode_block b (Some model)).2 ->
-      fd_blockId x = blk_id b /\ blk_k b <= Int.unsigned (fd_blockIndex x) < blk_k b + blk_h b. {
-      move => x Hinx. split; last first.
-        have Hbound:= (@in_parity_idx_bound _ x Hwfenc). move: Hbound. rewrite encode_block_k encode_block_h.
-        move => H; apply H. rewrite -in_mem_In. by apply encode_in.
-      rewrite -(encode_block_id b (Some model)).
-      apply Hwfenc. right. rewrite -in_mem_In. by apply encode_in.
-    }
-    (*Now we can prove this*)
-    move => i' pkts'/= [Hin1 | Hin2].
-    + move: Hin1. rewrite /block_to_btuple/= encode_block_id data_packets_encode.
-      have Hinb: In (blk_id b, data_packets b ++ parity_packets b) 
-        (block_to_btuple b :: [seq block_to_btuple i | i <- blks]) by left.
-      apply Heq1 in Hinb.
-      move => [Hid Hpkts']; subst.
-      apply Znth_eq_ext; len_encode.
-      have Hdatlen:Zlength(data_packets b) = blk_k b by apply Hwfb. rewrite Hdatlen.
-      have Hparlen: Zlength (parity_packets b) = blk_h b by apply Hwfb.
-      rewrite encode_parities_Zlength // => i Hi. len_encode.
-      have [Hi1 | Hi2]: 0 <= i < blk_k b \/ blk_k b <= i < blk_k b + blk_h b by lia.
-      * rewrite Znth_app1; try lia.
-        have->: Znth i (data_packets b) = Znth i (data_packets b ++ parity_packets b) by list_solve.
-        rewrite Hinb; len_encode. case_pickSeq pkts.
-        { case_pickSeq (pkts ++ (encode_block b (Some model)).2).
-          { move: Hinx0. rewrite mem_cat => /orP[Hinx0 | Hinx0].
-            { f_equal. apply Hwfp => //; try congruence. solve_sumbool.
-              subst. apply (f_equal Int.repr) in e. by rewrite !Int.repr_unsigned in e. }
-            { solve_sumbool. subst. apply Hpktsidx in Hinx. apply Hencidx in Hinx0. lia. by []. }
-          }
-          { have Hxin': x \in pkts ++ (encode_block b (Some model)).2 by rewrite mem_cat Hinx.
-            move => /(_ _ Hxin'). by rewrite Hxid Hidx eq_refl.
-          }
-        }
-        { case_pickSeq (pkts ++ (encode_block b (Some model)).2) => //.
-          move: Hinx. rewrite mem_cat => /orP[Hinx | Hinx].
-          { move => /(_ _ Hinx). by rewrite Hxid Hidx eq_refl. }
-          { solve_sumbool; subst. apply Hencidx in Hinx. lia. }
-        }
-      * rewrite Znth_app2; try lia. rewrite Hdatlen {1}encode_some/=; len_encode.
-        case_pickSeq (pkts ++ (encode_block b (Some model)).2).
-        { solve_sumbool.
-          move: Hinx. rewrite mem_cat => /orP[Hinx | Hinx].
-          { apply Hpktsidx in Hinx => //. lia. } 
-          { move: Hinx. rewrite in_mem_In encode_some/= In_Znth_iff; len_encode. move => [j [Hj]]. len_encode.
-            move => Hx; subst => /=. rewrite !Int.unsigned_repr; try rep_lia.
-            by have->: (blk_k b + j - blk_k b) = j by lia.
-          }
-        }
-        { have Hin: {|
-            p_packet :=
-              Znth (i - blk_k b)
-                (populate_packets (blk_id b) model (encoder_list (blk_h b) (blk_k b) (blk_c b) (packet_mx b)));
-            p_fec_data :=
-              {|
-                fd_k := blk_k b;
-                fd_h := blk_h b;
-                fd_isParity := true;
-                fd_blockId := blk_id b;
-                fd_blockIndex := Int.repr (blk_k b + (i - blk_k b))
-              |}
-          |} \in pkts ++ (encode_block b (Some model)).2. {
-          rewrite mem_cat. apply /orP; right. rewrite in_mem_In encode_some/= In_Znth_iff; len_encode.
-          exists (i - blk_k b). split. lia. by len_encode.
-        }
-        move => /( _ _ Hin)/=. rewrite eq_refl.
-        have->:(blk_k b + (i - blk_k b)) = i by lia.
-        rewrite Int.unsigned_repr; try rep_lia. by case: (Z.eq_dec i i).
-      }
-    + (*now at the other case, just need to know no tuple has this id*)
-      have Hin2': In (i', pkts') (block_to_btuple b :: [seq block_to_btuple i | i <- blks]) by right.
-      apply Heq1 in Hin2'. rewrite {1}Hin2'. apply Znth_eq_ext; zlist_simpl. move => i Hi.
-      zlist_simpl. case_pickSeq pkts.
-      * case_pickSeq (pkts ++ (encode_block b (Some model)).2).
-        { move: Hinx0. rewrite mem_cat => /orP[Hinx0 | Hinx0].
-          { f_equal. apply Hwfp => //. congruence. solve_sumbool. subst.
-            apply (f_equal Int.repr) in e. by rewrite !Int.repr_unsigned in e.
-          }
-          { apply Hencidx in Hinx0.  apply Hpktsidx in Hinx => //. solve_sumbool; lia. case: Hinx0; congruence. }
-        }
-        { have Hinxapp: x \in pkts ++ (encode_block b (Some model)).2 by rewrite mem_cat Hinx.
-          move => /(_  _ Hinxapp). by rewrite Hxid Hidx eq_refl.
-        }
-      * case_pickSeq (pkts ++ (encode_block b (Some model)).2) => //.
-        move: Hinx. rewrite mem_cat => /orP[Hinx0 | Hinx0].
-        { move => /( _ _ Hinx0). by rewrite Hxid Hidx eq_refl. }
-        { apply Hencidx in Hinx0. case : Hinx0 => [Hxblockid Hidxb].
-          (*by uniqueness of idx*)
-          move: Huniq1 => /=.
-          have->//: (blk_id b \in [seq i.1 | i <- [seq block_to_btuple i | i <- blks]]).
-          rewrite in_mem_In in_map_iff. exists (i', pkts') => /=. split => //. congruence.
-        }
-  - rewrite /= encode_block_id. apply Huniq1.
+  apply (get_blocks_expand Hwf Hallwf) => //.
+  - by apply encode_block_some_wf.
+  - by rewrite encode_block_id.
+  - by rewrite encode_block_k.
+  - by rewrite encode_block_h.
+  - rewrite encode_block_black_comp. by apply Hallblack; left.
+  - move => p Hinp. by rewrite data_packets_encode.
+  - move => p Hinp. apply in_or_app. right.
+    rewrite -in_mem_In. apply encode_in. by rewrite in_mem_In.
+  - move => p'. rewrite data_packets_encode => Hin. apply in_app_or in Hin.
+    case : Hin => [Hin // | Hin].  by left. right. rewrite -in_mem_In.
+    apply in_encode. by apply Hnonemp; left. by rewrite in_mem_In. 
+  - move => p p' Hinp Hinp'.
+    apply in_data_idx_bound in Hinp => //. (*TODO: should make parity_in lemma with In*)
+    rewrite -in_mem_In in Hinp'. apply encode_in in Hinp'. rewrite in_mem_In in Hinp'.
+    apply in_parity_idx_bound in Hinp'; [| by apply encode_block_some_wf].
+    move: Hinp'. rewrite encode_block_k encode_block_h => Hidx.
+    apply /eqP => Hc. rewrite Hc in Hinp. lia.
+Qed.
+
+(*This is convenient to have*)
+Lemma blockIndex_Znth_data: forall (b: block) (p: fec_packet_act),
+  block_wf b ->
+  In (Some p) (data_packets b) ->
+  Znth (Int.unsigned (fd_blockIndex p)) (data_packets b) = Some p.
+Proof.
+  move => b p Hwf.
+  case Hwf => [_ [_ [_ [_ [Hidx _]]]]].
+  move => Hin.
+  have [j [Hj Hjth]]: exists j, 0 <= j < Zlength (data_packets b) /\ 
+    Znth j (data_packets b) = Some p by rewrite -In_Znth_iff.
+  have<-//: j = Int.unsigned (fd_blockIndex p). apply Hidx. by left. rewrite Znth_app1 //. lia.
+Qed. 
+
+(*TODO: move*)
+Lemma add_black_comp: forall b p,
+  black_complete (add_packet_to_block_red p b) = black_complete b.
+Proof.
+  by [].
+Qed.
+
+(*Let's see if we can prove the second one also*)
+Lemma get_block_add: forall pkts blks b p,
+  wf_packet_stream (pkts ++ [:: get_fec_packet p b]) ->
+  (forall b', b = b' \/ In b' blks -> block_wf b') ->
+  (forall b', b = b' \/ In b' blks -> black_complete b' = false) ->
+  (forall b', b = b' \/ In b' blks -> data_elt b') ->
+  block_in_progress b ->
+  packet_valid p ->
+  encodable p ->
+  Zindex None (data_packets b) < blk_k b ->
+  perm_eq (get_blocks pkts) (b :: blks) ->
+  perm_eq (get_blocks (pkts ++ [:: get_fec_packet p b])) (add_packet_to_block_red p b :: blks).
+Proof.
+  move => pkts blks b p Hwf Hallwf Hallblack Hnonemp Hprog Hvalid Henc Hnotdone Hperm.
+  have Hwfb : block_wf b by apply Hallwf; left.
+  case Hwfb => [Hkbound [Hhbound [ _ [ _ [ _ [Hdatlen [Hparlen _]]]]]]].
+  have Hzidxb: 0 <= Zindex None (data_packets b) < Zlength (data_packets b). {
+     have Hnonneg:=(@Zindex_nonneg _ None (data_packets b)). lia. }
+  apply (get_blocks_expand Hwf Hallwf) => //.
+  - by apply add_red_wf.
+  - rewrite add_black_comp. by apply Hallblack; left.
+  - move => p' Hinp'. rewrite /=. apply In_upd_Znth_old => //; simpl in *; try lia.
+    rewrite Znth_Zindex //. apply Zindex_In. simpl in *; lia.
+  - move => p'/= [Hp' |//]. subst. apply in_or_app. left. apply upd_Znth_In. apply Hzidxb.
+  - move => p'. rewrite add_red_parity. move => Hin. apply in_app_or in Hin. case: Hin => [/=Hdat | Hpar]; last first.
+      move: Hprog. rewrite /block_in_progress => /allP Hall. rewrite -in_mem_In in Hpar.
+      by move: Hall => /( _ _ Hpar).
+    apply In_upd_Znth in Hdat.
+    case: Hdat => [[Hp'] | Hin]; subst. by right; left. by left.
+  - move => p1 p2 Hinp1/= [Hp2 |//]. subst.
+    rewrite /=.
+    apply blockIndex_Znth_data in Hinp1 => //.
+    apply /eqP => Hidxeq. move: Hinp1.
+    rewrite Hidxeq Int.unsigned_repr; simpl in *; try rep_lia. rewrite Znth_Zindex //.
+    apply Zindex_In; simpl in *; lia.
 Qed.
 
 (*Second case: We can encode the current block and add all such packets to the output, preserving the invariant*)
 (*TODO: have to generalize to None also - or show preservation (maybe easier - prove iff)*)
 (*really, prove general version - say for any packet in it, then prove exists some for encode with None*)
-Lemma encoder_props_encode: forall p orig b blks pkts model,
-  packet_valid p ->
-  encodable p ->
-  p_seqNum p \notin (map p_seqNum orig) ->
+Lemma encoder_props_encode: forall orig b blks pkts model,
   In (Some model) (map (omap (@p_packet _)) (data_packets b)) ->
-  encoder_props (p :: orig) blks (Some b) pkts ->
-  encoder_props (p :: orig) ((encode_block b (Some model)).1 :: blks) None
+  encoder_props orig blks (Some b) pkts ->
+  encoder_props orig ((encode_block b (Some model)).1 :: blks) None
     (pkts ++ ((encode_block b (Some model)).2)).
 Proof.
-  move => p orig b blks pkts model Hpvalid Henc Hpnum Hinmodel.
+  move => orig b blks pkts model Hinmodel.
   (*TODO: will we want a similar lemma as before - probably - prove here first, then abstract out*)
   rewrite {1}/encoder_props/block_option_list/= =>
   [[IHperm [IHallwf [IHblackcomp [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]].
@@ -2108,9 +2298,165 @@ Proof.
   split =>//. apply upd_Znth_In. zlist_simpl.
 Qed.
 
+(*We can switch between None and Some for encode_block*)
+Lemma encode_block_none_some: forall (b: block),
+  data_elt b ->
+  exists model, In (Some model) (map (omap (@p_packet _)) (data_packets b)) /\
+  encode_block b None = encode_block b (Some model).
+Proof.
+  move => b. rewrite /data_elt /encode_block.
+  case Hmap: (pmap id (data_packets b)) => [// | h t /=] _.
+  exists (last h t). split => //.
+  rewrite in_map_iff. exists (Some (last h t)).
+  split => //. by rewrite -in_mem_In pmap_id_some Hmap mem_last.
+Qed.
+
+
+(*TODO: move*)
+(*not the strongest spec, but OK for us*)
+Lemma add_red_nonempty: forall (b: block) p,
+  data_elt b ->
+  data_elt (add_packet_to_block_red p b).
+Proof.
+  move => b p. rewrite /data_elt.
+  case Hpmap: (pmap id (data_packets b)) => [// | h t /=] _.
+  have Hin: In (Some h) (data_packets b) by rewrite -in_mem_In pmap_id_some Hpmap in_cons eq_refl.
+  have Hidxlen:=(@Zindex_leq_Zlength _  (data_packets b) None). apply Zle_lt_or_eq in Hidxlen.
+  have: h \in pmap id (upd_Znth (Zindex None (data_packets b)) (data_packets b) (Some (get_fec_packet p b))). {
+    rewrite -pmap_id_some in_mem_In. case: Hidxlen => [Hlt | Heq].
+    - apply In_upd_Znth_old => //. rewrite Znth_Zindex //. by apply Zindex_In.
+      have H:=(@Zindex_nonneg _ None (data_packets b)). lia.
+    - rewrite upd_Znth_out_of_range //=. right. rewrite Heq/=. lia.
+  }
+  by case: (pmap id (upd_Znth (Zindex None (data_packets b)) (data_packets b) (Some (get_fec_packet p b)))).
+Qed. 
+ 
+(*Case 3: Add packet to existing block (that is not yet finished)*)
+Lemma encoder_props_add: forall p orig b blks pkts,
+  packet_valid p ->
+  encodable p ->
+  (*do we need these?*)
+  (*p_seqNum p \notin (map p_seqNum orig) ->*)
+  Zindex None (data_packets b) < blk_k b ->
+  encoder_props orig blks (Some b) pkts ->
+  encoder_props (p :: orig) blks (Some (add_packet_to_block_red p b)) (pkts ++ [:: get_fec_packet p b]).
+Proof.
+  move => p orig b blks pkts Hval Henc (*Hnumin*) Hzidx.
+  rewrite {1}/encoder_props/block_option_list/= =>
+  [[IHperm [IHallwf [IHblackcomp [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]].
+  (*Some helpful results*)
+  have Hprog: block_in_progress b by apply IHprog.
+  have Hwfb: block_wf b by apply IHallwf; left.
+  have Hinpkts: forall (x: fec_packet_act), x \in pkts -> fd_blockId x = blk_id b ->
+     In (Some x) (data_packets b) by apply (in_old_block IHwfpkts IHperm).
+  (*1 similar result*)
+  have Hinpktsidx:  forall (x: fec_packet_act), x \in pkts -> fd_blockId x = blk_id b ->
+    Int.unsigned (fd_blockIndex x) <> Zindex None (data_packets b). {
+    move => x Hinx Hidx. apply (Hinpkts _ Hinx) in Hidx.
+    have: Znth (Int.unsigned (fd_blockIndex x)) (data_packets b ++ parity_packets b) = Some x. {
+      apply Hwfb => //. by left. }
+    rewrite Znth_app1; last first.
+      have->: Zlength (data_packets b) = blk_k b by apply Hwfb.
+      by apply in_data_idx_bound.
+    move => Hznth Hc. rewrite Hc in Hznth. rewrite Znth_Zindex in Hznth => //.
+    apply Zindex_In. by have->: Zlength (data_packets b) = blk_k b by apply Hwfb.
+  }
+  case Hwfb => [Hkbound [Hhbound [_ [_ [_ [Hdatlen [Hparlen _]]]]]]].
+  have Hidxb: 0 <= (Zindex None (data_packets b)) <= blk_k b. { split.
+      apply Zindex_nonneg. rewrite -Hdatlen. apply Zindex_leq_Zlength. }
+  have Hinget: forall (x: fec_packet_act), x \in [:: get_fec_packet p b] ->
+    fd_blockId x = blk_id b /\ fd_k x = blk_k b /\ fd_h x = blk_h b /\
+    Int.unsigned (fd_blockIndex x) = Zindex None (data_packets b). {
+    move => x. rewrite /= in_cons => /orP[/eqP Hx |//]. subst =>//=. split_all => //.
+    rewrite Int.unsigned_repr //; simpl in *; rep_lia.
+  }
+  (*First, prove wf*)
+  have Hwf: wf_packet_stream (pkts ++ [:: get_fec_packet p b]). {
+    rewrite /wf_packet_stream; split_all.
+  - move => p1 p2. rewrite !mem_cat => /orP[Hp1 | Hp1] /orP[Hp2 | Hp2].
+    + by apply IHwfpkts.
+    + apply Hinget in Hp2. case : Hp2 => [Hp2id [Hp2k [Hp2h Hp2idx]]].
+      move => Heqid. apply Hinpkts in Hp1 => //=. 2: congruence.
+      rewrite Hp2k Hp2h. apply Hwfb. by left.
+    + apply Hinget in Hp1. case : Hp1 => [Hp1id [Hp1k [Hp1h Hp1idx]]].
+      move => Heqid. apply Hinpkts in Hp2 => //=. 2: congruence.
+      rewrite Hp1k Hp1h. split; symmetry; apply Hwfb; by left.
+    + move: Hp1 Hp2. rewrite in_cons => /orP[/eqP Hp1 |//] /orP[/eqP Hp2|//]. by subst.
+  - move => p1 p2. rewrite !mem_cat => /orP[Hp1 | Hp1] /orP[Hp2 | Hp2].
+    + by apply IHwfpkts.
+    + apply Hinget in Hp2. case : Hp2 => [Hp2id [Hp2k [Hp2h Hp2idx]]].
+      move => Heqid Heqidx. apply Hinpktsidx in Hp1 => //=; congruence.
+    + apply Hinget in Hp1. case : Hp1 => [Hp1id [Hp1k [Hp1h Hp1idx]]].
+      move => Heqid Heqidx. apply Hinpktsidx in Hp2 => //=; congruence.
+    + move: Hp1 Hp2. rewrite in_cons => /orP[/eqP Hp1 |//] /orP[/eqP Hp2|//]. by subst.
+  - move => p'. rewrite mem_cat => /orP[ Hp' | Hp'].
+    + by apply IHwfpkts.
+    + apply Hinget in Hp'. case : Hp' => [Hpid [Hpk [Hph Hpidx]]].
+      rewrite Hpk Hph Hpidx. lia.
+  - move => p'. rewrite mem_cat => /orP[ Hp' | Hp'].
+    + by apply IHwfpkts.
+    + apply Hinget in Hp'. case : Hp' => [Hpid [Hpk [Hph Hpidx]]]. lia.
+  }
+  (*Now we can prove the rest*)
+  rewrite /encoder_props/block_option_list/=; split_all => //.
+  - by apply get_block_add.
+  - move => b' [Hb' | Hinb']; last first. by apply IHallwf; right.
+    subst. by apply add_red_wf.
+  - move => b' [Hb' | Hinb']; last first. by apply IHblackcomp; right.
+    subst. rewrite add_black_comp. by apply IHblackcomp; left.
+  - move => b' [Hb' | Hinb']; last first. by apply IHdata; right.
+    subst. apply add_red_nonempty. by apply IHdata; left.
+  - move => b' p' [Hb' | Hinb'] Hinp'; last first. right. apply (IHinorig b') => //. by right.
+    subst. rewrite /= in Hinp'. apply In_upd_Znth in Hinp'.
+    case: Hinp' => [[Hp'] | Hinp'].
+    + subst. by left.
+    + right. apply (IHinorig b) => //. by left.
+  - move => b' [Hb' | Hinb']; last first. by apply IHids; right.
+    subst. rewrite add_red_id.
+    have [p' [Hinp' Hidp']]: exists p : fec_packet_act, In (Some p) (data_packets b) /\ blk_id b = p_seqNum p
+      by apply IHids; left.
+    exists p'. split => //. rewrite /=. apply In_upd_Znth_old => //.
+    rewrite Znth_Zindex //. apply Zindex_In. all: simpl in *; lia.
+  - move => b' [Hb']; subst. rewrite /block_in_progress add_red_parity. apply Hprog.
+Qed. 
+
+(*TODO: move*)
+Lemma filter_all_size: forall {A: eqType} (p: pred A) (s: seq A),
+  (size (filter p s) == size s) = all p s.
+Proof.
+  move => A p s. by rewrite size_filter all_count.
+Qed.
+
+Lemma filter_all_Zlength: forall {A: eqType} (p: pred A) (s: seq A),
+  Zlength (filter p s) = Zlength s <-> all p s.
+Proof.
+  move => A p s. rewrite !Zlength_correct -!size_length. split.
+  - move => Hsz. rewrite -filter_all_size. apply /eqP. lia.
+  - rewrite -filter_all_size => /eqP Hsz. by rewrite Hsz.
+Qed.
+
+(*When we add a packet to a red block, it gets 1 packet bigger*)
+Lemma add_red_size: forall b p,
+  Zindex None (data_packets b) < Zlength (data_packets b) ->
+  Zlength [seq x <- data_packets b | isSome x] + 1  = 
+  Zlength [seq x <- (data_packets (add_packet_to_block_red p b)) | isSome x ].
+Proof.
+  move => b p Hidx. rewrite /= upd_Znth_Zindex_Zlength //. apply Z.add_comm.
+Qed.
+
+Lemma add_block_in: forall (p: packet) (b: block),
+  Zindex None (data_packets b) < Zlength (data_packets b) ->
+  In (Some p) [seq omap (p_packet (fec_data:=fec_data)) i | i <- data_packets (add_packet_to_block_red p b)].
+Proof.
+  move => p b Hidx. rewrite /= in_map_iff. exists (Some (get_fec_packet p b)). split =>//.
+  apply upd_Znth_In. split => //. apply Zindex_nonneg.
+Qed.
+
 
 (*The key theorem about the encoder: encoder_props holds. We need all of these properties for a strong enough
   IH, even though only a few are important in the final theorem we need (TODO: reference*)
+(*We have 1 other statement (about Zindex). We don't have this in [encoder_props] because it doesn't hold at
+  all the intermediate steps*)
 Theorem rse_encode_all_blocks: forall (orig: list packet) (params: list (Z * Z)),
   (forall k h, In (k, h) params -> 
       0 < k <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
@@ -2119,7 +2465,8 @@ Theorem rse_encode_all_blocks: forall (orig: list packet) (params: list (Z * Z))
   (forall p, p \in orig -> encodable p) ->
   uniq (map p_seqNum orig) ->
   size orig = size params ->
-  encoder_props orig (rse_encode_all orig params).1.1 (rse_encode_all orig params).1.2 (rse_encode_all orig params).2.
+  encoder_props orig (rse_encode_all orig params).1.1 (rse_encode_all orig params).1.2 (rse_encode_all orig params).2 /\
+  (forall b, (rse_encode_all orig params).1.2 = Some b -> Zindex None (data_packets b) < blk_k b).
 Proof.
   move => orig params Hparam Hvalid Henc Huniq Hsz.
   (*First, switch to foldr*)
@@ -2152,19 +2499,61 @@ Proof.
       have Hhval: packet_valid h. { apply Hvalid. by rewrite in_cons eq_refl. }
       have Hhenc: encodable h. { apply Henc. by rewrite in_cons eq_refl. }
       case currBlock => [/= b | /=]; last first.
-      * case: (Z.eq_dec ph.1 1) => HHl1/=; last first.
-          by apply encoder_props_new_block.
-        move => IH. apply (@encoder_props_new_block h t _ _ ph.1 ph.2) in IH => //.
+      * move => [IH Hzindex]. case: (Z.eq_dec ph.1 1) => HHl1/=; last first.
+          split. by apply encoder_props_new_block. move => b [Hb]. subst.
+          rewrite create_red_Zindex/=; lia.
+        apply (@encoder_props_new_block h t _ _ ph.1 ph.2) in IH => //.
         set b := (create_block_with_packet_red h ph.1 ph.2).
         have->:(pkts ++ new_fec_packet h ph.1 ph.2 :: (encode_block b (Some h)).2) =
           (pkts ++ [:: new_fec_packet h ph.1 ph.2]) ++ (encode_block b (Some h)).2 by rewrite -catA.
-        apply encoder_props_encode => //. subst b. apply create_block_in. lia.
-      * (*TODO: start here:
-          steps:
-          1. prove that encode_block None is the same as encode_block (Some h) for some (exists) h in
-            (data_packets h) - then first case should just follow from all of the above
-          2. for second case, need lemma for [add_packet_to_block_red] - should not be too hard especially
-            compared to encoder one*)
+        split => //. apply encoder_props_encode => //. subst b. apply create_block_in. lia.
+      * move => [IH Hzindex].
+        case Hchange : (~~ Z.eq_dec (blk_k b) ph.1 || ~~ Z.eq_dec (blk_h b) ph.2) => /=.
+        -- have Hdat: data_elt b. apply IH => /=. by left.
+           apply encode_block_none_some in Hdat. case : Hdat => [model [Hinmod Hencns]].
+           rewrite Hencns. apply (encoder_props_encode Hinmod) in IH.
+           (*similar cases as before now*)
+           case: (Z.eq_dec ph.1 1) => HHl1/=; last first.
+              rewrite catA.  split. by apply encoder_props_new_block. move => b' [Hb']. subst.
+              rewrite create_red_Zindex/=; lia.
+           apply (@encoder_props_new_block h t _ _ ph.1 ph.2) in IH => //. move: IH.
+           set b' := (create_block_with_packet_red h ph.1 ph.2) => IH.
+           rewrite (cons_app (new_fec_packet _ _ _)) (catA _ _ (encode_block b' (Some h)).2).
+           apply (@encoder_props_encode _ _ _ _ h) in IH.
+           rewrite -!catA in IH. rewrite -!catA. split => //.
+           subst b'. apply create_block_in. lia.
+        -- (*last case - add packet to existing block*)
+          have Hidx: Zindex None (data_packets b) < blk_k b by apply Hzindex.
+          have->:(Zlength
+             [seq x <- upd_Znth (Zindex None (data_packets b)) (data_packets b)
+                         (Some (get_fec_packet h b))
+                | isSome x]) = Zlength [seq x <- (data_packets b) | isSome x] + 1.
+          { rewrite upd_Znth_Zindex_Zlength //. apply Z.add_comm.
+            have Hwf: block_wf b by apply IH; left.
+            have->: Zlength (data_packets b) = blk_k b by apply Hwf. by apply Hzindex.
+          }
+          case: (Z.eq_dec (Zlength [seq x <- data_packets b | isSome x] + 1) (blk_k b)) => /= Hfinish; last first.
+          ++ split. apply encoder_props_add => //.
+            move => b' [Hb']; subst.
+            have Hdatlen: Zlength(data_packets (add_packet_to_block_red h b)) = blk_k (add_packet_to_block_red h b). {
+              have Hwfb: block_wf (add_packet_to_block_red h b). apply add_red_wf => //. apply IH. by left.
+              apply Hwfb. } rewrite -Hdatlen.
+            have Hleqlt: forall (z1 z2 : Z), z1 <= z2 -> z1 <> z2 -> z1 < z2. lia.
+            apply Hleqlt. apply Zindex_leq_Zlength. move => Hlen.
+            have: Zlength [seq x <- data_packets (add_packet_to_block_red h b) | isSome x] =
+              blk_k b. { rewrite -Hdatlen. apply filter_all_Zlength. apply /allP.
+              apply Zindex_notin in Hlen. move => x. case: x => [//|]. by rewrite in_mem_In.
+            }
+            rewrite -add_red_size //. have->//: Zlength(data_packets b) = blk_k b.
+            have Hwfb: block_wf b by apply IH; left. apply Hwfb.
+          ++ split => //.
+            have Hwfb: block_wf b by apply IH; left.
+            (*Once again, we apply 2 cases*)
+            apply (encoder_props_add Hhval) in IH => //.
+            apply (encoder_props_encode) with(model:=h) in IH. by rewrite -catA in IH.
+            apply add_block_in.  have->//: Zlength(data_packets b) = blk_k b.
+            apply Hwfb.
+Qed.
 
 End EncoderBlocks.
 
