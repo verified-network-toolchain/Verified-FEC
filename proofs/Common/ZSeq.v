@@ -85,6 +85,16 @@ Proof.
   lia.
 Qed.
 
+Lemma Ziota_leq: forall i j,
+  0 <= i <= j ->
+  Ziota 0 j = Ziota 0 i ++ Ziota i (j - i).
+Proof.
+  move => i j Hij. rewrite /Ziota -map_cat. f_equal.
+  have->: (Z.to_nat j) = ((Z.to_nat i) + (Z.to_nat (j-i)))%coq_nat by lia.
+  have->:(Z.to_nat i + Z.to_nat (j - i))%coq_nat = (Z.to_nat i + Z.to_nat (j - i))%N by [].
+  by rewrite iotaD.
+Qed. 
+
 End Ziota.
 
 (*Z version of [mkseq]*)
@@ -223,15 +233,15 @@ Proof.
   by rewrite Z2Nat.inj_mul.
 Qed.
 
-Lemma Ziota_leq: forall i j,
-  0 <= i <= j ->
-  Ziota 0 j = Ziota 0 i ++ Ziota i (j - i).
+Lemma zseq_sublist: forall {A: Type} `{Inhabitant A} (len: Z) (x: A) (lo hi : Z),
+  0 <= lo <= hi ->
+  hi <= len ->
+  sublist lo hi (zseq len x) = zseq (hi - lo) x.
 Proof.
-  move => i j Hij. rewrite /Ziota -map_cat. f_equal.
-  have->: (Z.to_nat j) = ((Z.to_nat i) + (Z.to_nat (j-i)))%coq_nat by lia.
-  have->:(Z.to_nat i + Z.to_nat (j - i))%coq_nat = (Z.to_nat i + Z.to_nat (j - i))%N by [].
-  by rewrite iotaD.
-Qed. 
+  move => A Hinhab len x lo hi Hlohi Hhi. apply Znth_eq_ext; rewrite Zlength_sublist; try lia;
+  try rewrite zseq_Zlength; try lia.
+  move => i Hi. rewrite Znth_sublist; try lia. by rewrite !zseq_Znth; try lia.
+Qed.
 
 End ZSeq.
 
@@ -282,4 +292,95 @@ Proof.
   move => A x l. rewrite /Zindex. lia.
 Qed.
 
+Lemma Zindex_leq_Zlength: forall {A: eqType} (l: seq A) (x: A),
+  Zindex x l <= Zlength l.
+Proof.
+  move => A l x. rewrite /Zindex Zlength_correct -size_length. apply inj_le.
+  apply /leP. apply index_size.
+Qed. 
+
+Lemma Zindex_bounds: forall {A: eqType} (l: seq A) (x: A),
+  0 <= Zindex x l <= Zlength l.
+Proof.
+  move => A l x. split. apply Zindex_nonneg. apply Zindex_leq_Zlength.
+Qed.
+
+Lemma upd_Znth_Zindex_Zlength: forall {A: eqType} (x y: A) (p: pred A) (l: list A),
+  Zindex x l < Zlength l ->
+  ~~ p x ->
+  p y ->
+  Zlength (filter p (upd_Znth (Zindex x l) l y)) = 1 + Zlength (filter p l).
+Proof.
+  move => A x y p l Hidx Hpx Hpy.
+   have Hnonneg:=(@Zindex_nonneg _ x l).
+  rewrite upd_Znth_unfold; try lia. rewrite !filter_cat. simpl cat. move: Hpy.
+  case Hpy: (p y) => // _.
+  have Hl: l = sublist 0 (Zindex x l) l ++ [:: (@Znth _ x (Zindex x l) l)] ++ sublist (Zindex x l + 1) (Zlength l) l. {
+    rewrite /= -sublist_next; try lia. rewrite cat_app -(sublist_split 0 (Zindex x l)); try lia.
+    by rewrite sublist_same. }
+  rewrite Znth_Zindex in Hl; last first.
+    by apply Zindex_In.
+  rewrite {6}Hl. rewrite !filter_cat. simpl cat. move: Hpx. case Hpx: (p x) => // _.
+  rewrite !Zlength_app !Zlength_cons cat_app Zlength_app. lia.
+Qed.
+
 End Zindex.
+
+Section MapWithIdx.
+
+Definition map_with_idx {A B: Type} (l: list A) (f: A -> Z -> B) : list B :=
+  map (fun (t : A * Z) => let (x, z) := t in f x z) (combine l (Ziota 0 (Zlength l))).
+
+Lemma map_with_idx_Znth: forall {A B} `{Inhabitant A} `{Inhabitant B} (l: list A) (f: A -> Z -> B) i,
+  0 <= i < Zlength l ->
+  Znth i (map_with_idx l f) = f (Znth i l) i.
+Proof.
+  move => A B HA HB l f i Hi. rewrite /map_with_idx Znth_map.
+  - rewrite Znth_combine.
+    + by rewrite Znth_Ziota; try lia.
+    + by rewrite Zlength_Ziota; lia.
+  - rewrite Zlength_combine Z.min_l; try lia.
+    by rewrite Zlength_Ziota; lia.
+Qed.
+
+Lemma Zlength_map_with_idx : forall {A B: Type} (l: seq A) (f: A -> Z -> B),
+  Zlength (map_with_idx l f) = Zlength l.
+Proof.
+  move => A B l f. rewrite Zlength_map Zlength_combine Zlength_Ziota; try lia. list_solve.
+Qed.
+End MapWithIdx.
+
+(*A tactic for simplifying expressions with these operators*)
+Ltac zlist_simpl :=
+  repeat (match goal with
+  | |- context [Zlength (Ziota ?a ?b) ] => rewrite Zlength_Ziota
+  | |- context [Zlength (zseq ?z ?x) ] => rewrite zseq_Zlength
+  | |- context [Zlength (mkseqZ ?f ?b) ] => rewrite mkseqZ_Zlength
+  | |- context [Zlength (combine ?l1 ?l2) ] => rewrite Zlength_combine
+  | |- context [Zlength (map_with_idx ?l ?f) ] => rewrite Zlength_map_with_idx
+  | |- context [Znth ?i (Ziota ?a ?b) ] => rewrite Znth_Ziota
+  | |- context [Znth ?i (zseq ?z ?x) ] => rewrite zseq_Znth
+  | |- context [Znth ?i (mkseqZ ?f ?b) ] => rewrite mkseqZ_Znth
+  | |- context [Znth ?i (combine ?l1 ?l2) ] => rewrite Znth_combine
+  | |- context [Znth ?i (map_with_idx ?l ?f) ] => rewrite map_with_idx_Znth
+  | |- context [Zlength (?l1 ++ ?l2) ] => rewrite Zlength_app
+  | |- context [Zlength (map ?f ?l) ] => rewrite Zlength_map
+  | |- context [Zlength (upd_Znth ?i ?l ?x) ] => rewrite Zlength_upd_Znth
+  | |- context [Znth ?i (map ?f ?l)]=> rewrite Znth_map
+  | |- 0 <= Zlength ?x => list_solve
+  | |- context [Z.min ?x ?x] => rewrite Z.min_id
+  end; try lia); try lia.
+
+Lemma mapWithIdxP: forall {T1 T2: eqType} `{Inhabitant T1} {f: T1 -> Z -> T2} {s: seq T1} {y: T2},
+  reflect (exists i x, 0 <= i < Zlength s /\ Znth i s = x /\ y = f x i) (y \in map_with_idx s f).
+Proof.
+  move => T1 T2 Hinhab f s y. rewrite /map_with_idx.
+  case : (y \in [seq (let (x, z) := (t: T1 * Z) in f x z) | t <- combine s (Ziota 0 (Zlength s))]) /mapP.
+  - move => Hx. apply ReflectT. case : Hx => [x Hinx Hy]. subst. move: Hinx. case : x => [x i].
+    rewrite in_mem_In => Hin. apply In_Znth in Hin. case: Hin => [j [Hj Hjth]].
+    move: Hj. zlist_simpl => Hj. move: Hjth. zlist_simpl. rewrite Z.add_0_l => [[Hx Hi]]. subst.
+    exists i. by exists (Znth i s).
+  - move => Hc. apply ReflectF. move => Hc'. apply Hc. rewrite {Hc}.
+    case: Hc' => [i [x [Hi [Hith Hy]]]]. subst.
+    exists ((Znth i s), i) => //=. rewrite in_mem_In. rewrite In_Znth_iff. exists i. by zlist_simpl.
+Qed.

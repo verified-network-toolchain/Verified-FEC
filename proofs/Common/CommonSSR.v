@@ -502,6 +502,12 @@ Proof.
   rewrite -!size_not_nil => Hl2. by apply (ltn_leq_trans Hl2).
 Qed.
 
+Lemma filter_all_size: forall {A: eqType} (p: pred A) (s: seq A),
+  (size (filter p s) == size s) = all p s.
+Proof.
+  move => A p s. by rewrite size_filter all_count.
+Qed.
+
 (** Stuff about finTypes*)
 
 Lemma bijective_card: forall {T T': finType} (f: T -> T'),
