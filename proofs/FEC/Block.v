@@ -42,8 +42,8 @@ Ltac eq_dec_tac :=
 Ltac split_all := repeat match goal with | |- ?p /\ ?q => split end.
 
 Ltac solve_sumbool :=
-  repeat match goal with
-  | [ H: is_true (proj_sumbool ?x) |- _] => destruct x; [clear H | solve [inversion H]]
+  try match goal with
+  | [ H: is_true (proj_sumbool ?x) |- _] => destruct x; [clear H | solve [inversion H]]; solve_sumbool
   | [ |- is_true (proj_sumbool ?x)] => destruct x; auto; try lia
   end.
 
@@ -174,7 +174,10 @@ Definition block_wf (b: block) : Prop :=
   (*All data packets are encodable*)
   (forall p, In (Some p) (data_packets b) -> encodable p) /\
   (*All packets are valid packets*)
-  (forall p, In (Some p) (data_packets b) \/ In (Some p) (parity_packets b) -> packet_valid p).
+  (forall p, In (Some p) (data_packets b) \/ In (Some p) (parity_packets b) -> packet_valid p) /\
+  (*Parity packets are marked correctly*)
+  (forall p, In (Some p) (data_packets b) -> fd_isParity p = false) /\
+  (forall p, In (Some p) (parity_packets b) -> fd_isParity p).
 
 Definition range_lt_le_dec: forall (x y z: Z),
   { x < y <= z} + {~(x < y <= z)}.
@@ -185,7 +188,7 @@ Proof.
     + right. lia.
   - right. lia.
 Defined.
-
+(*
 (*Decidable version of [block_wf]*)
 Definition block_wf_bool (b: block) : bool :=
   range_lt_le_dec 0 (blk_k b) (ByteFacts.fec_n - 1 - ByteFacts.fec_max_h) &&
@@ -255,7 +258,7 @@ Proof.
     + move: Henc. rewrite is_true_true_eq forallb_forall => Henc p Hp. by apply Henc in Hp.
     + move => p Hp. rewrite -in_app_iff in Hp. apply Hall in Hp. by move: Hp => /andP[ _ Hval].
 Qed. 
-
+*)
 (*From a block, we can generate what is needed*)
 Definition packet_mx (b: block): list (list byte) :=
   map (fun x => match x with
@@ -1334,6 +1337,52 @@ Proof.
       by case: (Z.eq_dec (Int.unsigned (fd_blockIndex p')) (Int.unsigned (fd_blockIndex p'))).
 Qed. 
 
+Lemma get_blocks_allin: forall (s: seq fec_packet_act) (p: fec_packet_act),
+  wf_packet_stream s ->
+  p \in s ->
+  exists b, (b \in (get_blocks s)) && ((Some p) \in (data_packets b ++ parity_packets b)).
+Proof.
+  move => s p Hwf Hp. rewrite /get_blocks. rewrite in_mem_In in Hp.
+  have [pkts [Hinb Hinp]]:=(get_block_lists_allin_in Hwf (get_block_lists_spec Hwf) Hp).
+  exists (btuple_to_block (fd_blockId p, pkts)). apply /andP. split.
+  - apply /mapP. exists (fd_blockId p, pkts) => //. by rewrite in_mem_In.
+  - rewrite /btuple_to_block/=. case Hmap: (pmap id pkts) => [|p' tl/=].
+    + have: p \in (pmap id pkts) by rewrite -pmap_id_some in_mem_In.
+      by rewrite Hmap.
+    + have [_ [_ [Hlen _]]] := (get_block_lists_spec Hwf). have Hp': p \in s by rewrite in_mem_In.
+      have [Hpid' Hinp']: fd_blockId p' = fd_blockId p /\ In p' s. {
+        apply (get_block_lists_prop_packets (get_block_lists_spec Hwf) Hinb).
+        by rewrite -in_mem_In pmap_id_some Hmap in_cons eq_refl. }
+      have [Hk' Hh']: fd_k p = fd_k p' /\ fd_h p = fd_h p'. apply Hwf => //. by rewrite in_mem_In.
+      case Hwf => [Hkh [_ [_  /( _ p Hp')]]] [Hk Hh].
+      rewrite -Hk' -Hh' cat_app -sublist_split; try lia. rewrite sublist_same; try lia. by rewrite in_mem_In.
+      by rewrite (Hlen _ _ _ Hinb Hinp). rewrite (Hlen _ _ _ Hinb Hinp). lia.
+Qed.
+
+(*Basically the reverse of the above: Everything in [get_blocks] is in the original list*)
+Lemma get_blocks_in_orig: forall (s: seq fec_packet_act) (b: block) (p: fec_packet_act),
+  wf_packet_stream s ->
+  b \in (get_blocks s) ->
+  (Some p) \in (data_packets b ++ parity_packets b) ->
+  p \in s.
+Proof.
+  move => s b p Hwf. rewrite /get_blocks => /mapP [[i pkts] Hinblk Hb]. subst. move: Hinblk.
+  rewrite in_mem_In => Hinpkts.
+  rewrite /btuple_to_block/=.
+  case Hmap: (pmap id pkts) => [// | p' t' /=].
+  have [_ [_ [Hlen _]]] := (get_block_lists_spec Hwf).
+  have Hinp'': In (Some p') pkts by rewrite -in_mem_In pmap_id_some Hmap in_cons eq_refl.
+  have Hallsum: forall x : fec_packet_act, x \in s -> 0 <= fd_k x + fd_h x. {
+    move => x Hinx.
+    have [Hkx Hhx]: 0 <= fd_k x /\ 0 <= fd_h x by apply Hwf. lia. }
+  have Hinp': In p' s by apply (get_blocks_list_from_src Hallsum Hinpkts). 
+  have [Hk0 Hh0]: 0 <= fd_k (p_fec_data' p') /\ 0 <= fd_h (p_fec_data' p'). apply Hwf. by rewrite in_mem_In.
+  rewrite cat_app -sublist_split; try lia. rewrite sublist_same; try lia.
+    2: by rewrite (Hlen _ _ _ Hinpkts Hinp'').
+    2: rewrite (Hlen _ _ _ Hinpkts Hinp''); lia.
+  rewrite !in_mem_In => Hinp.
+  by apply (get_blocks_list_from_src Hallsum Hinpkts).
+Qed.
 
 End BlockList.
 
@@ -1473,6 +1522,22 @@ Proof.
         apply IH; [ apply (subseq_option_tl Hsub) | by []]. lia.
 Qed.
 
+Lemma subseq_option_filter: forall {A: Type} (l1 l2: list (option A)),
+  subseq_option l1 l2 ->
+  Zlength (filter isSome l1) <= Zlength (filter isSome l2).
+Proof.
+  move => A l1. elim : l1 => [//= l2 | h t /= IH].
+  - rewrite /subseq_option => [[Hlens _]]. have->//: l2 = nil by list_solve.
+  - move => l2. case : l2 => [/= | h1 t1 /=].
+    + rewrite /subseq_option => [[Hlens _]]. list_solve.
+    + move => Hopt. have Hoptt: subseq_option t t1 by apply subseq_option_tl in Hopt.
+      move: Hopt. rewrite /subseq_option => [[Hlens Hith]].
+      have H0: 0 <= 0 < Zlength (h :: t) by list_solve.
+      move: Hith => /(_ _ H0). rewrite !Znth_0_cons; move => [Hh | HH]/=; subst; rewrite {H0 Hlens}.
+      * apply IH in Hoptt. case: h1 => [a |]/=; list_solve.
+      * apply IH in Hoptt. rewrite /=. case: h1 => [a|]/=; list_solve.
+Qed. 
+
 (*Now we can define a subblock*)
 Definition subblock (b1 b2: block) : Prop :=
   blk_id b1 = blk_id b2 /\
@@ -1488,7 +1553,8 @@ Lemma subblock_wf: forall (b1 b2: block),
   block_wf b1.
 Proof.
   move => b1 b2. 
-  rewrite /block_wf /subblock => [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]]] [Hsubid [Hsubdata [Hsubpar [Hsubk Hsubh]]]].
+  rewrite /block_wf /subblock => [[Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc [Hvalid [Hdats Hpars]]]]]]]]]]] 
+    [Hsubid [Hsubdata [Hsubpar [Hsubk Hsubh]]]].
   repeat match goal with | |- ?p /\ ?q => split; try by []; try lia end.
   - move => p Hp. rewrite Hsubk Hsubh. apply Hkh. by apply (subseq_option_in' Hsubdata Hsubpar).
   - move => p Hp. rewrite Hsubid. apply Hid. by apply (subseq_option_in' Hsubdata Hsubpar).
@@ -1521,6 +1587,8 @@ Proof.
   - move: Hsubpar. rewrite /subseq_option. lia.
   - move => p Hp. apply Henc. by apply (subseq_option_in Hsubdata).
   - move => h Hp. apply Hvalid. by apply (subseq_option_in' Hsubdata Hsubpar).
+  - move => p Hp. apply Hdats. by apply (subseq_option_in Hsubdata).
+  - move => p Hp. apply Hpars. by apply (subseq_option_in Hsubpar).
 Qed.
 
 Lemma subblock_trans: forall b1 b2 b3,
@@ -1533,8 +1601,6 @@ Proof.
   by apply (subseq_option_trans Ho1).
   by apply (subseq_option_trans Ho1').
 Qed.
-
-(*TODO: move*)
 
 
 (*First, we need to know that blk_c of a recoverable subblock of a complete block is the same as the
@@ -1602,8 +1668,16 @@ Proof.
     lia.
 Qed.
 
-
-
+(*If a subblock is recoverable, so is its parent*)
+Lemma subblock_recoverable: forall (b1 b2 : block),
+  subblock b1 b2 ->
+  recoverable b1 ->
+  recoverable b2.
+Proof.
+  move => b1 b2. rewrite /subblock /recoverable => [[_ [Hsubdat [Hsubpar _]]]] Hrec.
+  have<-: Zlength (data_packets b1) = Zlength (data_packets b2) by apply Hsubdat.
+  solve_sumbool => /=. apply subseq_option_filter in Hsubdat. apply subseq_option_filter in Hsubpar. lia.
+Qed. 
 
 End Subblock.
 
