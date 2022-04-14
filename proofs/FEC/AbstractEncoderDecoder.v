@@ -9,6 +9,18 @@ Set Bullet Behavior "Strict Subproofs".
 From RecordUpdate Require Import RecordSet. (*for updating records easily*)
 Import RecordSetNotations.
 
+(*Need an eqType*)
+Lemma reflect_proj_sumbool: forall (P: Prop) (H: {P} + {~P}),
+  reflect P H.
+Proof.
+  move => P H. case : H => [Hy | Hn].
+  by apply ReflectT. by apply ReflectF.
+Qed.
+
+(*First, show int has an eqType*)
+Definition int_eqMixin := EqMixin (fun i1 i2 => reflect_proj_sumbool (Int.eq_dec i1 i2)).
+Canonical int_eqType := EqType int int_eqMixin.
+
 (*Abstract notions of packets, transcript, encoder, decoder*) 
 Section AbstractSpecs.
 
@@ -95,7 +107,7 @@ Variable fec_packet_inhab: Inhabitant fec_packet.
 
 Record transcript := mk_tran
   { orig : list packet; (*packets received by sender from origin*)
-    encoded : list fec_packet; (*encoded by sender*)
+    encoded : list (list fec_packet); (*encoded by sender*)
     received: list fec_packet; (*subset of encoded packets received by receiver*)
     decoded: list packet (*packets sent by receiver*)
   }.
@@ -103,16 +115,16 @@ Record transcript := mk_tran
 (*An encoder is a 4 place relation taking in the previously-receieved packets, the previously-encoded
   packets, the current packet, and the currently-encoded packet(s). It need not be determinstic, but
   this allows us to "fix" our choices at each step*)
-Definition encoder := list packet -> list fec_packet -> packet -> list fec_packet -> Prop.
+Definition encoder := list packet -> list (list fec_packet) -> packet -> list fec_packet -> Prop.
 
 (*Decoder is similar*)
 Definition decoder := list fec_packet -> list packet -> fec_packet -> list packet -> Prop.
 
 (*We want to say that the whole encoded list is valid for this predicate*)
-Definition encoder_list (enc: encoder) (orig: list packet) (encoded: list fec_packet) : Prop :=
-  exists (l: list (list fec_packet)), concat l = encoded /\ Zlength l = Zlength orig /\
+Definition encoder_list (enc: encoder) (orig: list packet) (encoded: list (list fec_packet)) : Prop :=
+  Zlength orig = Zlength encoded /\
   forall(i: Z), 0 <= i < Zlength orig ->
-    enc (sublist 0 i orig) (concat (sublist 0 i l)) (Znth i orig) (Znth i l).
+    enc (sublist 0 i orig) (sublist 0 i encoded) (Znth i orig) (Znth i encoded).
 
 Definition decoder_list (dec: decoder) (received: list fec_packet) (decoded: list packet) : Prop :=
   exists (l: list (list packet)), concat l = decoded /\ Zlength l = Zlength received /\
@@ -363,9 +375,11 @@ Definition valid_encoder_decoder (enc: encoder) (dec: decoder) : Prop :=
     (*If all incoming packets are valid and encodable*)
     (forall p, p \in orig -> packet_valid (p_header p) (p_contents p)) ->
     (forall p, p \in orig -> encodable_pred p) ->
+    (*sequence numbers must be unique (TODO: this is true for this implementation, is it too restrictive?*)
+    uniq (map p_seqNum orig) ->
     encoder_list enc orig encoded ->
     decoder_list dec received decoded ->
-    (loss_rel l) encoded received ->
+    (loss_rel l) received (concat encoded) ->
     forall (x: packet), x \in decoded -> exists y, (y \in orig) /\ (remove_seqNum x = remove_seqNum y).
 
 (*The C implementations will produce transcripts that are consistent with
@@ -378,9 +392,10 @@ Variable l: loss. (*TODO: how to handle loss relation, which we don't know, mayb
 Definition valid_transcript (t: transcript) :=
   (forall p, p \in (orig t) -> packet_valid (p_header p) (p_contents p)) /\
   (forall p, p \in (orig t) -> encodable_pred p) /\
+  uniq (map p_seqNum (orig t)) /\
   encoder_list enc (orig t) (encoded t) /\
   decoder_list dec (received t) (decoded t) /\
-  (loss_rel l) (encoded t) (received t).
+  (loss_rel l) (received t) (concat (encoded t)).
 
 (*Then, we have the results about the decoded packets:*)
 Lemma valid_transcript_enc_dec: forall (t: transcript),
@@ -388,7 +403,7 @@ Lemma valid_transcript_enc_dec: forall (t: transcript),
   valid_transcript t ->
   (forall p, p \in (decoded t) -> exists p', p' \in (orig t) /\ remove_seqNum p = remove_seqNum p').
 Proof.
-  rewrite /valid_encoder_decoder /valid_transcript => t Hval [Hvalid [Hencode [Henc [Hdec Hloss]]]]. eauto.
+  rewrite /valid_encoder_decoder /valid_transcript => t Hval [Hvalid [Hencode [Huniq [Henc [Hdec Hloss]]]]]. eauto.
 Qed.
 
 End AbstractSpecs.

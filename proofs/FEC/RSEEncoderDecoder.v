@@ -110,15 +110,72 @@ Definition rse_encode_all (orig: list packet) (params: list (Z * Z)) : list bloc
 Definition rse_encode_func orig params curr k h :=
   (rse_encode_gen (rse_encode_all orig params).1.1 (rse_encode_all orig params).1.2 curr k h).2.
 
-(*The final predicate is simple*)
+(*For the final predicate, we need to find the past parameters that were used. We can do so with
+  the following:*)
 
-Definition rse_encoder : (@encoder fec_data) :=
-  fun (orig: list packet) (encoded: list fec_packet_act) (curr: packet) (new: list fec_packet_act) =>
-    exists (params: list (Z * Z)) (k: Z) (h: Z),
-      (forall x, In x ((k, h) :: params) ->
-      0 < x.1 <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
-      0 < x.2 <= ByteFacts.fec_max_h) /\
-    new = rse_encode_func orig params curr k h.
+Definition get_encode_params (l: list fec_packet_act) : option (Z * Z) :=
+  match filter (fun (x: fec_packet_act) => ~~ (fd_isParity x)) l with
+  | [ :: p] => Some (fd_k p, fd_h p)
+  | _ => None
+  end.
+
+Lemma encode_block_aux_filter: forall b p,
+  [seq x <- (encode_block_aux b p).2 | ~~ fd_isParity (p_fec_data' x)] = [::].
+Proof.
+  move => b p. erewrite eq_in_filter. apply filter_pred0.
+  move => x. rewrite in_mem_In /= In_Znth_iff; zlist_simpl. move => [i] [Hi]. zlist_simpl.
+  by move <-.
+Qed.
+
+Lemma encode_block_filter : forall b o,
+  [seq x <- (encode_block b o).2 | ~~ fd_isParity (p_fec_data' x)] = nil.
+Proof.
+  move => b o. rewrite /encode_block/=.
+  case Hmap: (pmap id (data_packets b)) => [// | h t ]; case : o => [p |//]; apply encode_block_aux_filter.
+Qed.
+
+Lemma encode_func_get_params: forall l orig params curr k h,
+  l = rse_encode_func orig params curr k h ->
+  get_encode_params l = Some (k, h).
+Proof.
+  move => l orig params curr k h. rewrite /rse_encode_func /rse_encode_gen/=/get_encode_params.
+  case : (rse_encode_all orig params).1.2 => [b | ].
+  - case Hneq: (~~ Z.eq_dec (blk_k b) k || ~~ Z.eq_dec (blk_h b) h).
+    + case : (Z.eq_dec k 1) => Hk1 //=.
+      * move ->. rewrite filter_cat/=.
+        by rewrite encode_block_filter /= encode_block_filter.
+      * move ->. rewrite filter_cat/=. by rewrite encode_block_filter.
+    + apply orb_false_elim in Hneq.
+        case : Hneq => [Hkeq Hneq]. apply negbFE in Hkeq. apply negbFE in Hneq. solve_sumbool.
+      case: (Z.eq_dec
+        (Zlength
+           [seq x <- upd_Znth (Zindex None (data_packets b)) (data_packets b)
+                       (Some (get_fec_packet curr b))
+              | isSome x]) (blk_k b)) => /= Hk ->/=.
+      * rewrite encode_block_filter. by subst. 
+      * by subst.
+  - case: (Z.eq_dec k 1) => Hk/= -> //=.
+    by rewrite encode_block_filter.
+Qed.
+
+Corollary encode_func_get_params': forall orig params curr k h,
+  get_encode_params (rse_encode_func orig params curr k h) = Some (k, h).
+Proof.
+  move => orig params curr k h. by eapply encode_func_get_params.
+Qed. 
+
+(*Then, we have our final function and predicate*)
+
+Definition rse_encode_func' (orig: list packet) (encoded: list (list fec_packet_act)) (curr: packet) (param: Z * Z) :
+  list fec_packet_act :=
+  let prevStates := pmap id (map get_encode_params encoded) in
+  rse_encode_func orig prevStates curr param.1 param.2.
+
+Definition rse_encoder: (@encoder fec_data) :=
+  fun orig encoded curr new =>
+    exists (k h: Z),
+    0 < k <= fec_n - 1 - fec_max_h /\ 0 < h <= fec_max_h /\
+    new = rse_encode_func' orig encoded curr (k, h).
 
 End Encoder.
 
@@ -390,6 +447,7 @@ Definition rse_decode_func (received: list fec_packet_act) (curr: fec_packet_act
 Definition rse_decoder : (@decoder fec_data) :=
   fun (received: list fec_packet_act) (decoded: list packet) (curr: fec_packet_act) (new: list packet) =>
     exists (states: list (list bool)) (state: list bool),
+      Zlength states = Zlength received /\
       new = rse_decode_func received curr states state.
 
 End Decoder.
@@ -406,10 +464,11 @@ Lemma rse_decoder_list_add: forall (received : list fec_packet_act) (curr: fec_p
   (decoded: list packet),
   rse_decoder_list received decoded ->
   forall (s: list bool) (sts: list (list bool)),
+    Zlength sts = Zlength received ->
     rse_decoder_list (received ++ [curr]) (decoded ++ rse_decode_func received curr sts s).
 Proof.
   move => received curr decoded. rewrite /rse_decoder_list /AbstractEncoderDecoder.decoder_list 
-    => [[l [Hdec [Hllen Hith]]]] s sts. exists (l ++ [rse_decode_func received curr sts s]).
+    => [[l [Hdec [Hllen Hith]]]] s sts Hstslen. exists (l ++ [rse_decode_func received curr sts s]).
   split; [|split].
   - by rewrite concat_app Hdec //= app_nil_r.
   - rewrite !Zlength_app. list_solve.
@@ -2621,7 +2680,7 @@ Proof.
   move => orig encoded received decoded enc_params dec_params Hleno Hlenr Hencparams Hallvalid Hallenc Hseqnum
    Henc Hloss Hdec p Hind; subst.
   (*Step 1: since p is in the decoder, it must have been in [rse_decode_func] at some point*)
-  (*TODO: do we need Hind?*) move: Hind. rewrite decoder_all_steps_concat // in_mem_In in_concat => [[dec]] [Hinp].
+  move: Hind. rewrite decoder_all_steps_concat // in_mem_In in_concat => [[dec]] [Hinp].
   rewrite In_Znth_iff; zlist_simpl => [[i] [Hi]]. zlist_simpl. move => Hdec. subst. move: Hinp. rewrite -in_mem_In => Hp.
   have Hleno': size orig = size enc_params by rewrite !size_length -!ZtoNat_Zlength Hleno.
   have Hwfenc: wf_packet_stream (rse_encode_all orig enc_params).2 by apply rse_encode_stream_wf.
@@ -2667,103 +2726,206 @@ Proof.
     apply (get_blocks_in_orig Hwfenc Hgetb). by rewrite mem_cat Hpin.
 Qed.
 
-(*The last step is to prove the [valid_encoder_decoder] version of the theorem. That is a bit weaker because
-  the condition itself is weaker. We prove it using the above theorem*)
-Require Import AbstractEncoderDecoder.
-(*Ugh, I think we will need a way to get the states out of the output - we can know the following: in each output
-  there is exactly 1 data packet, and it has the correct parameters*)
+(*The last step is to prove the [valid_encoder_decoder] version of the theorem. We prove it using the above theorem*)
+Require Import AbstractEncoderDecoder. (*TODO move*)
+
+(*The key difference is that we need to know that we can get the list of encoder params to show that the encoded 
+  outputs actually come from repeated (consistent) iterations of the encoder. We do so with
+  the following alternate version of the encoder which outputs a list (list packet) rather than just
+  the full concatenated list*)
+
+Definition rse_encode_concat (orig: seq packet) (params: seq (Z * Z)) :=
+  foldl
+  (fun (acc : seq block * option block * seq (seq (fec_packet_act))) (x : packet * (Z * Z)) =>
+   let t := rse_encode_gen acc.1.1 acc.1.2 x.1 x.2.1 x.2.2 in (t.1.1, t.1.2, acc.2 ++ [t.2]))
+  ([::], None, [::]) (combine orig params).
+
+Opaque rse_encode_gen.
+
+Lemma rse_encode_all_concat_aux: forall orig params,
+  (rse_encode_all orig params).1 = (rse_encode_concat orig params).1 /\ 
+  (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
+Proof.
+  move => orig params. rewrite /rse_encode_all/rse_encode_concat/= -(revK (combine _ _)) !foldl_rev. 
+  remember (rev (combine orig params)) as l. rewrite {orig params Heql}. elim : l => [// | h t /= [IH1 IH2]]. 
+  by rewrite !IH1 !IH2//= !concat_app/= !cat_app app_nil_r.
+Qed.
+
+Lemma rse_encode_all_concat: forall orig params,
+  (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
+Proof.
+  move => orig params. by apply rse_encode_all_concat_aux.
+Qed.
 
 (*TODO: move*)
-Lemma encode_block_aux_filter: forall b p,
-  [seq x <- (encode_block_aux b p).2 | ~~ fd_isParity (p_fec_data' x)] = [::].
+Lemma mkseqZ_0: forall {A: Type} (f: Z -> A),
+  mkseqZ f 0 = nil.
 Proof.
-  move => b p. erewrite eq_in_filter. apply filter_pred0.
-  move => x. rewrite in_mem_In /= In_Znth_iff; zlist_simpl. move => [i] [Hi]. zlist_simpl.
-  by move <-.
+  move => A f. apply Zlength_nil_inv. by rewrite mkseqZ_Zlength.
 Qed.
 
-Lemma encode_block_filter : forall b o,
-  [seq x <- (encode_block b o).2 | ~~ fd_isParity (p_fec_data' x)] = nil.
+(*This lemma will actually be quite easy with previous result*)
+(*From here, we can describe each element of [rse_encode_concat] purely in terms of [rse_encode_func])*)
+Lemma rse_concat_mkseqZ: forall orig params,
+  Zlength orig = Zlength params ->
+  (rse_encode_concat orig params).2 = mkseqZ (fun i => rse_encode_func (sublist 0 i orig) (sublist 0 i params)
+    (Znth i orig) (Znth i params).1 (Znth i params).2) (Zlength orig).
 Proof.
-  move => b o. rewrite /encode_block/=.
-  case Hmap: (pmap id (data_packets b)) => [// | h t ]; case : o => [p |//]; apply encode_block_aux_filter.
+  move => orig params Hlens. rewrite /rse_encode_concat /rse_encode_func /rse_encode_all.
+  remember (@nil block) as b1. remember (@None block) as b2. remember (@nil fec_packet_act) as b3.
+  remember (@nil (seq fec_packet_act)) as b4. rewrite {1}Heqb4. rewrite -(cat0s (mkseqZ _ _)). rewrite -{2}Heqb4.
+  rewrite {Heqb1 Heqb2 Heqb3 Heqb4}. move: b1 b2 b3 b4 params Hlens.
+  elim : orig => [//= b1 b2 b3 b4 params Hlen | h t /= IH b1 b2 b3 b4 params].
+  - have->/=:Zlength [::] = 0 by list_solve. rewrite mkseqZ_0. by rewrite cats0.
+  - case: params => [| [k' h'] tl/=]; [list_solve |].
+    move => Hlen. erewrite IH. 2: list_solve.
+    have->: Zlength (h::t) = Zlength t + 1 by list_solve.
+    rewrite mkseqZ_1_plus/=; [|list_solve]. rewrite !Znth_0_cons -catA/=. f_equal. f_equal.
+    have Hpos: 0 <= Zlength t by list_solve. apply Znth_eq_ext; rewrite !mkseqZ_Zlength //. 
+    move => i Hi. rewrite !mkseqZ_Znth// !Znth_pos_cons; try lia. rewrite !sublist_0_cons; try lia.
+    by rewrite !Z.add_simpl_r.
 Qed.
 
-
-Definition get_encode_params (l: list fec_packet_act) : option (Z * Z) :=
-  match filter (fun (x: fec_packet_act) => ~~ (fd_isParity x)) l with
-  | [ :: p] => Some (fd_k p, fd_h p)
-  | _ => None
-  end.
-
-Lemma encode_func_get_params: forall l orig params curr k h,
-  l = rse_encode_func orig params curr k h ->
-  get_encode_params l = Some (k, h).
+Corollary rse_concat_nth: forall orig params i,
+  Zlength orig = Zlength params ->
+  0 <= i < Zlength orig ->
+  Znth i (rse_encode_concat orig params).2 = 
+  rse_encode_func (sublist 0 i orig) (sublist 0 i params) (Znth i orig) (Znth i params).1 (Znth i params).2.
 Proof.
-  move => l orig params curr k h. rewrite /rse_encode_func /rse_encode_gen/=/get_encode_params.
-  case : (rse_encode_all orig params).1.2 => [b | ].
-  - case Hneq: (~~ Z.eq_dec (blk_k b) k || ~~ Z.eq_dec (blk_h b) h).
-    + case : (Z.eq_dec k 1) => Hk1 //=.
-      * move ->. rewrite filter_cat/=.
-        by rewrite encode_block_filter /= encode_block_filter.
-      * move ->. rewrite filter_cat/=. by rewrite encode_block_filter.
-    + apply orb_false_elim in Hneq.
-        case : Hneq => [Hkeq Hneq]. apply negbFE in Hkeq. apply negbFE in Hneq. solve_sumbool.
-      case: (Z.eq_dec
-        (Zlength
-           [seq x <- upd_Znth (Zindex None (data_packets b)) (data_packets b)
-                       (Some (get_fec_packet curr b))
-              | isSome x]) (blk_k b)) => /= Hk ->/=.
-      * rewrite encode_block_filter. by subst. 
-      * by subst.
-  - case: (Z.eq_dec k 1) => Hk/= -> //=.
-    by rewrite encode_block_filter.
+  move => orig params i Hi Hlens. by rewrite rse_concat_mkseqZ //; zlist_simpl.
 Qed.
 
-(*TODO: figure out a way to express and prove this - it should be true by injectivity of result (at least I hope
-  so. But may not be needed if we do better one - TODO: find out*)
-(*
-Definition encode_get_all_params orig encoded (Henc: encoder_list rse_encoder orig encoded) : list (Z * Z).
-rewrite /encoder_list in Henc.
+Corollary rse_concat_Zlength: forall orig params,
+  Zlength orig = Zlength params ->
+  Zlength (rse_encode_concat orig params).2 = Zlength orig.
+Proof.
+  move => orig params Hlen. by rewrite rse_concat_mkseqZ //; zlist_simpl.
+Qed.
 
+(*TODO: move pmap stuff*)
 
+Lemma pmap_Zlength: forall {A: eqType} (s: seq (option A)) (Hall: all isSome s),
+  Zlength (pmap id s) = Zlength s.
+Proof.
+  move => A s. elim : s => [// | h t /= IH /andP[Hh Hallt]].
+  move: Hh. case: h => // x _/=. apply IH in Hallt. list_solve.
+Qed.
 
- case : Henc => [l [Hconcat [Hlen Hith]]].
+Lemma pmap_Znth: forall {A: eqType} `{Inhabitant A} (s: seq (option A)) (Hall: all isSome s) i,
+  0 <= i < Zlength s ->
+  Some (Znth i (pmap id s)) = Znth i s.
+Proof.
+  move => A Hinhab s Hall i Hi. rewrite -!nth_Znth //. 2: by rewrite pmap_Zlength.
+  rewrite -!nth_nth (nth_pmap Inhabitant_option Hinhab) //.
+  rewrite size_length -ZtoNat_Zlength. apply /ltP. simpl in *. lia.
+Qed.
 
-(*From this, we can prove (hopefully) the following:*)
+Lemma pmap_sublist: forall {A: eqType} (s: seq (option A)) (Hall: all isSome s) lo hi,
+  0 <= lo <= hi ->
+  hi <= Zlength s ->
+  sublist lo hi (pmap id s) = pmap id (sublist lo hi s).
+Proof.
+  move => A s. elim : s => [// _ lo hi Hlohi Hi /= | h t /= IH /andP[Hh Hallt] lo hi Hlohi Hhi/=].
+  - have->/=: hi = 0 by list_solve. have->/=: lo = 0 by list_solve. by rewrite sublist_nil.
+  - move: Hh Hhi. case: h => //= x _ Hhi.
+    have [Hlo | Hlo]: lo = 0 \/ 0 < lo by lia.
+    + subst. have[Hhi0 | Hhi0]: hi = 0 \/ 0 < hi by lia.
+      * subst. by rewrite !sublist_nil.
+      * rewrite !sublist_0_cons; try lia. rewrite /= IH //; try lia. list_solve.
+    + rewrite !sublist_S_cons; try lia. apply IH => //. lia. list_solve.
+Qed. 
 
-(*Let's see how hard this will be*)
-Lemma rse_encoder_list_equiv: forall orig encoded,
+(*Now the crucial lemma: if "encoded" satisfies [encoder_list], then in fact is is really [rse_encode_concat] for
+  some params, which are all valid. This is where we use the fact that there could have only been 1 set of
+  parameters to produce a consistent output*)
+(*TODO: we could just give the actual list?*)
+Lemma encoder_list_concat_equiv: forall orig encoded,
   encoder_list rse_encoder orig encoded ->
   exists (enc_params : list (Z * Z)),
-    encoded = (rse_encode_all orig enc_params).2 /\
+    Zlength enc_params = Zlength orig /\
+    encoded = (rse_encode_concat orig enc_params).2 /\
     (forall k h, In (k, h) enc_params -> 
       0 < k <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
       0 < h <= ByteFacts.fec_max_h).
 Proof.
-  move => orig encoded. rewrite /encoder_list /rse_encoder/=.
-  move => [l] [Hconcat [Hlenl Hith]].
-  (*We want to get the info out of the existential*)
-  
+  move => orig encoded. rewrite /encoder_list /rse_encoder => [[Hlens Hith]].
+  exists (pmap id (map get_encode_params encoded)).
+  have Hall: all isSome [seq get_encode_params i | i <- encoded]. {
+      apply /allP => x. rewrite in_mem_In In_Znth_iff => [[j]] [Hj].
+      rewrite Zlength_map in Hj.
+      rewrite Znth_map //. have Hj': 0 <= j < Zlength orig by rewrite Hlens.
+      apply Hith in Hj'. case: Hj' => [k' [h' [Hk' [Hh' Hjth]]]]. rewrite Hjth.
+      move => Hget. rewrite encode_func_get_params' in Hget. by subst.
+    }
+  split_all.
+  - by rewrite pmap_Zlength // Zlength_map.
+  - f_equal. apply Znth_eq_ext.
+      by rewrite rse_concat_Zlength // pmap_Zlength // Zlength_map.
+    move => i Hi. rewrite -Hlens in Hi. have Hallith:=Hith. move: Hith => /(_ _ Hi) [k [h [Hk [Hh Hith]]]].
+    rewrite Hith. rewrite /rse_encode_func'/=.
+    rewrite rse_concat_nth //; last first.
+      by rewrite pmap_Zlength // Zlength_map.
+    have Hi': 0 <= i < Zlength [seq get_encode_params i | i <- encoded]. {
+      rewrite Zlength_map. by rewrite -Hlens. }
+    have Hith': Znth i (pmap id [seq get_encode_params i | i <- encoded]) = (k, h). {
+      have Hpith:=(@pmap_Znth _ (@Inhabitant_pair Z Z Inhabitant_Z Inhabitant_Z) _ Hall _ Hi').
+      move: Hpith. rewrite Znth_map; try lia. by rewrite Hith encode_func_get_params'/= => [[Hith']].
+      (*what is wrong with lia?*) by rewrite -Hlens. } 
+    f_equal.
+    + rewrite pmap_sublist //; try lia. rewrite -map_sublist //. (*why doesn't lia work?*) rewrite Zlength_map.
+      apply Z.lt_le_incl. rewrite -Hlens. apply (proj2 Hi).
+    + by rewrite Hith'.
+    + by rewrite Hith'.
+  - move => k h. rewrite In_Znth_iff => [[i]]. rewrite pmap_Zlength // => [[Hi Hpith]].
+    have Hpith':=(@pmap_Znth _ (@Inhabitant_pair Z Z Inhabitant_Z Inhabitant_Z) _ Hall _ Hi).
+    move: Hpith'. have Hiorig: 0 <= i < Zlength orig. { move: Hi. rewrite Zlength_map. by rewrite Hlens. (* lia.*) }
+    rewrite Znth_map; try lia. rewrite Hpith. move: Hith => /( _ _ Hiorig) => [[k' [h' [Hk' [Hh' Hith]]]]].
+    rewrite Hith encode_func_get_params'/= => [[Hkeq] Hheq]. by subst. (*ugh*) by rewrite -Hlens.
+Qed.
 
-    
-  encoder_list
+Corollary encoder_list_all_equiv: forall orig encoded,
+  encoder_list rse_encoder orig encoded ->
+  exists (enc_params : list (Z * Z)),
+    Zlength enc_params = Zlength orig /\
+    concat encoded = (rse_encode_all orig enc_params).2 /\
+    (forall k h, In (k, h) enc_params -> 
+      0 < k <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
+      0 < h <= ByteFacts.fec_max_h).
+Proof.
+  move => orig encoded Henclist. apply encoder_list_concat_equiv in Henclist.
+  case: Henclist => [p [Hlen [Henc Hallkh]]]. exists p. split_all => //.
+  by rewrite rse_encode_all_concat Henc.
+Qed.
 
-encoder_list rse_encoder orig encoded
+(*TODO: move*)
+Lemma rse_decode_func_all: forall rec curr sts st x,
+  Zlength rec = Zlength sts ->
+  x \in (rse_decode_func rec curr sts st) ->
+  x \in (decoder_all_steps (rec ++ [curr]) (sts ++ [st])).2.
+Proof.
+  move => rec curr sts st x Hlens. rewrite /rse_decode_func /decoder_all_steps coqlib4.combine_app' //.
+  rewrite foldl_cat/= mem_cat. move => Hin. apply /orP. by right.
+Qed.
 
 
+(*The final theorem: the encoder-decoder pair is valid*)
 Theorem rse_encoder_decoder_valid : valid_encoder_decoder valid_packet encodable fec_data_eq_dec 
   fec_packet_act_inhab rse_encoder rse_decoder.
 Proof.
-  rewrite /valid_encoder_decoder. move => orig received encoded decoder [l Hl] Hvalid Henc.
-
-
- 
-  rewrite /encoder_list /decoder_list/=.
-
-*)
+  rewrite /valid_encoder_decoder. move => orig received encoded decoder [l Hl] Hvalid Henc Huniq Henclist/=.
+  apply encoder_list_all_equiv in Henclist. case: Henclist => [enc_params [Henclen [Hencall Hparams]]].
+  rewrite /decoder_list => [[decs]] [Hdecs [Hlendec Hdecith]] Hlos x.
+  rewrite -Hdecs in_mem_In in_concat => [[l1 [Hinl1 Hindecs]]].
+  move: Hindecs. rewrite In_Znth_iff => [[i]]. rewrite Hlendec => [[Hi Hl1]].
+  subst. move: Hdecith => /( _ _ Hi). rewrite /rse_decoder => [[dec_states] [st]] [Hdeclen Hdeci].
+  apply (@all_decoded_in orig (concat encoded) (sublist 0 (i+1) received)
+    (decoder_all_steps (sublist 0 (i+1) received) (dec_states ++ [st])).2 enc_params (dec_states ++ [st])) => //.
+  - rewrite sublist_last_1; try lia. rewrite !Zlength_app !Zlength_cons /=. lia.
+  - move => p. rewrite in_mem_In => Hinp.
+    rewrite /valid_loss in Hl. apply (Hl _ _ Hlos). rewrite in_mem_In. by apply sublist_In in Hinp.
+  - rewrite sublist_last_1; try lia. apply rse_decode_func_all => //. by rewrite -Hdeci in_mem_In.
+Qed.
 
 End FinalCorrect.
-
 
 End Correctness.

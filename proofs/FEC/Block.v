@@ -120,17 +120,7 @@ Record block := mk_blk { blk_id: int;
 #[export]Instance eta_block: Settable _ := 
   settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h; black_complete>.
 
-(*Need an eqType*)
-Lemma reflect_proj_sumbool: forall (P: Prop) (H: {P} + {~P}),
-  reflect P H.
-Proof.
-  move => P H. case : H => [Hy | Hn].
-  by apply ReflectT. by apply ReflectF.
-Qed.
 
-(*First, show int has an eqType*)
-Definition int_eqMixin := EqMixin (fun i1 i2 => reflect_proj_sumbool (Int.eq_dec i1 i2)).
-Canonical int_eqType := EqType int int_eqMixin.
 
 Definition block_to_tuple (b: block) : (int * seq (option fec_packet_act) * seq (option fec_packet_act) * 
   Z * Z * bool) :=
