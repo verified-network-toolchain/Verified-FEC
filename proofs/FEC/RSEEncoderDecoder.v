@@ -56,7 +56,7 @@ Definition add_packet_to_block_red (p: packet) (b: block) : block :=
 
 Definition create_block_with_packet_red (p: packet) (k: Z) (h: Z) : block :=
   let f := new_fec_packet p k h in
-  mk_blk (p_seqNum p) (upd_Znth 0 (zseq k None) (Some f)) (zseq h None) k h false.
+  mk_blk (p_seqNum p) (upd_Znth 0 (zseq k None) (Some f)) (zseq h None) k h false 0.
 
 (** Encoder predicate*)
 
@@ -67,24 +67,21 @@ Definition create_block_with_packet_red (p: packet) (k: Z) (h: Z) : block :=
 (*We include 2 pieces of state: the list of blocks include all previous blocks, and the current block is
   represented separately as a block option*)
 
-Definition rse_encode_gen (blocks: list block) (currBlock : option block) (curr: packet)
-  (k h: Z) : list block * option block * list fec_packet_act :=
-
-  (*For the situations when we start a new block*)
-  let encode_new (p: packet) (k' h': Z) : list block * option block * list fec_packet_act :=
+(*For the situations when we start a new block*)
+Definition encode_new (p: packet) (k' h': Z) : list block * option block * list fec_packet_act :=
     let blk := create_block_with_packet_red p k' h' in
     let t := encode_block blk (Some p) in
-    if Z.eq_dec k' 1 then ([t.1], None, new_fec_packet p k' h' :: t.2) else (nil, Some blk, [new_fec_packet p k' h'])
-  in
+    if Z.eq_dec k' 1 then ([t.1], None, new_fec_packet p k' h' :: t.2) else (nil, Some blk, [new_fec_packet p k' h']).
 
-  (*For the situation when we add to an existing block*)
-  let encode_exist (p :packet) (b: block) : list block * option block * list fec_packet_act :=
+(*For the situation when we add to an existing block*)
+Definition encode_exist (p :packet) (b: block) : list block * option block * list fec_packet_act :=
     let newBlock := add_packet_to_block_red p b in
     let t := encode_block newBlock (Some p) in
     if Z.eq_dec (Zlength (filter isSome (data_packets newBlock))) (blk_k newBlock) then
-      ([t.1], None, get_fec_packet p b :: t.2) else (nil, Some newBlock, [get_fec_packet p b]) 
-  in
+      ([t.1], None, get_fec_packet p b :: t.2) else (nil, Some newBlock, [get_fec_packet p b]).
 
+Definition rse_encode_gen (blocks: list block) (currBlock : option block) (curr: packet)
+  (k h: Z) : list block * option block * list fec_packet_act :=
   match currBlock with
   | None => (*last block finished, need to create a new one*)
     let t := encode_new curr k h in
@@ -138,7 +135,7 @@ Lemma encode_func_get_params: forall l orig params curr k h,
   l = rse_encode_func orig params curr k h ->
   get_encode_params l = Some (k, h).
 Proof.
-  move => l orig params curr k h. rewrite /rse_encode_func /rse_encode_gen/=/get_encode_params.
+  move => l orig params curr k h. rewrite /rse_encode_func /rse_encode_gen/encode_new/encode_exist/=/get_encode_params.
   case : (rse_encode_all orig params).1.2 => [b | ].
   - case Hneq: (~~ Z.eq_dec (blk_k b) k || ~~ Z.eq_dec (blk_h b) h).
     + case : (Z.eq_dec k 1) => Hk1 //=.
@@ -356,14 +353,14 @@ Definition decode_block (b: block) : list packet :=
 (*TODO: parity/ordering issue - for now assume it is correct*)
 
 (*1. create block with packet*)
-Definition create_block_with_fec_packet (p: fec_packet_act) : block :=
+Definition create_block_with_fec_packet (p: fec_packet_act) (time : Z) : block :=
   let k := fd_k p in
   let h := fd_h p in
   let allPackets := upd_Znth (Int.unsigned (fd_blockIndex p)) (zseq (k + h) None) (Some p) in
-  mk_blk (fd_blockId p) (sublist 0 k allPackets) (sublist k (k+h) allPackets) k h false.
+  mk_blk (fd_blockId p) (sublist 0 k allPackets) (sublist k (k+h) allPackets) k h false time.
 
-Definition create_block_with_packet_black (p: fec_packet_act) : block * list packet :=
-  let new_block := create_block_with_fec_packet p in
+Definition create_block_with_packet_black (p: fec_packet_act) (time: Z) : block * list packet :=
+  let new_block := create_block_with_fec_packet p time in
   let packets := (if (fd_isParity p) then nil else [p_packet p]) ++
     (if Z.eq_dec (fd_k p) 1 then (decode_block new_block) else nil) in
   let marked_block := if Z.eq_dec (fd_k p) 1 then new_block <| black_complete := true |> else new_block in
@@ -391,32 +388,31 @@ Definition int_le (x y: int) := Int.lt x y || Int.eq x y.
 (*The timeout part: we take in the state representing whether each block is timed out or not
   and we update the state as the actuator does*)
 (*Note: since the state is abstract, we will assume it is long enough*)
-Fixpoint update_past_blocks (blocks: list block) (curr: fec_packet_act) (state: list bool) :
+Fixpoint update_past_blocks (blocks: list block) (curr: fec_packet_act) (time: Z) :
   (list block * list packet) :=
-  match blocks, state with
-  | bl :: tl, s :: stl =>
-    if s && int_le (fd_blockId curr) (blk_id bl) then
+  match blocks with
+  | bl :: tl =>
+    if (Z.ltb (black_time bl) time) && int_le (fd_blockId curr) (blk_id bl) then
       (tl, if fd_isParity curr then nil else [p_packet curr])
     else if Int.lt (fd_blockId curr) (blk_id bl) then
-      let t := create_block_with_packet_black curr in
+      let t := create_block_with_packet_black curr time in
       (t.1 :: blocks, t.2)
     else if Int.eq (fd_blockId curr) (blk_id bl) then
       let t := add_packet_to_block_black curr bl in
       (t.1 :: tl, t.2)
     else
-      let t := update_past_blocks tl curr stl in
+      let t := update_past_blocks tl curr time in
       (bl :: t.1, t.2)
-  | _ :: _, _ => (nil, nil) (*should never reach here*)
-  | _, _ => (*not sure we can reach here - should prove*)
+  | [::] => (*not sure we can reach here - should prove*)
       (nil,  if fd_isParity curr then nil else [p_packet curr])
   end. 
 
 (*We cannot build the blocks in 1 go since we must take into account timeouts. Instead, we build it up
   incrementally*)
-Definition update_dec_state (blocks: list block) (curr: fec_packet_act) (state: list bool) : 
+Definition update_dec_state (blocks: list block) (curr: fec_packet_act) (time : Z) : 
   (list block * list packet) :=
   match blocks with
-  | nil => let t := create_block_with_packet_black curr in ([t.1], t.2)
+  | nil => let t := create_block_with_packet_black curr time in ([t.1], t.2)
   | bl :: tl => 
     let currBlock := Znth (Zlength blocks - 1) blocks in
     let currSeq := fd_blockId curr in
@@ -424,31 +420,31 @@ Definition update_dec_state (blocks: list block) (curr: fec_packet_act) (state: 
       let t := add_packet_to_block_black curr currBlock in
       (upd_Znth (Zlength blocks - 1) blocks t.1, t.2)
     else if Int.lt (blk_id currBlock) currSeq then 
-      let t := create_block_with_packet_black curr in (blocks ++ [t.1], t.2)
+      let t := create_block_with_packet_black curr time in (blocks ++ [t.1], t.2)
     else
       (*here we have to deal with timeouts*)
-      update_past_blocks (sublist 0 (Zlength blocks - 1) blocks) curr state
+      update_past_blocks (sublist 0 (Zlength blocks - 1) blocks) curr time
   end.
 
 (*The decoder simply repeatedly applies the above function, generating output packets and updating the state*)
-Definition decoder_all_steps (received: list fec_packet_act) (states: list (list bool)) : (list block * list packet) :=
-  foldl (fun (acc: list block * list packet) (x: fec_packet_act * list bool) =>
+Definition decoder_all_steps (received: list fec_packet_act) (times: list Z) : (list block * list packet) :=
+  foldl (fun (acc: list block * list packet) (x: fec_packet_act * Z) =>
     let t := update_dec_state acc.1 x.1 x.2 in
-    (t.1, acc.2 ++ t.2)) (nil, nil) (combine received states).
+    (t.1, acc.2 ++ t.2)) (nil, nil) (combine received times).
 
-Definition decoder_block_state (received: list fec_packet_act) (states: list (list bool)) :=
-  (decoder_all_steps received states).1.
+Definition decoder_block_state (received: list fec_packet_act) (times: list Z) :=
+  (decoder_all_steps received times).1.
 
 (*Now we can define the decoder function and predicate*)
 Definition rse_decode_func (received: list fec_packet_act) (curr: fec_packet_act) 
-  (states: list (list bool)) (state: list bool) : list packet :=
-  (update_dec_state (decoder_all_steps received states).1 curr state).2.
+  (times: list Z) (time: Z) : list packet :=
+  (update_dec_state (decoder_all_steps received times).1 curr time).2.
 
 Definition rse_decoder : (@decoder fec_data) :=
   fun (received: list fec_packet_act) (decoded: list packet) (curr: fec_packet_act) (new: list packet) =>
-    exists (states: list (list bool)) (state: list bool),
-      Zlength states = Zlength received /\
-      new = rse_decode_func received curr states state.
+    exists (times: list Z) (time: Z),
+      Zlength times = Zlength received /\
+      new = rse_decode_func received curr times time.
 
 End Decoder.
 
@@ -463,12 +459,12 @@ Definition rse_decoder_list := AbstractEncoderDecoder.decoder_list fec_packet_ac
 Lemma rse_decoder_list_add: forall (received : list fec_packet_act) (curr: fec_packet_act)
   (decoded: list packet),
   rse_decoder_list received decoded ->
-  forall (s: list bool) (sts: list (list bool)),
-    Zlength sts = Zlength received ->
-    rse_decoder_list (received ++ [curr]) (decoded ++ rse_decode_func received curr sts s).
+  forall (t: Z) (times: list Z),
+    Zlength times = Zlength received ->
+    rse_decoder_list (received ++ [curr]) (decoded ++ rse_decode_func received curr times t).
 Proof.
   move => received curr decoded. rewrite /rse_decoder_list /AbstractEncoderDecoder.decoder_list 
-    => [[l [Hdec [Hllen Hith]]]] s sts Hstslen. exists (l ++ [rse_decode_func received curr sts s]).
+    => [[l [Hdec [Hllen Hith]]]] t times Hstslen. exists (l ++ [rse_decode_func received curr times t]).
   split; [|split].
   - by rewrite concat_app Hdec //= app_nil_r.
   - rewrite !Zlength_app. list_solve.
@@ -477,7 +473,7 @@ Proof.
     + rewrite !sublist_app1; try lia. rewrite !Znth_app1; try lia. apply Hith. lia.
     + rewrite Hicurr. rewrite !sublist_app1; try lia. rewrite !sublist_same //.
       rewrite !Znth_app2; try lia. rewrite Hllen !Z.sub_diag !Znth_0_cons.
-      rewrite /rse_decoder. exists sts. exists s. by [].
+      rewrite /rse_decoder. exists times. exists t. by [].
 Qed.
 
 (** Correctness Theorem **)
@@ -742,14 +738,14 @@ Proof.
 Qed. 
 
 (*Intermediate case 1: create a new block*)
-Lemma create_block_subblock: forall (l: list fec_packet_act) (h: fec_packet_act),
+Lemma create_block_subblock: forall (l: list fec_packet_act) (h: fec_packet_act) (time: Z),
   wf_packet_stream l ->
   In h l ->
-  exists b': block, In b' (get_blocks l) /\ subblock (create_block_with_packet_black h).1 b'.
+  exists b': block, In b' (get_blocks l) /\ subblock (create_block_with_packet_black h time).1 b'.
 Proof.
-  move => l h Hwf Hinhl.
+  move => l h t Hwf Hinhl.
   (*the real result*)
-  have [b' [Hinb' Hsubb']]: exists b' : block, In b' (get_blocks l) /\ subblock (create_block_with_fec_packet h) b'; last first.
+  have [b' [Hinb' Hsubb']]: exists b' : block, In b' (get_blocks l) /\ subblock (create_block_with_fec_packet h t) b'; last first.
     exists b'. rewrite /create_block_with_packet_black; split => //=. by case: (Z.eq_dec (fd_k h) 1).
   rewrite /subblock/= /get_blocks/=.
   have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := (get_block_lists_spec Hwf).
@@ -924,16 +920,16 @@ Qed.
 Opaque create_block_with_packet_black.
 
 (*Intermediate case 3: we need a separate inductive lemma for [update_past_blocks]*)
-Lemma update_past_blocks_subblocks: forall l blks curr state,
+Lemma update_past_blocks_subblocks: forall l blks curr time,
   wf_packet_stream (curr:: l) ->
   (forall b, In b blks -> exists b', In b' (get_blocks l) /\ subblock b b') ->
-  forall b, In b (update_past_blocks blks curr state).1 ->
+  forall b, In b (update_past_blocks blks curr time).1 ->
     exists b', In b' (get_blocks (curr :: l)) /\ subblock b b'.
 Proof.
-  move => l blks curr. elim: blks => [//= | h t /= IH st Hwf Hsubs b].
-  case : st => [//| s stl].
+  move => l blks curr. elim: blks => [//= | h t /= IH time Hwf Hsubs b].
+  (*case : st => [//| s stl].*)
   have Hht: (forall x, x \in l -> x \in curr :: l) by move => x Hx; rewrite in_cons Hx orbT.
-  case Hc1: (s && int_le (fd_blockId curr) (blk_id h)) => [/= | //=].
+  case Hc1: ((black_time h <? time) && int_le (fd_blockId curr) (blk_id h)) => [/= | //=].
   - move => Hin. (*use [get_blocks_sublist] here*)
     have [b1 [Hinb1 Hsub1]]: exists b' : block, In b' (get_blocks l) /\ subblock b b' by apply Hsubs; right.
     have [b2 [Hinb2 Hsub2]]:=(get_blocks_sublist Hwf Hht Hinb1).
@@ -953,19 +949,19 @@ Proof.
       * move: Hsubs => /(_ b (or_introl Hhb)) [b1 [Hinb1 Hsub1]].
         have [b2 [Hinb2 Hsub2]]:=(get_blocks_sublist Hwf Hht Hinb1).
         exists b2. split => //. by apply (subblock_trans Hsub1).
-      * apply (IH stl) => //. move => b' Hinb'. apply Hsubs. by right.
+      * apply (IH time) => //. move => b' Hinb'. apply Hsubs. by right.
 Qed.
 
 (*Now, finally we can show that every block in the decoder state is a subblock of some
   block from the received stream.*)
-Theorem decoder_all_steps_state_subblocks: forall (received: seq fec_packet_act) (states: seq (seq bool)) (b: block),
+Theorem decoder_all_steps_state_subblocks: forall (received: seq fec_packet_act) (times: seq Z) (b: block),
   wf_packet_stream received ->
-  size received = size states ->
-  In b (decoder_block_state received states) ->
+  size received = size times ->
+  In b (decoder_block_state received times) ->
   exists b', In b' (get_blocks received) /\ subblock b b'.
 Proof.
-  move => r sts b Hwf Hsz. rewrite /decoder_block_state /decoder_all_steps -(revK (combine _ _)) 
-    foldl_rev -zip_combine rev_zip // {Hsz}. forget (rev sts) as s. rewrite {sts}.
+  move => r times b Hwf Hsz. rewrite /decoder_block_state /decoder_all_steps -(revK (combine _ _)) 
+    foldl_rev -zip_combine rev_zip // {Hsz}. forget (rev times) as tms. rewrite {times}.
   (*want to use (rev r) everywhere to simplify induction. Luckily rev is a permutation, so we can safely
     switch get_blocks'*)
   move => Hin.
@@ -977,15 +973,15 @@ Proof.
   have: wf_packet_stream (rev r) by apply (wf_perm Hwf); apply perm_rev'.
   rewrite {Hwf}.
   forget (rev r) as r'. rewrite {r}. rename r' into r.
-  move: s b.
-  elim : r => [//= s b Hwf | h t /= IH s b Hwf].
+  move: tms b.
+  elim : r => [//= tms b Hwf | h t /= IH tms b Hwf].
   - by rewrite zip_nil.
-  - case : s => [| sh st].
+  - case : tms => [| time tms].
     + by rewrite zip_nil_r.
-    + rewrite /=. move: IH => /(_ st). set blks := (foldr
-      (fun (x0 : fec_packet_act * seq bool) (z : seq block * seq packet) =>
+    + rewrite /=. move: IH => /(_ tms). set blks := (foldr
+      (fun (x0 : fec_packet_act * Z) (z : seq block * seq packet) =>
        ((update_dec_state z.1 x0.1 x0.2).1, z.2 ++ (update_dec_state z.1 x0.1 x0.2).2)) 
-      ([::], [::]) (zip t st)). move => IH.
+      ([::], [::]) (zip t tms)). move => IH.
       rewrite /update_dec_state. (*we don't actually care what blks is anymore; only that the IH applies*)
       move: IH.
       case : blks => [blks pkts]/=.
@@ -1042,13 +1038,13 @@ Qed.
 Transparent create_block_with_packet_black.
 
 (*TODO: move*)
-Lemma create_black_recover: forall (curr : fec_packet_act),
+Lemma create_black_recover: forall (curr : fec_packet_act) (time: Z),
   fd_k curr = 1 ->
   0 <= fd_h curr ->
   0 <= Int.unsigned (fd_blockIndex curr) < fd_k curr + fd_h curr ->
-  recoverable (create_block_with_fec_packet curr).
+  recoverable (create_block_with_fec_packet curr time).
 Proof.
-  move => curr Hk Hh Hidx.
+  move => curr time Hk Hh Hidx.
   rewrite /recoverable/= -Zlength_app -cat_app -filter_cat cat_app -sublist_split; zlist_simpl.
   rewrite sublist_same; zlist_simpl. rewrite Zlength_sublist; zlist_simpl. rewrite Z.sub_0_r Hk.
   solve_sumbool => /=; subst. rewrite Hk in Hidx. simpl in *.
@@ -1066,26 +1062,26 @@ Proof.
   rewrite has_filter in Hhas. by rewrite Hfilt in Hhas.
 Qed.
 
-Lemma in_create_black: forall (curr : fec_packet_act) p,
+Lemma in_create_black: forall (curr : fec_packet_act) (time: Z) p,
   0 <= Int.unsigned (fd_blockIndex curr) < fd_k curr + fd_h curr ->
   0 <= fd_h curr ->
-  p \in (create_block_with_packet_black curr).2 ->
+  p \in (create_block_with_packet_black curr time).2 ->
   (exists b : block,
-    b \in [:: (create_block_with_packet_black curr).1 ] /\ recoverable b /\ p \in decode_block b) \/ 
+    b \in [:: (create_block_with_packet_black curr time).1 ] /\ recoverable b /\ p \in decode_block b) \/ 
   (p_packet curr = p /\ fd_isParity curr = false).
 Proof.
-  move => curr p Hidx Hh /=.
+  move => curr time p Hidx Hh /=.
   have Hcase1: p
       \in (if proj_sumbool (Z.eq_dec (fd_k curr) 1)
-           then decode_block (create_block_with_fec_packet curr)
+           then decode_block (create_block_with_fec_packet curr time)
            else [::]) ->
     (exists b : block,
        b
          \in [:: if proj_sumbool (Z.eq_dec (fd_k curr) 1)
-                 then create_block_with_fec_packet curr <| black_complete := true |>
-                 else create_block_with_fec_packet curr] /\ recoverable b /\ p \in decode_block b). {
+                 then create_block_with_fec_packet curr time <| black_complete := true |>
+                 else create_block_with_fec_packet curr time ] /\ recoverable b /\ p \in decode_block b). {
     case: (Z.eq_dec (fd_k curr) 1) => //= Hk1 Hpin.
-    exists (create_block_with_fec_packet curr <| black_complete := true |>). split => //.
+    exists (create_block_with_fec_packet curr time <| black_complete := true |>). split => //.
     by rewrite in_cons eq_refl. split => //.
     by apply create_black_recover. }
   case Hpar: (fd_isParity curr) => //=.
@@ -1122,24 +1118,24 @@ Proof.
   - rewrite in_cons => /orP[/eqP Hp | Hin]; subst. by right. left. by apply Hcase2.
 Qed.
 
-Lemma in_update_past_blocks: forall blks (curr: fec_packet_act) st p,
+Lemma in_update_past_blocks: forall blks (curr: fec_packet_act) time p,
   0 <= Int.unsigned (fd_blockIndex curr) < fd_k curr + fd_h curr ->
   0 <= fd_h curr ->
-  p \in (update_past_blocks blks curr st).2 ->
+  p \in (update_past_blocks blks curr time).2 ->
   (exists b0 : block,
-     b0 \in (update_past_blocks blks curr st).1 /\ recoverable b0 /\
+     b0 \in (update_past_blocks blks curr time).1 /\ recoverable b0 /\
      p \in decode_block b0) \/ p_packet curr = p /\ fd_isParity curr = false.
 Proof.
-  move => blks curr st p Hidx Hh. move: st. elim : blks => [//= st | b blks /= IH st].
+  move => blks curr time p Hidx Hh. move: time. elim : blks => [//= time | b blks /= IH time].
   - case Hpar: (fd_isParity curr) => //=.
     rewrite in_cons => /orP[/eqP Hp | //]; subst. by right.
-  - case: st => [//|shd stl/=]. case: shd => /=.
+  - case Htime: (black_time b <? time) => //=.
     + case Hle: (int_le (fd_blockId curr) (blk_id b)).
       * case Hpar: (fd_isParity curr) => //=.
         rewrite in_cons => /orP[/eqP Hp | //]; subst. by right.
       * case Hlt: (Int.lt (fd_blockId curr) (blk_id b)) => /=.
         -- move => Hin. apply in_create_black in Hin => //. case: Hin => [[b' [Hb' Hp]] | Hp].
-          ++ left. exists b'. move: Hb' => /orP[Hb' |//]. by rewrite in_cons Hb'.
+          ++ left. exists b'. move: Hb'; rewrite in_cons => /orP[Hb' |//]. by rewrite in_cons Hb'.
           ++ by right.
         -- case Heq: (Int.eq (fd_blockId curr) (blk_id b)) => /=.
           ++ move => Hin. apply in_add_to_black in Hin. case : Hin => [[Hdec Hrec] | Hp].
@@ -1150,7 +1146,7 @@ Proof.
             ** by right.
     + case Hlt: (Int.lt (fd_blockId curr) (blk_id b)) => /=.
       * move => Hin. apply in_create_black in Hin => //. case: Hin => [[b' [Hb' Hp]] | Hp].
-        -- left. exists b'. move: Hb' => /orP[Hb' |//]. by rewrite in_cons Hb'.
+        -- left. exists b'. move: Hb'; rewrite in_cons => /orP[Hb' |//]. by rewrite in_cons Hb'.
         -- by right.
       * case Heq: (Int.eq (fd_blockId curr) (blk_id b)) => /=.
         -- move => Hin. apply in_add_to_black in Hin. case : Hin => [[Hdec Hrec] | Hp].
@@ -1161,15 +1157,15 @@ Proof.
           ++ by right.
 Qed.
 
-Lemma in_update_dec_state: forall blks (curr: fec_packet_act) st p,
+Lemma in_update_dec_state: forall blks (curr: fec_packet_act) time p,
   0 <= Int.unsigned (fd_blockIndex curr) < fd_k curr + fd_h curr ->
   0 <= fd_h curr ->
-  p \in (update_dec_state blks curr st).2 ->
+  p \in (update_dec_state blks curr time).2 ->
   (exists b : block,
-    b \in (update_dec_state blks curr st).1 /\ recoverable b /\ p \in decode_block b) \/ 
+    b \in (update_dec_state blks curr time).1 /\ recoverable b /\ p \in decode_block b) \/ 
   (p_packet curr = p /\ fd_isParity curr = false).
 Proof.
-  move => blks curr st p Hidx Hh. rewrite /update_dec_state.
+  move => blks curr time p Hidx Hh. rewrite /update_dec_state.
   case : blks => [/= | b btl/=].
   - by apply in_create_black.
   - case Heq: (Int.eq (fd_blockId curr) (blk_id (Znth (Zlength (b :: btl) - 1) (b :: btl)))) => /=.
@@ -1185,12 +1181,12 @@ Proof.
       * by apply in_update_past_blocks.
 Qed.
 
-Theorem in_decode_func_in_block: forall received (curr: fec_packet_act) states state (p: packet),
-  size received = size states ->
+Theorem in_decode_func_in_block: forall received (curr: fec_packet_act) times time (p: packet),
+  size received = size times ->
   0 <= Int.unsigned (fd_blockIndex curr) < fd_k curr + fd_h curr ->
   0 <= fd_h curr ->
-  p \in (rse_decode_func received curr states state) ->
-  (exists b, b \in (decoder_all_steps (received ++ [:: curr]) (states ++ [:: state])).1 /\ recoverable b /\
+  p \in (rse_decode_func received curr times time) ->
+  (exists b, b \in (decoder_all_steps (received ++ [:: curr]) (times ++ [:: time])).1 /\ recoverable b /\
     (p \in (decode_block b))) \/ 
     (p_packet curr = p /\ fd_isParity curr = false).
 Proof.
@@ -1205,15 +1201,15 @@ Proof.
 Qed.
 
 (*TODO: encoder version is in Abstract file - and it is the exact same proof - TODO: generalize to only need 1*)
-Lemma decoder_all_steps_concat: forall received states,
-  Zlength received = Zlength states ->
-  (decoder_all_steps received states).2 = concat (mkseqZ 
-    (fun i => (rse_decode_func (sublist 0 i received) (Znth i received) (sublist 0 i states) (Znth i states)))
+Lemma decoder_all_steps_concat: forall received times,
+  Zlength received = Zlength times ->
+  (decoder_all_steps received times).2 = concat (mkseqZ 
+    (fun i => (rse_decode_func (sublist 0 i received) (Znth i received) (sublist 0 i times) (Znth i times)))
     (Zlength received)).
 Proof.
-  move => r sts Hsz. rewrite /rse_decode_func /decoder_all_steps.
+  move => r times Hsz. rewrite /rse_decode_func /decoder_all_steps.
   remember (@nil packet) as base. rewrite -(cat0s (concat _)) -Heqbase. rewrite {Heqbase}.
-  remember (@nil block) as base1. rewrite {Heqbase1}. move: sts Hsz base base1.
+  remember (@nil block) as base1. rewrite {Heqbase1}. move: times Hsz base base1.
   elim: r => [//= states Hlen b1 b2 | h t /= IH states Hlen b1 b2].
   - by rewrite cats0.
   - move: Hlen. case : states => [|st1 st2 Hlen/=]. list_solve.
@@ -1355,21 +1351,6 @@ Proof.
   case Hdat: (pmap id (data_packets b)) => [|h t];
   by apply encode_block_aux_wf.
 Qed.
-(*
-Lemma encode_block_none_wf: forall b,
-  block_in_progress b ->
-  block_wf b ->
-  block_wf (encode_block b None).1.
-Proof.
-  move => b Hprog Hwf. rewrite /encode_block. 
-  case Hdat: (pmap id (data_packets b)) => [//|h t].
-  apply encode_block_aux_wf => //.
-  have: (last h (h :: t)) \in pmap id (data_packets b). {
-    by rewrite Hdat last_cons mem_last. }
-  rewrite -pmap_id_some. set p:=(last h (h :: t)).
-  move : Hwf => [_ [_ [_ [_ [_ [_ [_ [_ Hvalid]]]]]]]].
-  rewrite in_mem_In => Hin. apply Hvalid. by left.
-Qed.*)
 
 Lemma encode_block_aux_comp: forall b p,
   black_complete (encode_block_aux b p).1 = black_complete b.
@@ -1382,6 +1363,12 @@ Lemma encode_block_black_comp: forall b o,
 Proof.
   move => b o. rewrite /encode_block/=. case : (pmap id(data_packets b)) => [/= | h t]; case : o => [x|//];
   apply encode_block_aux_comp.
+Qed.
+
+Lemma encode_block_time: forall b o,
+  black_time (encode_block b o).1 = black_time b.
+Proof.
+  move => b o. rewrite /encode_block/=. by case : (pmap id(data_packets b)) => [/= | h t]; case : o => [x|//].
 Qed.
 
 Lemma data_packets_encode: forall b o,
@@ -1806,6 +1793,7 @@ Definition encoder_props (orig: list packet) (blks: list block) (currBlock: opti
   perm_eq (get_blocks pkts) (block_option_list (blks, currBlock)) /\
   (forall b, In b (block_option_list (blks, currBlock)) -> block_wf b) /\
   (forall b, In b (block_option_list (blks, currBlock)) -> black_complete b = false) /\
+  (forall b, In b (block_option_list (blks, currBlock)) -> black_time b = 0) /\
   (forall b, In b (block_option_list (blks, currBlock)) -> data_elt b) /\
   (forall b p, In b (block_option_list (blks, currBlock)) -> In (Some p) (data_packets b) ->
     In (p_packet p) orig) /\
@@ -1884,6 +1872,7 @@ Proof.
   - apply encode_block_some_wf => //. apply create_red_in_progress; lia.
     by apply create_block_red_wf.
   - by rewrite encode_block_black_comp.
+  - by rewrite encode_block_time.
   - apply data_block_elt. apply encode_block_nonempty. apply create_red_nonempty; lia.
 Qed. 
 
@@ -1924,7 +1913,7 @@ Lemma in_pkts_id_new_block: forall orig blks pkts h,
   p \in pkts ->
   fd_blockId p != p_seqNum h.
 Proof.
-  move => orig blks pkts h [IHperm [IHallwf [IHblackcomp [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]] 
+  move => orig blks pkts h [IHperm [IHallwf [IHblackcomp [IHtime [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]] 
   Hht p Hpin.
   have Hpin': In p pkts by rewrite -in_mem_In.
   have Hprop: get_block_lists_prop pkts (map block_to_btuple blks). {
@@ -1958,7 +1947,7 @@ Lemma encoder_props_new_block: forall p orig blks pkts k h,
 Proof.
   move => p orig blks pkts k h Hk Hh Hval Henc Hhnum Hprops.
   have Hpktsid:=(in_pkts_id_new_block Hprops Hhnum).
-  case: Hprops => [IHperm [IHallwf [IHblackcomp [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]] .
+  case: Hprops => [IHperm [IHallwf [IHblackcomp [IHtime [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]] .
   (*We need to prove wf_packet_stream first*)
   have Hwf: wf_packet_stream (pkts ++ [:: new_fec_packet p k h]). {
     rewrite /wf_packet_stream; split_all.
@@ -1990,6 +1979,7 @@ Proof.
     by apply create_block_red_wf.
   }
   { move => b [Hb | Hinb]; last first. by apply IHblackcomp. by subst. }
+  { move => b [Hb | Hinb]; last first. by apply IHtime. by subst. }
   { move => b [Hb | Hinb]; last first. by apply IHdata. subst. apply create_red_nonempty; lia. }
   { move => b p' [Hb | Hinb] Hinp; last first. right. by apply (IHinorig _ _ Hinb).
     subst. apply In_upd_Znth in Hinp.
@@ -2042,6 +2032,7 @@ Lemma get_blocks_expand: forall pkts p1 blks b b1,
   wf_packet_stream (pkts ++ p1) ->
   (forall b', b = b' \/ In b' blks -> block_wf b') ->
   (forall b', b = b' \/ In b' blks -> black_complete b' = false) ->
+  (forall b', b = b' \/ In b' blks -> black_time b' = 0) ->
   (forall b', b = b' \/ In b' blks -> data_elt b') ->
   block_in_progress b ->
   (*If b1 and p1 satisfy some reasonable properties with b and each other:*)
@@ -2050,6 +2041,7 @@ Lemma get_blocks_expand: forall pkts p1 blks b b1,
   blk_k b1 = blk_k b ->
   blk_h b1 = blk_h b ->
   black_complete b1 = false ->
+  black_time b1 = 0 ->
   (forall p, In (Some p) (data_packets b) -> In (Some p) (data_packets b1))  ->
   (forall p, In p p1 -> In (Some p) (data_packets b1 ++ parity_packets b1)) ->
   (forall p, In (Some p) (data_packets b1 ++ parity_packets b1) -> In (Some p) (data_packets b) \/ In p p1) ->
@@ -2057,7 +2049,7 @@ Lemma get_blocks_expand: forall pkts p1 blks b b1,
   perm_eq (get_blocks pkts) (b :: blks) ->
   perm_eq (get_blocks (pkts ++ p1)) (b1 :: blks).
 Proof.
-  move => pkts p1 blks b b1 Hwf Hallwf Hallblack Hnonemp Hprog Hwfb1 Hidb1 Hkb1 Hhb1 Hblackb1 Hinb Hinp1 
+  move => pkts p1 blks b b1 Hwf Hallwf Hallblack Htimes Hnonemp Hprog Hwfb1 Hidb1 Hkb1 Hhb1 Hblackb1 Htimeb1 Hinb Hinp1 
     Hiniff Hdisj Hperm.
   have Hwfb : block_wf b by apply Hallwf; left.
   have Hwfp: wf_packet_stream pkts. apply (wf_substream Hwf). move => x Hinx. by rewrite mem_cat Hinx.
@@ -2083,6 +2075,7 @@ Proof.
   rewrite -(@block_btuple_inv_list (b1 :: blks)).
   2 : { move => b' /= [Hb |Hin// ]; subst => //. by apply Hallwf; right.  }
   2 : { move => b'/= [Hb' |Hin]; subst => //. by apply Hallblack; right. }
+  2 : { move => b'/= [Hb' |Hin]; subst => //. by apply Htimes; right. }
   2 : { move => b'/= [Hb' |Hin]; subst => //; apply data_block_elt => //.
         by apply Hnonemp; right.  }
   move => Hperm. rewrite (map_comp btuple_to_block). apply perm_map.
@@ -2133,9 +2126,6 @@ Proof.
       apply Heq1 in Hinb'.
       move => [Hid Hpkts']; subst.
       apply Znth_eq_ext; zlist_simpl.
-      (*TODO: will we need these*)
-      have Hdatlen:Zlength(data_packets b) = blk_k b by apply Hwfb.
-      have Hparlen: Zlength (parity_packets b) = blk_h b by apply Hwfb.
       rewrite Hdat1 Hpar1 => i Hi. zlist_simpl.
       case_pickSeq (pkts ++ p1).
       { move: Hinx. rewrite mem_cat => /orP[Hinx | Hinx].
@@ -2196,13 +2186,14 @@ Lemma get_blocks_encode: forall pkts blks b model,
   wf_packet_stream (pkts ++ (encode_block b (Some model)).2) ->
   (forall b', b = b' \/ In b' blks -> block_wf b') ->
   (forall b', b = b' \/ In b' blks -> black_complete b' = false) ->
+  (forall b', b = b' \/ In b' blks -> black_time b' = 0) ->
   (forall b', b = b' \/ In b' blks -> data_elt b') ->
   packet_valid model ->
   block_in_progress b ->
   perm_eq (get_blocks pkts) (b :: blks) ->
   perm_eq (get_blocks (pkts ++ (encode_block b (Some model)).2)) ((encode_block b (Some model)).1 :: blks).
 Proof.
-  move => pkts blks b model Hwf Hallwf Hallblack Hnonemp Hvalid Hprog Hperm.
+  move => pkts blks b model Hwf Hallwf Hallblack Htimes Hnonemp Hvalid Hprog Hperm.
   have Hwfb : block_wf b by apply Hallwf; left.
   apply (get_blocks_expand Hwf Hallwf) => //.
   - by apply encode_block_some_wf.
@@ -2210,6 +2201,7 @@ Proof.
   - by rewrite encode_block_k.
   - by rewrite encode_block_h.
   - rewrite encode_block_black_comp. by apply Hallblack; left.
+  - rewrite encode_block_time. by apply Htimes; left.
   - move => p Hinp. by rewrite data_packets_encode.
   - move => p Hinp. apply in_or_app. right.
     rewrite -in_mem_In. apply encode_in. by rewrite in_mem_In.
@@ -2230,6 +2222,7 @@ Lemma get_block_add: forall pkts blks b p,
   wf_packet_stream (pkts ++ [:: get_fec_packet p b]) ->
   (forall b', b = b' \/ In b' blks -> block_wf b') ->
   (forall b', b = b' \/ In b' blks -> black_complete b' = false) ->
+  (forall b', b = b' \/ In b' blks -> black_time b' = 0) ->
   (forall b', b = b' \/ In b' blks -> data_elt b') ->
   block_in_progress b ->
   packet_valid p ->
@@ -2238,7 +2231,7 @@ Lemma get_block_add: forall pkts blks b p,
   perm_eq (get_blocks pkts) (b :: blks) ->
   perm_eq (get_blocks (pkts ++ [:: get_fec_packet p b])) (add_packet_to_block_red p b :: blks).
 Proof.
-  move => pkts blks b p Hwf Hallwf Hallblack Hnonemp Hprog Hvalid Henc Hnotdone Hperm.
+  move => pkts blks b p Hwf Hallwf Hallblack Htimes Hnonemp Hprog Hvalid Henc Hnotdone Hperm.
   have Hwfb : block_wf b by apply Hallwf; left.
   case Hwfb => [Hkbound [Hhbound [ _ [ _ [ _ [Hdatlen [Hparlen _]]]]]]].
   have Hzidxb: 0 <= Zindex None (data_packets b) < Zlength (data_packets b). {
@@ -2246,6 +2239,7 @@ Proof.
   apply (get_blocks_expand Hwf Hallwf) => //.
   - by apply add_red_wf.
   - rewrite add_black_comp. by apply Hallblack; left.
+  - rewrite /=. by apply Htimes; left. 
   - move => p' Hinp'. rewrite /=. apply In_upd_Znth_old => //; simpl in *; try lia.
     rewrite Znth_Zindex //. apply Zindex_In. simpl in *; lia.
   - move => p'/= [Hp' |//]. subst. apply in_or_app. left. apply upd_Znth_In. apply Hzidxb.
@@ -2271,7 +2265,7 @@ Lemma encoder_props_encode: forall orig b blks pkts model,
 Proof.
   move => orig b blks pkts model Hinmodel.
   rewrite {1}/encoder_props/block_option_list/= =>
-  [[IHperm [IHallwf [IHblackcomp [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]].
+  [[IHperm [IHallwf [IHblackcomp [IHtimes [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]]].
   (*First, prove wf*)
   have Hvalmod: packet_valid model. {
     have Hwfb: block_wf b by apply IHallwf; left. 
@@ -2350,6 +2344,8 @@ Proof.
     subst. by apply encode_block_some_wf.
   - move => b' [Hb' | Hinb']; last first. by apply IHblackcomp; right.
     subst. rewrite encode_block_black_comp. by apply IHblackcomp; left.
+  - move => b' [Hb' | Hinb']; last first. by apply IHtimes; right.
+    subst. rewrite encode_block_time. by apply IHtimes; left.
   - move => b' [Hb' | Hinb']; last first. by apply IHdata; right.
     subst. apply encode_block_nonempty. by apply IHdata; left.
   - move => b' p' [Hb' | Hinb'] Hinp'; last first. apply (IHinorig b') => //. by right.
@@ -2372,7 +2368,7 @@ Lemma encoder_props_add: forall p orig b blks pkts,
 Proof.
   move => p orig b blks pkts Hval Henc  Hzidx.
   rewrite {1}/encoder_props/block_option_list/= =>
-  [[IHperm [IHallwf [IHblackcomp [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]].
+  [[IHperm [IHallwf [IHblackcomp [IHtimes [IHdata [IHinorig [IHids [IHencoded [IHprog IHwfpkts]]]]]]]]]].
   (*Some helpful results*)
   have Hprog: block_in_progress b by apply IHprog.
   have Hwfb: block_wf b by apply IHallwf; left.
@@ -2433,6 +2429,8 @@ Proof.
     subst. by apply add_red_wf.
   - move => b' [Hb' | Hinb']; last first. by apply IHblackcomp; right.
     subst. rewrite add_black_comp. by apply IHblackcomp; left.
+  - move => b' [Hb' | Hinb']; last first. by apply IHtimes; right.
+    subst => /=. by apply IHtimes; left.
   - move => b' [Hb' | Hinb']; last first. by apply IHdata; right.
     subst. apply add_red_nonempty. by apply IHdata; left.
   - move => b' p' [Hb' | Hinb'] Hinp'; last first. right. apply (IHinorig b') => //. by right.
@@ -2488,7 +2486,7 @@ Proof.
           (rse_encode_gen z.1.1 z.1.2 x.1 x.2.1 x.2.2).1.2,
           z.2 ++ (rse_encode_gen z.1.1 z.1.2 x.1 x.2.1 x.2.2).2)) ([::], None, [::]) 
          (zip t pt)). (*once again, don't care what ind is, just that we can use IH*)
-      rewrite /rse_encode_gen.
+      rewrite /rse_encode_gen/encode_new/encode_exist.
       case : ind => [[blks currBlock] pkts]/=.
       have [Hph1 Hph2]: 0 < ph.1 <= fec_n - 1 - fec_max_h /\ 0 < ph.2 <= fec_max_h. {
         apply Hp. move: Hp. by case: ph; left. }
@@ -2584,7 +2582,7 @@ Proof.
   move => orig params Hparam Hvalid Henc Huniq Hsz p Hp Hpar.
   (*It's not quite as trivial as the last one*)
   have [Hprops _]:=(rse_encode_all_blocks Hparam Hvalid Henc Huniq Hsz).
-  case Hprops => [Hperm [Hallwf [_ [_ [Hinorig [_ [_ [_ Hwf]]]]]]]].
+  case Hprops => [Hperm [Hallwf [_ [_ [_ [Hinorig [_ [_ [_ Hwf]]]]]]]]].
   have [b /andP[Hb Hpb]]:= get_blocks_allin Hwf Hp.
   rewrite in_mem_In. apply (Hinorig b).
   - by rewrite -in_mem_In -(perm_mem Hperm).
@@ -2663,9 +2661,9 @@ Section FinalCorrect.
 (* The first (strongest) version of the theorem*)
 
 Theorem all_decoded_in: forall (orig : list packet) (encoded received: list fec_packet_act)
-  (decoded: list packet) (enc_params: list (Z * Z)) (dec_params: list (list bool)),
+  (decoded: list packet) (enc_params: list (Z * Z)) (dec_times: list Z),
   Zlength orig = Zlength enc_params ->
-  Zlength received = Zlength dec_params ->
+  Zlength received = Zlength dec_times ->
   (forall k h, In (k, h) enc_params -> 
       0 < k <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
       0 < h <= ByteFacts.fec_max_h) ->
@@ -2674,7 +2672,7 @@ Theorem all_decoded_in: forall (orig : list packet) (encoded received: list fec_
   uniq (map p_seqNum orig) ->
   encoded = (rse_encode_all orig enc_params).2 ->
   (forall p, p \in received -> p \in encoded) ->
-  decoded = (decoder_all_steps received dec_params).2 ->
+  decoded = (decoder_all_steps received dec_times).2 ->
   forall p, p \in decoded -> exists p', p' \in orig /\ remove_seqNum p = remove_seqNum p'.
 Proof.
   move => orig encoded received decoded enc_params dec_params Hleno Hlenr Hencparams Hallvalid Hallenc Hseqnum

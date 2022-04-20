@@ -108,27 +108,29 @@ Coercion p_fec_data' : fec_packet_act >-> fec_data.
 
 (** Representing Blocks *)
 
+(*Timeout is 10 seconds. We give this in microseconds. TODO: is Z ok?*)
+Definition fec_timeout : Z := proj1_sig (opaque_constant 10000000).
+Definition fec_timeout_eq : fec_timeout = 10000000%Z := proj2_sig (opaque_constant _).
+
 Section Block.
 
 Record block := mk_blk { blk_id: int;
   data_packets: list (option fec_packet_act); parity_packets: list (option fec_packet_act); blk_k : Z; blk_h : Z;
-  black_complete: bool}.
+  black_complete: bool; black_time : Z}.
 
 #[export]Instance block_inhab: Inhabitant block :=
-  mk_blk Int.zero nil nil 0 0 false.
+  mk_blk Int.zero nil nil 0 0 false 0.
 
 #[export]Instance eta_block: Settable _ := 
-  settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h; black_complete>.
-
-
+  settable! mk_blk <blk_id; data_packets; parity_packets; blk_k; blk_h; black_complete; black_time>.
 
 Definition block_to_tuple (b: block) : (int * seq (option fec_packet_act) * seq (option fec_packet_act) * 
-  Z * Z * bool) :=
-  (blk_id b, data_packets b, parity_packets b, blk_k b, blk_h b, black_complete b).
+  Z * Z * bool * Z) :=
+  (blk_id b, data_packets b, parity_packets b, blk_k b, blk_h b, black_complete b, black_time b).
 
-Definition tuple_to_block (t: (int * seq (option fec_packet_act) * seq (option fec_packet_act) * Z * Z * bool)) :
+Definition tuple_to_block (t: (int * seq (option fec_packet_act) * seq (option fec_packet_act) * Z * Z * bool * Z)) :
   block :=
-  mk_blk (t.1.1.1.1.1) (t.1.1.1.1.2) (t.1.1.1.2) (t.1.1.2) (t.1.2) (t.2).
+  mk_blk (t.1.1.1.1.1.1) (t.1.1.1.1.1.2) (t.1.1.1.1.2) (t.1.1.1.2) (t.1.1.2) (t.1.2) (t.2).
 
 Lemma block_tuple_cancel: cancel block_to_tuple tuple_to_block.
 Proof.
@@ -1137,7 +1139,7 @@ Definition btuple_to_block (x: btuple) : block :=
   match (pmap id x.2) with
   | p :: _ => let k := fd_k p in
               let h := fd_h p in
-              mk_blk x.1 (sublist 0 k x.2) (sublist k (k+h) x.2) k h false
+              mk_blk x.1 (sublist 0 k x.2) (sublist k (k+h) x.2) k h false 0
   | nil => (*this case will not occur with badly-formed lists*)
             block_inhab
   end.
@@ -1151,7 +1153,7 @@ Lemma btuple_to_block_eq: forall (l: list fec_packet_act) (i: int) (pkts: list (
   In p l ->
   fd_blockId p = i ->
   btuple_to_block (i, pkts) = mk_blk i (sublist 0 (fd_k p) pkts) (sublist (fd_k p) (fd_k p + fd_h p) pkts) 
-    (fd_k p) (fd_h p) false.
+    (fd_k p) (fd_h p) false 0.
 Proof.
   move => l i pkts p Hwf Hint Hinp Hid. rewrite /btuple_to_block.
   rewrite /=.
@@ -1175,11 +1177,12 @@ Definition block_to_btuple (b: block) : btuple :=
 Lemma btuple_block_inv: forall b,
   block_wf b ->
   black_complete b = false ->
+  black_time b = 0 ->
   (*block must be nonempty*)
   isSome (block_elt b) ->
   btuple_to_block (block_to_btuple b) = b.
 Proof.
-  move => b [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]] Hcomp.
+  move => b [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh [Henc Hvalid]]]]]]]] Hcomp Htime.
   rewrite /block_to_btuple /btuple_to_block/block_elt/=.
   case Hpkts: (pmap id (data_packets b ++ parity_packets b)) => [//|h t /=].
   move => _.
@@ -1191,7 +1194,7 @@ Proof.
   rewrite sublist_app2; try lia.
   have->: (blk_k b - Zlength (data_packets b)) = 0 by lia.
   have->: (blk_k b + blk_h b - Zlength (data_packets b)) = blk_h b by lia.
-  rewrite !sublist_same; try lia. rewrite -Hcomp. clear -b. by case: b.
+  rewrite !sublist_same; try lia. rewrite -Hcomp -Htime. clear -b. by case: b.
 Qed.
 
 Lemma block_btuple_inv: forall i pkts p,
@@ -1244,13 +1247,15 @@ Qed.
 Lemma block_btuple_inv_list: forall (l: seq block),
   (forall b, In b l -> block_wf b) ->
   (forall b, In b l -> black_complete b = false) ->
+  (forall b, In b l -> black_time b = 0) ->
   (forall b, In b l -> block_elt b) ->
   [ seq (btuple_to_block \o block_to_btuple) i | i <- l] = l.
 Proof.
-  move => l. elim : l => [//= | h t /= IH Hwf Hblack Hnonemp].
+  move => l. elim : l => [//= | h t /= IH Hwf Hblack Htimes Hnonemp].
   rewrite btuple_block_inv. rewrite IH //; intuition.
   - by apply Hwf; left.
   - by apply Hblack; left.
+  - by apply Htimes; left. 
   - by apply Hnonemp; left.
 Qed.
 
