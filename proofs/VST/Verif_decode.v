@@ -216,7 +216,6 @@ intros.
 unfold fec_blk_decode_loop1.
 abbreviate_semax.
 
-(* Work around VST bug #553 *) Ltac check_nocontinue s ::= idtac.
 forward_loop (EX (i: Z),
   PROP (0 <= i <= k)
   LOCAL (temp _i (Vubyte (Byte.repr i)); 
@@ -694,8 +693,7 @@ Proof.
          data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost;
          data_at Tsh (tarray tuchar fec_max_h) (pop_find_parity_rows parities i fec_max_h) v_row)).
   { forward. Exists 0. entailer!.
-    rewrite !eqb_type_refl; auto. rewrite data_at__tarray. (*Need to go 2D-1D array for loop and Gaussian elim*)
-    rewrite data_at_2darray_concat. 
+     (*Need to go 2D-1D array for loop and Gaussian elim*) rewrite data_at__tarray, data_at_2darray_concat. 
     { replace (fec_max_h * (fec_max_h * 2)) with (2 * fec_max_h * fec_max_h) by lia. apply derives_refl'.
       f_equal. rewrite pop_find_inv_0, zseq_Zrepeat,default_arr,(@zseq_concat (reptype tuchar))  by rep_lia.
       f_equal. lia.
@@ -755,7 +753,7 @@ Proof.
                     (map_2d_rev id weight_mx) (find_parity_rows parities i) (find_lost stats k) j xh) v_v;
                    data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights);
                    data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost ]);
-          [ | solve [ subst loc; unfold app; entailer!;  rewrite !eqb_type_refl; auto]
+          [ | solve [ subst loc; unfold app; entailer!; auto]
             | solve [auto 50 with closed]
             | ].
           { abbreviate_semax.
@@ -877,13 +875,13 @@ Proof.
           { (*After the frame*)
             subst loc; unfold app; abbreviate_semax. forward.
             (*inv preservation outer loop*) Exists (j+1). entailer!.
-            rewrite !eqb_type_refl; auto. rewrite pop_find_inv_finish by rep_lia. cancel.
+            rewrite pop_find_inv_finish by rep_lia. cancel.
           }
         }
       }
     }
     { (*end of outer loop*) forward. rewrite Byte.unsigned_repr in H0 by rep_lia. entailer!.
-      rewrite !eqb_type_refl; auto. replace j with (Zlength (find_lost stats k)) by lia.
+      replace j with (Zlength (find_lost stats k)) by lia.
       cancel.
     }
   }
@@ -1476,12 +1474,10 @@ Proof.
               entailer!. solve_offset. } (*We needed opaque constants otherwise this takes forever*)
               forward.
               simpl_repr_byte. forward. Exists (j+1). entailer!.
-              { rewrite eqb_type_refl. auto. }
-              { rewrite <- fec_max_cols_eq,<- fec_max_h_eq, field_at_data_at_cancel'.
-                apply derives_refl'. f_equal. rewrite <- pop_mx_mult_part_set by rep_lia.
-                unfold set. f_equal. f_equal. apply Znth_default.
-                rewrite pop_mx_mult_part_Zlength; rep_lia.
-              }
+              rewrite <- fec_max_cols_eq,<- fec_max_h_eq, field_at_data_at_cancel'.
+              apply derives_refl'. f_equal. rewrite <- pop_mx_mult_part_set by rep_lia.
+              unfold set. f_equal. f_equal. apply Znth_default.
+              rewrite pop_mx_mult_part_Zlength; rep_lia.
             }
           }
           { (*end of j loop*) replace j with c by lia. forward. subst locs seps; entailer!. }
@@ -2170,7 +2166,7 @@ apply (semax_frame_seq
  (R2 := [ data_at Ews (tarray tschar k) (map Vbyte stats) ps;
          data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h)  v_lost;
          data_at Tsh (tarray tuchar fec_max_h) (pop_find_found stats k fec_max_h)  v_found]);
-  [ | solve [unfold app; entailer!;  rewrite !eqb_type_refl; auto]
+  [ | solve [unfold app; entailer!]
     | solve [auto 50 with closed]
     | ].
   apply body_fec_blk_decode_loop1; auto.
@@ -2244,7 +2240,7 @@ apply (semax_frame_seq
             (pop_find_parity_found stats parities i fec_max_h k (fec_n - 1)) v_found;
           data_at Ews (tarray (tptr tuchar) (k + h)) (packet_ptrs ++ parity_ptrs) pd;
           iter_sepcon_options parity_ptrs parities]); 
-      [ | solve [unfold app; entailer!;  rewrite !eqb_type_refl; auto]
+      [ | solve [unfold app; entailer!]
         | solve [auto 50 with closed]
         | ].
     eapply body_fec_blk_decode_loop2; auto. apply Hccols. apply Hnumpars. all: auto.
@@ -2255,7 +2251,7 @@ apply (semax_frame_seq
     assert (Hfoundeq: (find_parity_found parities (fec_n - 1) i) = (find_parity_found parities (fec_n - 1) parbound)). {
       apply find_parity_found_eq; try lia. rewrite !find_parity_rows_found_Zlength. lia. }
     unfold FEC_TABLES. unfold app at 1 2. Intros.
-    forward. forward_if True; [contradiction | solve[forward; entailer!; rewrite !eqb_type_refl; auto] |].
+    forward. forward_if True; [contradiction | solve[forward; entailer!] |].
     assert (Hxh0: 0 < xh). { assert (Hxh0: 0 = xh \/ 0 < xh) by list_solve. destruct Hxh0 as [Hxh0 | Hxh0]; try lia.
       rewrite <- Hxh0 in H. rewrite !Byte.unsigned_repr in H by rep_lia. contradiction. } clear H.
     apply (semax_frame_seq
@@ -2294,7 +2290,7 @@ apply (semax_frame_seq
              data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) (rev_mx_val weight_mx) (gv _fec_weights);
              data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats k fec_max_h) v_lost;
              data_at Tsh (tarray tuchar fec_max_h) (pop_find_parity_rows parities i fec_max_h) v_row]);
-    [ | solve [unfold app; entailer!;  rewrite !eqb_type_refl; auto]
+    [ | solve [unfold app; entailer!]
         | solve [auto 50 with closed ]
         | ].
     apply body_fec_blk_decode_loop3; auto. lia.
@@ -2316,7 +2312,6 @@ apply (semax_frame_seq
           apply row_mx_list_wf; lia. }
     2 : { rewrite zseq_Zlength; rep_nia. }
     replace (tarray tuchar (2 * xh * xh)) with (tarray tuchar (xh * (xh + xh))) by  (f_equal; lia).
-    (*thaw FR2. thaw FR1.*)
     forward_call(gv, xh, xh + xh, (concat_mx_id (F:=B)
             (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
                (seq.map Byte.unsigned (find_parity_rows parities i))
