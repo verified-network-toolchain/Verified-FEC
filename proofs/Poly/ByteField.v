@@ -249,7 +249,7 @@ case q_neq1: (q == 1) =>/=.
 - rewrite -lt0n. by apply field_gt0.
 - case log_zero: (nat_of_ord (dlog p_irred p_notx q) != 0%N) => //.
   apply negbFE in log_zero. move: log_zero => /eqP log_zero.
-  have log_exp := (dlog_correct p_prim p_notx q_neq0).
+  have log_exp := (exp_dlog p_prim p_notx q_neq0).
   move: log_exp. rewrite log_zero GRing.expr0 => q_eq1.
   move: q_neq1. by rewrite -q_eq1 eq_refl.
 Qed.
@@ -259,7 +259,7 @@ Lemma dlog_alt_correct (q: QF) :
   (qx p_notx) ^+ (dlog_alt q) = q.
 Proof.
 move=> q_neq0. rewrite /dlog_alt.
-case: (q == 1) /eqP => /= q1; last by apply dlog_correct.
+case: (q == 1) /eqP => /= q1; last by apply exp_dlog.
 rewrite q1. by apply qx_field_sz1.
 Qed.
 

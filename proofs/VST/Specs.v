@@ -19,7 +19,7 @@ Require Import VandermondeByte.
 Require Import CommonVST.
 Require Import ReedSolomonList.
 
-Instance CompSpecs : compspecs.
+#[export] Instance CompSpecs : compspecs.
 make_compspecs prog. Defined.
 
 Definition Vprog : varspecs.
