@@ -12,7 +12,7 @@ Require Import Verif_decode.
 Require Import Verif_encode.
 Require Import ReedSolomon.
 
-(* VST/CompCert require several axioms. Some are related to the real numbers; some are
+(* VST/CompCert requires several axioms. Some are related to the real numbers; some are
   standard (propositional and functional extensionality, law of the excluded middle, and [eq_rect_eq].
   We do not add any axioms beyond these. *)
 
@@ -55,6 +55,19 @@ idtac " ".
 
 Abort.
 
+(* All of the axioms are some subset of the following:
 
+ClassicalDedekindReals.sig_not_dec : forall P : Prop, {~ ~ P} + {~ P}
+ClassicalDedekindReals.sig_forall_dec
+  : forall P : nat -> Prop,
+    (forall n : nat, {P n} + {~ P n}) -> {n : nat | ~ P n} + {forall n : nat, P n}
+Axioms.prop_ext : ClassicalFacts.prop_extensionality
+FunctionalExtensionality.functional_extensionality_dep
+  : forall (A : Type) (B : A -> Type) (f g : forall x : A, B x), (forall x : A, f x = g x) -> f = g
+Eqdep.Eq_rect_eq.eq_rect_eq
+  : forall (U : Type) (p : U) (Q : U -> Type) (x : Q p) (h : p = p), x = eq_rect p Q x p h
+Classical_Prop.classic : forall P : Prop, P \/ ~ P
 
+These are all from CompCert/VST and are consistent with each other.
+*)
 
