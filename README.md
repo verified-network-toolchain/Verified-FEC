@@ -7,6 +7,23 @@ Joshua M. Cohen, Qinshi Wang, and Andrew W. Appel. Verified
 Erasure Correction in Coq with MathComp and VST, *34th International Conference
 on Computer-Aided Verification (CAV)*, 2022.
 
+## VM Instructions
+
+1. Load the .ova file (cav22-ae.ova) into Virtualbox
+2. Start the VM
+3. Log in with the username and password "cav22-ae"
+4. Start a terminal and navigate to `~/Desktop/Verified-FEC`
+5. From here, you can run the commands to build the code, in
+section "Building the Proofs" below
+
+
+The rest of this file contains the information for the repository located
+1. on the VM at ~/Desktop/Verified-FEC
+2. at https://github.com/verified-network-toolchain/Verified-FEC
+(the cav22-ae branch corresponds to the code on the VM and includes
+this README)
+
+
 ## Overview
 
 Forward Erasure Correction is a technique of expanding k network packets
@@ -24,13 +41,22 @@ dependencies are:
 3. VST 2.9.1
 4. Mathematical Components 1.14.0
 
-It should run on any machine that has the latest Coq Platform installed.
+It should run on any machine that has the latest Coq Platform installed, and has
+been tested on Ubuntu 20.04 and Linux Mint 20.
 
 ## Building the Proofs
 
-The command "make" will verify all of the proofs. "make -j" also works.
-After all the proofs have been built, the last file shows the axioms that
+The proofs can be built either sequentially or in parallel.
+`make -j 3` builds the proofs in parallel using 3 cores. This
+reduces the amount of time needed (see "Resource Requires" below).
+
+`make` builds the proofs sequentially.
+
+After all the proofs have been built, the last file outputs the axioms that
 the main theorems depend on.
+
+`make clean` will remove all built proofs, in case the process needs to be
+restarted.
 
 ## Repository Structure
 
@@ -185,9 +211,22 @@ No additional axioms were used in this proof development, other than those
 already included in CompCert/VST (MathComp does not use any axioms). Many of
 these come from CompCert's definitions of the operational semantics of C, imported
 by VST. All axioms involved are quite standard, and are known to be consistent
-with each other. The expected axioms are shown in the Eval.v file.
+with each other. The expected axioms are shown in the `Eval.v` file.
 
-## Performance (TODO)
+## Resource Requirements
+
+The included VM has 4 cores and 8 GB of RAM.
+Building the proofs in parallel (with `make -j 3`) took just
+under 10 minutes. Doing it sequentially (with `make`) took
+just under 13 minutes (over half of this is for `Verif_decode.v`).
+
+The underlying machine used was a Lenovo X1 Carbon 7th gen,
+with a Intel Core i7-8565U CPU @ 1.80GHz processor and 16 GB of RAM.
+We tested with a base OS of both Linux Mint 20 and Windows 10 on
+tihs machine.
+
+In general, the development needs about 5 GB of RAM to verify reliably,
+but should be able to be built on any decently-powerful laptop.
 
 ## License and Funding
 
