@@ -19,9 +19,7 @@ section "Building the Proofs" below
 
 The rest of this file contains the information for the repository located
 1. on the VM at ~/Desktop/Verified-FEC
-2. at https://github.com/verified-network-toolchain/Verified-FEC
-(the cav22-ae branch corresponds to the code on the VM and includes
-this README)
+2. at https://github.com/verified-network-toolchain/Verified-FEC/tree/cav22-ae
 
 
 ## Overview
@@ -48,7 +46,7 @@ been tested on Ubuntu 20.04 and Linux Mint 20.
 
 The proofs can be built either sequentially or in parallel.
 `make -j 3` builds the proofs in parallel using 3 cores. This
-reduces the amount of time needed (see "Resource Requires" below).
+reduces the amount of time needed (see "Resource Requirements" below).
 
 `make` builds the proofs sequentially.
 
@@ -78,7 +76,7 @@ The specific files are as follows:
 by Clightgen
 - proofs/ - Coq proofs
 	- Common/ - general helper lemmas and ways to relate basic MathComp
-	and functions with those of the Coq standard library and Compcert
+	functions with those of the Coq standard library and Compcert
 	- Poly/ - proofs about polynomials
 		- BoolField.v - the field of 2 elements
 		- PolyField.v - results about finite fields constructed via irreducible
@@ -87,7 +85,7 @@ by Clightgen
 		defined directly on bytes
 		- ListPoly.v - computable polynomial division to calculate specific
 		irreducible and primitive polynomials
-	- Matrix/ - proofs about matricies
+	- Matrix/ - proofs about matrices
 		- Gaussian.v - proofs about Gaussian elimination and properties of 
 		row operations
 		- GaussRestrict.v - Restricted Gaussian elimination
@@ -105,7 +103,8 @@ by Clightgen
 		- CommonVST.v - generic lemmas about data_at, pointer comparison/arithmetic, iter_sepcon
 		- Specs.v - VST funspecs for C code
 		- FECTactics.v - tactics for use in VST proofs
-		- PopArrays.v - define generic pattern of iterating over/modifying array and give specific instances used
+		- PopArrays.v - define generic pattern of iterating over/populating array and specific instances used
+			in C encoder/decoder
 		- Verif_field.v - VST proofs for field table generation
 		- Verif_matrix.v - VST proofs for (Restricted) Gaussian elimination
 		- Verif_encode.v - VST proofs for encoder
@@ -223,7 +222,7 @@ just under 13 minutes (over half of this is for `Verif_decode.v`).
 The underlying machine used was a Lenovo X1 Carbon 7th gen,
 with a Intel Core i7-8565U CPU @ 1.80GHz processor and 16 GB of RAM.
 We tested with a base OS of both Linux Mint 20 and Windows 10 on
-tihs machine.
+this machine.
 
 In general, the development needs about 5 GB of RAM to verify reliably,
 but should be able to be built on any decently-powerful laptop.
