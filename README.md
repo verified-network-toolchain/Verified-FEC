@@ -27,8 +27,10 @@ The rest of this file contains the information for the repository located
 Forward Erasure Correction is a technique of expanding k network packets
 with h extra packets so that if some packets (no more than h) are lost,
 the missing packets can be reconstructed without retransmission.
-It uses a 1990 algorithm by Anthony McAuley of Bellcore, implemented in C
-by McAuley and improved in 1997 by Vinh Lam for the Naval Research Lab.
+It uses an algorithm developed in the 1990's by several researchers, including
+Anthony McAuley of Bellcore (see Section 1.1 of the paper for details).
+This C implementation was written by McAuley and improved in 1997 by Vinh Lam
+for the Naval Research Lab.
 
 ## Dependencies
 
@@ -233,7 +235,6 @@ LICENSE: Peraton Labs (the successor company of Bellcore) open-sourced
 the code in 2021 under the Apache 2.0 license, and Cohen and Appel
 open-sourced the proof under the same license.  See [LICENSE.md](LICENSE.md)
 
-FUNDING ACKNOWLEDGEMENT: DARPA funded the original development
-of the algorithm and program (in the 1990s) and funded the
-proof of correctness (in the 2020s).
-
+FUNDING ACKNOWLEDGEMENT: The formal verification was supported by the
+Defense Advanced Research Projects Agency (DARPA) under Contract No. HR001120C0160.
+The C program was developed with support from DARPA in the 1990s.
