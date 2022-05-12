@@ -682,6 +682,12 @@ Proof.
     + rewrite !Zlength_map. lia.
 Qed.
 
+Lemma zip_nil: forall {A B: Type} (l: list B),
+  zip (@nil A) l = nil.
+Proof.
+  move => A B l. by case: l.
+Qed.
+
 Lemma in_zip: forall {A B: eqType} (x: A * B) (s1: seq A) (s2: seq B),
   x \in (zip s1 s2) ->
   (x.1 \in s1) && (x.2 \in s2).
@@ -730,6 +736,7 @@ Lemma perm_rev': forall {T: eqType} (s: seq T),
 Proof.
   move => T s. have /(_ s):=(perm_rev s). by rewrite perm_refl perm_sym.
 Qed.
+
 Lemma zip_nil_r: forall {A B: Type} (s: seq A),
   zip s (@nil B) = [::].
 Proof.

@@ -127,6 +127,16 @@ Proof.
   by rewrite Z2Nat.inj_succ // iota_plus_1 map_cat /= add0n Z2Nat.id.
 Qed.
 
+Lemma mkseqZ_1_plus: forall {A: Type} `{H: Inhabitant A} (f: Z -> A) (z: Z), 0 <= z ->
+  mkseqZ f (z+1) = (f 0) :: mkseqZ (fun i => f (i+1)) z.
+Proof.
+  move => A Hinh f z Hz. apply Znth_eq_ext; rewrite !mkseqZ_Zlength; try lia. 
+  - rewrite Zlength_cons mkseqZ_Zlength; lia.
+  - move => i Hi. have [Hi0 | Hibig]: i = 0 \/ 1 <= i < z + 1 by lia.
+    + rewrite Hi0 Znth_0_cons mkseqZ_Znth //. lia.
+    + rewrite Znth_pos_cons; [|lia]. rewrite !mkseqZ_Znth; try lia. f_equal. lia.
+Qed.
+
 End MkSeqZ.
 
 (* Similar to above, but with lists indexed by bytes*)
