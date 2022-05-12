@@ -441,7 +441,7 @@ Definition rse_decode_func (received: list fec_packet_act) (curr: fec_packet_act
   (update_dec_state (decoder_all_steps received times).1 curr time).2.
 
 Definition rse_decoder : (@decoder fec_data) :=
-  fun (received: list fec_packet_act) (decoded: list packet) (curr: fec_packet_act) (new: list packet) =>
+  fun (received: list fec_packet_act) (decoded: list (list packet)) (curr: fec_packet_act) (new: list packet) =>
     exists (times: list Z) (time: Z),
       Zlength times = Zlength received /\
       new = rse_decode_func received curr times time.
@@ -457,16 +457,15 @@ Definition rse_decoder_list := AbstractEncoderDecoder.decoder_list fec_packet_ac
   even have to add states that are consistent with the previous.
   I think the other definition should really be used - TODO: figure this out*)
 Lemma rse_decoder_list_add: forall (received : list fec_packet_act) (curr: fec_packet_act)
-  (decoded: list packet),
+  (decoded: list (list packet)),
   rse_decoder_list received decoded ->
   forall (t: Z) (times: list Z),
     Zlength times = Zlength received ->
-    rse_decoder_list (received ++ [curr]) (decoded ++ rse_decode_func received curr times t).
+    rse_decoder_list (received ++ [curr]) (decoded ++ [rse_decode_func received curr times t]).
 Proof.
-  move => received curr decoded. rewrite /rse_decoder_list /AbstractEncoderDecoder.decoder_list 
-    => [[l [Hdec [Hllen Hith]]]] t times Hstslen. exists (l ++ [rse_decode_func received curr times t]).
-  split; [|split].
-  - by rewrite concat_app Hdec //= app_nil_r.
+  move => received curr decoded. rewrite /rse_decoder_list /AbstractEncoderDecoder.decoder_list
+    => [[Hllen Hith]] t times Hstslen.
+  split.
   - rewrite !Zlength_app. list_solve.
   - move => i. rewrite Zlength_app Zlength_cons /= => Hi. have Hi' := (z_leq_n_1 (proj2 Hi)). (*why cant lia do this*)
     case Hi' => [Hiprev | Hicurr].
@@ -2912,9 +2911,9 @@ Theorem rse_encoder_decoder_valid : valid_encoder_decoder valid_packet encodable
 Proof.
   rewrite /valid_encoder_decoder. move => orig received encoded decoder [l Hl] Hvalid Henc Huniq Henclist/=.
   apply encoder_list_all_equiv in Henclist. case: Henclist => [enc_params [Henclen [Hencall Hparams]]].
-  rewrite /decoder_list => [[decs]] [Hdecs [Hlendec Hdecith]] Hlos x.
-  rewrite -Hdecs in_mem_In in_concat => [[l1 [Hinl1 Hindecs]]].
-  move: Hindecs. rewrite In_Znth_iff => [[i]]. rewrite Hlendec => [[Hi Hl1]].
+  rewrite /decoder_list => [[Hlendec Hdecith]] Hlos x.
+  rewrite in_mem_In in_concat => [[l1 [Hinl1 Hindecs]]].
+  move: Hindecs. rewrite In_Znth_iff => [[i]]. rewrite -Hlendec => [[Hi Hl1]].
   subst. move: Hdecith => /( _ _ Hi). rewrite /rse_decoder => [[dec_states] [st]] [Hdeclen Hdeci].
   apply (@all_decoded_in orig (concat encoded) (sublist 0 (i+1) received)
     (decoder_all_steps (sublist 0 (i+1) received) (dec_states ++ [st])).2 enc_params (dec_states ++ [st])) => //.

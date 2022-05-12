@@ -1,4 +1,4 @@
-Require Import EquivClasses.
+(*Require Import EquivClasses.*)
 Require Import VST.floyd.functional_base.
 Require Import ZSeq.
 From mathcomp Require Import all_ssreflect.
@@ -109,7 +109,7 @@ Record transcript := mk_tran
   { orig : list packet; (*packets received by sender from origin*)
     encoded : list (list fec_packet); (*encoded by sender*)
     received: list fec_packet; (*subset of encoded packets received by receiver*)
-    decoded: list packet (*packets sent by receiver*)
+    decoded: list (list packet) (*packets sent by receiver*)
   }.
 
 (*An encoder is a 4 place relation taking in the previously-receieved packets, the previously-encoded
@@ -118,7 +118,7 @@ Record transcript := mk_tran
 Definition encoder := list packet -> list (list fec_packet) -> packet -> list fec_packet -> Prop.
 
 (*Decoder is similar*)
-Definition decoder := list fec_packet -> list packet -> fec_packet -> list packet -> Prop.
+Definition decoder := list fec_packet -> list (list packet) -> fec_packet -> list packet -> Prop.
 
 (*We want to say that the whole encoded list is valid for this predicate*)
 Definition encoder_list (enc: encoder) (orig: list packet) (encoded: list (list fec_packet)) : Prop :=
@@ -126,10 +126,10 @@ Definition encoder_list (enc: encoder) (orig: list packet) (encoded: list (list 
   forall(i: Z), 0 <= i < Zlength orig ->
     enc (sublist 0 i orig) (sublist 0 i encoded) (Znth i orig) (Znth i encoded).
 
-Definition decoder_list (dec: decoder) (received: list fec_packet) (decoded: list packet) : Prop :=
-  exists (l: list (list packet)), concat l = decoded /\ Zlength l = Zlength received /\
-  forall(i: Z), 0 <= i < Zlength received ->
-    dec (sublist 0 i received) (concat (sublist 0 i l)) (Znth i received) (Znth i l).
+Definition decoder_list (dec: decoder) (received: list fec_packet) (decoded: list (list packet)) : Prop :=
+  Zlength received = Zlength decoded /\
+  forall (i:Z), 0 <= i < Zlength received ->
+    dec (sublist 0 i received) (sublist 0 i decoded) (Znth i received) (Znth i decoded).
 
 (*An alternate approach - let's see*)
 Section Alt.
@@ -380,7 +380,7 @@ Definition valid_encoder_decoder (enc: encoder) (dec: decoder) : Prop :=
     encoder_list enc orig encoded ->
     decoder_list dec received decoded ->
     (loss_rel l) received (concat encoded) ->
-    forall (x: packet), x \in decoded -> exists y, (y \in orig) /\ (remove_seqNum x = remove_seqNum y).
+    forall (x: packet), x \in (concat decoded) -> exists y, (y \in orig) /\ (remove_seqNum x = remove_seqNum y).
 
 (*The C implementations will produce transcripts that are consistent with
   some encoder and decoder. We will say that a transcript is valid if this is the case*)
@@ -401,7 +401,7 @@ Definition valid_transcript (t: transcript) :=
 Lemma valid_transcript_enc_dec: forall (t: transcript),
   valid_encoder_decoder enc dec ->
   valid_transcript t ->
-  (forall p, p \in (decoded t) -> exists p', p' \in (orig t) /\ remove_seqNum p = remove_seqNum p').
+  (forall p, p \in concat (decoded t) -> exists p', p' \in (orig t) /\ remove_seqNum p = remove_seqNum p').
 Proof.
   rewrite /valid_encoder_decoder /valid_transcript => t Hval [Hvalid [Hencode [Huniq [Henc [Hdec Hloss]]]]]. eauto.
 Qed.
