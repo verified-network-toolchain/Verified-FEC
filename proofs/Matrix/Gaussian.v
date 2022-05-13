@@ -13,6 +13,9 @@ Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
+Require FunInd.
+Require Recdef.
+Require Lia.
 
 Require Import CommonSSR.
 
@@ -962,9 +965,9 @@ Proof.
   - constructor.
 Qed.
 
-Require Import FunInd.
-Require Import Recdef.
-Require Import Lia.
+Import FunInd.
+Import Recdef.
+Import Lia.
 
 (** Gaussian Elimination Full Algorithm*)
 (*We have two versions: a fuel-based version that goes for s steps or finishes, whichever happens first, or

@@ -448,14 +448,10 @@ Definition rse_decoder : (@decoder fec_data) :=
 
 End Decoder.
 
-(*TODO: figure out what to do with this*)
 Definition rse_decoder_list := AbstractEncoderDecoder.decoder_list fec_packet_act_inhab rse_decoder.
 
 (*This shows that the rse_decoder_list definition is usable: for any possible states, if we 
   decode using those states, we still get the predicate*)
-(*NOTE (TODO): This actually indicates a problem, I think - this is such a weak spec that we don't
-  even have to add states that are consistent with the previous.
-  I think the other definition should really be used - TODO: figure this out*)
 Lemma rse_decoder_list_add: forall (received : list fec_packet_act) (curr: fec_packet_act)
   (decoded: list (list packet)),
   rse_decoder_list received decoded ->
@@ -2731,7 +2727,7 @@ Proof.
 Qed.
 
 (*The last step is to prove the [valid_encoder_decoder] version of the theorem. We prove it using the above theorem*)
-Require Import AbstractEncoderDecoder. (*TODO move*)
+(*TODO move*)
 
 (*The key difference is that we need to know that we can get the list of encoder params to show that the encoded 
   outputs actually come from repeated (consistent) iterations of the encoder. We do so with
@@ -2759,13 +2755,6 @@ Lemma rse_encode_all_concat: forall orig params,
   (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
 Proof.
   move => orig params. by apply rse_encode_all_concat_aux.
-Qed.
-
-(*TODO: move*)
-Lemma mkseqZ_0: forall {A: Type} (f: Z -> A),
-  mkseqZ f 0 = nil.
-Proof.
-  move => A f. apply Zlength_nil_inv. by rewrite mkseqZ_Zlength.
 Qed.
 
 (*This lemma will actually be quite easy with previous result*)
@@ -2838,6 +2827,8 @@ Proof.
       * rewrite !sublist_0_cons; try lia. rewrite /= IH //; try lia. list_solve.
     + rewrite !sublist_S_cons; try lia. apply IH => //. lia. list_solve.
 Qed. 
+
+Import AbstractEncoderDecoder.
 
 (*Now the crucial lemma: if "encoded" satisfies [encoder_list], then in fact is is really [rse_encode_concat] for
   some params, which are all valid. This is where we use the fact that there could have only been 1 set of

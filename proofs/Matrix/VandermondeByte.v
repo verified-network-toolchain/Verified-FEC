@@ -72,6 +72,7 @@ Qed.
 
 (*To reduce duplication. This is a straightforward application of the injectivity of [qpow_map]
   by requires work to construct and unwrap the ordinals*)
+
 Lemma qpow_map_nonzero_inj: forall x y,
   (x < 255)%N ->
   (y < 255)%N ->
@@ -80,26 +81,14 @@ Lemma qpow_map_nonzero_inj: forall x y,
    x = y.
 Proof.
   move => x y Hx Hy Hx0.
-  have Hxbound: (x < #|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1)%N.
-    rewrite card_bool size_p256 //=. have->:(2 ^ 8)%N = 256%N by []. by apply (ltn_trans Hx).
-  have Hybound: (y < #|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1)%N.
-    rewrite card_bool size_p256 //=. have->:(2 ^ 8)%N = 256%N by []. by apply (ltn_trans Hy).
-  case Hy0: (y == 0)%N.
-  - apply (elimT eqP) in Hy0. subst. rewrite GRing.expr0 => Hxy.
-    have Hx255: ((@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) x) = qx p256_geq_2 ^+ 255)
-      by rewrite Hxy prim_fieldsize.
-    have H255bound: (255 < #|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1)%N
-      by rewrite card_bool size_p256.
-    have Hpows: qpow_map p256_irred p256_geq_2 (Ordinal Hxbound) = qpow_map p256_irred p256_geq_2 (Ordinal H255bound). {
-      rewrite /qpow_map. have->:nat_of_ord (Ordinal Hxbound) == 0%N = false. rewrite /=. by apply negbTE. by []. }
-    apply (bij_inj (qpow_map_bij p256_irred p256_primitive' p256_geq_2)) in Hpows. 
-    apply (congr1 (@nat_of_ord _)) in Hpows. rewrite /= in Hpows. subst. by rewrite ltnn in Hx.
-  - move => Hxy.
-    have Hpows: qpow_map p256_irred p256_geq_2 (Ordinal Hxbound) = qpow_map p256_irred p256_geq_2 (Ordinal Hybound). {
-      rewrite /qpow_map. have->:nat_of_ord (Ordinal Hxbound) == 0%N = false. rewrite /=. by apply negbTE.
-      by rewrite Hy0. }
-    apply (bij_inj (qpow_map_bij p256_irred p256_primitive' p256_geq_2)) in Hpows. 
-    apply (congr1 (@nat_of_ord _)) in Hpows. rewrite /= in Hpows. by subst.
+  have Hxbound: (x < (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1).-1)%N
+    by rewrite card_bool size_p256.
+  have Hybound: (y < (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1).-1)%N by
+    rewrite card_bool size_p256.
+  have->:(@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) x) = (qpow_map p256_irred p256_geq_2 (Ordinal Hxbound)) by [].
+  have->:(@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) y) = (qpow_map p256_irred p256_geq_2 (Ordinal Hybound)) by [].  
+  move=>Heqxy. apply val_inj in Heqxy. apply (bij_inj (qpow_map_bij p256_irred p256_primitive' p256_geq_2)) in Heqxy.
+  by apply (f_equal (@nat_of_ord _)) in Heqxy.
 Qed.
 
 Lemma bx_pows_inj: forall i j,
@@ -197,7 +186,7 @@ Proof.
   case: (bx == 0) /eqP => [ |//].
   rewrite /bx. have->:0%R = Byte.zero by []. move => Hx.
   apply (congr1 byte_to_qpoly) in Hx. move: Hx. rewrite qpoly_byte_cancel byte_zero_qpoly => Hx0.
-  pose proof (qx_0 p256_irred p256_geq_2) as Hxnot0. move: Hxnot0. by rewrite Hx0 eq_refl.
+  pose proof (qx_neq0 p256_irred p256_geq_2) as Hxnot0. move: Hxnot0. by rewrite Hx0 eq_refl.
 Qed. 
 
 (*This is the big lemma that will allow us to prove the transpose of this matrix equivalent to a vandermonde mx*)

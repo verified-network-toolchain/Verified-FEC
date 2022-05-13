@@ -137,6 +137,12 @@ Proof.
     + rewrite Znth_pos_cons; [|lia]. rewrite !mkseqZ_Znth; try lia. f_equal. lia.
 Qed.
 
+Lemma mkseqZ_0: forall {A: Type} (f: Z -> A),
+  mkseqZ f 0 = nil.
+Proof.
+  move => A f. apply Zlength_nil_inv. by rewrite mkseqZ_Zlength.
+Qed.
+
 End MkSeqZ.
 
 (* Similar to above, but with lists indexed by bytes*)

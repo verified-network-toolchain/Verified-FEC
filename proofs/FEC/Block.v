@@ -101,7 +101,7 @@ Definition fec_packet_act_eqMixin := EqMixin fec_packet_act_eq_axiom.
 Canonical fec_packet_act_eqType := EqType fec_packet_act fec_packet_act_eqMixin.
 
 #[export]Instance fec_packet_act_inhab : Inhabitant fec_packet_act := 
-  mk_fecpkt packet_inhab fec_data_inhab.
+  @mk_fecpkt fec_data packet_inhab fec_data_inhab.
 
 Definition p_fec_data' : fec_packet_act -> fec_data := @p_fec_data fec_data.
 Coercion p_fec_data' : fec_packet_act >-> fec_data.
