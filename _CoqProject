@@ -25,6 +25,7 @@ proofs/FEC/Endian.v
 proofs/FEC/IP.v
 proofs/FEC/Block.v
 proofs/FEC/RSEEncoderDecoder.v
+proofs/FEC/Reorder.v
 #VST(core FEC)
 src/fecActuator/fec.v
 proofs/VST/CommonVST.v
