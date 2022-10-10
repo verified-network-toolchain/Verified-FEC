@@ -21,31 +21,7 @@ Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
-(*Versions without changing params or timeouts*) (*TODO: move*)
-(*
-Section Simple.
 
-Variable k : Z.
-Variable h : Z.
-Variable Hkbound: 0 < k <= fec_n - 1 - fec_max_h.
-Variable Hhbound: 0 < h <= fec_max_h.
-
-Definition rse_encode_gen_nochange (blocks: seq block) (currBlock: option block) (curr: packet) :=
-  match currBlock with
-  | Some b => 
-      let t := encode_exist curr b in (t.1.1 ++ blocks, t.1.2, t.2)
-  | None => 
-      let t := encode_new curr k h in (t.1.1 ++ blocks, t.1.2, t.2)
-  end.
-
-Definition rse_encode_concat_nochange (orig: seq packet) : list block * option block * list (list fec_packet_act) :=
-  foldl (fun acc x =>
-    let t := rse_encode_gen_nochange acc.1.1 acc.1.2 x in
-    (t.1.1, t.1.2, acc.2 ++ [:: t.2])) (nil, None, nil) orig.
-(*can easily get rse_encode_all_nochange from this if we need it*)
-
-End Simple.
-*)
 
 (** Sequence numbers and reordering*)
 
@@ -130,15 +106,29 @@ Qed.
 
 (*Inequalities with nats are annoying to prove manually*)
 Ltac solve_by_lia :=
+  (*Convert addition and subtraction in terms in hypothesis H*)
+  let rec simpl_expr e H :=
+    try match e with
+    | context [ ?x - ?y] => let temp:= fresh in
+       have temp: (x - y = (x - y)%coq_nat) by [];
+       rewrite temp in H; clear temp;
+        simpl_expr x H; simpl_expr y H
+    | context [?x + ?y] => let temp := fresh in 
+      have temp: (x + y = (x + y)%coq_nat) by [];
+      rewrite temp in H; clear temp;
+      simpl_expr x H; simpl_expr y H
+    end in
   repeat match goal with
-  | H: is_true (?x < ?y) |- _ => move: H => /ltP H
-  | H: is_true (?x <= ?y) |- _ => move: H => /leP H
-  | H: (?x < ?y) = ?b |- _ => move: H => /ltP H
-  | H: (?x <= ?y) = ?b |- _ => move: H => /leP H
+  | H: is_true (?x < ?y) |- _ =>  simpl_expr x H; simpl_expr y H; move: H => /ltP H
+  | H: is_true (?x <= ?y) |- _ =>  simpl_expr x H; simpl_expr y H;  move: H => /leP H
+  | H: (?x < ?y) = ?b |- _ => simpl_expr x H; simpl_expr y H; move: H => /ltP H
+  | H: (?x <= ?y) = ?b |- _ => simpl_expr x H; simpl_expr y H; move: H => /leP H
   | |- context [ ?x - ?y] => have->: (x - y = (x - y)%coq_nat) by []
   | |- context [?x + ?y] => have->: (x + y = (x + y)%coq_nat) by []
   | |- is_true (?x < ?y) => apply /ltP
   | |- is_true (?x <= ?y) => apply /leP
+  | |- (?x < ?y) = ?b => apply /ltP
+  | |- (?x <= ?y) = ?b => apply /leP 
   end; lia. 
 
 (*A version of the triangle inequality:
@@ -525,6 +515,8 @@ Proof.
   move=> p1 p2 n d Huniq /allP Hbound Hp1 Hp2 Hn.
   by apply u_seqNum_bound => //; apply Hbound.
 Qed.
+
+(*Part 2: Dealing with duplicates*)
   
 
 (*The second condition: if there are any duplicates, they are separated by at most k
@@ -538,6 +530,285 @@ Definition duplicates_bounded (default: pack) (k: nat) : Prop :=
   (j < length received) ->
   nth default received  i = nth  default received j ->
   (j - i <= k).
+
+(*We want to show the following: suppose we have some condition
+  on packets that implies that the difference in their [u_seqNum] is
+  at most a, and suppose duplicates are bounded by k. Then
+  we can bound the number of unique packets between them by a + k*)
+
+(*First, relate [size (undup_fst)] to [u_seqNum]*)
+(*TODO: might need to make more generic with section stuff*)
+(*
+Lemma size_undup_fst_last: forall {A: eqType} (l1 : list A) (x: A),
+  x \notin l1 ->
+  size (undup_fst l1) = index x (undup_fst l1).
+Proof.
+  move=> A l1 x Hnotin. 
+  rewrite /undup_fst. symmetry. apply /eqP. rewrite index_notin.
+  by rewrite mem_rev mem_undup mem_rev.
+Qed.*)
+
+(*u_seqNum doesn't change when lists are extended*)
+Lemma u_seqNum_app: forall {A: eqType} (x: A) (l1 l2: list A),
+  x \in l1 ->
+  index x (undup_fst (l1 ++ l2)) = index x (undup_fst l1).
+Proof.
+  move=> A x l1 l2 Hin. rewrite /undup_fst.
+  rewrite rev_cat undup_cat rev_cat index_cat.
+  have->//: x \in rev (undup (rev l1)) by rewrite mem_rev mem_undup mem_rev.
+Qed.
+
+(*Relate [size (undup_fst)] to [u_seqNum]*)
+Lemma u_seqNum_size_eq: forall {A: eqType} (l1: list A) (x: A) (l2: list A),
+  x \notin l1 ->
+  index x (undup_fst (l1 ++ [:: x] ++ l2)) = size (undup_fst l1).
+Proof.
+  move=> A l1 x l2 Hnotin.
+  rewrite catA u_seqNum_app; last by rewrite mem_cat in_cons eq_refl orbT.
+  rewrite /undup_fst rev_cat undup_cat rev_cat index_cat.
+  have->/=: x \in rev (undup (rev l1)) = false by 
+    rewrite mem_rev mem_undup mem_rev; apply negbTE.
+  have->/=: x \notin rev l1 by rewrite mem_rev.
+  by rewrite eq_refl addn0.
+Qed.
+
+(*Can get bound on size of [undup_fst] by considering each separately
+(note: lists may be larger because we may be counting later ocurrence)*)
+Lemma size_undup_fst_app: forall {A: eqType} (l1 l2: list A),
+  size (undup_fst (l1 ++ l2)) <= size (undup_fst l1) + size (undup_fst l2).
+Proof.
+  move=> A l1 l2. 
+  by rewrite /undup_fst !size_rev rev_cat undup_cat size_cat addnC 
+    leq_add2l size_filter count_size.
+Qed.
+
+Lemma size_undup_fst_le: forall {A: eqType} (l: list A),
+  size (undup_fst l) <= size l.
+Proof.
+  move=> A l. by rewrite /undup_fst size_rev -(size_rev l) size_undup.
+Qed.
+
+Lemma size_undup_fst_le_app: forall {A: eqType} (l1 l2: list A),
+  size (undup_fst l1) <= size (undup_fst (l1 ++ l2)).
+Proof.
+  move=> A l1 l2. rewrite /undup_fst !size_rev rev_cat undup_cat size_cat.
+  solve_by_lia.
+Qed.
+
+Lemma packets_reorder_dup_bound (default: pack) (P: pack -> Prop) 
+  (a k: nat):
+  (forall p1 p2, P p1 -> P p2 -> 
+    nat_abs_diff (u_seqNum p1) (u_seqNum p2) <= a) ->
+  duplicates_bounded default k ->
+  forall p1 p2 l1 l2 l3,
+  received = l1 ++ [:: p1] ++ l2 ++ [:: p2] ++ l3 ->
+  p1 \notin l1 ->
+  (*p2 \notin l2 ->*) (*ah shit, no we cannot require this - need to be able to handle duplicates*) 
+  (*Can do this after*)
+  P p1 ->
+  P p2 ->
+  size (undup_fst (l1 ++ [:: p1] ++ l2)) -
+  size (undup_fst l1) <= a + k.
+Proof.
+  rewrite /duplicates_bounded => Hallp Hdups p1 p2 l1 l2 l3 Hrec 
+    Hnotin1 Hpp1 Hpp2.
+  (*Need a few results/bounds first for multiple cases*)
+  have Hnth3: nth default received (size l1 + size l2 + 1) = p2.
+    rewrite Hrec nth_cat.
+    have->:size l1 + size l2 + 1 < size l1 = false by solve_by_lia.
+    rewrite /=.
+    have->/=: size l1 + size l2 + 1 - size l1 = (size l2).+1 by solve_by_lia.
+    by rewrite nth_cat ltnn subnn.
+  have Hle1: size (undup_fst (l1 ++ [:: p1] ++ l2)) <=
+    size (undup_fst l1) + size l2 + 1.
+    eapply leq_trans. apply size_undup_fst_app.
+    rewrite -addnA leq_add2l.
+    eapply leq_trans. apply size_undup_fst_le.
+    by rewrite addn1.
+  (*Proof idea: consider first ocurrence of p2, it can be
+    in l1, it can be p1 or it can be the [p2] we have*)
+  case Hp2in: (p2 \in l1).
+  - have Hnth1: nth default l1 (index p2 l1) = p2 by apply nth_index.
+    have Hnth2: nth default received (index p2 l1) = p2.
+      rewrite Hrec nth_cat.
+      have->//: index p2 l1 < size l1 by rewrite index_mem.
+    (*TODO: maybe generalize for cases (just index in received and size one)*)
+    have Hbound: (size l1 + size l2 + 1) - (index p2 l1) <= k.
+      apply Hdups => //.
+      eapply leq_trans. apply index_size. by rewrite -addnA leq_addr.
+      rewrite Hrec -!size_length !size_cat /=; solve_by_lia.
+      by rewrite Hnth2 Hnth3.
+    have Hidx: index p2 l1 <= size l1 by apply index_size.
+    solve_by_lia.
+  - (*Otherwise, first ocurrence is after. It could be equal to p1,
+      or it could be in l2, or it could be our occurence of p2.
+      We need to consider each case. First, we prove a general lemma*)
+    (*TODO: separate lemma?*)
+    have Hseqp1:size (undup_fst l1) = u_seqNum p1. {
+      symmetry.
+      by rewrite /u_seqNum Hrec u_seqNum_size_eq.
+    }
+    rewrite Hseqp1.
+    (*Now we have to know whether p1 = p2 or not*)
+    case: (p1 == p2) /eqP => Hp12.
+    + (*In this case, we use the 2 locations of p2 to get the
+        k bound directly*) rewrite Hp12 in Hrec. 
+      have Hnth1: nth default received (size l1) = p2 by
+        rewrite Hrec nth_cat ltnn subnn.
+      have Hbound: size l2 + 1 <= k. {
+        have->:size l2 + 1 = (size l1 + size l2 + 1) - size l1 by solve_by_lia.
+        apply Hdups. solve_by_lia. rewrite Hrec -size_length !size_cat /=.
+        solve_by_lia. by rewrite Hnth1 Hnth3.
+      }
+      eapply leq_trans. apply leq_sub2r. apply Hle1.
+      rewrite Hseqp1.
+      solve_by_lia.
+    + (*Now we consider whether p2 is in l2 or not. This is the case
+      that requires the sum, rather than just a max - we need to use
+      the a bound between p1 and the first ocurrence of p2, then use
+      the k bound between the first ocurrence of p2 and the one we care
+      about*)
+      case Hinp2: (p2 \in l2).
+      * (*The harder case, with 2 bounds*)
+        (*We would like a separate lemma for this case, because it
+          is quite similar to above, but we
+          cannot get a tight enough bound if we prove p1 -> p2
+          and dups separately (first bound only max(a, k))*)
+        have [l2_a [l2_b [Hl2 Hnotin2]]]: exists l3 l4, l2 = l3 ++ [:: p2] ++ l4 /\
+        p2 \notin l3 by admit.
+        rewrite Hl2.
+        (*really should do separate lemma*)
+        have Hseqp2: size (undup_fst (l1 ++ [:: p1] ++ l2_a)) =
+          u_seqNum p2.
+        {
+          rewrite /u_seqNum Hrec Hl2 -!catA.
+          have->: (l1 ++ [:: p1] ++ l2_a ++ [:: p2] ++ l2_b ++ [:: p2] ++ l3) =
+          ((l1 ++ [:: p1] ++ l2_a) ++ [::p2] ++ (l2_b ++ [:: p2] ++ l3)) by
+          rewrite !catA.
+          rewrite u_seqNum_size_eq // !mem_cat Hp2in in_cons in_nil
+            (negbTE Hnotin2) !orbF /=. apply /eqP. by auto.
+        }
+        have->:(l1 ++ [:: p1] ++ l2_a ++ [:: p2] ++ l2_b) =
+        (l1 ++ [:: p1] ++ l2_a) ++ ([::p2] ++ l2_b) by rewrite !catA.
+        eapply leq_trans. apply leq_sub2r.
+        apply size_undup_fst_app.
+        have Hleseq: u_seqNum p1 <= u_seqNum p2.
+          rewrite -Hseqp1 -Hseqp2.
+          eapply leq_trans. 2: apply size_undup_fst_le_app.
+          by apply leqnn.
+        rewrite Hseqp2 -addnBAC //.
+        apply leq_add. 
+        have->: u_seqNum p2 - u_seqNum p1 = nat_abs_diff (u_seqNum p1) (u_seqNum p2) by
+        rewrite nat_abs_diff_leq.
+        by apply Hallp.
+        eapply leq_trans. apply size_undup_fst_le.
+        (*TODO: this part is easy, start here - relies on nth values*)
+        Search nat_abs_diff.
+        Search (?x + ?y <= ?z + ?q).
+        
+        Search (?x + ?y - ?z).
+        
+        (l1 ++ [:: p1] ++ l2_a)).
+
+
+
+        eapply leq_trans. apply leq_sub2r.
+        apply size_undup_fst_app.
+        rewrite Hseqp1 leq_subLR leq_add2l.
+        rewrite catA. eapply leq_trans.
+        apply size_undup_fst_app.
+        rewrite !catA.
+        Search (?x - ?y <= ?z).
+      
+        case
+
+    
+    
+    
+    (*Otherwise, we need to use the a bound 
+      (TODO: could we change to max?)*)
+
+      
+      Search (?x - ?y <= ?z - ?y). Check leq_subr. apply leq_subl.
+
+      } 
+    have->: size (undup_fst (l1 ++ [:: p1] ++ l2)) =
+      u_seqNum p2. {
+        rewrite (size_undup_fst_last Hnotin2).
+      }
+    eapply leq_trans. apply leq_sub. apply Hle1.
+    apply leqnn. rewrite leq_subLR.
+    rewrite -addnA leq_add2l.
+    
+     lia.
+
+    solve_by_lia.
+    repeat match goal with
+  | H: is_true (?x < ?y) |- _ => move: H => /ltP H
+  | H: is_true (?x <= ?y) |- _ => move: H => /leP H
+  | H: (?x < ?y) = ?b |- _ => move: H => /ltP H
+  | H: (?x <= ?y) = ?b |- _ => move: H => /leP H
+  | |- context [ ?x - ?y] => have->: (x - y = (x - y)%coq_nat) by []
+  | |- context [?x + ?y] => have->: (x + y = (x + y)%coq_nat) by []
+  | |- is_true (?x < ?y) => apply /ltP
+  | |- is_true (?x <= ?y) => apply /leP
+  | |- (?x < ?y) = ?b => apply /ltP
+  | |- (?x <= ?y) = ?b => apply /leP 
+  end.
+    
+    
+    solve_by_lia.
+    rewrite leq_add2l.
+    Search (?x - ?z <= ?k).
+
+
+      leq_sub2r: forall (p : nat) [m n : nat], m <= n -> m - p <= n - p
+
+    Search (?x - ?y <= ?z - ?a).
+    solve_by_lia.
+      rewrite leq_add2r.
+      Search (?x + ?y <= ?x + ?z).
+      rewrite leq_addr.
+
+
+    eapply leq_trans.
+    
+    
+
+      
+      Search (?x <= ?x + ?y).
+      Search index size.
+
+      Search (?x + ?y - ?z).
+      . lia.
+      
+      
+      try solve_by_lia.
+        rewrite -addnA addn1. Search (?x < ?z + ?y).
+        rewrite addn1.
+        Search (?x + ?y < ?x).
+      
+      Search index size.
+      
+      Search nth cat.
+  
+  
+  Search in_mem nth.
+
+
+  nth_index:
+  forall [T : eqType] (x0 : T) [x : T] [s : seq T],
+  x \in s -> nth x0 s (index x s) = x
+  
+  
+  (*Now we have that u_seqNum p2 < u_seqNum p1*)
+
+
+  move => Hallp
+
+
+
+(*Now we show*)
 
 End Defs.
 
