@@ -16,9 +16,11 @@ Proof.
   by apply ReflectT. by apply ReflectF.
 Qed.
 
-(*First, show int has an eqType*)
-Definition int_eqMixin := EqMixin (fun i1 i2 => reflect_proj_sumbool (Int.eq_dec i1 i2)).
-Canonical int_eqType := EqType int int_eqMixin.
+(*First, show byte has an eqType - TODO move this so we dont
+have 2 - other in ByteField*)
+Definition byte_eqMixin := EqMixin 
+  (fun i1 i2 => reflect_proj_sumbool (Byte.eq_dec i1 i2)).
+Canonical byte_eqType := EqType byte byte_eqMixin.
 
 (*Abstract notions of packets, transcript, encoder, decoder*) 
 Section AbstractSpecs.
@@ -30,7 +32,7 @@ Section AbstractSpecs.
 Variable packet_valid : list byte -> list byte -> bool.
 
 Record packet := mk_pkt 
-  { p_header : list byte; p_contents: list byte; p_seqNum: int }.
+  { p_header : list byte; p_contents: list byte; p_seqNum: nat }.
 
 #[export]Instance eta_packet: Settable _ := 
   settable! mk_pkt <p_header; p_contents; p_seqNum>. 
@@ -55,25 +57,27 @@ Definition packet_bytes (p: packet): list byte :=
 
 (*Equality on packets*)
 
-Definition byte_list_eq_dec : forall (l1 l2: list byte), {l1 = l2} + {l1 <> l2} :=
-  fun l1 l2 => list_eq_dec Byte.eq_dec l1 l2.
+(*Definition byte_list_eq_dec : forall (l1 l2: list byte), {l1 = l2} + {l1 <> l2} :=
+  fun l1 l2 => list_eq_dec Byte.eq_dec l1 l2.*)
 
 Definition packet_eqb (p1 p2: packet) : bool :=
-  (proj_sumbool (byte_list_eq_dec (p_header p1) (p_header p2)) && 
-   proj_sumbool (byte_list_eq_dec (p_contents p1) (p_contents p2)) && 
-   proj_sumbool (Int.eq_dec (p_seqNum p1) (p_seqNum p2))).
+  (p_header p1 == p_header p2) &&
+  (p_contents p1 == p_contents p2) &&
+  (p_seqNum p1 == p_seqNum p2).
 
 Lemma packet_eqP: forall (p1 p2: packet),
   reflect (p1 = p2) (packet_eqb p1 p2).
 Proof.
   rewrite /packet_eqb.
-  move => p1 p2. destruct (byte_list_eq_dec (p_header p1) (p_header p2)) as [Hh | Hh] => /=; last first.
-    apply ReflectF. move => Hc. by rewrite Hc in Hh.
-  destruct (byte_list_eq_dec (p_contents p1) (p_contents p2)) as [Hp|Hp]=>/=; last first.
-    apply ReflectF. move => Hc. by rewrite Hc in Hp.
-  destruct (Int.eq_dec (p_seqNum p1) (p_seqNum p2)) as [Hi|Hi]=>/=; last first.
-    apply ReflectF. move => Hc. by rewrite Hc in Hi.
-  apply ReflectT. move: Hh Hp Hi. by case : p1; case : p2 => /= h1 c1 s1 h2 c2 s2 ->->->.
+  move => p1 p2.
+  case: (p_header p1 == p_header p2) /eqP =>/= Hhead; 
+    last by (apply ReflectF; intro; subst).
+  case: (p_contents p1 == p_contents p2) /eqP => /= Hcons;
+    last by (apply ReflectF; intro; subst).
+  case: (p_seqNum p1 == p_seqNum p2) /eqP => /= Hseq;
+    last by (apply ReflectF; intro; subst).
+  apply ReflectT. by move: Hhead Hcons Hseq; case: p1; case p2 => /=
+  h1 c1 a1 h2 c2 s2 Hh Hc Hs; subst.
 Qed.
 
 Definition packet_eqMixin := EqMixin packet_eqP.
@@ -97,7 +101,7 @@ Definition fec_packet_eqMixin := EqMixin fec_packet_eqP.
 Canonical fec_packet_eqType := EqType fec_packet fec_packet_eqMixin.
 
 #[export] Instance packet_inhab: Inhabitant packet.
-apply (mk_pkt nil nil Int.zero).
+apply (mk_pkt nil nil 0).
 Defined.
 
 Variable fec_packet_inhab: Inhabitant fec_packet.
@@ -161,7 +165,10 @@ Definition valid_encoder_decoder (enc: encoder) (dec: decoder) : Prop :=
     (*If all incoming packets are valid and encodable*)
     (forall p, p \in orig -> packet_valid (p_header p) (p_contents p)) ->
     (forall p, p \in orig -> encodable_pred p) ->
-    (*sequence numbers must be unique (TODO: this is true for this implementation, is it too restrictive?*)
+    (*sequence numbers must be unique - this is NOT true of the C code,
+      but we will prove that under certain conditions, the machine-length
+      integer operations we perform are equivalent to their
+      infinite precision counterparts*)
     uniq (map p_seqNum orig) ->
     encoder_list enc orig encoded ->
     decoder_list dec received decoded ->
