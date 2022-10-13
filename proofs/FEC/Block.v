@@ -76,6 +76,13 @@ Proof.
     rewrite eq_sym. apply eqP.
 Qed.
 
+(*TODO: where to put?*)
+Lemma zip_nil: forall {A B: Type} (l: list B),
+  zip (@nil A) l = nil.
+Proof.
+  move => A B l. by case: l.
+Qed.
+
 (** IP/UDP Packets *)
 (*Here, we require our packets to be valid IP/UDP packets*)
 
@@ -376,7 +383,6 @@ Proof.
       move: Hall => /(_ _ Hy) Hlt. solve_sumbool. lia.
     + move: Hall => /allP /allPn [y Hyin Hylt]. have Hfy: 0 <= f y. move: Hylt.
         by case: (Z_gt_le_dec 0 (f y)).
-      (*have Hint: In y t by rewrite -in_mem_In.*)
       move: IH => /(_ _ Hyin Hfy) [z [Hinz Hmax]].
       have [Hx | Hz]: f z <= f h \/ f h <= f z by lia.
       * exists h. split. by rewrite in_cons eq_refl. lia.
@@ -629,11 +635,11 @@ Qed.
 
 (*For proving the hard condition (the index iff) in [block_wf]: the following 2 lemmas make it a bit easier
   in some situations*)
-(*
+
 Lemma block_wf_list_equiv: forall (l: list (option fpacket)),
-  (forall p i, In (Some p) l -> Znth i l = Some p <-> i = Int.unsigned (fd_blockIndex p)) <->
+  (forall p i, (Some p) \in l -> Znth i l = Some p <-> i = Z.of_nat (fd_blockIndex (p_fec_data' p))) <->
   (forall p i, 0 <= i < Zlength l ->
-    In (Some p) l -> Znth i l = Some p <-> i = Int.unsigned (fd_blockIndex p)).
+    (Some p) \in l -> Znth i l = Some p <-> i = Z.of_nat (fd_blockIndex (p_fec_data' p))).
 Proof.
   move => l. split.
   - move => Hcon p i Hi. by apply Hcon.
@@ -641,38 +647,42 @@ Proof.
     + move => Hith. have Hib: 0 <= i < Zlength l. apply Znth_inbounds. by rewrite Hith.
       by apply Hcon.
     + move => Hidx.
-      have [j [Hj Hjth]]: exists j, 0 <= j < Zlength l /\ Znth j l = Some p by rewrite -In_Znth_iff.
-      have: j = Int.unsigned (fd_blockIndex p) by apply Hcon. by move => Hj'; subst.
+      have [j [Hj Hjth]]: exists j, 0 <= j < Zlength l /\ Znth j l = Some p.
+        rewrite -In_Znth_iff. by apply /inP.
+      have: j = Z.of_nat (fd_blockIndex (p_fec_data' p)) by apply Hcon. 
+      by move => Hj'; subst.
 Qed.
 
 (*A generic way to handle the iff condition in block_wf when adding a new element*)
 Lemma block_wf_list_upd_Znth: forall (l: list (option fpacket)) (p: fpacket) j,
-  (forall (p: fpacket) i, In (Some p) l -> Znth i l = Some p <-> i = Int.unsigned (fd_blockIndex p)) ->
+  (forall (p: fpacket) i, (Some p) \in l -> Znth i l = Some p <-> 
+    i = Z.of_nat (fd_blockIndex p)) ->
   0 <= j < Zlength l ->
   Znth j l = None ->
-  j = Int.unsigned (fd_blockIndex p) ->
-  (forall (p': fpacket) i, In (Some p') (upd_Znth j l (Some p)) -> 
-    Znth i (upd_Znth j l (Some p)) = Some p' <-> i = Int.unsigned (fd_blockIndex p')).
+  j = Z.of_nat (fd_blockIndex p) ->
+  (forall (p': fpacket) i, (Some p') \in (upd_Znth j l (Some p)) -> 
+    Znth i (upd_Znth j l (Some p)) = Some p' <-> i = Z.of_nat (fd_blockIndex p')).
 Proof.
   move => l p j Hall Hj Hjidx Hjth. rewrite block_wf_list_equiv.
-  move => p' i. zlist_simpl. move => Hi Hin.
+  move => p' i. zlist_simpl. move => Hi /inP Hin.
   apply In_upd_Znth in Hin. case: Hin => [[Hp''] | Hin].
   - subst. split.
     + rewrite (upd_Znth_lookup' (Zlength l)); try lia.
-      case : (Z.eq_dec i (Int.unsigned (fd_blockIndex p))) => //= Hij Hith.
-      apply Hall => //. rewrite In_Znth_iff. by exists i.
+      case : (Z.eq_dec i (Z.of_nat (fd_blockIndex p))) => //= Hij Hith.
+      apply Hall => //. apply /inP. rewrite In_Znth_iff. by exists i.
     + move ->. by rewrite upd_Znth_same.
   - subst. split.
     + rewrite (upd_Znth_lookup' (Zlength l)); try lia.
-      case : (Z.eq_dec i (Int.unsigned (fd_blockIndex p))) => //=.
+      case : (Z.eq_dec i (Z.of_nat (fd_blockIndex p))) => //=.
       * move => Hi' [Hp]. by subst.
-      * move => Hi' Hith. by apply Hall.
-    + move ->. have Hnth: Znth (Int.unsigned (fd_blockIndex p')) l = Some p' by apply Hall.
-      have Hbound: 0 <= (Int.unsigned (fd_blockIndex p')) < Zlength l by apply Znth_inbounds; rewrite Hnth.
+      * move => Hi' Hith. apply Hall => //. by apply /inP.
+    + move ->. have Hnth: Znth (Z.of_nat (fd_blockIndex (p_fec_data' p'))) l 
+      = Some p'. apply Hall => //. by apply /inP.
+      have Hbound: 0 <= (Z.of_nat (fd_blockIndex (p_fec_data' p'))) < Zlength l by apply Znth_inbounds; rewrite Hnth.
       rewrite upd_Znth_diff //; try lia. move => Heq.
       rewrite Heq in Hnth. by rewrite Hjidx in Hnth.
 Qed.
-*)
+
 (*This is convenient to have*)
 Lemma blockIndex_Znth_data: forall (b: block) (p: fpacket),
   block_wf b ->
@@ -1421,7 +1431,7 @@ Lemma get_blocks_allin: forall (s: seq fpacket) (p: fpacket),
   p \in s ->
   exists b, (b \in (get_blocks s)) && (packet_in_block p b).
 Proof.
-  move => s p Hwf Hp. rewrite /get_blocks. (*rewrite in_mem_In in Hp.*)
+  move => s p Hwf Hp. rewrite /get_blocks. 
   have [pkts [Hinb Hinp]]:=(get_block_lists_allin_in Hwf (get_block_lists_spec Hwf) Hp).
   exists (btuple_to_block (fd_blockId p, pkts)). apply /andP. split.
   - apply /mapP. by exists (fd_blockId p, pkts).
@@ -1429,7 +1439,6 @@ Proof.
     + have: p \in (pmap id pkts) by rewrite -pmap_id_some.
       by rewrite Hmap.
     + have [_ [_ [Hlen _]]] := (get_block_lists_spec Hwf). 
-      (*have Hp': p \in s by rewrite in_mem_In.*)
       have [Hpid' Hinp']: fd_blockId (p_fec_data' p') = fd_blockId p /\ p' \in s. {
         apply (get_block_lists_prop_packets (get_block_lists_spec Hwf) Hinb).
         by rewrite pmap_id_some Hmap in_cons eq_refl. }
@@ -1452,8 +1461,6 @@ Lemma get_blocks_in_orig: forall (s: seq fpacket) (b: block) (p: fpacket),
   p \in s.
 Proof.
   move => s b p Hwf. rewrite /get_blocks => /mapP [[i pkts] Hinpkts Hb]. subst.
-  (*move: Hinblk.
-  rewrite in_mem_In => Hinpkts.*)
   rewrite /btuple_to_block/=.
   case Hmap: (pmap id pkts) => [// | p' t' /=].
   have [_ [_ [Hlen _]]] := (get_block_lists_spec Hwf).
