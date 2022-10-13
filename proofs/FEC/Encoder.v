@@ -1696,3 +1696,67 @@ Proof.
 Qed.
 
 End EncoderBlocks.
+
+(*One more theorem: the data packets the encoder outputs are exactly
+  the packets in the original list.*)
+
+Lemma encode_new_filter: forall p k h,
+  map f_packet (filter (fun (p: fpacket) => ~~ (fd_isParity p))
+    (encode_new p k h).2) = [:: p].
+Proof.
+  move=> p k h. rewrite /encode_new.
+  case : (Z.eq_dec k 1) => //= _.
+  by rewrite encode_block_filter/=.
+Qed.
+
+Lemma encode_exist_filter: forall p b,
+  map f_packet (filter (fun (p: fpacket) => ~~ (fd_isParity p))
+    (encode_exist p b).2) = [:: p].
+Proof.
+  move=> p b. rewrite /encode_exist.
+  case: (Z.eq_dec
+  (Zlength
+      [seq x <- data_packets (add_packet_to_block_red p b)
+        | isSome x]) (blk_k (add_packet_to_block_red p b))) =>//= _.
+  by rewrite encode_block_filter.
+Qed.
+
+(*Want to prove one more thing (if it's easy)*)
+
+Theorem rse_encode_all_sent_data: forall (orig: list packet) 
+  (params: list (Z * Z)),
+  size orig = size params ->
+  map f_packet 
+    ((filter (fun b => negb (fd_isParity (p_fec_data' b)))) 
+      (rse_encode_all orig params).2) =
+  orig.
+Proof.
+  move=> orig params Hsz.
+  (*switch to foldr*)
+  rewrite /rse_encode_all -(revK (combine _ _)) foldl_rev -zip_combine
+    rev_zip //.
+  move: Hsz. rewrite -(size_rev params) -(size_rev orig).
+  rewrite -{3}(revK orig). forget (rev params) as p.
+  forget (rev orig) as o.
+  rewrite {params orig}.
+  move: p. elim: o => [// p | phd ptl /= IH p].
+  - by rewrite /rev/=zip_nil/=.
+  - case: p => [//| parh part /=Hsz].
+    rewrite rev_cons -(cats0 (rcons _ _)) (cat_rcons _ _ nil).
+    move: IH => /(_ part (eq_add_S _ _ Hsz)).
+    rewrite !filter_cat !map_cat=>->. f_equal.
+    case: (foldr
+      (fun (x : packet * (Z * Z))
+        (z : seq block * option block * seq fpacket) =>
+      ((rse_encode_gen z.1.1 z.1.2 x.1 x.2.1 x.2.2).1.1,
+      (rse_encode_gen z.1.1 z.1.2 x.1 x.2.1 x.2.2).1.2,
+      z.2 ++ (rse_encode_gen z.1.1 z.1.2 x.1 x.2.1 x.2.2).2))
+      ([::], None, [::]) (zip ptl part)) => [[blks inprog] send].
+    rewrite /rse_encode_gen/=.
+    case: inprog => [//= blk | //=]; last by
+      rewrite encode_new_filter.
+    case: (~~ proj_sumbool (Z.eq_dec (blk_k blk) parh.1)
+    || ~~ proj_sumbool (Z.eq_dec (blk_h blk) parh.2)); last by
+      rewrite encode_exist_filter.
+    by rewrite /= filter_cat map_cat encode_block_filter encode_new_filter.
+Qed.
