@@ -1117,8 +1117,60 @@ Qed.
 
 End DecoderSubblocks.
 
-
-(*TODO (later) - full theorems of correctness - wait until end*)
-
+(*Some other results useful for the timeout version of the decoder*)
+Lemma in_decoder_one_step: forall blocks p time b,
+  sorted blk_order blocks ->
+  b \in (decoder_one_step_gen blocks p time).1.1 ->
+  (b \in blocks) \/
+  (b = (create_block_with_packet_black p (upd_time time p blocks)).1 /\
+    forall b', b' \in blocks -> not_timeout (upd_time time p blocks) b' = false \/ 
+      blk_id b' <> blk_id b) 
+    (*not true because can create new after timing out*) \/
+  (exists b', b' \in blocks /\ b = (add_packet_to_block_black p b').1).
+Proof.
+  move=> blks p time b/=. move: (upd_time time p blks) => upd.
+  move: (not_timeout) => f.
+  elim: blks =>[//= _ | bhd btl /= IH Hsort]; rewrite /blk_order.
+  - rewrite in_cons orbF => /eqP->. right. by left.
+  - move: Hsort. rewrite path_sortedE; last by move=> b1 b2 b3; apply ltn_trans.
+    move=>/andP[/allP Halllt Hsort].
+    case Hf: (f upd bhd)=>/=; last first.
+    + move=> Hin. apply IH in Hin =>//. 
+      case: Hin => [Htl | [[Hb Hall]| [b' [Hinb' Hb']]]].
+      * left. by rewrite in_cons Htl orbT.
+      * right. left. split=>//. move=>b'. 
+        rewrite in_cons => /orP[/eqP Hb' | Hinb']; subst.
+        by left. by apply Hall.
+      * right. right. exists b'. by rewrite in_cons Hinb' orbT.
+    + case: (fd_blockId p == blk_id bhd) /eqP => Hideq.
+      * rewrite in_cons => /orP[/eqP Hb | Hinb].
+        -- right. right. exists bhd. by rewrite mem_head.
+        -- move: Hinb; rewrite mem_filter => /andP[Hfb Hinb]. 
+          (*TODO: add info about not timing out?*)
+          left. by rewrite in_cons Hinb orbT.
+      * case Hidlt: (fd_blockId p < blk_id bhd)%N.
+        -- rewrite !in_cons => /orP[/eqP Hb | /orP[Hb | ]].
+          ++ right. left. split=>//.
+            move=> b'. rewrite in_cons => /orP[/eqP Hb' | Hinb'].
+            ** subst. by case: (Z.eq_dec (fd_k p) 1) =>//= _; right; auto.
+            ** right. have->: blk_id b = fd_blockId p by
+                subst; case: (Z.eq_dec (fd_k p) 1).
+              (*Here, we use sortedness*)
+              move: Halllt => /( _ _ Hinb'); rewrite /blk_order => Hlt.
+              move => Heq. have: (fd_blockId p < blk_id b')%N by 
+                apply (ltn_trans Hidlt).  
+              by rewrite Heq ltnn.
+          ++ left. by rewrite Hb.
+          ++ rewrite mem_filter => /andP[Hfb Hinb].
+            left. by rewrite Hinb orbT.
+        -- move=> Hinb. apply IH in Hinb=>//.
+          case: Hinb => [Htl | [[Hb Hall]| [b' [Hinb' Hb']]]].
+          ++ left. by rewrite in_cons Htl orbT.
+          ++ right. left. split=>//. move=>b'. 
+            rewrite in_cons => /orP[/eqP Hb' | Hinb']; subst.
+            right. by case: (Z.eq_dec (fd_k p) 1) =>/= _; auto.
+            by apply Hall.
+          ++ right. right. exists b'. by rewrite in_cons Hinb' orbT.
+Qed.
 
 End GenDecode.

@@ -1425,7 +1425,7 @@ Proof.
       apply Hid in Hinp''. rewrite Hinp'' eq_refl/=. 
       by case: (Z.eq_dec (Z.of_nat (fd_blockIndex p')) (Z.of_nat (fd_blockIndex p'))).
 Qed. 
-(*TODO: HERE*)
+
 Lemma get_blocks_allin: forall (s: seq fpacket) (p: fpacket),
   wf_packet_stream s ->
   p \in s ->
@@ -1478,6 +1478,38 @@ Proof.
   by apply (get_blocks_list_from_src Hallsum Hinpkts).
 Qed.
 
+(*TODO: see what I need exactly, may not need all this*)
+(*TODO: have I proved this or part of this before?*)
+(*
+Lemma get_blocks_wf: forall (s: seq fpacket) (b: block),
+  wf_packet_stream s ->
+  (forall (p: fpacket), p \in s -> 0 < fd_k p <= fec_n - 1 - fec_max_h /\
+    0 < fd_h p <= fec_max_h) ->
+  b \in (get_blocks s) ->
+  block_wf b.
+Proof.
+  move=> s b Hwf. rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
+  have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
+    (get_block_lists_spec Hwf).
+  have [p Hinp]: exists (p: fpacket), Some p \in pkts by apply (Hnonemp _ _ Hin).
+  have [Hpid Hpinl]:=
+    (get_block_lists_prop_packets (get_block_lists_spec Hwf) Hin Hinp).
+  rewrite (btuple_to_block_eq Hwf Hin Hpinl Hpid).
+  rewrite /block_wf/=.
+  Print wf_packet_stream.
+  
+  Lemma get_block_lists_prop_packets: forall (l: list fpacket) (blks: list btuple) (i: nat)
+  (pkts: list (option fpacket)) (p: fpacket),
+  get_block_lists_prop l blks ->
+  (i, pkts) \in blks ->
+  (Some p) \in pkts ->
+  fd_blockId p = i /\ p \in l.
+  
+  Search get_bl
+
+  Search btuple_to_block.
+  rewrite Hb.
+*)
 End BlockList.
 
 (* For the decoder, we need to reason about subblocks)*)
