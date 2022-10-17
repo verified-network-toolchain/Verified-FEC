@@ -738,6 +738,47 @@ Proof.
         rewrite -nat_abs_diff_leq //. by apply Hallp.
 Qed.
 
+(*This is why we define [undup_fst] rather than [undup], which
+  keeps the last ocurrence of each element*)
+  Lemma undup_fst_rcons: forall {A: eqType} (s: seq A) (x: A),
+  undup_fst (s ++ [:: x]) = if x \in s then undup_fst s 
+    else undup_fst s ++ [:: x].
+Proof.
+  move=> A s x. rewrite /undup_fst rev_cat/=.
+  case Hin: (x \in rev s); rewrite mem_rev in Hin; rewrite Hin =>//.
+  by rewrite rev_cons -cats1.
+Qed. 
+
+(*We need this version, a simple corollary*)
+Lemma packets_reorder_dup_bound' (default: pack) (P: pack -> Prop) 
+  (a k: nat):
+  (forall p1 p2, P p1 -> P p2 -> 
+    nat_abs_diff (u_seqNum p1) (u_seqNum p2) <= a) ->
+  duplicates_bounded default k ->
+  forall p1 p2 l1 l2 l3,
+  received = l1 ++ [:: p1] ++ l2 ++ [:: p2] ++ l3 ->
+  p1 \notin l1 ->
+  P p1 ->
+  P p2 ->
+  size (undup_fst (l1 ++ [:: p1] ++ l2 ++ [:: p2])) -
+  size (undup_fst (l1 ++ [:: p1])) <= a + k.
+Proof.
+  move=> Hallp Hdups p1 p2 l1 l2 l3 Hrec Hnotin1 Hpp1 Hpp2.
+  rewrite !catA !undup_fst_rcons (negbTE Hnotin1) size_cat/= -!catA.
+  have Hle: size (undup_fst (l1 ++ [:: p1] ++ l2)) + 1 - 
+    (size (undup_fst l1) + 1) <= a + k by
+    rewrite subnDr; apply (packets_reorder_dup_bound Hallp Hdups Hrec).
+  case Hin: (p2 \in l1 ++ [:: p1] ++ l2).
+  - eapply leq_trans;[| apply Hle]. rewrite -addnBAC.
+    by rewrite leq_addr.
+    have Hmid: (size (undup_fst (l1 ++ [:: p1])) <= 
+      size (undup_fst (l1 ++ [:: p1] ++ l2))) by 
+      rewrite catA; apply size_undup_fst_le_app.
+    eapply leq_trans;[|apply Hmid].
+    by rewrite undup_fst_rcons (negbTE Hnotin1) size_cat.
+  - by rewrite size_cat.
+Qed.
+
 End Defs.
 
 End SeqNums.

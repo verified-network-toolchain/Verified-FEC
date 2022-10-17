@@ -1478,38 +1478,34 @@ Proof.
   by apply (get_blocks_list_from_src Hallsum Hinpkts).
 Qed.
 
-(*TODO: see what I need exactly, may not need all this*)
-(*TODO: have I proved this or part of this before?*)
-(*
-Lemma get_blocks_wf: forall (s: seq fpacket) (b: block),
-  wf_packet_stream s ->
-  (forall (p: fpacket), p \in s -> 0 < fd_k p <= fec_n - 1 - fec_max_h /\
-    0 < fd_h p <= fec_max_h) ->
-  b \in (get_blocks s) ->
-  block_wf b.
+Lemma packet_in_btuple_to_block: forall i pkts p,
+  packet_in_block p (btuple_to_block (i, pkts)) ->
+  Some p \in pkts.
 Proof.
-  move=> s b Hwf. rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
+  move=> i pkts p. rewrite /btuple_to_block packet_in_block_eq/=.
+  case Hmap: (pmap id pkts) =>[// | p1 ptl/=]=> /orP[/inP Hin | /inP Hin];
+  apply /inP; apply (sublist_In _ _ _ _ Hin).
+Qed.
+
+(*We need some properties of [get_blocks] for the
+  decoder with timeouts. We don't prove everything in
+  [block_wf] because we don't want all the assumptions
+  (for instance, about fec_n and fec_max_h)*)
+Lemma get_blocks_ids: forall (s: seq fpacket) (b: block) p,
+  wf_packet_stream s ->
+  b \in (get_blocks s) ->
+  packet_in_block p b ->
+  fd_blockId p = blk_id b.
+Proof.
+  move=> s b p Hwf. rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
   have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
     (get_block_lists_spec Hwf).
-  have [p Hinp]: exists (p: fpacket), Some p \in pkts by apply (Hnonemp _ _ Hin).
-  have [Hpid Hpinl]:=
-    (get_block_lists_prop_packets (get_block_lists_spec Hwf) Hin Hinp).
-  rewrite (btuple_to_block_eq Hwf Hin Hpinl Hpid).
-  rewrite /block_wf/=.
-  Print wf_packet_stream.
-  
-  Lemma get_block_lists_prop_packets: forall (l: list fpacket) (blks: list btuple) (i: nat)
-  (pkts: list (option fpacket)) (p: fpacket),
-  get_block_lists_prop l blks ->
-  (i, pkts) \in blks ->
-  (Some p) \in pkts ->
-  fd_blockId p = i /\ p \in l.
-  
-  Search get_bl
+  move=> Hpinb.
+  have Hinp:=(packet_in_btuple_to_block Hpinb).
+  have [Hpid Hpinl]:=(get_block_lists_prop_packets (get_block_lists_spec Hwf) Hin Hinp).
+  by rewrite (btuple_to_block_eq Hwf Hin Hpinl Hpid).
+Qed.
 
-  Search btuple_to_block.
-  rewrite Hb.
-*)
 End BlockList.
 
 (* For the decoder, we need to reason about subblocks)*)
@@ -1807,6 +1803,17 @@ Proof.
   move => b1 b2. rewrite /subblock /recoverable => [[_ [Hsubdat [Hsubpar _]]]] Hrec.
   have<-: Zlength (data_packets b1) = Zlength (data_packets b2) by apply Hsubdat.
   solve_sumbool => /=. apply subseq_option_filter in Hsubdat. apply subseq_option_filter in Hsubpar. lia.
+Qed. 
+
+Lemma subblock_in: forall b1 b2 p,
+  subblock b1 b2 ->
+  packet_in_block p b1 ->
+  packet_in_block p b2.
+Proof.
+  move=> b1 b2 p. rewrite /subblock => [[_ [Hop1 [Hop2 _]]]].
+  rewrite !packet_in_block_eq=>/orP[Hdat | Hpar].
+  - by rewrite (subseq_option_in Hop1 Hdat).
+  - by rewrite (subseq_option_in Hop2 Hpar) orbT.
 Qed. 
 
 End Subblock.

@@ -27,8 +27,10 @@ prove another version that combines it to make the VST proof simpler.*)
 is equivalent to a version like the C code, but this is easier for analysis
 because we don't need to reason about wf blocks*)
 Definition block_notin_packet block packet : bool :=
+    ~~ (packet_in_block packet block).
+    (*
     isNone (Znth (Z.of_nat (fd_blockIndex packet)) 
-      (data_packets block ++ parity_packets block)).
+      (data_packets block ++ parity_packets block)).*)
 
 (*The check to update the time*)
 Fixpoint upd_time (time: Z) (curr: fpacket) (blocks: list block) :
@@ -45,7 +47,7 @@ Fixpoint upd_time (time: Z) (curr: fpacket) (blocks: list block) :
 
 (*Timeouts if threshold exceeded*)
 Definition not_timed_out: Z -> block -> bool := fun currTime =>
-  (fun b => (Z.ltb (black_time b + threshold) currTime)).
+  (fun b => (Z.leb currTime (black_time b + threshold))).
 
 Definition decoder_one_step :=
   decoder_one_step_gen upd_time not_timed_out.
@@ -92,7 +94,9 @@ Definition decoder_timeout_invar (blocks: list block)
   (*For every block, there is a packet that represents the time
     at which the block was created*)
   (forall b, b \in blocks ->
-    exists p l1 l2, prev = l1 ++ [:: p] ++ l2 /\
+    exists (p: fpacket) l1 l2, 
+      fd_blockId p = blk_id b /\
+      prev = l1 ++ [:: p] ++ l2 /\
       p \notin l1 /\
       Z.of_nat (size (undup_fst l1)).+1 = (black_time b) (*/\
       Znth (Int.unsigned (fd_blockIndex p)) 
@@ -105,13 +109,17 @@ Definition decoder_timeout_invar (blocks: list block)
       prev = l1 ++ [:: p'] ++ l2 /\
       p' \notin l1 /\
       Z.of_nat (size (undup_fst prev)) - 
-      Z.of_nat (size (undup_fst l1)) > threshold
+      Z.of_nat (size (undup_fst l1)).+1 > threshold
   ) /\
+  (*We also have a bunch of invariants that we need to prove the above,
+    but that we can/have proved separately*)
   (*The blocks are sorted*)
   sorted (fun x y => ((blk_id x) < (blk_id y))%N) blocks /\
   (*All packets in the block were seen*)
   (forall b p, b \in blocks -> packet_in_block p b ->
-    p \in prev).
+    p \in prev) /\
+  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
+    subblock b b').
   (*uniq blocks /\*)
   (*All packets are in the correct block*)
   (*
@@ -144,53 +152,33 @@ Proof.
         by rewrite Hintl Hpx.
 Qed.
 
-(*TODO: move*)
-(*This is why we define [undup_fst] rather than [undup], which
-  keeps the last ocurrence of each element*)
-Lemma undup_fst_rcons: forall {A: eqType} (s: seq A) (x: A),
-  undup_fst (s ++ [:: x]) = if x \in s then undup_fst s 
-    else undup_fst s ++ [:: x].
-Proof.
-  move=> A s x. rewrite /undup_fst rev_cat/=.
-  case Hin: (x \in rev s); rewrite mem_rev in Hin; rewrite Hin =>//.
-  by rewrite rev_cons -cats1.
-Qed. 
+
 
 (*Lemma characterizing [upd_time] - relies on invariants about blocks*)
 Lemma upd_time_spec: forall time p blocks,
   sorted (fun x y => (blk_id x < blk_id y)%N) blocks ->
   (forall b (p: fpacket), b \in blocks -> packet_in_block p b ->
     fd_blockId p = blk_id b) ->
-  (forall b (p: fpacket), b \in blocks -> 
-    packet_in_block p b <->
-    isSome (Znth (Z.of_nat (fd_blockIndex p)) 
-      (data_packets b ++ parity_packets b))) ->
   upd_time time p blocks =
     if (existsb (fun b => packet_in_block p b) blocks) then time else
       time + 1.
 Proof.
-  move=>time p blocks. elim: blocks => [//= | bhd btl /= IH Hsort Hids Hnth].
+  move=>time p blocks. elim: blocks => [//= | bhd btl /= IH Hsort Hids (*Hnth*)].
   case: (fd_blockId p == blk_id bhd) /eqP => Heq.
   - rewrite /block_notin_packet.
-    case Hin: (packet_in_block p bhd).
-    + move: Hnth => /(_ bhd p (mem_head _ _)). rewrite Hin => [[Hnth _]].
-      by rewrite /isNone Hnth.
-    + rewrite /isNone.
-      case Hnth': (Znth (Z.of_nat (fd_blockIndex p)) (data_packets bhd ++ parity_packets bhd)) => [p'//= |//=].
-      * move: Hnth => /(_ bhd p (mem_head _ _)). rewrite Hin Hnth' =>
-        [[_ Hf]]. by have: false by apply Hf.
-      * case: (existsb (fun b => packet_in_block p b) btl) /existsbP =>
+    case Hin: (packet_in_block p bhd)=>//=.
+    case: (existsb (fun b => packet_in_block p b) btl) /existsbP =>
         [[b] /andP[Hinb Hinbx] |//].
-        (*Now we know it cannot be in tail because all have 
-              larger sequence number*)
-        have: (blk_id bhd < blk_id b)%N. {
-          move: Hsort. rewrite path_sortedE; 
-            last by move => b1 b2 b3; apply ltn_trans.
-          by move=>/andP[/allP Hlt _]; move: Hlt => /(_ _ Hinb).
-        }
-        have<-//: fd_blockId p = blk_id b by 
-          apply Hids =>//; rewrite in_cons Hinb orbT.
-        by rewrite Heq ltnn.
+    (*Now we know it cannot be in tail because all have 
+          larger sequence number*)
+    have: (blk_id bhd < blk_id b)%N. {
+      move: Hsort. rewrite path_sortedE; 
+        last by move => b1 b2 b3; apply ltn_trans.
+      by move=>/andP[/allP Hlt _]; move: Hlt => /(_ _ Hinb).
+    }
+    have<-//: fd_blockId p = blk_id b by 
+      apply Hids =>//; rewrite in_cons Hinb orbT.
+    by rewrite Heq ltnn.
   - (*First, we know cannot be in this packet*)
     case Hibphd: (packet_in_block p bhd) =>/=; first by
       exfalso; apply Heq; apply Hids=>//; rewrite mem_head.
@@ -210,7 +198,6 @@ Proof.
           move=> b1 b2 b3; apply ltn_trans.
         by move=>/andP[_].
       * move=> b p' Hin. apply Hids. by rewrite in_cons Hin orbT.
-      * move=> b p' Hin. apply Hnth. by rewrite in_cons Hin orbT.
 Qed. 
 
 (*TODO: move*)
@@ -223,13 +210,35 @@ Proof.
   by case Hrec: (recoverable (add_fec_packet_to_block p b)).
 Qed.*)
 
-Lemma create_block_time: forall p time,
+Lemma create_black_time: forall p time,
   black_time (create_block_with_packet_black p time).1 = time.
 Proof.
   move=> p time /=.
   by case: (Z.eq_dec (fd_k p) 1).
 Qed.
 
+Lemma create_black_id: forall p time,
+  blk_id (create_block_with_packet_black p time).1 = fd_blockId p.
+Proof.
+  move=> p time/=.
+  by case: (Z.eq_dec (fd_k p) 1).
+Qed.
+
+Lemma add_black_time: forall p b,
+  black_time (add_packet_to_block_black p b).1 = black_time b.
+Proof.
+  move=> p b. rewrite /add_packet_to_block_black.
+  case: (black_complete b)=>//.
+  by case: (recoverable (add_fec_packet_to_block p b)).
+Qed.
+
+Lemma add_black_id: forall p b,
+  blk_id (add_packet_to_block_black p b).1 = blk_id b.
+Proof.
+  move=>p b. rewrite /add_packet_to_block_black.
+  case:(black_complete b)=>//.
+  by case: (recoverable (add_fec_packet_to_block p b)).
+Qed.
 
 (*We prove that this invariant is preserved. This is the key
   structural lemma to characterize the timeout behavior*)
@@ -244,13 +253,62 @@ Proof.
   rewrite /reorder_dup_cond/bounded_reorder_list/duplicates_bounded =>
   [[Hreord [Hdups Hthresh]]].
   rewrite /decoder_timeout_invar => 
-    [[Htime [Hcreate [Hprevnotin [Hsort Hinprev]]]]].
-  (*For now, do each part individually - see*)
-  repeat split.
-  - (*We start with the most important invariant - time*)
-    rewrite /decoder_one_step/= undup_fst_rcons.
-    rewrite upd_time_spec =>//.
-    (*TODO:derive others from wf_packet_list*)
+    [[Htime [Hcreate [Hprevnotin [Hsort [Hinprev Hsubblock]]]]]].
+  (*There are a number of results we will need many times*)
+  (*First: prev stream is wf*)
+  have Hwf': wf_packet_stream prev. {
+    (*TODO: might need this*)
+    have Hwftemp: wf_packet_stream (p :: prev) by
+      apply (wf_perm Hwf); rewrite cats1 perm_rcons perm_refl.
+    apply (wf_packet_stream_tl Hwftemp). 
+  }
+  (*All packets in blocks agree with ID values*)
+  have Hallid: forall (b : block_eqType) (p0 : fpacket),
+    b \in blocks -> packet_in_block p0 b -> fd_blockId p0 = blk_id b. {
+    move=> b p' Hinb Hinp'.
+    move: Hsubblock=> /(_ b Hinb) [b' [Hinb' Hsubb]].
+    have Hinb2:= (subblock_in Hsubb Hinp').
+    rewrite (proj1 Hsubb).
+    by apply (get_blocks_ids Hwf').
+  }
+  (*A key result that we use in several places and which underlies
+    the entire invariant: we cannot have a packet in the same block
+    as the current packet that arrived too much earlier*)
+  have Hclose: forall (p1 (*p2*): fpacket) l1 l2,
+    prev (*++ [:: p]*) = l1 ++ [:: p1] ++ l2 (*++ [:: p2]*) ->
+    p1 \notin l1 ->
+    fd_blockId p1 = fd_blockId p ->
+    ~(Z.of_nat (size (undup_fst (l1 ++ [:: p1] ++ l2 ++ [:: p]))) -
+    Z.of_nat (size (undup_fst (l1 ++ [:: p1]))) > threshold). {
+      move=> p1 l1 l2 Hprev Hnotin1 Hids.
+      have Hcon: ((size (undup_fst (l1 ++ [:: p1] ++ l2 ++ [:: p])) - 
+        size (undup_fst (l1 ++ [:: p1])))%N <= 
+        (k + h + 2 * d) + dup)%N. {
+          (*Check (@packets_reorder_dup_bound').*)
+          (*apply (@packets_reorder_dup_bound' _ (prev ++ [:: p]) fpacket_inhab).*)
+          eapply (@packets_reorder_dup_bound' _ (prev ++ [:: p]) fpacket_inhab
+            (fun (x: fpacket) =>  (x \in prev ++ [:: p]) 
+              && (fd_blockId x == fd_blockId p)) _ _) with(p2:=p)(l3:=nil) =>//.
+          - move=> pa pb /andP[Hinpa /eqP Hidpa] /andP[Hinpb /eqP Hidpb].
+            apply Hreord=>//. by rewrite Hidpa Hidpb.
+          - by rewrite cats0 Hprev -catA.
+          - by rewrite Hids Hprev !mem_cat in_cons !eq_refl !orbT.
+          - by rewrite mem_cat in_cons !eq_refl !orbT.
+        }
+      (*Now we get an easy contradiction of inequalities*)
+      move=>Htimeout.
+      rewrite -Nat2Z.inj_sub in Htimeout.
+      - have /ltP: (size (undup_fst (l1 ++ [:: p1] ++ l2 ++ [:: p])) - 
+          size (undup_fst (l1 ++ [:: p1])) > k + h + 2 * d + dup)%coq_nat. {
+          apply Nat2Z.inj_gt. eapply Zgt_le_trans. apply Htimeout. lia.
+        }
+        by rewrite ltnNge Hcon.
+      - rewrite catA. apply /leP. apply size_undup_fst_le_app. 
+    }
+  (*We do the 1st invariant separately, since it's useful
+    in the rest*)
+  have Hupdtime: (upd_time time p blocks = Z.of_nat (size (undup_fst (prev ++ [:: p])))). {
+    rewrite undup_fst_rcons upd_time_spec =>//.
     + case: (existsb [eta packet_in_block p] blocks) /existsbP => 
       [[b /andP[Hinb Hinpb]] | Hnotin].
       * (*If the packet is in some block, then it is was in prev*)
@@ -266,6 +324,28 @@ Proof.
           by rewrite size_cat/= Nat2Z.inj_add/= Htime.
         move: Hprevnotin => /(_ p Hpinprev Hnotin) 
           [p' [l1 [l2 [Hidpp'[Hprev [Hnotinp' Htimeout]]]]]].
+        exfalso. apply (Hclose p' (*p*) l1 l2 (*nil*))=>//. 
+        have->: l1 ++ [:: p'] ++ l2 ++ [:: p] = prev ++ [:: p] by
+          rewrite !catA -(catA l1) Hprev.
+        by rewrite !undup_fst_rcons Hpinprev (negbTE Hnotinp') 
+          size_cat/= addn1.
+
+          (*Z.of_nat (size (undup_fst l1)).+1 + threshold <
+       Z.of_nat (size (undup_fst prev))
+*)
+        (*Hmm this may not work - end up with something smaller
+          we use different bounds for these things - can we generalize?*)
+        (*rewrite !undup_fst_rcons (negbTE Hnotinp') Hpinprev/= size_cat/=. lia.
+        rewrite (catA [::p]). by rewrite Hpre.
+        rewrite -!Hprev.
+        rewrite undup_fst_rcons. -!Hprev. (negbTE Hnotinp') size_cat -Hprev /=.
+        have->: size (undup_fst prev) = size (undup_fst (prev ++ [:: p])) by
+          rewrite undup_fst_rcons Hpinprev.
+        rewrite size_cat. lia.
+        
+        lia.*)
+        (*TODO:this is the proof i think (need to change a bit)*)
+        (*
         have Hcon: ((size (undup_fst prev) - size (undup_fst l1))%N <= 
           (k + h + 2 * d) + dup)%N. {
             rewrite Hprev.
@@ -285,9 +365,13 @@ Proof.
         }
         by rewrite ltnNge Hcon.
         rewrite Hprev.
-        rewrite /=. apply /leP. apply size_undup_fst_le_app.
-    + (*TODO: from wf_packet list*) admit.
-    + (*same*) admit.
+        rewrite /=. apply /leP. apply size_undup_fst_le_app.*)
+  }
+  (*For now, do each part individually - see*)
+  repeat split.
+  - (*We already did the first one*)
+    by rewrite /decoder_one_step/=.
+    
   - (*TODO: there will be some duplication here: find out how to deal with it*)
     (*This one shouldnt be too hard: just show that when we create a new block,
       the existing packet satisfies the condition*)
@@ -295,7 +379,7 @@ Proof.
     apply in_decoder_one_step in Hinb.
     case: Hinb => [Hinb | [[Hb Hall] | H]].
     + (*easy case: follows from IH*)
-      move: Hcreate => /(_ b Hinb) [p' [l1 [l2 [Hprev [Hpnotin Hl1time]]]]].
+      move: Hcreate => /(_ b Hinb) [p' [l1 [l2 [Hidp' [Hprev [Hpnotin Hl1time]]]]]].
       exists p'. exists l1. exists (l2 ++ [:: p]). repeat split =>//.
       rewrite Hprev. by rewrite !catA.
     + (*Create new packet - the hard case. We need to prove p was not
@@ -303,38 +387,57 @@ Proof.
         a block with p that timed out. We prove a similar contradiction
         as before (TODO: factor out).*)
       case Hinp: (p \in prev); last first.
-        (*easy case*) exists p. exists prev. exists nil.
-        split. by rewrite cats0. split. by rewrite Hinp.
-        rewrite Hb create_block_time Nat2Z.inj_succ -Htime.
-        rewrite upd_time_spec=>//.
-        case: (existsb [eta packet_in_block p] blocks) /existsbP=>//
-          [[b' /andP[Hinb' Hpb']]].
-        by rewrite (Hinprev _ _ Hinb' Hpb') in Hinp.
-        admit. admit. (*Same as before: TODO*)
-      (*The interesting case: in p is in prev, consider 2 cases*)
-      case: (existsb [eta packet_in_block p] blocks) /existsbP.
-      (*Need 2 more invariants: 
-      1. all packets in a block have the same blockId as the block
-      2. need to know: all packets in blks are not timed out (can show
-        each of these separately i think)*)
-      * move => [b' /andP[Hinb' Hpb']].
-        have Hpid: fd_blockId p = blk_id b'. admit. (*TODO*)
-        have Hbid: blk_id b' = blk_id b. {
-          rewrite Hb/=. by case: (Z.eq_dec (fd_k p) 1).
-        }
-        move: Hall => /(_ _ Hinb') => [[ | //]].
-        rewrite /not_timed_out.
-        (*Here we again need to get a contradiction because
-        packets have arrived too far apart (is >= enough?)
-        We should get the previous into a generic lemma*)
-        admit.
-      * (*OK, now I am confused and need to think a bit more*)
-      
-      
-      (*Here, we can use the IH*)
-        move => Hnoblock. move: Hprevnotin => /( _ _ Hinp Hnoblock)
-        [p' [l1 [l2 [Hids [Hprev [Hpnotin Hnoto]]]]]].
-        (*Here, want to get contradiction by showing that distance
-          between p and p' exceeds threshold and is thus impossible*)
-        (*proved something very similar before*)
-        admit.
+      * (*easy case*) exists p. exists prev. exists nil.
+        split_all.
+        -- by rewrite Hb create_black_id. 
+        -- by rewrite cats0.
+        -- by rewrite Hinp.
+        -- rewrite Hb create_black_time Nat2Z.inj_succ -Htime.
+          rewrite upd_time_spec=>//.
+          case: (existsb [eta packet_in_block p] blocks) /existsbP=>//
+            [[b' /andP[Hinb' Hpb']]].
+          by rewrite (Hinprev _ _ Hinb' Hpb') in Hinp.
+      * (*The interesting case: in p is in prev, consider 2 cases*)
+        case: (existsb [eta packet_in_block p] blocks) /existsbP.
+        (*Need 2 more invariants: 
+        1. all packets in a block have the same blockId as the block
+        2. need to know: all packets in blks are not timed out (can show
+          each of these separately i think)*)
+        -- move => [b' /andP[Hinb' Hpb']].
+          have Hpid: fd_blockId p = blk_id b' by apply Hallid.
+          have Hbid: blk_id b' = blk_id b. {
+            rewrite Hb/=. by case: (Z.eq_dec (fd_k p) 1).
+          }
+          move: Hall => /(_ _ Hinb') => [[ | //]].
+          rewrite /not_timed_out Hupdtime (*undup_fst_rcons Hinp*).
+          (*Get the previous packet that gives us a contradiction*)
+          move: Hcreate => /( _ b' Hinb') 
+            [p' [l1 [l2 [Hidp' [Hprev [Hnotinp' Htimeb']]]]]].
+          rewrite Z.leb_antisym => Hto. apply negbFE in Hto.
+          move: Hto => /Z.ltb_spec0. rewrite Hprev -Htimeb' => Hcon.
+          exfalso. apply (Hclose p' (*p*) l1 l2 (*nil*))=>//.
+          by rewrite Hpid Hidp'.
+          rewrite undup_fst_rcons (negbTE Hnotinp') size_cat/=addn1.
+          rewrite -!catA in Hcon. simpl in *; lia.
+        -- (*Otherwise, we use the block that has already timed out, so
+          again the packets are too far apart*)
+          move => Hnotex.
+          move: Hprevnotin => /(_ p Hinp Hnotex) 
+            [p' [l1 [l2 [Hideq [Hprev [Hnotinp' Htimeout]]]]]].
+          exfalso. apply (Hclose p' (*p*) l1 l2)=>//.
+          have->:(l1 ++ [:: p'] ++ l2 ++ [:: p]) = prev ++ [:: p]
+            by rewrite !catA -(catA l1) Hprev.
+          by rewrite !undup_fst_rcons (negbTE Hnotinp') Hinp size_cat/= 
+            addn1.
+    + (*last case: use the IH, easy*)
+      case: H => [b' [Hinb' Hb]].
+      move: Hcreate => /(_ b' Hinb') 
+        [p' [l1 [l2 [Hideq [Hprev [Hnotinp' Htimeout]]]]]].
+      exists p'. exists l1. exists (l2 ++ [:: p]).
+      split_all=>//.
+      * by rewrite Hb add_black_id.
+      * by rewrite Hprev -catA.
+      * by rewrite Hb add_black_time.  
+    + by [].
+  - (*TODO: 3rd invariant*)
+  
