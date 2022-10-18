@@ -1506,6 +1506,120 @@ Proof.
   by rewrite (btuple_to_block_eq Hwf Hin Hpinl Hpid).
 Qed.
 
+Lemma get_blocks_Zlength: forall (s: seq fpacket) (b: block),
+  wf_packet_stream s ->
+  b \in (get_blocks s) ->
+  Zlength (data_packets b) = blk_k b /\
+  Zlength (parity_packets b) = blk_h b.
+Proof.
+  move=> s b Hwf. rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
+  have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
+    (get_block_lists_spec Hwf).
+  move: Hnonemp=>/(_ i pkts Hin) [p Hinp].
+  have [Hidp Hinpl]:=(get_block_lists_prop_packets 
+    (get_block_lists_spec Hwf) Hin Hinp).
+  rewrite (btuple_to_block_eq Hwf Hin Hinpl Hidp)/=.
+  case Hwf => [_ [_ [_ /(_ p Hinpl) [Hk Hh]]]].
+  move: Hlen=>/(_ i pkts p Hin Hinp) Hlen.
+  split; rewrite Zlength_sublist; lia.
+Qed.
+
+Lemma get_blocks_perm: forall (l1 l2: list fpacket),
+  wf_packet_stream l1 ->
+  perm_eq l1 l2 ->
+  perm_eq (get_blocks l1) (get_blocks l2).
+Proof.
+  move => l1 l2 Hwf Hperm. rewrite /get_blocks.
+  apply perm_map. by apply get_blocks_lists_perm.
+Qed.
+
+(*Actually we don't need this lemma, we need the next one.
+  Keep for now*)
+Lemma get_blocks_Znth: forall (s: seq fpacket) (b: block) 
+  (p: fpacket),
+  wf_packet_stream s ->
+  b \in (get_blocks s) ->
+  packet_in_block p b ->
+  Znth (Z.of_nat (fd_blockIndex p)) 
+    (data_packets b ++ parity_packets b) = Some p.
+Proof.
+  move=> s b p Hwf. 
+  rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
+  have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
+    (get_block_lists_spec Hwf).
+  move=> Hinp.
+  have Hinp': Some p \in pkts := (packet_in_btuple_to_block Hinp).
+  have [Hidp Hinps]:=(get_block_lists_prop_packets 
+    (get_block_lists_spec Hwf) Hin Hinp').
+  (*need p \in s, *)
+  rewrite (btuple_to_block_eq Hwf Hin Hinps Hidp)/=.
+  case Hwf => [_ [Hinj [/(_ _ Hinps) Hidx /(_ _ Hinps) Hkh]]].
+  move: Hlen => /(_ _ _ _ Hin Hinp') Hlen.
+  rewrite cat_app -sublist_split; try lia.
+  rewrite sublist_same // (Heq _ _ Hin).
+  rewrite mkseqZ_Znth; try lia.
+  case_pickSeq s.
+  - f_equal. move: Hidx0. 
+    case: (Z.eq_dec (Z.of_nat (fd_blockIndex p)) 
+      (Z.of_nat (fd_blockIndex (p_fec_data' x))))=>// Hidxeq _.
+    apply Nat2Z.inj in Hidxeq. subst. by apply Hinj.
+  - move => /( _ _ Hinps). rewrite Hidp eq_refl/=.
+    by case: (Z.eq_dec (Z.of_nat (fd_blockIndex p)) 
+      (Z.of_nat (fd_blockIndex p))).
+Qed.
+
+(*Actually easier, though most of the proof is the same
+  Maybe combine*)
+Lemma get_blocks_Znth': forall (s: seq fpacket) (b: block) 
+  (p: fpacket) i,
+  wf_packet_stream s ->
+  b \in (get_blocks s) ->
+  packet_in_block p b ->
+  Znth i (data_packets b ++ parity_packets b) = Some p ->
+  i = (Z.of_nat (fd_blockIndex p)) .
+Proof.
+  move=> s b p j Hwf. 
+  rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
+  have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
+    (get_block_lists_spec Hwf).
+  move=> Hinp.
+  have Hinp': Some p \in pkts := (packet_in_btuple_to_block Hinp).
+  have [Hidp Hinps]:=(get_block_lists_prop_packets 
+    (get_block_lists_spec Hwf) Hin Hinp').
+  (*need p \in s, *)
+  rewrite (btuple_to_block_eq Hwf Hin Hinps Hidp)/=.
+  case Hwf => [_ [Hinj [/(_ _ Hinps) Hidx /(_ _ Hinps) Hkh]]].
+  move: Hlen => /(_ _ _ _ Hin Hinp') Hlen.
+  rewrite cat_app -sublist_split; try lia.
+  rewrite sublist_same // => Hnth.
+  have Hj: 0 <= j < Zlength pkts by
+    apply Znth_inbounds; rewrite Hnth.
+  move: Hnth. rewrite (Heq _ _ Hin).
+  rewrite mkseqZ_Znth; last by [].
+  case_pickSeq s=>//.
+  move => [Hxp]; subst.
+  move: Hidx0. by case: (Z.eq_dec j (Z.of_nat (fd_blockIndex p))).
+Qed.
+
+Lemma get_blocks_kh: forall s (p: fpacket) b,
+  wf_packet_stream s ->
+  p \in s ->
+  b \in (get_blocks s) ->
+  fd_blockId p = blk_id b ->
+  fd_k p = blk_k b /\ fd_h p = blk_h b.
+Proof.
+  move=> s p b Hwf Hinps.
+  rewrite /get_blocks => /mapP [[i pkts] Hin Hb]. subst.
+  have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
+    (get_block_lists_spec Hwf).
+  move: Hnonemp => /( _ _ _ Hin) [p' Hinp'].
+  have [Hidp' Hinps']:=(get_block_lists_prop_packets 
+  (get_block_lists_spec Hwf) Hin Hinp').
+  rewrite (btuple_to_block_eq Hwf Hin Hinps' Hidp')/=.
+  move=> Hid. subst.
+  by apply Hwf.
+Qed.
+
 End BlockList.
 
 (* For the decoder, we need to reason about subblocks)*)
@@ -1814,6 +1928,33 @@ Proof.
   rewrite !packet_in_block_eq=>/orP[Hdat | Hpar].
   - by rewrite (subseq_option_in Hop1 Hdat).
   - by rewrite (subseq_option_in Hop2 Hpar) orbT.
+Qed. 
+
+(*A corollary of [get_blocks_Znth']*)
+Lemma get_blocks_sub_Znth: forall (s: seq fpacket) (b1 b2: block) 
+  (p: fpacket),
+  wf_packet_stream s ->
+  b1 \in (get_blocks s) ->
+  subblock b2 b1 ->
+  packet_in_block p b2 ->
+  Znth (Z.of_nat (fd_blockIndex p)) 
+    (data_packets b2 ++ parity_packets b2) = Some p.
+Proof.
+  move=> s b1 b2 p Hwf Hb1 Hsub Hinp.
+  case Hsub => [Hid12 [Hdat [Hpar [Hk Hh]]]].
+  have Hpkts := (subseq_option_app Hdat Hpar).
+  have: packet_in_block p b2 by [].
+  rewrite packet_in_block_eq => /orP; rewrite !in_mem_In => Hin.
+  apply in_or_app in Hin. move: Hin.
+  rewrite In_Znth_iff => [[i [Hi Hith]]].
+  have: Znth i (data_packets b1 ++ parity_packets b1) = Some p. {
+    case Hpkts => [Hlens /(_ _ Hi) [Heq | Hnone]].
+    by rewrite -Heq. by rewrite Hnone in Hith.
+  }
+  move=> Hith'.
+  apply (get_blocks_Znth' Hwf) in Hith' =>//.
+  - by subst.
+  - by apply (subblock_in Hsub).
 Qed. 
 
 End Subblock.

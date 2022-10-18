@@ -133,24 +133,7 @@ Definition reorder_dup_cond (l: list fpacket) :=
   duplicates_bounded l fpacket_inhab dup /\
   threshold >= Z.of_nat (k + h + 2 * d + dup).
 
-(*TODO: use existsP?*)
-Lemma existsbP: forall {A: eqType} {s: seq A} {P: A -> bool},
-  reflect (exists x, (x \in s) && P x) (existsb P s).
-Proof.
-  move=> A s P. elim: s => [//= | hd tl /= IH].
-  - by apply ReflectF => [[]].
-  - case Hhd: (P hd).
-    + apply ReflectT. exists hd. by rewrite mem_head Hhd.
-    + move: IH. case Htl: (existsb P tl) => IH.
-      * apply ReflectT. apply elimT in IH =>//.
-        case: IH => [x /andP[Hintl Hp]].
-        exists x. by rewrite in_cons Hintl orbT.
-      * apply ReflectF. apply elimF in IH=>//.
-        move => [x]. 
-        rewrite in_cons => /andP[/orP[/eqP Hx | Hintl] Hpx]; subst.
-        by rewrite Hpx in Hhd. apply IH. exists x.
-        by rewrite Hintl Hpx.
-Qed.
+
 
 
 
@@ -256,15 +239,13 @@ Proof.
     [[Htime [Hcreate [Hprevnotin [Hsort [Hinprev Hsubblock]]]]]].
   (*There are a number of results we will need many times*)
   (*First: prev stream is wf*)
-  have Hwf': wf_packet_stream prev. {
-    (*TODO: might need this*)
-    have Hwftemp: wf_packet_stream (p :: prev) by
+  have Hwfcons: wf_packet_stream (p :: prev) by
       apply (wf_perm Hwf); rewrite cats1 perm_rcons perm_refl.
-    apply (wf_packet_stream_tl Hwftemp). 
-  }
+  have Hwf': wf_packet_stream prev by
+    apply (wf_packet_stream_tl Hwfcons). 
   (*All packets in blocks agree with ID values*)
-  have Hallid: forall (b : block_eqType) (p0 : fpacket),
-    b \in blocks -> packet_in_block p0 b -> fd_blockId p0 = blk_id b. {
+  have Hallid: forall (b' : block) (p0 : fpacket),
+    b' \in blocks -> packet_in_block p0 b' -> fd_blockId p0 = blk_id b'. {
     move=> b p' Hinb Hinp'.
     move: Hsubblock=> /(_ b Hinb) [b' [Hinb' Hsubb]].
     have Hinb2:= (subblock_in Hsubb Hinp').
@@ -367,6 +348,26 @@ Proof.
         rewrite Hprev.
         rewrite /=. apply /leP. apply size_undup_fst_le_app.*)
   }
+  (*We also do the subblock invariant
+    to prove the inprev invariant - TODO: can we remove that
+    one entirely since it follows?*)
+  have Hsub_invar: forall (b : block),
+    b \in (decoder_one_step blocks p time).1.1 ->
+    exists b' : block_eqType, b' \in get_blocks (prev ++ [:: p]) /\ 
+      subblock b b'. {
+    move=> b Hinb.
+    (*need permutation*)
+    have [b' [Hinb' Hsub]]: exists (b': block), 
+      b' \in get_blocks (p :: prev) /\ subblock b b' :=
+      (decoder_one_step_gen_subblocks Hwfcons Hsubblock Hinb).
+    have Hperm: perm_eq (get_blocks (p :: prev)) 
+      (get_blocks (prev ++ [:: p])). {
+        apply get_blocks_perm=>//. 
+        by rewrite cats1 -perm_rcons perm_refl.
+      }
+    exists b'.
+    by rewrite -(perm_mem Hperm).
+  }
   (*For now, do each part individually - see*)
   repeat split.
   - (*We already did the first one*)
@@ -440,4 +441,97 @@ Proof.
       * by rewrite Hb add_black_time.  
     + by [].
   - (*TODO: 3rd invariant*)
-  
+    (*Idea: we have 2 cases:
+      1. If p' is the current packet, then immediate 
+        contradiction, since there is always a block with p in it
+        (prove this)
+      2. If p' is in prev, then we again have 2 cases:
+        A. If there is no block with p' in prevs, then we can
+          use the IH
+        B. Otherwise, assume there is a block with o' in prevs.
+          Then it must have timed out in the current iteration
+          (need to prove), so we can use the start packet of this
+          (from the invariant) as the packet info, and prove the invariant *)
+    move=> p'. case: (p' == p) /eqP => [Hpp' _ | Hpp']. 
+    + move => Hnotex.
+      exfalso. apply Hnotex. subst. apply (packet_in_one_step _ _ _ Hwf).
+      * by rewrite mem_cat mem_head orbT.
+      * (*try to derive this a bit, if doesnt work see*)
+        move=> b1 p1 Hinp1 Hinb1 Hids.
+        move: Hsubblock => /( _ _ Hinb1) [b2 [Hinb2 Hsub]].
+        (*Not quite enough, need a block from [get_blocks (prev ++ [:: p])]*)
+        have Hsubstream: (forall (x: fpacket), x \in prev -> 
+          x \in prev ++ [:: p]) by move=> x; rewrite mem_cat=>->.
+        have [b3 [Hinb3 Hsub2]]:=(get_blocks_sublist Hwf Hsubstream Hinb2).
+        have Hsub3 :=(subblock_trans Hsub Hsub2).
+        have Hideq: blk_id b1 = blk_id b3 by apply Hsub3.
+        rewrite Hideq in Hids. rewrite {Hideq}.
+        have[-> ->]:blk_k b1 = blk_k b3 /\ blk_h b1 = blk_h b3 by apply Hsub3.
+        apply (get_blocks_kh Hwf)=>//. by rewrite mem_cat mem_head orbT.
+      * (*This one is definitely derivable*)
+        (*TODO: separate lemma*)
+        move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
+          [b'' [Hinb'' [Hids [Hdat [Hpars [Hk Hh]]]]]].
+        rewrite Hk Hh (proj1 Hdat) (proj1 Hpars).
+        by apply (get_blocks_Zlength Hwf').
+    + rewrite mem_cat in_cons orbF => /orP[Hinp' | /eqP //].
+      move=> Hnotex.
+      (*Case 1: there is no block with p' in prevs*)
+      case: (existsb [eta packet_in_block p'] blocks) /existsbP; last first.
+      * (*easy: use IH*)
+        move=> Hnotex'. move: Hprevnotin => /(_ p' Hinp' Hnotex')
+          [p'' [l1 [l2 [Hid [Hprev [Hnotin Htimeout]]]] ]].
+        exists p''. exists l1. exists (l2 ++ [:: p]). split_all=>//.
+        by rewrite Hprev !catA. 
+        have: Z.of_nat (size (undup_fst (prev ++ [:: p]))) >=
+          Z.of_nat (size (undup_fst (prev))); last by lia.
+        apply inj_ge. apply /leP. apply size_undup_fst_le_app.
+      * (*Now, we need a result that this block must have timed out*)
+        (*We need to know that p and p' cannot have the same blockIndex
+          and blockId (follows from wf)*)
+        move=> [b /andP[Hinb Hinpb]].
+        have Hidpp': (fd_blockId p <> fd_blockId p' \/ 
+          fd_blockIndex p <> fd_blockIndex p'). {
+            case: (fd_blockId p == fd_blockId p') /eqP=>[Heq |]; last by
+              move=> C; left.
+            case: (fd_blockIndex p == fd_blockIndex p') /eqP => [Heq2 |];
+              last by move=> C; right.
+            exfalso. apply Hpp'. apply Hwf=>//; rewrite mem_cat.
+            by rewrite Hinp'. by rewrite mem_head orbT.
+          }
+        (*Now we apply [notin_decoder_one_step] to know that the block
+          must have timed out*)
+        have: not_timed_out (upd_time time p blocks) b = false. {
+          apply (notin_decoder_one_step Hidpp')=>//.
+          (*These all follow from the subblock relation and 
+            [wf_packet_stream], proved in Block.v*)
+          - (*copied from above*)
+            move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
+            [b'' [Hinb'' [Hids [Hdat [Hpars [Hk Hh]]]]]].
+            rewrite Hk Hh (proj1 Hdat) (proj1 Hpars).
+            by apply (get_blocks_Zlength Hwf').
+          - move => b' p'' Hinb' Hinp''.
+            move: Hsubblock =>/(_ b' Hinb')
+            [b'' [Hinb'' Hsub]].
+            by apply (get_blocks_sub_Znth Hwf' Hinb'' Hsub).
+        }
+        rewrite /not_timed_out.
+        (*Now we need to get info about times*)
+        move: Hcreate => /(_ b Hinb) 
+          [p1 [l1 [l2 [Hidp1 [Hprev [Hnotin Hbtime]]]]]].
+        rewrite Hupdtime -Hbtime Z.leb_antisym => Hlt.
+        apply negbFE in Hlt; move: Hlt => /Z.ltb_spec0 Htimeout.
+        exists p1. exists l1. exists (l2 ++ [:: p]). 
+        split_all=>//.
+        -- rewrite Hidp1. symmetry. by apply Hallid.
+        -- by rewrite Hprev !catA.
+        -- lia.
+  - by apply decoder_one_step_sorted.
+  - move=> b' p' Hb'.
+    move: Hsub_invar => /(_ _ Hb') [b'' [Hinb'' Hsub'']] Hinp'.
+    have Hinp'':=(subblock_in Hsub'' Hinp').
+    apply (get_blocks_in_orig Hwf Hinb'' Hinp'').
+  - by [].
+Qed.
+
+End DecodeTimeouts.
