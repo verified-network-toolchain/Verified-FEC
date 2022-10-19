@@ -84,11 +84,11 @@ Variable dup : nat.
   (that under the reordering assumptions, the decoder is equivalent
   to a version with no timeouts)*)
 
+(*The first 2 invariants are the main ones we want, the others are mainly
+  there to enable us to prove them (TODO: is this true)*)
 Definition decoder_timeout_invar (blocks: list block) 
   (prev: list fpacket) (time: Z) : Prop :=
-  (*The real invariant we want to show (the others, some of
-    which are independently useful, are mainly there to enable
-    us to prove this one): the time is calculated correctly
+  (*The time is calculated correctly
     as the number of unique packets to arrive*)
   (time = Z.of_nat (size (undup_fst prev))) /\
   (*For every block, there is a packet that represents the time
@@ -98,9 +98,7 @@ Definition decoder_timeout_invar (blocks: list block)
       fd_blockId p = blk_id b /\
       prev = l1 ++ [:: p] ++ l2 /\
       p \notin l1 /\
-      Z.of_nat (size (undup_fst l1)).+1 = (black_time b) (*/\
-      Znth (Int.unsigned (fd_blockIndex p)) 
-        (data_packets b ++ parity_packets b) = Some p*)) /\
+      Z.of_nat (size (undup_fst l1)).+1 = (black_time b)) /\
   (*If a packet arrived but is NOT in a block, there is a packet
     with the same blockIndex that has timed out*)
   (forall (p: fpacket), p \in prev -> 
@@ -111,31 +109,19 @@ Definition decoder_timeout_invar (blocks: list block)
       Z.of_nat (size (undup_fst prev)) - 
       Z.of_nat (size (undup_fst l1)).+1 > threshold
   ) /\
-  (*We also have a bunch of invariants that we need to prove the above,
+  (*We also have two invariants that we need to prove the above,
     but that we can/have proved separately*)
   (*The blocks are sorted*)
   sorted (fun x y => ((blk_id x) < (blk_id y))%N) blocks /\
-  (*All packets in the block were seen*)
-  (forall b p, b \in blocks -> packet_in_block p b ->
-    p \in prev) /\
+  (*All blocks are subblocks of [get_blocks] of the received stream*)
   (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
     subblock b b').
-  (*uniq blocks /\*)
-  (*All packets are in the correct block*)
-  (*
-  (forall (p: fec_packet_act) b, 
-  (Some p) \in (data_packets b ++ parity_packets b) ->
-  fd_blockId p = blk_id b).*)
 
 (*The condition we need on the list*)
 Definition reorder_dup_cond (l: list fpacket) :=
   bounded_reorder_list l /\
   duplicates_bounded l fpacket_inhab dup /\
   threshold >= Z.of_nat (k + h + 2 * d + dup).
-
-
-
-
 
 (*Lemma characterizing [upd_time] - relies on invariants about blocks*)
 Lemma upd_time_spec: forall time p blocks,
@@ -183,16 +169,7 @@ Proof.
       * move=> b p' Hin. apply Hids. by rewrite in_cons Hin orbT.
 Qed. 
 
-(*TODO: move*)
-(*Lemma add_packet_to_block_black_time: forall p b,
-  black_time (add_packet_to_block_black p b).1 =
-  black_time b.
-Proof.
-  move=>p b. rewrite /add_packet_to_block_black.
-  case Hcomp: (black_complete b) => //=.
-  by case Hrec: (recoverable (add_fec_packet_to_block p b)).
-Qed.*)
-
+(*TODO move these*)
 Lemma create_black_time: forall p time,
   black_time (create_block_with_packet_black p time).1 = time.
 Proof.
@@ -236,7 +213,7 @@ Proof.
   rewrite /reorder_dup_cond/bounded_reorder_list/duplicates_bounded =>
   [[Hreord [Hdups Hthresh]]].
   rewrite /decoder_timeout_invar => 
-    [[Htime [Hcreate [Hprevnotin [Hsort [Hinprev Hsubblock]]]]]].
+    [[Htime [Hcreate [Hprevnotin [Hsort Hsubblock]]]]].
   (*There are a number of results we will need many times*)
   (*First: prev stream is wf*)
   have Hwfcons: wf_packet_stream (p :: prev) by
@@ -252,6 +229,14 @@ Proof.
     rewrite (proj1 Hsubb).
     by apply (get_blocks_ids Hwf').
   }
+  (*All packets in a block are in prev*)
+  have Hinprev: forall (b: block) (p: fpacket),
+    b \in blocks -> packet_in_block p b -> p \in prev. {
+      move=> b p' Hinb Hinpb'.
+      move: Hsubblock => /(_ b Hinb) [b1 [Hinb1 Hsub]].
+      apply (get_blocks_in_orig Hwf' Hinb1).
+      apply (subblock_in Hsub Hinpb').
+  }
   (*A key result that we use in several places and which underlies
     the entire invariant: we cannot have a packet in the same block
     as the current packet that arrived too much earlier*)
@@ -265,8 +250,6 @@ Proof.
       have Hcon: ((size (undup_fst (l1 ++ [:: p1] ++ l2 ++ [:: p])) - 
         size (undup_fst (l1 ++ [:: p1])))%N <= 
         (k + h + 2 * d) + dup)%N. {
-          (*Check (@packets_reorder_dup_bound').*)
-          (*apply (@packets_reorder_dup_bound' _ (prev ++ [:: p]) fpacket_inhab).*)
           eapply (@packets_reorder_dup_bound' _ (prev ++ [:: p]) fpacket_inhab
             (fun (x: fpacket) =>  (x \in prev ++ [:: p]) 
               && (fd_blockId x == fd_blockId p)) _ _) with(p2:=p)(l3:=nil) =>//.
@@ -294,13 +277,12 @@ Proof.
       [[b /andP[Hinb Hinpb]] | Hnotin].
       * (*If the packet is in some block, then it is was in prev*)
         by have->:p \in prev by apply (Hinprev _ _ Hinb Hinpb).
-      * (*Now we need to show that this packet could not have been
-        previously seen. This is the hard part.*)
-        (*We use our other invariant to argue that there was
-          a packet in this block that arrived so long ago that
-          the block already timed out. Therefore, this contradicts
-          the fact that any two packets in a block will be separated
-          by less than the threshold*)
+      * (*Otherwise, we need to argue that this packet could
+        not have been seen. We use the 3rd invariant to argue that there
+        was some block that arrived so long ago that its
+        block timed out. Thus, this contradicts the fact that any
+        two packets in a block are separated by less than
+        the threshold.*)
         case Hpinprev: (p \in prev); last
           by rewrite size_cat/= Nat2Z.inj_add/= Htime.
         move: Hprevnotin => /(_ p Hpinprev Hnotin) 
@@ -310,72 +292,13 @@ Proof.
           rewrite !catA -(catA l1) Hprev.
         by rewrite !undup_fst_rcons Hpinprev (negbTE Hnotinp') 
           size_cat/= addn1.
-
-          (*Z.of_nat (size (undup_fst l1)).+1 + threshold <
-       Z.of_nat (size (undup_fst prev))
-*)
-        (*Hmm this may not work - end up with something smaller
-          we use different bounds for these things - can we generalize?*)
-        (*rewrite !undup_fst_rcons (negbTE Hnotinp') Hpinprev/= size_cat/=. lia.
-        rewrite (catA [::p]). by rewrite Hpre.
-        rewrite -!Hprev.
-        rewrite undup_fst_rcons. -!Hprev. (negbTE Hnotinp') size_cat -Hprev /=.
-        have->: size (undup_fst prev) = size (undup_fst (prev ++ [:: p])) by
-          rewrite undup_fst_rcons Hpinprev.
-        rewrite size_cat. lia.
-        
-        lia.*)
-        (*TODO:this is the proof i think (need to change a bit)*)
-        (*
-        have Hcon: ((size (undup_fst prev) - size (undup_fst l1))%N <= 
-          (k + h + 2 * d) + dup)%N. {
-            rewrite Hprev.
-            eapply (@packets_reorder_dup_bound _ (prev ++ [:: p]) fpacket_inhab
-              (fun (x: fpacket) =>  (x \in prev ++ [:: p]) 
-                && (fd_blockId x == fd_blockId p)) _ _) with(p2:=p)(l3:=nil) =>//.
-            - move=> p1 p2 /andP[Hinp1 /eqP Hidp1] /andP[Hinp2 /eqP Hidp2].
-              apply Hreord=>//. by rewrite Hidp1 Hidp2.
-            - by rewrite cats0 Hprev -catA.
-            - by rewrite Hidpp' Hprev !mem_cat in_cons !eq_refl !orbT.
-            - by rewrite mem_cat in_cons !eq_refl !orbT.
-          }
-        (*Now we get an easy contradiction of inequalities*)
-        rewrite -Nat2Z.inj_sub in Htimeout.
-        have /ltP: (size (undup_fst prev) - size (undup_fst l1) > k + h + 2 * d + dup)%coq_nat. {
-          apply Nat2Z.inj_gt. eapply Zgt_le_trans. apply Htimeout. lia.
-        }
-        by rewrite ltnNge Hcon.
-        rewrite Hprev.
-        rewrite /=. apply /leP. apply size_undup_fst_le_app.*)
   }
-  (*We also do the subblock invariant
-    to prove the inprev invariant - TODO: can we remove that
-    one entirely since it follows?*)
-  have Hsub_invar: forall (b : block),
-    b \in (decoder_one_step blocks p time).1.1 ->
-    exists b' : block_eqType, b' \in get_blocks (prev ++ [:: p]) /\ 
-      subblock b b'. {
-    move=> b Hinb.
-    (*need permutation*)
-    have [b' [Hinb' Hsub]]: exists (b': block), 
-      b' \in get_blocks (p :: prev) /\ subblock b b' :=
-      (decoder_one_step_gen_subblocks Hwfcons Hsubblock Hinb).
-    have Hperm: perm_eq (get_blocks (p :: prev)) 
-      (get_blocks (prev ++ [:: p])). {
-        apply get_blocks_perm=>//. 
-        by rewrite cats1 -perm_rcons perm_refl.
-      }
-    exists b'.
-    by rewrite -(perm_mem Hperm).
-  }
-  (*For now, do each part individually - see*)
   repeat split.
   - (*We already did the first one*)
-    by rewrite /decoder_one_step/=.
-    
-  - (*TODO: there will be some duplication here: find out how to deal with it*)
-    (*This one shouldnt be too hard: just show that when we create a new block,
-      the existing packet satisfies the condition*)
+    by rewrite /decoder_one_step/=. 
+  - (*For the second invariant, we need to show that every new block
+    satisfies the condition. The difficult part is to show that
+    the current packet has not been seen before.*)
     move=> b Hinb.
     apply in_decoder_one_step in Hinb.
     case: Hinb => [Hinb | [[Hb Hall] | H]].
@@ -383,10 +306,8 @@ Proof.
       move: Hcreate => /(_ b Hinb) [p' [l1 [l2 [Hidp' [Hprev [Hpnotin Hl1time]]]]]].
       exists p'. exists l1. exists (l2 ++ [:: p]). repeat split =>//.
       rewrite Hprev. by rewrite !catA.
-    + (*Create new packet - the hard case. We need to prove p was not
-        in l1 (prev). The difficult case is that there could have been
-        a block with p that timed out. We prove a similar contradiction
-        as before (TODO: factor out).*)
+    + (*Once again, if there was a block with p that timed out,
+      we have a similar contradiction.*)
       case Hinp: (p \in prev); last first.
       * (*easy case*) exists p. exists prev. exists nil.
         split_all.
@@ -400,17 +321,15 @@ Proof.
           by rewrite (Hinprev _ _ Hinb' Hpb') in Hinp.
       * (*The interesting case: in p is in prev, consider 2 cases*)
         case: (existsb [eta packet_in_block p] blocks) /existsbP.
-        (*Need 2 more invariants: 
-        1. all packets in a block have the same blockId as the block
-        2. need to know: all packets in blks are not timed out (can show
-          each of these separately i think)*)
-        -- move => [b' /andP[Hinb' Hpb']].
+        -- (*If p was in a block, that block must have timed out,
+          so we have a previous packet in p's block that is too far apar*)
+         move => [b' /andP[Hinb' Hpb']].
           have Hpid: fd_blockId p = blk_id b' by apply Hallid.
           have Hbid: blk_id b' = blk_id b. {
             rewrite Hb/=. by case: (Z.eq_dec (fd_k p) 1).
           }
           move: Hall => /(_ _ Hinb') => [[ | //]].
-          rewrite /not_timed_out Hupdtime (*undup_fst_rcons Hinp*).
+          rewrite /not_timed_out Hupdtime.
           (*Get the previous packet that gives us a contradiction*)
           move: Hcreate => /( _ b' Hinb') 
             [p' [l1 [l2 [Hidp' [Hprev [Hnotinp' Htimeb']]]]]].
@@ -420,12 +339,12 @@ Proof.
           by rewrite Hpid Hidp'.
           rewrite undup_fst_rcons (negbTE Hnotinp') size_cat/=addn1.
           rewrite -!catA in Hcon. simpl in *; lia.
-        -- (*Otherwise, we use the block that has already timed out, so
-          again the packets are too far apart*)
+        -- (*Otherwise, we use the 3rd invariant, since p's previous block
+          must already have timed out *)
           move => Hnotex.
           move: Hprevnotin => /(_ p Hinp Hnotex) 
             [p' [l1 [l2 [Hideq [Hprev [Hnotinp' Htimeout]]]]]].
-          exfalso. apply (Hclose p' (*p*) l1 l2)=>//.
+          exfalso. apply (Hclose p' l1 l2)=>//.
           have->:(l1 ++ [:: p'] ++ l2 ++ [:: p]) = prev ++ [:: p]
             by rewrite !catA -(catA l1) Hprev.
           by rewrite !undup_fst_rcons (negbTE Hnotinp') Hinp size_cat/= 
@@ -440,24 +359,22 @@ Proof.
       * by rewrite Hprev -catA.
       * by rewrite Hb add_black_time.  
     + by [].
-  - (*TODO: 3rd invariant*)
-    (*Idea: we have 2 cases:
+  - (*To prove the 3rd invariant, we have 2 cases:
       1. If p' is the current packet, then immediate 
         contradiction, since there is always a block with p in it
-        (prove this)
       2. If p' is in prev, then we again have 2 cases:
         A. If there is no block with p' in prevs, then we can
           use the IH
-        B. Otherwise, assume there is a block with o' in prevs.
+        B. Otherwise, assume there is a block with p' in prevs.
           Then it must have timed out in the current iteration
-          (need to prove), so we can use the start packet of this
-          (from the invariant) as the packet info, and prove the invariant *)
+           so we can use the start packet of this
+          (from the 2nd invariant) as the packet we need to 
+          prove the invariant *)
     move=> p'. case: (p' == p) /eqP => [Hpp' _ | Hpp']. 
     + move => Hnotex.
       exfalso. apply Hnotex. subst. apply (packet_in_one_step _ _ _ Hwf).
       * by rewrite mem_cat mem_head orbT.
-      * (*try to derive this a bit, if doesnt work see*)
-        move=> b1 p1 Hinp1 Hinb1 Hids.
+      * move=> b1 p1 Hinp1 Hinb1 Hids.
         move: Hsubblock => /( _ _ Hinb1) [b2 [Hinb2 Hsub]].
         (*Not quite enough, need a block from [get_blocks (prev ++ [:: p])]*)
         have Hsubstream: (forall (x: fpacket), x \in prev -> 
@@ -468,9 +385,7 @@ Proof.
         rewrite Hideq in Hids. rewrite {Hideq}.
         have[-> ->]:blk_k b1 = blk_k b3 /\ blk_h b1 = blk_h b3 by apply Hsub3.
         apply (get_blocks_kh Hwf)=>//. by rewrite mem_cat mem_head orbT.
-      * (*This one is definitely derivable*)
-        (*TODO: separate lemma*)
-        move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
+      * move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
           [b'' [Hinb'' [Hids [Hdat [Hpars [Hk Hh]]]]]].
         rewrite Hk Hh (proj1 Hdat) (proj1 Hpars).
         by apply (get_blocks_Zlength Hwf').
@@ -486,9 +401,9 @@ Proof.
         have: Z.of_nat (size (undup_fst (prev ++ [:: p]))) >=
           Z.of_nat (size (undup_fst (prev))); last by lia.
         apply inj_ge. apply /leP. apply size_undup_fst_le_app.
-      * (*Now, we need a result that this block must have timed out*)
-        (*We need to know that p and p' cannot have the same blockIndex
-          and blockId (follows from wf)*)
+      * (*Now, we know that this block must have timed out because
+        p and p' cannot have the same blockIndex and blockId
+        (from wf); hence we can use [notin_decoder_one_step]*) 
         move=> [b /andP[Hinb Hinpb]].
         have Hidpp': (fd_blockId p <> fd_blockId p' \/ 
           fd_blockIndex p <> fd_blockIndex p'). {
@@ -505,8 +420,7 @@ Proof.
           apply (notin_decoder_one_step Hidpp')=>//.
           (*These all follow from the subblock relation and 
             [wf_packet_stream], proved in Block.v*)
-          - (*copied from above*)
-            move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
+          - move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
             [b'' [Hinb'' [Hids [Hdat [Hpars [Hk Hh]]]]]].
             rewrite Hk Hh (proj1 Hdat) (proj1 Hpars).
             by apply (get_blocks_Zlength Hwf').
@@ -527,11 +441,18 @@ Proof.
         -- by rewrite Hprev !catA.
         -- lia.
   - by apply decoder_one_step_sorted.
-  - move=> b' p' Hb'.
-    move: Hsub_invar => /(_ _ Hb') [b'' [Hinb'' Hsub'']] Hinp'.
-    have Hinp'':=(subblock_in Hsub'' Hinp').
-    apply (get_blocks_in_orig Hwf Hinb'' Hinp'').
-  - by [].
+  - move=> b Hinb.
+    (*need permutation*)
+    have [b' [Hinb' Hsub]]: exists (b': block), 
+      b' \in get_blocks (p :: prev) /\ subblock b b' :=
+      (decoder_one_step_gen_subblocks Hwfcons Hsubblock Hinb).
+    have Hperm: perm_eq (get_blocks (p :: prev)) 
+      (get_blocks (prev ++ [:: p])). {
+        apply get_blocks_perm=>//. 
+        by rewrite cats1 -perm_rcons perm_refl.
+      }
+    exists b'.
+    by rewrite -(perm_mem Hperm).
 Qed.
 
 End DecodeTimeouts.
