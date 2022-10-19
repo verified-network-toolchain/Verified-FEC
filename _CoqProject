@@ -26,6 +26,7 @@ proofs/FEC/IP.v
 proofs/FEC/Block.v
 proofs/FEC/Encoder.v
 proofs/FEC/DecoderGeneric.v
+proofs/FEC/DecoderNoTimeouts.v
 proofs/FEC/Reorder.v
 proofs/FEC/DecoderTimeouts.v
 proofs/FEC/EncodeDecodeCorrectness.v

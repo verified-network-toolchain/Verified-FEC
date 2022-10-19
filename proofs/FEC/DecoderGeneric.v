@@ -339,22 +339,27 @@ Qed.
 (*A framework for showing facts about the decoder, expressed by invariants*)
 Lemma prove_decoder_invariant_multiple 
   (P: list fpacket -> list block -> Z -> Prop) 
+  (P2: list fpacket -> Prop)
   prev_packs state packs sent time:
   (forall blks curr tm prv, P prv blks tm ->
-  P (prv ++ [:: curr]) ((decoder_one_step_gen blks curr tm).1.1)
-    (decoder_one_step_gen blks curr tm).2) ->
+    P2 (prv ++ [:: curr]) ->
+    P (prv ++ [:: curr]) ((decoder_one_step_gen blks curr tm).1.1)
+      (decoder_one_step_gen blks curr tm).2) ->
+  (forall l1 l2, P2 (l1 ++ l2) -> P2 l1) ->
+  P2 (prev_packs ++ packs) ->
   P prev_packs state time ->
   P ((decoder_multiple_steps_gen prev_packs packs state sent time).2)
     ((decoder_multiple_steps_gen prev_packs packs state sent time).1.1.1)
     ((decoder_multiple_steps_gen prev_packs packs state sent time).1.2).
 Proof.
-  move=> Hind.
+  move=> Hind Hp2cat.
   move: prev_packs state sent time.
-  elim: packs => [//= | p1 ptl /= IH prev state sent time Hbase].
+  elim: packs => [//= | p1 ptl /= IH prev state sent time Hp2 Hbase].
   move: IH; rewrite /decoder_multiple_steps_gen/= => IH.
-  apply IH.
+  apply IH. rewrite -catA. apply Hp2.
   apply Hind.
   apply Hbase.
+  apply (Hp2cat _ ptl). by rewrite -catA.
 Qed.
 
 (*TODO: move*)

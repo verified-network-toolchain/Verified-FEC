@@ -1,6 +1,8 @@
 Require Import AbstractEncoderDecoder.
 Require Import DecoderGeneric.
+Require Import DecoderNoTimeouts.
 Require Import VST.floyd.functional_base.
+Require Import CommonSSR.
 Require Import ByteFacts.
 Require Import Block.
 Require Import Reorder.
@@ -56,6 +58,16 @@ Definition decoder_multiple_steps:=
 Definition decoder_all_steps:=
   decoder_all_steps_gen upd_time not_timed_out.
 
+
+Lemma decoder_all_steps_rewrite: forall l,
+  decoder_all_steps l =
+  (foldl (fun (acc: seq block * seq packet * Z * seq fpacket) (p: fpacket) =>
+    let t := decoder_one_step acc.1.1.1 p acc.1.2 in
+    (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p]))
+    (nil, nil, 0, nil) l).1.
+Proof.
+  by [].
+Qed.
 (*Now we want to prove some invariants*)
 
 (*The condition on the received list: suppose two packets are in 
@@ -76,52 +88,66 @@ Definition bounded_reorder_list (rec: list fpacket):=
   p2 \in rec ->
   fd_blockId p1 = fd_blockId p2 ->
   (nat_abs_diff (u_seqNum rec p1) (u_seqNum rec p2) <= (k + h) + 2 * d)%N.
-  
+
+(*TODO: move*)
+Print u_seqNum.
+Lemma u_seqNum_cat_in: forall {A: eqType} (l1 l2: seq A) (x: A),
+  x \in l1 ->
+  u_seqNum (l1 ++ l2) x = u_seqNum l1 x.
+Proof.
+  move=> A l1 l2 x Hinx. 
+  rewrite /u_seqNum/undup_fst rev_cat undup_cat rev_cat index_cat.
+  have->//: x \in rev (undup (rev l1)).
+  by rewrite mem_rev mem_undup mem_rev.
+Qed.
+
+Lemma bounded_reorder_list_cat_fst: forall l1 l2,
+  bounded_reorder_list (l1 ++ l2) ->
+  bounded_reorder_list l1.
+Proof.
+  move=> l1 l2. rewrite /bounded_reorder_list => Hreord p1 p2 
+  Hinp1 Hinp2 Hid.
+  move: Hreord => /(_ p1 p2).
+  rewrite !mem_cat Hinp1 Hinp2 /= => /(_ isT isT Hid).
+  by rewrite !u_seqNum_cat_in.
+Qed.
+
+(*TODO: move*)
+Lemma duplicates_bounded_cat_fst {A: eqType}: 
+  forall (l1 l2 : list A) d m,
+  duplicates_bounded (l1 ++ l2) d m ->
+  duplicates_bounded l1 d m.
+Proof.
+  rewrite /duplicates_bounded.
+  move=> l1 l2 def m Hdup i j Hij.
+  rewrite -size_length => Hj Hnth.
+  apply Hdup=>//.
+  - rewrite -size_length size_cat. apply (ltn_leq_trans Hj).
+    by rewrite leq_addr.
+  - rewrite !nth_cat Hj.
+    have->//: (i < size l1)%N. by apply (leq_ltn_trans Hij).
+Qed.
+
+
 (*Then, we need the bound on duplication*)
 Variable dup : nat.
-
-(*We need several sets of invariants to prove what we want
-  (that under the reordering assumptions, the decoder is equivalent
-  to a version with no timeouts)*)
-
-(*The first 2 invariants are the main ones we want, the others are mainly
-  there to enable us to prove them (TODO: is this true)*)
-Definition decoder_timeout_invar (blocks: list block) 
-  (prev: list fpacket) (time: Z) : Prop :=
-  (*The time is calculated correctly
-    as the number of unique packets to arrive*)
-  (time = Z.of_nat (size (undup_fst prev))) /\
-  (*For every block, there is a packet that represents the time
-    at which the block was created*)
-  (forall b, b \in blocks ->
-    exists (p: fpacket) l1 l2, 
-      fd_blockId p = blk_id b /\
-      prev = l1 ++ [:: p] ++ l2 /\
-      p \notin l1 /\
-      Z.of_nat (size (undup_fst l1)).+1 = (black_time b)) /\
-  (*If a packet arrived but is NOT in a block, there is a packet
-    with the same blockIndex that has timed out*)
-  (forall (p: fpacket), p \in prev -> 
-    (~exists b, (b \in blocks) && packet_in_block p b ) ->
-    exists (p' : fpacket) l1 l2, fd_blockId p' = fd_blockId p /\ 
-      prev = l1 ++ [:: p'] ++ l2 /\
-      p' \notin l1 /\
-      Z.of_nat (size (undup_fst prev)) - 
-      Z.of_nat (size (undup_fst l1)).+1 > threshold
-  ) /\
-  (*We also have two invariants that we need to prove the above,
-    but that we can/have proved separately*)
-  (*The blocks are sorted*)
-  sorted (fun x y => ((blk_id x) < (blk_id y))%N) blocks /\
-  (*All blocks are subblocks of [get_blocks] of the received stream*)
-  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
-    subblock b b').
 
 (*The condition we need on the list*)
 Definition reorder_dup_cond (l: list fpacket) :=
   bounded_reorder_list l /\
   duplicates_bounded l fpacket_inhab dup /\
   threshold >= Z.of_nat (k + h + 2 * d + dup).
+
+Lemma reorder_dup_cond_cat_fst: forall l1 l2,
+  reorder_dup_cond (l1 ++ l2) ->
+  reorder_dup_cond l1.
+Proof.
+  move=> l1 l2 [Hreord [Hdup Hthresh]].
+  repeat split=>//.
+  - by apply (bounded_reorder_list_cat_fst Hreord).
+  - by apply (duplicates_bounded_cat_fst Hdup).
+Qed. 
+
 
 (*Lemma characterizing [upd_time] - relies on invariants about blocks*)
 Lemma upd_time_spec: forall time p blocks,
@@ -199,6 +225,43 @@ Proof.
   case:(black_complete b)=>//.
   by case: (recoverable (add_fec_packet_to_block p b)).
 Qed.
+
+(*We need several sets of invariants to prove what we want
+  (that under the reordering assumptions, the decoder is equivalent
+  to a version with no timeouts)*)
+
+(*The first 2 invariants are the main ones we want, the others are mainly
+  there to enable us to prove them (TODO: is this true)*)
+  Definition decoder_timeout_invar (blocks: list block) 
+  (prev: list fpacket) (time: Z) : Prop :=
+  (*The time is calculated correctly
+    as the number of unique packets to arrive*)
+  (time = Z.of_nat (size (undup_fst prev))) /\
+  (*For every block, there is a packet that represents the time
+    at which the block was created*)
+  (forall b, b \in blocks ->
+    exists (p: fpacket) l1 l2, 
+      fd_blockId p = blk_id b /\
+      prev = l1 ++ [:: p] ++ l2 /\
+      p \notin l1 /\
+      Z.of_nat (size (undup_fst l1)).+1 = (black_time b)) /\
+  (*If a packet arrived but is NOT in a block, there is a packet
+    with the same blockIndex that has timed out*)
+  (forall (p: fpacket), p \in prev -> 
+    (~exists b, (b \in blocks) && packet_in_block p b ) ->
+    exists (p' : fpacket) l1 l2, fd_blockId p' = fd_blockId p /\ 
+      prev = l1 ++ [:: p'] ++ l2 /\
+      p' \notin l1 /\
+      Z.of_nat (size (undup_fst prev)) - 
+      Z.of_nat (size (undup_fst l1)).+1 > threshold
+  ) /\
+  (*We also have two invariants that we need to prove the above,
+    but that we can/have proved separately*)
+  (*The blocks are sorted*)
+  sorted (fun x y => ((blk_id x) < (blk_id y))%N) blocks /\
+  (*All blocks are subblocks of [get_blocks] of the received stream*)
+  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
+    subblock b b').
 
 (*We prove that this invariant is preserved. This is the key
   structural lemma to characterize the timeout behavior*)
@@ -454,5 +517,106 @@ Proof.
     exists b'.
     by rewrite -(perm_mem Hperm).
 Qed.
+
+Opaque decoder_one_step.
+
+(*Therefore, the invariant holds of [decoder_all_steps]*)
+Lemma decoder_timeout_invar_all: forall packets,
+  wf_packet_stream packets ->
+  reorder_dup_cond packets ->
+  decoder_timeout_invar (decoder_all_steps packets).1.1
+    packets (decoder_all_steps packets).2.
+Proof.
+  move=> packs Hwf Hreord.
+  rewrite /decoder_all_steps/decoder_all_steps_gen.
+  have Hpacks: packs = (decoder_multiple_steps_gen upd_time not_timed_out nil packs nil nil 0).2
+    by rewrite prev_packets_multiple.
+  rewrite {2}Hpacks.
+  apply (@prove_decoder_invariant_multiple upd_time not_timed_out
+    (fun packs block time => decoder_timeout_invar block packs time)
+    (fun l => wf_packet_stream l /\ reorder_dup_cond l))=>//.
+  - move=> blks curr tm prv Hinvar [Hwf' Hdup'].
+    by apply decoder_timeout_invar_preserved_one.
+  - move => l1 l2 [Hwfl1 Hdupl1].
+    split. apply (wf_substream Hwfl1). move=> x Hin.
+    by rewrite mem_cat Hin.
+    by apply (reorder_dup_cond_cat_fst Hdupl1).
+Qed.
+
+(*Now we want to prove that this decoder is equivalent to one
+  without timeouts (in terms of output). 
+  The key idea is that all blocks that contain packets
+  that might arrive later are kept*)
+Print decoder_multiple_steps_gen.
+
+(*let' see if this condition works first*)
+
+(*Maybe this condition: if there is a block in blks2 not in
+  blks1, then there is some packet in previous that was sent
+  before timeout threshold AND every block in blks1 is in blks2
+  is this sufficient: search for block, if not same, contradiction
+  to prove preserved: assume true,
+  (informal) hard case: adding p or timing out block
+  when we add p to blks2, need to know that block is equal as block in blks1
+  (and know sorted, which we do)
+  if it is not, then have previous outside threshol - contradiction
+  so we have this when we add p to blks2 
+  if no block in blks2 but have one in blks1, contradict second part
+  OK, so adding p is good
+  what about if we timeout a block
+  then, use decoder_invar and show that this is true
+  (in fact, maybe follows directly from)
+  *)
+
+(*Our invariant is the following*)
+Definition to_nto_invar (blks1 blks2 : list block) 
+  (prev : list fpacket) :=
+  (forall (b: block), b \in blks1 -> b \in blks2) /\
+  (forall (b: block), b \in blks2 -> b \notin blks1 ->
+    exists (p: fpacket) l1 l2, fd_blockId p = blk_id b /\
+      prev = l1 ++ [:: p] ++ l2 /\
+      p \notin l1 /\
+      Z.of_nat (size (undup_fst prev)) -
+      Z.of_nat (size (undup_fst l1)).+1 > threshold).
+(*This is very very similar to the decoder invariant - does it
+  follow? Should we change? see*)
+
+  (*The plan: 2 proofs (assuming nice packet stream)
+    1. If we have blks1 and blks2 satsifying this
+      and if blks1 satisfies invar, then result of
+      one step on decoder no to and decoder timeouts is
+      the same (just packets)
+    2. If we have blks1 and blks2 satsifying this
+      and if blks1 satisfies invar, then
+      result of each still satisfies this invariant
+    maybe combine these proofs
+    then lift to multiple and/or all steps*)
+
+
+(*maybe do as 1 step*)
+Lemma decoder_timeout_notimeout_blocks: 
+  forall blks1 blks2 prev packets sent1 sent2 time1 time2,
+  (forall (p: fpacket) (b: block), p \in packets -> 
+    b \in blks1 -> fd_blockId p = blk_id b -> 
+    b \in blks2) ->
+  decoder_multiple_steps prev packets 
+
+
+Lemma decoder_timeout_notimeout_multiple: 
+  forall blocks prev packets sent time,
+  wf_packet_stream (prev ++ packets) ->
+  reorder_dup_cond (prev ++ packets) ->
+  decoder_timeout_invar blocks prev time ->
+
+
+  (decoder_multiple_steps prev packets blocks sent time).1.1.2
+
+
+
+  wf_packet_stream (prev ++ [:: p]) ->
+  reorder_dup_cond (prev ++ [:: p]) ->
+  decoder_timeout_invar blocks prev time ->
+  decoder_timeout_invar (decoder_one_step blocks p time).1.1
+    (prev ++ [:: p]) (decoder_one_step blocks p time).2.
 
 End DecodeTimeouts.
