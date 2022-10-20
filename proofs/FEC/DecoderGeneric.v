@@ -227,6 +227,129 @@ Definition add_packet_to_block_black (p: fpacket) (b: block) : block * list pack
     let marked_block := if recoverable new_block then new_block <| black_complete := true |> else new_block in
     (marked_block, packets).
 
+(*Some lemmas about these*)
+Lemma create_black_id: forall p time,
+  blk_id (create_block_with_packet_black p time).1 = fd_blockId p.
+Proof.
+  move=> p time/=.
+  by case: (Z.eq_dec (fd_k p) 1).
+Qed.
+
+Lemma add_black_id: forall p b,
+  blk_id (add_packet_to_block_black p b).1 = blk_id b.
+Proof.
+  move=>p b. rewrite /add_packet_to_block_black.
+  case:(black_complete b)=>//.
+  by case: (recoverable (add_fec_packet_to_block p b)).
+Qed.
+
+Lemma create_black_time: forall p time,
+  black_time (create_block_with_packet_black p time).1 = time.
+Proof.
+  move=> p time /=.
+  by case: (Z.eq_dec (fd_k p) 1).
+Qed.
+
+Lemma add_black_time: forall p b,
+  black_time (add_packet_to_block_black p b).1 = black_time b.
+Proof.
+  move=> p b. rewrite /add_packet_to_block_black.
+  case: (black_complete b)=>//.
+  by case: (recoverable (add_fec_packet_to_block p b)).
+Qed.
+
+
+Lemma packet_in_create: forall s (p: fpacket) time,
+  wf_packet_stream s ->
+  p \in s ->
+  packet_in_block p (create_block_with_packet_black p time).1.
+Proof.
+  move=> s p time Hwf Hinp.
+  case: Hwf => [_ [_ [/(_ _ Hinp) Hidx /(_ _ Hinp) Hnonneg]]].
+  rewrite /create_block_with_packet_black packet_in_block_eq/=.
+  case: (Z.eq_dec (fd_k p) 1)=>//= _;
+  (*Both cases are the exact same*)
+  apply /orP; rewrite !in_mem_In; apply in_app_or;
+  rewrite -sublist_split; try lia; (try by 
+    rewrite Zlength_upd_Znth zseq_Zlength; lia);
+  rewrite sublist_same; try lia; (try by
+    rewrite Zlength_upd_Znth zseq_Zlength; lia);
+  apply upd_Znth_In; rewrite zseq_Zlength; lia.
+Qed.
+
+Lemma packet_in_add: forall s (p: fpacket) b,
+  wf_packet_stream s ->
+  p \in s ->
+  fd_k p = blk_k b ->
+  fd_h p = blk_h b ->
+  Zlength (data_packets b) = blk_k b ->
+  Zlength (parity_packets b) = blk_h b ->
+  packet_in_block p (add_fec_packet_to_block p b).
+Proof.
+  move=> s p b Hwf Hinp Hk Hh Hdat Hlen.
+  case: Hwf => [_ [_ [/(_ _ Hinp) Hidx /(_ _ Hinp) Hnonneg]]]. 
+  rewrite /add_fec_packet_to_block packet_in_block_eq/=.
+  apply /orP. rewrite !in_mem_In !cat_app; apply in_app_or.
+  rewrite -sublist_split; try lia; last by
+    (simpl in *; list_solve).
+  rewrite sublist_same; try lia; last by (simpl in *; list_solve).
+  apply upd_Znth_In. simpl in *; list_solve.
+Qed.
+
+Lemma packet_in_add_black: forall s (p: fpacket) b,
+  wf_packet_stream s ->
+  p \in s ->
+  fd_k p = blk_k b ->
+  fd_h p = blk_h b ->
+  Zlength (data_packets b) = blk_k b ->
+  Zlength (parity_packets b) = blk_h b ->
+  packet_in_block p (add_packet_to_block_black p b).1.
+Proof.
+  move=> s p b Hwf Hin Hk Hh Hdat Hpar. 
+  rewrite /add_packet_to_block_black.
+  case: (black_complete b)=>/=. by apply (packet_in_add Hwf).
+  by case: (recoverable (add_fec_packet_to_block p b)); apply (packet_in_add Hwf).
+Qed.
+
+Lemma other_in_add: forall (p p': fpacket) b,
+  fd_blockIndex p <> fd_blockIndex p' ->
+  Zlength (data_packets b) = blk_k b ->
+  Zlength (parity_packets b) = blk_h b ->
+  Znth (Z.of_nat (fd_blockIndex p')) 
+    (data_packets b ++ parity_packets b) = Some p' ->
+  packet_in_block p' (add_fec_packet_to_block p b).
+Proof.
+  move=> p p' b Hpp' Hdat Hpar.
+  rewrite /add_fec_packet_to_block !packet_in_block_eq/==> Hin.
+  apply /orP. rewrite !in_mem_In. 
+  apply in_app_or.
+  (*Can't use [sublist_split] because we don't know bounds*)
+  rewrite -sublist_split; [|list_solve| 
+    rewrite Zlength_upd_Znth cat_app; simpl in *; list_solve].
+  rewrite sublist_same; try lia; last by
+    rewrite Zlength_upd_Znth cat_app; simpl in *; list_solve.
+  apply In_Znth_iff. exists (Z.of_nat (fd_blockIndex p')).
+  rewrite Znth_upd_Znth_diff; last by 
+    move=> C; apply Nat2Z.inj in C; rewrite C in Hpp'.
+  split=>//. rewrite Zlength_upd_Znth.
+  apply Znth_inbounds. by rewrite Hin.
+Qed.
+
+Lemma other_in_add_black: forall (p p': fpacket) b,
+  fd_blockIndex p <> fd_blockIndex p' ->
+  Zlength (data_packets b) = blk_k b ->
+  Zlength (parity_packets b) = blk_h b ->
+  Znth (Z.of_nat (fd_blockIndex p')) 
+    (data_packets b ++ parity_packets b) = Some p' ->
+  packet_in_block p' (add_packet_to_block_black p b).1.
+Proof.
+  move=> p p' b Hpp' Hdat Hpar Hnth.
+  rewrite /add_packet_to_block_black.
+  case: (black_complete b)=>/=; first by apply other_in_add.
+  by case: (recoverable (add_fec_packet_to_block p b));
+    apply other_in_add.
+Qed.
+
 (*With these building blocks, we can now define the decoder.
   We do this in several stages and forms
   1. First, we give a generic decoder parameterized by the way
@@ -1138,6 +1261,114 @@ Qed.
 
 End DecoderSubblocks.
 
+(*An alternate characterization of [decoder_one_step_gen]
+  that makes many things easier to prove (TODO: maybe
+  easier to prove the above with this) - a more functional style*)
+
+Section Insert.
+
+Fixpoint insert {T: Type} (r: rel T) (x: T) (s: seq T) :=
+  match s with
+  | nil => [:: x]
+  | y :: tl => if r x y then x :: y :: tl else
+    y :: insert r x tl
+  end.
+
+Lemma mem_insert: forall {T: eqType} {r: rel T} (x: T) (s: seq T) (y: T),
+  y \in (insert r x s) = (y == x) || (y \in s).
+Proof.
+  move=> T r x s y. elim: s =>[// | h t /= IH].
+  case Hxh: (r x h).
+  - by rewrite !in_cons.
+  - by rewrite !in_cons IH (orbC (y == h)) -orbA (orbC (y \in t)).
+Qed.
+
+Lemma insert_hd: forall {T: eqType} (r: rel T) (x: T) (s: seq T),
+  all (r x) s ->
+  insert r x s = x :: s.
+Proof.
+  move=> T r x s /allP. case: s =>[// | h t /= Hall].
+  have->//: r x h. apply Hall. by rewrite mem_head.
+Qed.  
+
+End Insert.
+
+Lemma blk_order_trans: transitive blk_order.
+Proof.
+  move=> b1 b2 b3. by apply ltn_trans.
+Qed.
+  
+(*A functional characterization of [upd_dec_state]*)
+Lemma update_dec_state_gen_eq blks curr time:
+  sorted blk_order blks ->
+  update_dec_state_gen blks curr time =
+  if has (fun b => blk_id b == fd_blockId curr) blks then
+    let b := nth block_inhab blks 
+      (find (fun b => blk_id b == fd_blockId curr) blks) in
+    let t := (add_packet_to_block_black curr b) in
+    (insert blk_order t.1 (rem b blks), t.2)
+  else
+    let t := create_block_with_packet_black curr time in
+    (insert blk_order t.1 blks, t.2).
+Proof.
+  elim: blks => [// | bhd btl /= IH Hsort].
+  move: Hsort. rewrite path_sortedE; last by apply blk_order_trans.
+  move=>/andP[/allP Halltl Hsort].
+  case: (fd_blockId curr == blk_id bhd) /eqP => Heq.
+  - rewrite Heq !eq_refl/= insert_hd //=.
+    apply /allP=>/= b Hinb.
+    move: Halltl. by rewrite /blk_order add_black_id => /(_ b Hinb).
+  - have->/=: (blk_id bhd == fd_blockId curr) = false
+      by apply /eqP; auto.
+    case Hlt: (fd_blockId curr < blk_id bhd)%N.
+    + have->/=: has (fun b : block => blk_id b == fd_blockId curr) btl = false.
+        apply /hasP => [[b Hinb] /eqP Hbid].
+        move: Halltl => /(_ b Hinb).
+        by rewrite /blk_order Hbid ltnNge leq_eqVlt Hlt orbT.
+      by rewrite {1}/blk_order create_black_id Hlt.
+    + rewrite IH //.
+      case Hhas: (has (fun b : block => blk_id b == fd_blockId curr) btl);
+        last by rewrite {3}/blk_order create_black_id Hlt.
+      rewrite /=.
+      have->//: (bhd ==
+        nth block_inhab btl
+        (find (fun b : block => blk_id b == fd_blockId curr) btl)) = false. {
+          apply /eqP => Hhd.
+          have Hin: bhd \in btl by rewrite Hhd mem_nth // -has_find.
+          move: Halltl => /( _ _ Hin).
+          by rewrite /blk_order ltnn.
+      }
+      rewrite /= {2}/blk_order add_black_id.
+      have->:(blk_id
+      (nth block_inhab btl
+          (find (fun b : block => blk_id b == fd_blockId curr) btl)) =
+          fd_blockId curr). {
+        case: (findP (fun b : block => blk_id b == fd_blockId curr) btl).
+          by rewrite Hhas. move=> i Hi Hnth Hbefore.
+          apply /eqP. apply Hnth.
+          }
+      by rewrite Hlt.
+Qed.
+
+(*TODO: move?*)
+Lemma mem_filter': forall {T: eqType} (a: pred T) (x: T) (s: seq T),
+  x \in [seq x <- s | a x] ->
+  x \in s.
+Proof.
+  move=> T a x s. by rewrite mem_filter => /andP[_].
+Qed.
+
+Lemma mem_rev_orig: forall {T: eqType} (l: seq T) (y x: T),
+  y \in rem x l ->
+  y \in l.
+Proof.
+  move=> T l y x. elim: l =>[// | h t /= IH].
+  case: (h == x) /eqP => Heq.
+  - rewrite in_cons =>->. by rewrite orbT.
+  - rewrite !in_cons => /orP[Hyh | Ht]. by rewrite Hyh.
+    by rewrite IH // orbT.
+Qed.
+
 (*Some other results useful for the timeout version of the decoder*)
 Lemma in_decoder_one_step: forall blocks p time b,
   sorted blk_order blocks ->
@@ -1149,104 +1380,34 @@ Lemma in_decoder_one_step: forall blocks p time b,
     (*not true because can create new after timing out*) \/
   (exists b', b' \in blocks /\ b = (add_packet_to_block_black p b').1).
 Proof.
-  move=> blks p time b/=. move: (upd_time time p blks) => upd.
-  move: (not_timeout) => f.
-  elim: blks =>[//= _ | bhd btl /= IH Hsort]; rewrite /blk_order.
-  - rewrite in_cons orbF => /eqP->. right. by left.
-  - move: Hsort. rewrite path_sortedE; last by move=> b1 b2 b3; apply ltn_trans.
-    move=>/andP[/allP Halllt Hsort].
-    case Hf: (f upd bhd)=>/=; last first.
-    + move=> Hin. apply IH in Hin =>//. 
-      case: Hin => [Htl | [[Hb Hall]| [b' [Hinb' Hb']]]].
-      * left. by rewrite in_cons Htl orbT.
-      * right. left. split=>//. move=>b'. 
-        rewrite in_cons => /orP[/eqP Hb' | Hinb']; subst.
-        by left. by apply Hall.
-      * right. right. exists b'. by rewrite in_cons Hinb' orbT.
-    + case: (fd_blockId p == blk_id bhd) /eqP => Hideq.
-      * rewrite in_cons => /orP[/eqP Hb | Hinb].
-        -- right. right. exists bhd. by rewrite mem_head.
-        -- move: Hinb; rewrite mem_filter => /andP[Hfb Hinb]. 
-          (*TODO: add info about not timing out?*)
-          left. by rewrite in_cons Hinb orbT.
-      * case Hidlt: (fd_blockId p < blk_id bhd)%N.
-        -- rewrite !in_cons => /orP[/eqP Hb | /orP[Hb | ]].
-          ++ right. left. split=>//.
-            move=> b'. rewrite in_cons => /orP[/eqP Hb' | Hinb'].
-            ** subst. by case: (Z.eq_dec (fd_k p) 1) =>//= _; right; auto.
-            ** right. have->: blk_id b = fd_blockId p by
-                subst; case: (Z.eq_dec (fd_k p) 1).
-              (*Here, we use sortedness*)
-              move: Halllt => /( _ _ Hinb'); rewrite /blk_order => Hlt.
-              move => Heq. have: (fd_blockId p < blk_id b')%N by 
-                apply (ltn_trans Hidlt).  
-              by rewrite Heq ltnn.
-          ++ left. by rewrite Hb.
-          ++ rewrite mem_filter => /andP[Hfb Hinb].
-            left. by rewrite Hinb orbT.
-        -- rewrite in_cons => /orP[/eqP Hbhd | Hinb]; first by
-            left; subst; rewrite mem_head.
-          apply IH in Hinb=>//.
-            case: Hinb => [Htl | [[Hb Hall]| [b' [Hinb' Hb']]]].
-            ++ left. by rewrite in_cons Htl orbT.
-            ++ right. left. split=>//. move=>b'. 
-              rewrite in_cons => /orP[/eqP Hb' | Hinb']; subst.
-              right. by case: (Z.eq_dec (fd_k p) 1) =>/= _; auto.
-              by apply Hall.
-            ++ right. right. exists b'. by rewrite in_cons Hinb' orbT.
-Qed.
+  move=> blks p time b/= Hsort.
+  rewrite update_dec_state_gen_eq.
+  case Hhas: (has (fun b0 : block => blk_id b0 == fd_blockId p)
+    [seq x <- blks | not_timeout (upd_time time p blks) x]) =>/=.
+  - rewrite mem_insert => /orP[/eqP Hb | Hbin].
+    + right. right. exists (nth block_inhab
+      [seq x <- blks | not_timeout (upd_time time p blks) x]
+      (find (fun b : block => blk_id b == fd_blockId p)
+        [seq x <- blks | not_timeout (upd_time time p blks) x])).
+      split=>//. eapply mem_filter'.
+      apply mem_nth. by rewrite -has_find.
+    + apply mem_rev_orig in Hbin.
+      left. move: Hbin. by rewrite mem_filter => /andP[_ Hin].
+  - rewrite mem_insert => /orP[/eqP Hcreate | ].
+    + right. left. split=>//.
+      move=> b' Hinb'.
+      case Hto: (not_timeout (upd_time time p blks) b') =>//;
+        last by left.
+      right.
+      move: Hhas => /hasP Hhas.
+      move=> C.
+      apply Hhas. exists b'. by rewrite mem_filter Hto.
+      subst. rewrite create_black_id in C. by rewrite C.
+    + rewrite mem_filter => /andP[_ Hin]. by left.
+  - apply sorted_filter=> //. by apply blk_order_trans.
+Qed. 
 
-Lemma packet_in_create: forall s (p: fpacket) time,
-  wf_packet_stream s ->
-  p \in s ->
-  packet_in_block p (create_block_with_packet_black p time).1.
-Proof.
-  move=> s p time Hwf Hinp.
-  case: Hwf => [_ [_ [/(_ _ Hinp) Hidx /(_ _ Hinp) Hnonneg]]].
-  rewrite /create_block_with_packet_black packet_in_block_eq/=.
-  case: (Z.eq_dec (fd_k p) 1)=>//= _;
-  (*Both cases are the exact same*)
-  apply /orP; rewrite !in_mem_In; apply in_app_or;
-  rewrite -sublist_split; try lia; (try by 
-    rewrite Zlength_upd_Znth zseq_Zlength; lia);
-  rewrite sublist_same; try lia; (try by
-    rewrite Zlength_upd_Znth zseq_Zlength; lia);
-  apply upd_Znth_In; rewrite zseq_Zlength; lia.
-Qed.
 
-Lemma packet_in_add: forall s (p: fpacket) b,
-  wf_packet_stream s ->
-  p \in s ->
-  fd_k p = blk_k b ->
-  fd_h p = blk_h b ->
-  Zlength (data_packets b) = blk_k b ->
-  Zlength (parity_packets b) = blk_h b ->
-  packet_in_block p (add_fec_packet_to_block p b).
-Proof.
-  move=> s p b Hwf Hinp Hk Hh Hdat Hlen.
-  case: Hwf => [_ [_ [/(_ _ Hinp) Hidx /(_ _ Hinp) Hnonneg]]]. 
-  rewrite /add_fec_packet_to_block packet_in_block_eq/=.
-  apply /orP. rewrite !in_mem_In !cat_app; apply in_app_or.
-  rewrite -sublist_split; try lia; last by
-    (simpl in *; list_solve).
-  rewrite sublist_same; try lia; last by (simpl in *; list_solve).
-  apply upd_Znth_In. simpl in *; list_solve.
-Qed.
-
-Lemma packet_in_add_black: forall s (p: fpacket) b,
-  wf_packet_stream s ->
-  p \in s ->
-  fd_k p = blk_k b ->
-  fd_h p = blk_h b ->
-  Zlength (data_packets b) = blk_k b ->
-  Zlength (parity_packets b) = blk_h b ->
-  packet_in_block p (add_packet_to_block_black p b).1.
-Proof.
-  move=> s p b Hwf Hin Hk Hh Hdat Hpar. 
-  rewrite /add_packet_to_block_black.
-  case: (black_complete b)=>/=. by apply (packet_in_add Hwf).
-  by case: (recoverable (add_fec_packet_to_block p b)); apply (packet_in_add Hwf).
-Qed.
 (*Why do I keep having to do this?*)
 Opaque create_block_with_packet_black.
 
@@ -1256,8 +1417,8 @@ Ltac pre_impl H :=
     have name: P; [| move: H => /( _ name) H]
   end.
 
-
 (*There is always a block with the packet that was added*)
+(*Could prove with eq lemma, but easier to prove separately*)
 Lemma packet_in_one_step: forall s blocks (p: fpacket) time,
   wf_packet_stream s ->
   p \in s ->
@@ -1315,68 +1476,11 @@ Proof.
         by rewrite Hintl Hpx.
 Qed.
 
-(*[update_dec_state_gen] does nothing if all blockIds are*)
-
-(*The included lemma is weaker than it needs to be
-  TODO: replace in VST?*)
-Lemma In_upd_Znth_old': forall {A: Type} {d: Inhabitant A} (i: Z)
-  (x y : A) (l: list A),
-  In x l ->
-  x <> Znth i l ->
-  In x (upd_Znth i l y).
-Proof.
-  intros A d i x y l Hin Hnth.
-  assert (0 <= i <= Zlength l \/ ~(0 <= i <= Zlength l)) 
-    as [Hinb | Houtb] by lia.
-  - apply In_upd_Znth_old; assumption.
-  - rewrite -> upd_Znth_out_of_range by lia. assumption.
-Qed.
-  (*ugh, we need to know the location - see about that, can
-    we prove from [get_blocks]? this may be more annoying also*)
-
-Lemma other_in_add: forall (p p': fpacket) b,
-  fd_blockIndex p <> fd_blockIndex p' ->
-  Zlength (data_packets b) = blk_k b ->
-  Zlength (parity_packets b) = blk_h b ->
-  Znth (Z.of_nat (fd_blockIndex p')) 
-    (data_packets b ++ parity_packets b) = Some p' ->
-  packet_in_block p' (add_fec_packet_to_block p b).
-Proof.
-  move=> p p' b Hpp' Hdat Hpar.
-  rewrite /add_fec_packet_to_block !packet_in_block_eq/==> Hin.
-  apply /orP. rewrite !in_mem_In. 
-  apply in_app_or.
-  (*Can't use [sublist_split] because we don't know bounds*)
-  rewrite -sublist_split; [|list_solve| 
-    rewrite Zlength_upd_Znth cat_app; simpl in *; list_solve].
-  rewrite sublist_same; try lia; last by
-    rewrite Zlength_upd_Znth cat_app; simpl in *; list_solve.
-  apply In_Znth_iff. exists (Z.of_nat (fd_blockIndex p')).
-  rewrite Znth_upd_Znth_diff; last by 
-    move=> C; apply Nat2Z.inj in C; rewrite C in Hpp'.
-  split=>//. rewrite Zlength_upd_Znth.
-  apply Znth_inbounds. by rewrite Hin.
-Qed.
-
-Lemma other_in_add_black: forall (p p': fpacket) b,
-  fd_blockIndex p <> fd_blockIndex p' ->
-  Zlength (data_packets b) = blk_k b ->
-  Zlength (parity_packets b) = blk_h b ->
-  Znth (Z.of_nat (fd_blockIndex p')) 
-    (data_packets b ++ parity_packets b) = Some p' ->
-  packet_in_block p' (add_packet_to_block_black p b).1.
-Proof.
-  move=> p p' b Hpp' Hdat Hpar Hnth.
-  rewrite /add_packet_to_block_black.
-  case: (black_complete b)=>/=; first by apply other_in_add.
-  by case: (recoverable (add_fec_packet_to_block p b));
-    apply other_in_add.
-Qed.
-
 (*Sort of the opposite of [in_decoder_one_step]*)
 (*For every block in blocks, either a version of it containing 
   the packet p' (different than p) is in
   the resulting list or it has timed out.*)
+(*TODO: can try with eq lemma, maybe makes simpler*)
 Lemma notin_decoder_one_step: forall blocks (p p': fpacket) time b,
   (fd_blockId p <> fd_blockId p' \/ fd_blockIndex p <> fd_blockIndex p') ->
   (forall b', b' \in blocks -> Zlength (data_packets b') = blk_k b' /\
@@ -1393,13 +1497,9 @@ Lemma notin_decoder_one_step: forall blocks (p p': fpacket) time b,
     packet_in_block p' b)) ->
   not_timeout (upd_time time p blocks) b = false.
 Proof.
-(*  (exists b', (b' \in (decoder_one_step_gen blocks p time).1.1) &&
-    packet_in_block p' b' && not_timeout (upd_time time p blocks) b') \/
-  not_timeout (upd_time time p blocks) b = false.
-Proof.*)
   move=>blks p p' time b Hpp'/=. move: (upd_time time p blks) => tm.
   move: not_timeout => f.
-  elim: blks =>[//= | bhd btl /= IH Hlens Hnths Hids (*Hsort*) Hinb Hinp'].
+  elim: blks =>[//= | bhd btl /= IH Hlens Hnths Hids Hinb Hinp'].
   (*Instantiate results for IH*)
   pre_impl IH.
     by move=> b' Hinb'; apply Hlens; by rewrite in_cons Hinb' orbT.
@@ -1409,9 +1509,6 @@ Proof.*)
   pre_impl IH.
     by move => b' p'' Hinb' Hinp''; apply (Hids b' p'')=>//;
     rewrite in_cons Hinb' orbT.
-  (*move: Hsort. rewrite path_sortedE; last by move=> b1 b2 b3; apply ltn_trans.
-  move=> /andP[/allP Halllt Hsort].
-  move: IH => /(_ Hsort) IH.*) 
   move: Hinb; rewrite in_cons => /orP[/eqP Hbhd | Hintl]; last first.
   - case Htb: (f tm b)=>//=.
     have Hinf: b \in [seq x <- btl | f tm x] by rewrite mem_filter Htb Hintl.
