@@ -1760,3 +1760,399 @@ Proof.
       rewrite encode_exist_filter.
     by rewrite /= filter_cat map_cat encode_block_filter encode_new_filter.
 Qed.
+
+(*Concat version of encoder*)
+(*TODO: see if we still need this - for now, just use to prove
+  simple encoder equivalent*)
+Section Concat.
+
+
+Definition rse_encode_concat (orig: seq packet) (params: seq (Z * Z)) :=
+  foldl
+  (fun (acc : seq block * option block * seq (seq (fpacket))) (x : packet * (Z * Z)) =>
+   let t := rse_encode_gen acc.1.1 acc.1.2 x.1 x.2.1 x.2.2 in 
+    (t.1.1, t.1.2, acc.2 ++ [ :: t.2]))
+  ([::], None, [::]) (combine orig params).
+
+Opaque rse_encode_gen.
+
+Lemma rse_encode_all_concat_aux: forall orig params,
+  (rse_encode_all orig params).1 = (rse_encode_concat orig params).1 /\ 
+  (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
+Proof.
+  move => orig params. rewrite /rse_encode_all/rse_encode_concat/= -(revK (combine _ _)) !foldl_rev. 
+  remember (rev (combine orig params)) as l. rewrite {orig params Heql}. elim : l => [// | h t /= [IH1 IH2]]. 
+  by rewrite !IH1 !IH2//= !concat_app/= !cat_app app_nil_r.
+Qed.
+
+Lemma rse_encode_all_concat: forall orig params,
+  (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
+Proof.
+  move => orig params. by apply rse_encode_all_concat_aux.
+Qed.
+
+(*This lemma will actually be quite easy with previous result*)
+(*From here, we can describe each element of [rse_encode_concat] purely in terms of [rse_encode_func])*)
+Lemma rse_concat_mkseqZ: forall orig params,
+  Zlength orig = Zlength params ->
+  (rse_encode_concat orig params).2 = mkseqZ (fun i => rse_encode_func (sublist 0 i orig) (sublist 0 i params)
+    (Znth i orig) (Znth i params).1 (Znth i params).2) (Zlength orig).
+Proof.
+  move => orig params Hlens. rewrite /rse_encode_concat /rse_encode_func /rse_encode_all.
+  remember (@nil block) as b1. remember (@None block) as b2. remember (@nil fpacket) as b3.
+  remember (@nil (seq fpacket)) as b4. rewrite {1}Heqb4. rewrite -(cat0s (mkseqZ _ _)). rewrite -{2}Heqb4.
+  rewrite {Heqb1 Heqb2 Heqb3 Heqb4}. move: b1 b2 b3 b4 params Hlens.
+  elim : orig => [//= b1 b2 b3 b4 params Hlen | h t /= IH b1 b2 b3 b4 params].
+  - have->/=:Zlength [::] = 0 by list_solve. rewrite mkseqZ_0. by rewrite cats0.
+  - case: params => [| [k' h'] tl/=]; [list_solve |].
+    move => Hlen. erewrite IH. 2: list_solve.
+    have->: Zlength (h::t) = Zlength t + 1 by list_solve.
+    rewrite mkseqZ_1_plus/=; [|list_solve]. rewrite !Znth_0_cons -catA/=. f_equal. f_equal.
+    have Hpos: 0 <= Zlength t by list_solve. apply Znth_eq_ext; rewrite !mkseqZ_Zlength //. 
+    move => i Hi. rewrite !mkseqZ_Znth// !Znth_pos_cons; try lia. rewrite !sublist_0_cons; try lia.
+    by rewrite !Z.add_simpl_r.
+Qed.
+
+Corollary rse_concat_nth: forall orig params i,
+  Zlength orig = Zlength params ->
+  0 <= i < Zlength orig ->
+  Znth i (rse_encode_concat orig params).2 = 
+  rse_encode_func (sublist 0 i orig) (sublist 0 i params) (Znth i orig) (Znth i params).1 (Znth i params).2.
+Proof.
+  move => orig params i Hi Hlens. by rewrite rse_concat_mkseqZ //; zlist_simpl.
+Qed.
+
+Corollary rse_concat_Zlength: forall orig params,
+  Zlength orig = Zlength params ->
+  Zlength (rse_encode_concat orig params).2 = Zlength orig.
+Proof.
+  move => orig params Hlen. by rewrite rse_concat_mkseqZ //; zlist_simpl.
+Qed.
+
+End Concat.
+
+(* Reasoning about block boundaries*)
+
+(*Now we want to say something more so that we can express that
+  not too many packets are lost without exposing information about blocks.
+  To do this, we first assume that all parameters are equal; we give
+  such an encoder and prove it equivalent*)
+Section Boundaries.
+
+(*Encoder with only 1 param*)
+Section Simple.
+
+Variable k : Z.
+Variable h : Z.
+(*Variable Hkbound: 0 < k <= fec_n - 1 - fec_max_h.
+Variable Hhbound: 0 < h <= fec_max_h.*)
+
+Definition rse_encode_gen_nochange (blocks: seq block) (currBlock: option block) (curr: packet) :=
+  match currBlock with
+  | Some b => 
+      let t := encode_exist curr b in (t.1.1 ++ blocks, t.1.2, t.2)
+  | None => 
+      let t := encode_new curr k h in (t.1.1 ++ blocks, t.1.2, t.2)
+  end.
+
+Definition rse_encode_concat_nochange (orig: seq packet) : 
+  list block * option block * list (list fpacket) :=
+  foldl (fun acc x =>
+    let t := rse_encode_gen_nochange acc.1.1 acc.1.2 x in
+    (t.1.1, t.1.2, acc.2 ++ [:: t.2])) (nil, None, nil) orig.
+(*can easily get rse_encode_all_nochange from this if we need it*)
+
+(*TODO: change names, these names are awful*)
+(*Equality with full encoder*)
+(*Coq has trouble if we don't include the return Prop*)
+Lemma rse_encode_gen_nochange_eq: forall blks (curr: option block) p,
+  match curr with
+  | Some b => blk_k b = k /\ blk_h b = h
+  | None => True
+  end ->
+  (rse_encode_gen_nochange blks curr p) = (rse_encode_gen blks curr p k h).
+Proof.
+  move=> blks curr p.
+  rewrite /rse_encode_gen_nochange/rse_encode_gen.
+  case: curr => [curr /= [Hk Hh] | //=].
+  rewrite Hk Hh.
+  case: (Z.eq_dec k k)=>//.
+  by case: (Z.eq_dec h h).
+Qed.
+
+(*This is equivalent to the original encoder with all the parameters being (k, h)*)
+Lemma rse_encode_concat_nochange_eq: forall orig,
+  rse_encode_concat_nochange orig = rse_encode_concat orig (zseq (Zlength orig) (k, h)).
+Proof.
+  move=> orig. rewrite /rse_encode_concat/rse_encode_concat_nochange.
+  move: (@nil block) => blks.
+  remember (@None block) as curr.
+  have: (match curr return Prop with
+        | None => True
+        | Some b => blk_k b = k /\ blk_h b = h
+        end) by rewrite Heqcurr.
+  rewrite {Heqcurr}.
+  remember (@nil (list fpacket)) as sent. 
+  rewrite {1 3}Heqsent {Heqsent}.
+  move: blks curr sent.
+  elim: orig => [// | p ptl /= IH blks curr sent Hcurr].
+  rewrite IH//=.
+  - rewrite (@zseq_hd _ (Zlength (p :: ptl)) (k, h))//=; last by list_solve.
+    rewrite rse_encode_gen_nochange_eq //=. do 3 f_equal. list_solve.
+  - (*Invariant preservation*) 
+    rewrite /rse_encode_gen_nochange/=.
+    move: Hcurr. case: curr => [curr /= [Hk Hh] | //= _].
+    + rewrite /encode_exist.
+      by case: (Z.eq_dec
+      (Zlength
+         [seq x <- data_packets (add_packet_to_block_red p curr) | isSome x])
+      (blk_k (add_packet_to_block_red p curr))).
+    + rewrite /encode_new. by case: (Z.eq_dec k 1).
+Qed.
+
+End Simple.
+
+(*Here, we use nats instead so that we can use mathcomp's results about
+  nat division*)
+(*TODO: maybe use nats everywhere*)
+Variable k: nat.
+Variable h: nat.
+
+Local Open Scope nat_scope.
+
+(*Now we can reason about the block boundaries*)
+
+(*TODO: add this somewhere and use it*)
+Lemma Zlength_size: forall {A: Type} (s: seq A),
+  Zlength s = Z.of_nat (size s).
+Proof.
+  move=> A s. by rewrite Zlength_correct size_length.
+Qed. 
+(*Our invariant is the following*)
+
+(*TODO: prove invar (with Zindex) for one step, not just all*)
+
+(*Hmm, let's think about a better invariant*)
+(*Much nicer than working with nat division and multiplication everywhere*)
+Definition encode_boundary_invar (blks: seq block) (curr: option block) (sent: seq fpacket) :=
+  (exists (l: list (list fpacket)) (last: list fpacket),
+  sent = concat l ++ last /\
+  map (fun l1 => map Some l1) l = 
+  map (fun b => data_packets b ++ parity_packets b) (rev blks) /\
+  (forall b, curr = Some b ->
+    exists filled,
+    data_packets b = map Some filled ++ nseq (k - size filled) None /\
+    last = filled) /\
+  (curr = None -> last = nil)) /\
+   (*Metadata info we need*)
+   (forall b, b \in block_option_list (blks, curr) -> blk_k b = Z.of_nat k /\
+   size (data_packets b) = k) /\
+   (*somewhat redundant with invar - TODO: need to fix*)
+   (forall b, curr = Some b -> (Zindex None (data_packets b) < Z.of_nat k)%Z).
+
+Lemma cat_cons: forall {A: Type} (s1 s2: seq A) (x: A),
+  s1 ++ x :: s2 = (s1 ++ [:: x]) ++ s2.
+Proof.
+  move=> A s1 s2 x. by rewrite -catA.
+Qed.
+
+Lemma add_red_data_size: forall p curr,
+  size (data_packets (add_packet_to_block_red p curr)) = size (data_packets curr).
+Proof.
+  move=> p curr/=.
+  by rewrite size_length -ZtoNat_Zlength 
+    Zlength_upd_Znth ZtoNat_Zlength -size_length.
+Qed.
+
+(*TODO: did I prove this somewhere*)
+Lemma ltn_0: forall n m,
+  n < m ->
+  0 < m.
+Proof.
+  move=> n m. case: n=>// n' Hn'.
+  by eapply ltn_trans; last by apply Hn'.
+Qed. 
+
+(*Need that k is nonzero*)
+Variable k_not0: k != 0.
+
+(*Prove that this invariant is preserved. We don't need any other
+  assumptions.*)
+Lemma encode_boundary_invar_pres: forall blks curr sent p,
+  encode_boundary_invar blks curr sent ->
+  (*TODO: may need encode invar here too*)
+  let t := rse_encode_gen_nochange (Z.of_nat k) (Z.of_nat h) blks curr p in
+  encode_boundary_invar t.1.1 t.1.2 (sent ++ t.2).
+Proof.
+  move=> blks curr sent p. 
+  rewrite /=/rse_encode_gen_nochange/=/encode_boundary_invar =>
+    [[[l [ last [ Hsent [Hprevs []]]]]]].
+  case: curr => [curr /= Hsome Hnone [Hallk Hindexlt] | /= Hsome Hnone [Hallk Hindexlt]].
+  - (*We need to consider if we finish this block or not*)
+    rewrite /encode_exist.
+    move: Hsome => /(_ curr erefl) [filled [Hdat Hlast]]; subst.
+      (*First, prove something about Zindex*)
+    have Hidx: Zindex None (data_packets curr) = Z.of_nat (size filled). {
+      rewrite /Zindex. f_equal. rewrite Hdat index_cat.
+      have->//=: None \in [seq Some i | i <- filled] = false
+        by apply /mapP => [[x]]//.
+      rewrite size_map.
+      have->:(index None (nseq (k - size filled) None)) = 0; last by
+        rewrite addn0.
+      move=> t. by case: ((k - size filled)).
+    }
+    case:  (Z.eq_dec
+    (Zlength
+       [seq x <- data_packets (add_packet_to_block_red p curr) | isSome x])
+    (blk_k (add_packet_to_block_red p curr)))=>/= Hlen.
+    + (*length goal is easy*) 
+      split_all; last by []; last by move=>b;
+        rewrite /block_option_list/= in_cons => /orP[/eqP ->/= | Hinb];
+        [rewrite encode_block_k add_red_k data_packets_encode add_red_data_size |];
+        apply Hallk; rewrite /block_option_list/=;
+        [rewrite mem_head | rewrite in_cons Hinb orbT].
+      exists (l ++ [:: (filled ++ [:: (get_fec_packet p curr)] ++ 
+      (encode_block (add_packet_to_block_red p curr) (Some p)).2)]).
+      exists nil. split_all=>//.
+      * by rewrite -catA concat_app/= -!cat_app !cats0 !catA.
+      * rewrite !map_cat/= !map_cat/= map_rev/= data_packets_encode/= Hprevs.
+        rewrite rev_cons -cats1 map_rev. f_equal. rewrite cat_cons. f_equal. 
+        f_equal; last by rewrite encode_some.
+        (*Now we have to prove equivalence of the new lists*)        
+        rewrite Hidx Hdat upd_Znth_app2; last by
+          rewrite !Zlength_size !size_map; split; lia.
+        rewrite Zlength_size !size_map Z.sub_diag -cat_app. f_equal.
+        (*Now, just need to show that k - size filled = 1*)
+        (*Idea: know that Zindex None (data_packets curr) < k
+          so it is k-1 or < k -1. If < k -1, then multiple None values,
+          so contradicts filter assumption*)
+        have->//: (k - size filled = 1).
+        have<-//: size filled + 1 = k; last by rewrite -addnBAC // subnn.
+        move: Hindexlt => /( _ curr erefl) Hlt.
+        have Hlt': size filled < k by apply /ltP; apply Nat2Z.inj_lt;
+          rewrite -Hidx.
+        have->//: size filled = k -1; last by
+          rewrite subnK //; apply (ltn_0 Hlt').
+        have: size filled <= k - 1 by
+          rewrite subn1 -ltn_pred //; apply (ltn_0 Hlt'). 
+        rewrite leq_eqVlt => /orP[/eqP ->// | Hsmall].
+        (*In this case, get that we have multiple None values*)
+        have H2ge: 2 <= k - size filled by rewrite ltn_subCr.
+        move: Hallk => /( _ curr); rewrite /block_option_list/= mem_head => 
+          /(_ isT) [Hk Hszk].
+        have/allP: all isSome (upd_Znth (Zindex None (data_packets curr))
+          (data_packets curr) (Some (get_fec_packet p curr))) by
+          apply filter_all_Zlength;
+          rewrite Zlength_upd_Znth Hlen Zlength_size Hszk.
+        rewrite Hidx Hdat upd_Znth_app2; last by
+          rewrite !Zlength_size !size_map; split; lia.
+        rewrite Zlength_size size_map Z.sub_diag.
+        move: H2ge. case: (k - size filled)=>//= n.
+        rewrite upd_Znth0.
+        case: n =>//= n _.
+        move => Hcon. have//: isSome (@None fpacket). apply (Hcon None).
+        by rewrite mem_cat !in_cons eq_refl !orbT.
+    + (*Case when block not finished*)
+      split_all.
+      * (*main result*)
+        exists l. exists (filled ++ [:: get_fec_packet p curr]).
+        split_all.
+        -- by rewrite catA.
+        -- by rewrite Hprevs.
+        -- move => b [Hb]; subst.
+          exists (filled ++ [:: get_fec_packet p curr]).
+          rewrite /= map_cat/= size_cat/=. split=>//.
+          rewrite Hidx Hdat upd_Znth_app2; last by
+            rewrite !Zlength_size size_map; split; lia.
+          rewrite -cat_app Zlength_size size_map Z.sub_diag -catA.
+          f_equal.
+          (*Here, just need to show that size filled < k - idea:
+            if it equals k, then contradicts Hlen*)
+          have: 0 <= k - size filled by [].
+          rewrite leq_eqVlt => /orP[Hksz |]; last first.
+            rewrite subnDA.
+            case: (k - size filled) =>//= n _.
+            by rewrite subn1 -pred_Sn upd_Znth0.
+          move: Hallk => /(_ curr); 
+          rewrite /block_option_list/= mem_head => /(_ isT) [Hk Hszk].
+          have Hkeq: k = size filled. {
+            move: Hksz. rewrite eq_sym subn_eq0 => Hle.
+            apply /eqP. rewrite eqn_leq Hle/=.
+            by rewrite -Hszk Hdat size_cat size_map leq_addr.
+          }
+          exfalso. apply Hlen. rewrite Hidx -Hkeq.
+          rewrite upd_Znth_out_of_range; last by right;
+            rewrite Hdat Hkeq subnn/= cats0 Zlength_size size_map; lia.
+          rewrite Hk -Hszk -Zlength_size filter_all_Zlength.
+          apply /allP => x.
+          by rewrite Hdat Hkeq subnn cats0 => /mapP [y] _ ->.
+        -- by [].
+      * (*Prove k invariant (easy)*)
+        move=> b. by rewrite /block_option_list/= in_cons => 
+          /orP [/eqP -> | Hinb]; [rewrite add_red_k add_red_data_size |];
+          apply Hallk; rewrite /block_option_list/=; 
+          [rewrite mem_head | rewrite in_cons Hinb orbT].
+      * move=> b [] <-/=.
+        (*Now, we need to prove that the block is not yet full*)
+        move: Hallk => /(_ curr); rewrite /block_option_list/= mem_head 
+          => /(_ isT) [Hk Hszk].
+        have Hin: In None ((upd_Znth (Zindex None (data_packets curr)) (data_packets curr)
+        (Some (get_fec_packet p curr)))). {
+          apply /inP.
+          have: ~~ all isSome (upd_Znth (Zindex None (data_packets curr))
+          (data_packets curr) (Some (get_fec_packet p curr))). {
+            apply /negP => C.
+            rewrite -filter_all_Zlength in C. move: C.
+            by rewrite Zlength_upd_Znth (Zlength_size (data_packets curr)) 
+              Hszk -Hk => C.
+          }
+          rewrite -has_predC. by move => /hasP [[]].
+        }
+        rewrite -Zindex_In in Hin.
+        move: Hin. by rewrite Zlength_upd_Znth 
+          (Zlength_size (data_packets curr)) Hszk .
+  - (*Case where block is None*)
+    rewrite /encode_new.
+    (*First case: k =1, so finish block*)
+    case: (Z.eq_dec (Z.of_nat k) 1) => /= Hk1.
+    + split_all=>//.
+      * exists (l ++ [:: ((new_fec_packet p (Z.of_nat k) (Z.of_nat h)
+        :: (encode_block (create_block_with_packet_red p (Z.of_nat k) (Z.of_nat h))
+            (Some p)).2))]). exists nil.
+        split_all=>//.
+        -- by rewrite Hsent -!catA concat_app /= -!cat_app !cats0 Hnone.
+        -- rewrite !map_cat/= map_rev/= data_packets_encode/= Hprevs
+            rev_cons -cats1 map_rev. f_equal. by rewrite Hk1.
+      * move=> b. rewrite /block_option_list/= in_cons => 
+          /orP[/eqP -> | Hinb].
+          rewrite encode_block_k/= data_packets_encode/= Hk1/=.
+          split=>//. lia.
+        apply Hallk. by rewrite /block_option_list.
+    + (*Start new packet but dont finish*) 
+      split_all=>//.
+      * exists l. exists [:: new_fec_packet p (Z.of_nat k) (Z.of_nat h)].
+        split_all=>//.
+        -- by rewrite Hsent -catA Hnone.
+        -- move=> b [] <-. exists [:: new_fec_packet p (Z.of_nat k) (Z.of_nat h)].
+          split=>//=.
+          rewrite /zseq Nat2Z.id. 
+          move: Hk1 k_not0. case: k =>// n. case: n => // n _ _/=.
+          by rewrite upd_Znth0.
+      * move=> b. rewrite /block_option_list/= in_cons 
+        => /orP[/eqP ->/= | Hinb].
+        -- split=>//. apply Nat2Z.inj.
+          rewrite -Zlength_size Zlength_upd_Znth zseq_Zlength //. lia.
+        -- by apply Hallk.
+      * move=> b [] <-/=; rewrite /zseq Nat2Z.id.
+        move: k_not0 Hk1. case: k => // n. case: n => // n _ _.
+        rewrite /Zindex. apply inj_lt. apply /ltP.
+        by rewrite /= upd_Znth0/=.
+Qed.
+
+(*Plan: 
+1. prove for all steps
+2. give condition about division
+3. prove this implies condition for each block
+4. prove that this gives subblock result we need for decoder*)
+        
+End Simple.
