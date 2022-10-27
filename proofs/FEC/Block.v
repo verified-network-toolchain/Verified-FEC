@@ -1620,6 +1620,25 @@ Proof.
   by apply Hwf.
 Qed.
 
+(*Need for encoder*)
+Lemma get_blocks_id_uniq: forall s,
+  wf_packet_stream s ->
+  uniq (map blk_id (get_blocks s)).
+Proof.
+  move=> s Hwf.
+  rewrite /get_blocks -map_comp.
+  have [Hallin [Hnonemp [Hlen [Heq Huniq]]]] := 
+    (get_block_lists_spec Hwf).
+  have->//:[seq (blk_id \o btuple_to_block) i | i <- get_block_lists s] =
+  [seq i.1 | i <- get_block_lists s].
+  apply eq_in_map => [[i pkts] Hin]/=.
+  (*Need packet in here for [btuple_to_block_eq]*)
+  move: Hnonemp => /(_ i pkts Hin) [p] Hinp'.
+  have [Hidp' Hinps']:=(get_block_lists_prop_packets 
+  (get_block_lists_spec Hwf) Hin Hinp').
+  by rewrite (btuple_to_block_eq Hwf Hin Hinps' Hidp').
+Qed.
+
 End BlockList.
 
 (* For the decoder, we need to reason about subblocks)*)
