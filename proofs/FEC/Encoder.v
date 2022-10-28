@@ -2657,7 +2657,7 @@ Theorem encoder_boundaries_exist: forall (k h: Z) p orig,
     let l := (sublist (Z.of_nat (i * n)) 
       (Z.of_nat ((i+1) * n)) sent) in
     uniq l /\
-    all (fun (p': fpacket) => fd_blockId p' == blk_id b) l.
+    all (fun (p': fpacket) => packet_in_block p' b) l.
 Proof.
   move=> k h p orig Hkbound Hhbound Hval Henc Huniqseq/= Hinp.
   have Hallinbounds: (forall k0 h0 : Z_eqtype,
@@ -2853,11 +2853,7 @@ Proof.
   split_all=>//.
   - by apply Henc.
   - by apply Hallwf.
-  - (*Need to know that size of 
-    (encoder...).1.1 <= size orig %/ (Z.to_nat (k+h))
-    TODO: see how much general*)
-    move: Hinb_rev. rewrite -index_mem => Hlt. apply (ltn_leq_trans Hlt).
-    (*this is the lemma*)
+  - move: Hinb_rev. rewrite -index_mem => Hlt. apply (ltn_leq_trans Hlt).
     by rewrite size_rev Hszeq Hconcat size_cat Hszl divnMDl // leq_addr.
   - by apply uniq_sublist.
   - (*Here, we use the fact that this sublist consists
@@ -2878,10 +2874,8 @@ Proof.
       rewrite Hconcat. rewrite sublist_app1; try lia.
       2: by split; try lia; apply inj_le; apply /leP;
         rewrite mulnDl mul1n leq_addr.
-      2 : 
-      { rewrite Zlength_size. apply inj_le; apply /leP.
-        by rewrite Hszl leq_pmul2r // addn1.
-      }
+      2 : by rewrite Zlength_size; apply inj_le; apply /leP;
+        rewrite Hszl leq_pmul2r // addn1.
       rewrite (sublist_concat nil _ Hallsz) //.
       (*Very awkward to use because of double map*)
       have /=Hallnth: forall d1 d2 i,
@@ -2901,17 +2895,13 @@ Proof.
     move=> Hinp'.
     have Hinp'': (Some p') \in (data_packets b ++ parity_packets b) by
       rewrite -Hmapeq; apply /mapP; exists p'.
-    have Hinbp': packet_in_block p' b by 
-      rewrite packet_in_block_eq -mem_cat.
-    apply /eqP. by apply (Hallwf b Hinb').
+    by rewrite packet_in_block_eq -mem_cat.
 Qed.
 
 (*Plan: 
 1. prove for all steps (DONE)
 2. prove condition for each block (in terms of just index i,
   uniq packets with that block index) (DONE)
-3. give arrival condition (prob in EncodeDecodeCorrectness)
+3. give arrival condition (prob in EncodeDecodeCorrectness) (DONE)
 4. prove that 2 + 3 implies subblock condition
 5. work with subblock condition in decoder*)
-        
-End Simple.
