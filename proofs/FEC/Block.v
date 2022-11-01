@@ -1620,7 +1620,7 @@ Proof.
   by apply Hwf.
 Qed.
 
-(*Need for encoder*)
+(*Need for decoder no timeouts*)
 Lemma get_blocks_id_uniq: forall s,
   wf_packet_stream s ->
   uniq (map blk_id (get_blocks s)).

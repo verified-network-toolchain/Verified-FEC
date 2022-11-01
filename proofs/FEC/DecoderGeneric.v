@@ -1559,5 +1559,75 @@ Proof.
         -- exists bhd. by rewrite !in_cons eq_refl !orbT.
         -- exists bhd. by rewrite mem_head.
 Qed.  
+Print wf_packet_stream.
+(*Two other properties: all blocks in the state are nonempty
+  and all packets in the state are in the received stream*)
+
+(*A block can never become nonempty from adding another packet*)
+Lemma add_packet_nonempty (b: block) (p curr: fpacket):
+  packet_in_block p b ->
+  packet_in_block p (add_fec_packet_to_block curr b) ||
+  packet_in_block curr (add_fec_packet_to_block curr b).
+Proof.
+  rewrite !packet_in_block_eq/= => Hin.
+  
+  rewrite /=.
+
+Lemma add_black_nonempty (b: block) (p curr: fpacket):
+  packet_in_block p b ->
+  packet_in_block p (add_packet_to_block_black curr b).1 ||
+  packet_in_block curr (add_packet_to_block_black curr b).1.
+Proof.
+
+
+Lemma dec_state_nonempty (prev_packs packs : list fpacket)
+  (blks: list block) (sent: list packet) (time: Z) :
+  (wf_packet_stream (prev_packs ++ packs)) ->
+  (forall b, b \in blks -> exists p, packet_in_block p b) ->
+  (forall b, b \in 
+    (decoder_multiple_steps_gen prev_packs packs blks sent time).1.1.1 ->
+    exists p, packet_in_block p b).
+Proof.
+  move: prev_packs blks sent time.
+  rewrite /decoder_multiple_steps_gen. 
+  elim: packs => [//= | curr packs /= IH prev blks sent time Hwf Hallin/=].
+  apply IH. by rewrite -catA. move => b.
+  clear -Hallin Hwf.
+  move: (upd_time time curr blks).
+  move: (not_timeout).
+  move: Hallin Hwf. elim: blks => 
+    [//= _ Hwf tm f | bhd btl /= IH Hallin Hwf tm f].
+  - rewrite in_cons orbF => /eqP->.
+    exists curr. apply (packet_in_create _ Hwf).
+    by rewrite mem_cat in_cons eq_refl !orbT.
+  - case Hto: (tm f bhd)=>/=; last by
+      apply IH =>//; move=> b1 Hin; apply Hallin;
+      rewrite in_cons Hin orbT.
+    case Heq: (fd_blockId curr == blk_id bhd).
+    + rewrite in_cons => /orP[/eqP -> |].
+      (*See if we overwrote previous packet or not*)
+      move: Hallin => /( _ _ (mem_head _ _)) [p1].
+      rewrite packet_in_block_eq.
+      rewrite /add_packet_to_block_black/=.
+      Print add_fec_packet_to_block.
+    Search add_packet_to_block_black.
+    rewrite /=.
+  
+  
+  move=> H
+    rewrite mem_cat
+    
+    rewrite packet_in_block_eq.
+    Search create_block_with_packet_black.
+    
+    /create_block_with_packet_black.
+    Print create_block_with_packet_black.
+    Print create_block_with_fec_packet.
+    rewrite packet_in_block_eq/=. move => 
+
+Definition decoder_multiple_steps_gen 
+  (prev_packs packs: list fpacket)
+  (state: list block) (sent: list packet) (time: Z) :
+
 
 End GenDecode.
