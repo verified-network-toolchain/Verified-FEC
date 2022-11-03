@@ -8,6 +8,7 @@ Require Import ZSeq.
 Require Import ByteFacts.
 (*Require Import ByteField.*) (*For byte equality - TODO: move to ByteFacts*)
 Require Import Block.
+Require Import CommonFEC.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -739,78 +740,6 @@ Qed.
   more generally)*)
 Section Uniq.
 
-(*TODO: move next few*)
-Lemma mem_zip: forall {A B: eqType} (s1: seq A) (s2: seq B) x y,
-  (x, y) \in (zip s1 s2) ->
-  (x \in s1) && (y \in s2).
-Proof.
-  move=> A B s1 s2 x y. move: s2. elim: s1 => 
-    [[]// | h1 t1 /= IH [// | h2 t2 /=]].
-  rewrite in_cons => /orP[/eqP []->-> | Hinxy].
-  - by rewrite mem_head eq_refl.
-  - by rewrite andb_orl in_cons (orbC (y == h2)) 
-      !andb_orr (IH t2) // !orbT.
-Qed. 
-
-Lemma uniq_zip: forall {A B: eqType} (s1: seq A) (s2: seq B),
-  uniq s1 || uniq s2 ->
-  uniq (zip s1 s2).
-Proof.
-  move=> A B s1. elim: s1 => [//= [// | //] | h1 t1 /= IH [// | h2 t2 /=]].
-  move => /orP[/andP[Hnotin Huniq] | /andP[Hnotin Huniq]].
-  - rewrite IH; last by rewrite Huniq.
-    case Hin: ((h1, h2) \in (zip t1 t2))=>//.
-    apply mem_zip in Hin.
-    move: Hin. by rewrite (negbTE Hnotin).
-  - rewrite IH; last by rewrite Huniq orbT.
-    case Hin: ((h1, h2) \in (zip t1 t2))=>//.
-    apply mem_zip in Hin.
-    move: Hin. by rewrite (negbTE Hnotin) andbF.
-Qed.
-  
-Lemma map_with_idx_uniq: forall {A: eqType} {B: eqType} (l: seq A) (f: A -> Z -> B),
-  (forall z1 z2 a1 a2, 0 <= z1 < Zlength l -> 0 <= z2 < Zlength l ->
-    z1 <> z2 -> f a1 z1 <> f a2 z2) ->
-  uniq (map_with_idx l f).
-Proof.
-  move=> A B l f Hinj. rewrite /map_with_idx.
-  (*Can't use library functions, f not necessarily injective, but changes
-    for each integer, which can only appear once*)
-  rewrite -zip_combine. 
-  remember (Ziota 0 (Zlength l)) as ints.
-  have: uniq ints by rewrite Heqints uniq_NoDup; apply Ziota_NoDup.
-  have: size l = size ints by
-    rewrite Heqints /Ziota size_map size_iota ZtoNat_Zlength size_length.
-  have: (forall z1 z2 a1 a2,
-    z1 \in ints -> z2 \in ints -> f a1 z1 = f a2 z2 -> z1 = z2). {
-    move=> z1 z2 a1 a2 Hz1 Hz2 Hfeq.
-    apply /eqP. apply negbFE. apply /negP =>  /negP /eqP C.
-    apply (Hinj z1 z2 a1 a2) =>//.
-    move: Hz1. rewrite Heqints => /inP; rewrite Ziota_In; try lia.
-    list_solve.
-    move: Hz2. rewrite Heqints => /inP; rewrite Ziota_In; try lia.
-    list_solve.
-}
-  rewrite {Heqints Hinj}.
-  (*Now, our lemma is sufficiently general (TODO; maybe should just
-    prove general lemma separately)*)
-  move: ints. elim: l => [// []// | h1 t1 /= IH [//| h2 t2/=]] 
-    Hinj [Hsz] /andP[Hnotin Huniq].
-  apply /andP; split.
-  - apply /negP => /mapP [[x y]] Hin Hfeq.
-    apply mem_zip in Hin; move: Hin => /andP[Hinx Hiny].
-    have Hy: h2 = y. { 
-      apply (Hinj h2 y h1 x)=>//. by rewrite mem_head.
-      by rewrite in_cons Hiny orbT.
-    }
-    subst. by rewrite Hiny in Hnotin.
-  - apply IH=>//. move=> z1 z2 a1 a2 Hinz1 Hinz2. 
-    by apply Hinj; rewrite in_cons; 
-      [rewrite Hinz1 | rewrite Hinz2]; rewrite orbT.
-Qed.
-
-(*End move*)
-
 Lemma encode_block_aux_uniq: forall b p,
   0 <= blk_k b ->
   uniq (encode_block_aux b p).2.
@@ -922,42 +851,7 @@ Proof.
   - by apply in_encode_block_aux_id.
 Qed.
 
-(*TODO: maybe put in Block?*)
-Lemma wf_in_data: forall b (p: fpacket),
-  block_wf b ->
-  packet_in_block p b ->
-  fd_isParity p = false ->
-  packet_in_data p b.
-Proof.
-  move=> b p. rewrite packet_in_block_eq 
-    /packet_in_data => Hwf /orP[Hindat //| Hinpar] Hnopar.
-  have: fd_isParity p by apply Hwf. by rewrite Hnopar.
-Qed.
-
 End Uniq.
-
-(*Some small results we need, not sure where to put them*)
-
-(*deal with generic preds of the form: forall x, x \in l -> p x*)
-Lemma in_pred_rev: forall {A: eqType} (s: seq A) (p: pred A),
-  (forall x, x \in s -> p x) ->
-  (forall x, x \in (rev s) -> p x).
-Proof.
-  move => A s p Hall x Hinx. apply Hall. move: Hinx. by rewrite mem_rev.
-Qed.
-
-Lemma in_pred_tl: forall {A: eqType} (h: A) (s: seq A)  (p: pred A),
-  (forall x, x \in (h :: s) -> p x) ->
-  (forall x, x \in s -> p x).
-Proof.
-  move => A s h p Hall x Hxin. apply Hall. by rewrite in_cons Hxin orbT.
-Qed.
-
-Lemma cons_app: forall {A: Type} (x : A) (l: seq A),
-  x :: l = [:: x] ++ l.
-Proof.
-  by [].
-Qed.
 
 (** Encoder properties *)
 
@@ -1490,13 +1384,6 @@ Proof.
     apply Zindex_In; simpl in *; lia.
 Qed.
 
-(*TODO: move*)
-Lemma map_nil {A B: eqType} (f: A -> B) (s: seq A):
-  (map f s == [::]) = (s == [::]).
-Proof.
-  by case: s.
-Qed.
-
 (*Case 2: We can encode the current block and add all such packets to the output, preserving the invariant*)
 Lemma encoder_props_encode: forall orig b blks pkts model,
   (Some model) \in (map (omap (@p_packet _)) (data_packets b)) ->
@@ -1757,13 +1644,6 @@ Proof.
     have: f \notin pkts by apply Hpnotin=>//; rewrite (negbTE Hnotpar).
     by rewrite Hinf.
 Qed.
-
-(*TODO: put in block or somewhere once done with file*)
-Lemma zip_nil_r: forall {A B: Type} (s: seq A),
-  zip s (@nil B) = [::].
-Proof.
-  move => A B s. by case: s.
-Qed. 
 
 (*The key theorem about the encoder: encoder_props holds. We need all of these properties for a strong enough
   IH, even though only a few are important in the final theorem we need (TODO: reference*)
@@ -2210,15 +2090,7 @@ Local Open Scope nat_scope.
 
 (*Now we can reason about the block boundaries*)
 
-(*TODO: add this somewhere and use it*)
-Lemma Zlength_size: forall {A: Type} (s: seq A),
-  Zlength s = Z.of_nat (size s).
-Proof.
-  move=> A s. by rewrite Zlength_correct size_length.
-Qed. 
 (*Our invariant is the following*)
-
-(*Hmm, let's think about a better invariant*)
 (*Much nicer than working with nat division and multiplication everywhere*)
 Definition encode_boundary_invar (blks: seq block) (curr: option block) (sent: seq fpacket) :=
   (exists (l: list (list fpacket)) (last: list fpacket),
@@ -2237,12 +2109,6 @@ Definition encode_boundary_invar (blks: seq block) (curr: option block) (sent: s
    (*somewhat redundant with invar - TODO: need to fix*)
    (forall b, curr = Some b -> (Zindex None (data_packets b) < Z.of_nat k)%Z).
 
-Lemma cat_cons: forall {A: Type} (s1 s2: seq A) (x: A),
-  s1 ++ x :: s2 = (s1 ++ [:: x]) ++ s2.
-Proof.
-  move=> A s1 s2 x. by rewrite -catA.
-Qed.
-
 Lemma add_red_data_size: forall p curr,
   size (data_packets (add_packet_to_block_red p curr)) = size (data_packets curr).
 Proof.
@@ -2250,15 +2116,6 @@ Proof.
   by rewrite size_length -ZtoNat_Zlength 
     Zlength_upd_Znth ZtoNat_Zlength -size_length.
 Qed.
-
-(*TODO: did I prove this somewhere*)
-Lemma ltn_0: forall n m,
-  n < m ->
-  0 < m.
-Proof.
-  move=> n m. case: n=>// n' Hn'.
-  by eapply ltn_trans; last by apply Hn'.
-Qed. 
 
 (*Need that k is nonzero*)
 Variable k_not0: k != 0.
@@ -2302,7 +2159,8 @@ Proof.
       exists nil. split_all=>//.
       * by rewrite -catA concat_app/= -!cat_app !cats0 !catA.
       * rewrite !map_cat/= !map_cat/= map_rev/= data_packets_encode/= Hprevs.
-        rewrite rev_cons -cats1 map_rev. f_equal. rewrite cat_cons. f_equal. 
+        rewrite rev_cons -cats1 map_rev. f_equal. 
+        rewrite cat_cons'. f_equal. 
         f_equal; last by rewrite encode_some.
         (*Now we have to prove equivalence of the new lists*)        
         rewrite Hidx Hdat upd_Znth_app2; last by
@@ -2526,14 +2384,6 @@ End Boundaries.
 
 Local Open Scope nat_scope.
 
-Lemma size_concat: forall {A: Type} (n: nat) (s: seq (seq A)),
-  all (fun l => size l == n) s ->
-  size (concat s) = size s * n.
-Proof.
-  move=> A n s. elim: s => [// | h t /= IH /andP[/eqP Hsz Hall]].
-  by rewrite size_cat Hsz IH.
-Qed.
-
 Lemma in_block_option_list: forall (o: option block) 
   (b: block) (l: seq block),
   b \in l ->
@@ -2542,91 +2392,6 @@ Proof.
   move=> [a b l Hbl/= |b l //].
   rewrite /block_option_list/=. by rewrite in_cons Hbl orbT.
 Qed.
-
-Lemma skipn_drop: forall {A: Type} (n: nat) (s: seq A),
-  skipn n s = drop n s.
-Proof.
-  move=> A n s. move: n. 
-  by elim: s => [//= [| n] //| h t IH /= [//| n' /=]].
-Qed.
-
-Lemma firstn_take: forall {A: Type} (n: nat) (s: seq A),
-  firstn n s = take n s.
-Proof.
-  move=> A n s. move: n.
-  elim: s => [[|]// | h t /= IH [// | n']/=].
-  by rewrite IH.
-Qed.
-
-Lemma uniq_sublist: forall {A: eqType} (lo hi: Z) (s: seq A),
-  uniq s ->
-  uniq (sublist lo hi s).
-Proof.
-  move=> A lo hi s Huniq.
-  rewrite /sublist skipn_drop firstn_take.
-  by apply drop_uniq, take_uniq.
-Qed.
-
-Lemma sublist_concat: forall {A: Type} (d: seq A) (n: nat) (s: seq (seq A)) (i: nat),
-  i < (size s) ->
-  all (fun l => size l == n) s ->
-  sublist (Z.of_nat (i * n)) (Z.of_nat ((i + 1) * n)) (concat s) = 
-  nth d s i.
-Proof.
-  move=> A d n s i Hi Hall.
-  rewrite /sublist (*skipn_drop firstn_take*) !Nat2Z.id.
-  move: s n Hi Hall. elim : i => 
-    [//= [//= | h t /=] n | i' /= IH [//= | h t /=] n].
-  - move => Hi /andP[/eqP Hszh Hall].
-    by rewrite add0n mul1n -cat_app firstn_take take_size_cat.
-  - move=> Hi /andP[/eqP Hszh Hall].
-    rewrite -cat_app firstn_take skipn_drop.
-    have->:((i'.+1 + 1) * n) = (n + i'.+1 * n) by
-      rewrite mulnDl mul1n addnC.
-    rewrite takeD take_size_cat // (@drop_size_cat _ n) // 
-      drop_cat !Hszh.
-    have->:(i'.+1 * n < n) = false.
-      rewrite ltnNge. apply negbF.
-      by rewrite -addn1 mulnDl mul1n addnC leq_addr.
-    have->:(i'.+1 * n - n) = i' * n by
-      rewrite -addn1 mulnDl mul1n -subnBA // subnn subn0.
-    rewrite -firstn_take -skipn_drop -addn1. by apply IH.
-Qed.
-
-Lemma pmap_id_inv: forall {A: Type}(s: seq (option A)) (t: seq A),
-  map Some t = s ->
-  t = pmap id s.
-Proof.
-  move=> A s t Hall. subst. elim: t => [// | h t /= IH].
-  by rewrite -IH.
-Qed.
-
-Lemma mem_sublist: forall {A: eqType} (s: seq A) (lo hi: Z) (x: A),
-  x \in sublist lo hi s ->
-  x \in s.
-Proof.
-  move=> A s lo hi x. rewrite /sublist skipn_drop firstn_take => Hin.
-  apply mem_drop in Hin.
-  by apply mem_take in Hin.
-Qed.
-
-Lemma map_uniq_inj {A B: eqType} (f: A -> B) (s: seq A) (x y: A):
-  uniq (map f s) ->
-  x \in s ->
-  y \in s ->
-  f x = f y ->
-  x = y.
-Proof.
-  elim: s=>[// |h t /= IH /andP[Hnotin Huniq]].
-  rewrite !in_cons => /orP[/eqP Hxh | Hinxt] /orP[/eqP Hyh | Hinyt] Hfeq; 
-    subst =>//.
-  - exfalso. move: Hnotin => /negP; apply.
-    rewrite Hfeq. apply /mapP. by exists y.
-  - exfalso. move: Hnotin => /negP; apply.
-    rewrite -Hfeq. apply /mapP. by exists x.
-  - by apply IH.
-Qed.
-
 
 (*Now we prove the following crucial condition we need:
   every packet in the original list (except for possibly the

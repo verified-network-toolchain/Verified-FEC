@@ -219,6 +219,16 @@ Proof.
   move => b. by case: b.
 Qed.
 
+Lemma size1P: forall {T: Type} (s: seq T),
+  reflect (exists (x: T), s = [:: x]) (size s == 1%N) .
+Proof.
+  move => T s. case : s => [/= | h t /=].
+  - apply ReflectF. by move =>[x Hx].
+  - case : t => [|h' t' /=].
+    + apply ReflectT. by exists h.
+    + apply ReflectF. by move => [x Hx].
+Qed.
+
 (** Lemmas about [find] *)
 
 (*Results about [find] that mostly put the library lemmas into a more convenient form*)

@@ -5,6 +5,7 @@ Require Import ByteFacts.
 Require Import Block.
 Require Import CommonSSR.
 Require Import ZSeq.
+Require Import CommonFEC.
 
 
 From mathcomp Require Import all_ssreflect.
@@ -256,24 +257,6 @@ Definition decoder_nto_invar (blks: seq block) (prev: list fpacket)
   (forall b, b \in blks -> black_complete b ->
       recoverable b).
 
-(*TODO: copied from encoder, move to COmmon or something*)
-Lemma map_uniq_inj {A B: eqType} (f: A -> B) (s: seq A) (x y: A):
-  uniq (map f s) ->
-  x \in s ->
-  y \in s ->
-  f x = f y ->
-  x = y.
-Proof.
-  elim: s=>[// |h t /= IH /andP[Hnotin Huniq]].
-  rewrite !in_cons => /orP[/eqP Hxh | Hinxt] /orP[/eqP Hyh | Hinyt] Hfeq; 
-    subst =>//.
-  - exfalso. move: Hnotin => /negP; apply.
-    rewrite Hfeq. apply /mapP. by exists y.
-  - exfalso. move: Hnotin => /negP; apply.
-    rewrite -Hfeq. apply /mapP. by exists x.
-  - by apply IH.
-Qed.
-
 Lemma blk_order_sort_uniq: forall blks,
   sorted blk_order blks ->
   uniq (map blk_id blks).
@@ -505,229 +488,6 @@ Proof.
 Qed.
 
 
-
-(*Suppose there are at least unique k items in a list in another list. 
-  Then, we can find the point at which the kth
-  unique item appears.*)
-Section FindLast.
-(*TODO: move most of this?*)
-(*Alternate induction principle for lists - adding to the end*)
-Lemma seq_ind' {A: Type} (P: seq A -> Prop):
-  P nil ->
-  (forall (a: A) (l: seq A), P l -> P (rcons l a)) ->
-  forall l: seq A, P l.
-Proof.
-  move=> Pnil Prcons l.
-  rewrite -(revK l).
-  elim: (rev l) =>//= h t Hp.
-  rewrite rev_cons. by apply Prcons.
-Qed.
-
-Lemma filter_partition_perm: forall {A: eqType} (p: pred A) (s: seq A),
-  perm_eq s ([seq x <- s | p x] ++ [seq x <- s | predC p x]).
-Proof.
-  move=> A p s. by have:=(perm_filterC p s) => /(_ s);
-  rewrite perm_refl perm_sym.
-Qed.
-
-Lemma count_perm: forall {A: eqType} (p: pred A) (s1 s2: seq A),
-  perm_eq s1 s2 ->
-  count p s1 = count p s2.
-Proof. 
-  by move=> A p s1 s2 /permP => /(_ p).
-Qed.
-
-Lemma filter_pred1_uniq' {A: eqType} (s: seq A) (x: A):
-  uniq s ->
-  [seq x0 <- s | pred1 x x0] = if x \in s then [:: x] else nil.
-Proof.
-  elim:s => [// | h t /= IH /andP[Hnotin Huniq]].
-  rewrite in_cons (eq_sym x h).
-  case: (h == x) /eqP =>//= Hhx; subst.
-  - by rewrite IH // (negbTE Hnotin).
-  - by apply IH.
-Qed. 
-
-(*Surprisingly tricky to prove: if at least k unique items satisfy
-  a predicate, we can identify the first ocurrence of the kth such
-  item.*)
-Lemma find_kth_item {A: eqType} (p: pred A) (k: nat) (s: seq A) :
-  k != 0 ->
-  count p (undup s) >= k ->
-  exists l1 x l2,
-    s = l1 ++ [:: x] ++ l2 /\
-    count p (undup l1) = k - 1 /\
-    p x /\
-    x \notin l1.
-Proof.
-  rewrite -count_rev.
-  (*want to go backwards over the list, so we can tell when we find x*)
-  move: s k. induction s as [| h t IH] using seq_ind' =>/= k Hk0.
-  - by rewrite leqn0 (negbTE Hk0).
-  - rewrite undup_rcons rev_rcons/=.
-    have Hcounteq: count p (rev (undup t)) = 
-      count p [seq y <- undup t | y != h] + ((h \in t) && p h). {
-      erewrite count_perm; last first.
-      eapply perm_trans. rewrite perm_sym. apply perm_rev'.
-      apply (filter_partition_perm (fun x => x != h)).
-      rewrite count_cat/=. f_equal.
-      rewrite (@eq_in_filter _ _ (pred1 h)).
-      - rewrite filter_pred1_uniq'; last by apply undup_uniq.
-        rewrite mem_undup.
-        case Hin: (h \in t)=>//=.
-        by rewrite addn0.
-      - move=> x _. by rewrite negbK.
-    }
-    case Hinht: (h \in t).
-    + rewrite count_rev => Hk. 
-      (*In this case, we have the condition for the IH, which we need
-        because h cannot be the first occurrence of the kth item*)
-      have Hk': k <= count p (rev (undup t)) by
-        rewrite Hcounteq Hinht/= addnC.
-      move: IH => /(_ k Hk0 Hk') [l1 [x [l2 [Ht [Hcount [Hpx Hx]]]]]].
-      exists l1. exists x. exists (rcons l2 h). split_all=>//.
-      rewrite Ht. by rewrite rcons_cat.
-    + (*Now we know this is a new element, but we need to see
-      if it satisfies the predicate or not*)
-      move: Hcounteq.
-      case Hh: (p h)=>/=; last first.
-        rewrite andbF addn0 add0n
-        (count_rev _ (filter _ _)) => <-=> Hk.
-        (*If not, the IH gives the result easily*)
-        move: IH => /(_ k Hk0 Hk) [l1 [x [l2 [Ht [Hcount [Hpx Hx]]]]]].
-        exists l1. exists x. exists (rcons l2 h). split_all=>//.
-        by rewrite Ht rcons_cat.
-      (*Now see if h is the kth item or not*)
-      rewrite andbT Hinht addn0 (count_rev _ (filter _ _)) => <-.
-      rewrite addnC addn1 leq_eqVlt ltnS => /orP[/eqP | Hk]; last first.
-        (*If not, again use IH*)
-        move: IH => /(_ k Hk0 Hk) [l1 [x [l2 [Ht [Hcount [Hpx Hx]]]]]].
-        exists l1. exists x. exists (rcons l2 h). split_all=>//.
-        by rewrite Ht rcons_cat.
-      (*In this case, h is the kth item*)
-      move => Hk. exists t. exists h. exists nil.
-      split_all=>//.
-      * by rewrite cats1.
-      * by rewrite Hk count_rev subn1 -pred_Sn.
-      * by rewrite Hinht.
-Qed.
-
-Lemma perm_catC': forall [T : eqType] (s1 s2 : seq T), 
-  perm_eq (s1 ++ s2) (s2 ++ s1).
-Proof.
-  move=> T s1 s2. by have:=(perm_catC s1 s2) => /(_ (s2 ++ s1));
-  rewrite perm_refl.
-Qed.
-
-Lemma filter_orb_perm: forall {A: eqType} (s: seq A) (p1 p2: pred A),
-  (forall x, ~~((p1 x) && (p2 x))) ->
-  perm_eq [seq x <- s | p1 x || p2 x] 
-    ([seq x <- s | p1 x] ++ [seq x <- s | p2 x]).
-Proof.
-  move=> A s p1 p2 Hp. elim: s => [// | h t /= IH].
-  case Hp1: (p1 h)=>//=.
-  - case Hp2: (p2 h)=>//=; last by rewrite perm_cons.
-    exfalso. apply (negP (Hp h)). by rewrite Hp1 Hp2.
-  - case Hp2: (p2 h)=>//=.
-    eapply perm_trans; last by apply perm_catC'.
-    rewrite /= perm_cons. apply (perm_trans IH).
-    apply perm_catC'.
-Qed.
-
-Lemma perm_filter_in_cons: forall {A: eqType} (s: seq A) (h: A) (t: seq A),
-  h \notin t ->
-  perm_eq [seq x <- s | x \in h :: t] 
-    ([seq x <- s | x == h] ++ [seq x <- s | x \in t]).
-Proof.
-  move=> A s h t Hnotin.
-  rewrite (@eq_in_filter _ _ (fun x => (x == h) || (x \in t))); 
-  last by move=> x; rewrite !in_cons.
-  apply filter_orb_perm => x.
-  by case: (x == h) /eqP => //= Hxh1; subst.
-Qed.
-
-Lemma double_cons_cat {A: Type} (x1 x2: A) (s: seq A):
-  x1 :: x2 :: s = [:: x1; x2] ++ s.
-Proof.
-  by [].
-Qed.
-
-(*The number of unique items in s1 that are in s2 equals
-  the number of unique items in s2 that are in s1*)
-Lemma num_uniq_same {A: eqType} (s1 s2: seq A):
-  uniq s1 ->
-  uniq s2 ->
-  perm_eq [seq x <- s1 | x \in s2]
-  [seq x <- s2 | x \in s1].
-Proof.
-  move: s2. elim: s1 => [// [|h2 t2]//= _ _ | 
-    h1 t1 IH [//= _ _ | h2 t2 /andP[Hnot1 Hun1] /andP[Hnot2 Hun2]]].
-  - rewrite perm_sym. apply /perm_nilP.
-    apply /eqP. rewrite -(negbK (_ == _)) -has_filter.
-    by apply /hasP => [[x]].
-  - apply /perm_nilP.
-    apply /eqP.  rewrite -(negbK (_ == _)) -has_filter.
-    by apply /hasP => [[x]].
-  - apply (perm_trans (perm_filter_in_cons (h1 :: t1) Hnot2)).
-    eapply perm_trans; last by rewrite perm_sym; 
-    apply (perm_filter_in_cons (h2 :: t2) Hnot1).
-    rewrite !filter_pred1_uniq' //; try by apply /andP.
-    rewrite /= !in_cons eq_sym.
-    case: (h1 == h2) /eqP =>/= Heq; subst.
-    + rewrite (negbTE Hnot1) (negbTE Hnot2) perm_cons.
-      by apply IH.
-    + case Hh21: (h2 \in t1)=>/=;
-      case Hh12: (h1 \in t2)=>/=; try rewrite perm_cons; 
-      try by apply IH.
-      rewrite double_cons_cat (double_cons_cat h1 h2).
-      apply perm_cat; last by apply IH.
-      (*This one we can prove from first principles*)
-      apply /allP=>/= x; rewrite !in_cons orbF !(eq_sym h2 x) 
-        !(eq_sym h1 x).
-      by case: (x == h2); case: (x == h1).
-Qed.
-
-(*Lift the previous result to a slightly different setting, 
-  in which at least k unique items in s1 (in which everything
-  satisfies p) are in s2, and we find the kth item satisfying p*)
-Lemma find_kth_item_in {A: eqType} (p: pred A) (k: nat) (s1 s2: seq A) :
-  k != 0 ->
-  all p s1 ->
-  (count (fun (x: A) => x \in s2) (undup s1)) >= k ->
-  exists l1 x l2,
-    s2 = l1 ++ [:: x] ++ l2 /\
-    count p (undup l1) = k - 1 /\
-    p x /\
-    x \notin l1.
-Proof.
-  move=> Hk0 Hall Hk.
-  apply find_kth_item=>//.
-  apply (leq_trans Hk).
-  (*Now we have to prove that the number of unique elements in s1
-    that are in s2 is at most the number of unique elements in s2
-    satisfying p. This holds because every element in s1 satisfies p,
-    but it is not the easiest to show.*)
-  have Hperm := (filter_partition_perm (fun x => x \in mem s1) (undup s2)).
-  rewrite (count_perm _ Hperm) count_cat/=.
-  have /eqP->: count p [seq x <- undup s2 | x \in mem s1] ==
-    size [seq x <- undup s2 | x \in mem s1]. {
-    rewrite -all_count. apply /allP => x. 
-    rewrite !mem_filter=> /andP[Hins1 Hins2].
-    by move: Hall => /allP/(_ x Hins1).
-  }
-  rewrite -size_filter.
-  rewrite (@eq_in_filter _ (fun x => x \in s2) 
-    (fun x => x \in (undup s2))); last by
-    move=> x; rewrite !mem_undup.
-  rewrite (perm_size (num_uniq_same (undup_uniq s1) (undup_uniq s2))).
-  rewrite (@eq_in_filter _ (fun x => x \in undup s1)
-    (fun x => x \in s1)); last by
-    move=> x; rewrite ! mem_undup.
-  by rewrite leq_addr.
-Qed.
-
-End FindLast.
-
 (*TODO: prove in DecoderGeneric*)
 Lemma decoder_multiple_steps_gen_cat: 
   forall upd timeout prev_packs rec1 rec2 blks sent time,
@@ -778,16 +538,7 @@ Proof.
   by rewrite mem_cat Hinp.
 Qed.
 
-(*A silly lemma*)
-Lemma or_impl {P Q R S: Prop}:
-  (P -> Q) ->
-  (R -> S) ->
-  (P \/ R) -> (Q \/ S).
-Proof.
-  move=> Hpq Hrs [Hp | Hr].
-  - left. by apply Hpq.
-  - right. by apply Hrs.
-Qed. 
+
 
 
 
@@ -860,214 +611,6 @@ Proof.
   subst. 
   (*Finally, a contradiction*)
   by rewrite Hdat in Hin1.
-Qed.
-
-Lemma size_filter_lt: forall {A: Type} (p: pred A) (s: seq A),
-  (size (filter p s) < size s) = ~~ all p s.
-Proof.
-  move=> A p s. rewrite size_filter all_count.
-  have:=(count_size p s).
-  rewrite leq_eqVlt => /orP[/eqP -> | Hlt].
-  - by rewrite ltnn eq_refl.
-  - rewrite Hlt. move: Hlt. by rewrite ltn_neqAle => /andP[Hneq _].
-Qed. 
-
-(*TODO; move to block*)
-Lemma filter_none_Zlength: forall {A: eqType} (p: pred A) (s: seq A),
-  Zlength [seq x <- s | p x] = 0%Z <-> ~~ has p s.
-Proof.
-  move=> A p s. rewrite Zlength_correct -size_length has_filter.
-  have->: 0%Z = Z.of_nat 0 by [].
-  rewrite Nat2Z.inj_iff negbK -size_eq0. 
-  by apply (reflect_iff _ _ eqP).
-Qed.
-
-Lemma filter_Zlength_lt: forall {A: eqType} (p: pred A) (s: seq A),
-  (Zlength [seq x <- s | p x] < Zlength s)%Z <-> ~~ all p s.
-Proof.
-  move=> A p s. 
-  rewrite -size_filter_lt !Zlength_correct -!size_length -Nat2Z.inj_lt.
-  by apply (reflect_iff _ _ ltP).
-Qed.
-
-Lemma new_block_recoverable: forall (p: fpacket) (t: Z),
-  fd_k p = 1%Z ->
-  (0 < fd_h p)%Z ->
-  (0 <= Z.of_nat (fd_blockIndex p) < fd_k p + fd_h p)%Z ->
-  recoverable (create_block_with_fec_packet p t).
-Proof.
-  move=> p t Hk Hh Hidx.
-  rewrite /recoverable.
-  match goal with | |- is_true (proj_sumbool ?x) => case: x end=>//=.
-  (*rewrite !Zlength_correct -!size_length -Nat2Z.inj_add.
-  rewrite -Nat2Z.inj_lt => /ltP.
-  have->: (forall x y, (x + y)%coq_nat = x + y) by [].*)
-  have [Hfst | Hsnd]: (0 <= (Z.of_nat (fd_blockIndex p)) < fd_k p)%Z \/
-    (fd_k p <= (Z.of_nat (fd_blockIndex p)) < fd_k p + fd_h p)%Z by lia.
-  - (*Prove that 1 list has length 1, so not lt*)
-    rewrite sublist_upd_Znth_lr; try lia; last by rewrite zseq_Zlength; lia.
-    rewrite sublist_upd_Znth_r; try lia; last by rewrite zseq_Zlength; lia.
-    rewrite !zseq_sublist; try lia.
-    rewrite !Z.sub_0_r.
-    rewrite upd_Znth_Zlength zseq_Zlength; try lia.
-    have->: (@Zlength (option fpacket) [seq x <- zseq (fd_k p + fd_h p - fd_k p) None | isSome x]) = 
-      0%Z. {
-      apply filter_none_Zlength. apply /hasP => [[x]]. 
-      by rewrite /zseq mem_nseq => /andP[_ /eqP ->].
-    }
-    rewrite Z.add_0_r.
-    have: all isSome (upd_Znth (Z.of_nat (fd_blockIndex p)) 
-    (zseq (fd_k p) None) (Some p)). {
-      apply /allP. rewrite Hk/= /zseq/=.
-      have->:Z.of_nat (fd_blockIndex p) = 0%Z by lia.
-      rewrite upd_Znth0 => x.
-      by rewrite in_cons orbF => /eqP ->.
-    }
-    rewrite -(negbK (all _ _)) => /negP. 
-    by rewrite -filter_Zlength_lt upd_Znth_Zlength zseq_Zlength; try lia.
-  - (*Similar proof but in reverse (and a bit trickier because 
-    we don't know h)*)
-    rewrite sublist_upd_Znth_l; try lia; last by rewrite zseq_Zlength; lia.
-    rewrite !sublist_upd_Znth_lr; try lia; last by rewrite zseq_Zlength; lia.
-    rewrite !zseq_sublist; try lia.
-    rewrite !Z.sub_0_r !zseq_Zlength; try lia.
-    have->/=: (@Zlength (option fpacket) [seq x <- zseq (fd_k p) None | isSome x] = 0%Z). {
-      apply filter_none_Zlength. apply /hasP => [[x]].
-      by rewrite /zseq mem_nseq => /andP[_ /eqP ->].
-    }
-    rewrite Z.add_0_l Z.add_simpl_l.
-    have: has isSome (upd_Znth (Z.of_nat (fd_blockIndex p) - fd_k p)
-    (zseq (fd_h p) None) (Some p)). {
-      apply /hasP. exists (Some p)=>//.
-      apply /inP. apply upd_Znth_In; rewrite zseq_Zlength; lia. 
-    }
-    rewrite Hk -(negbK (has _ _)) => /negP.
-    rewrite -filter_none_Zlength => Hnot0 Hlt1.
-    have Hge0: (0 <= (Zlength
-    [seq x <- upd_Znth (Z.of_nat (fd_blockIndex p) - 1)
-                (zseq (fd_h p) None) (Some p)
-       | isSome x]))%Z by  list_solve. simpl in *.
-    (*TODO: why doesn't lia work? Shouldn't need this*)
-    have: forall z, (0 <= z)%Z -> (z < 1)%Z -> z = 0%Z.
-      move=> z. lia.
-    by move=> /(_ _ Hge0 Hlt1).
-Qed. 
-
-
-
-(*TODO: from DecoderTimeouts, move*)
-Lemma decoder_invar_inprev: forall (blocks: seq block) prev,
-  wf_packet_stream prev ->
-  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
-  subblock b b') ->
-  forall (b: block) (p: fpacket),
-    b \in blocks -> packet_in_block p b -> p \in prev.
-Proof.
-  move=> blocks prev Hwf Hsubblock b p' Hinb Hinpb'.
-  move: Hsubblock => /(_ b Hinb) [b1 [Hinb1 Hsub]].
-  apply (get_blocks_in_orig Hwf Hinb1).
-  apply (subblock_in Hsub Hinpb').
-Qed.
-
-(*Crucial lemmas for relating the size of the current block
-  with the number of elements satisfying a predicate in the stream.*)
-
-Lemma all_in_count_aux {A B: eqType} (p2: pred B) (s: seq A) 
-  (s2: seq B) (f: A -> B):
-  uniq s ->
-  {in s &, injective f} ->
-  all (fun x => p2 (f x) && (f x \in s2)) s ->
-  size s = 
-  count [pred x | p2 x & x \in [seq f i | i <- s]] (undup s2).
-Proof.
-  move: s2. elim: s => 
-    [//= s2 _ _ _ | h1 t1 /= IH s2 /andP[Hnotin Huniq] Hinj
-      /andP[/andP[Hp2h1 Hins2] Hall]].
-  - rewrite -size_filter. apply /eqP. 
-    rewrite eq_sym size_eq0 -(negbK (_ == _)) -has_filter.
-    by apply /hasP => [[x]]/= _ /andP[_ Hf].
-  - rewrite -count_filter.
-    erewrite count_perm.
-    2: { 
-      apply perm_filter_in_cons; apply /mapP => [[x]] Hint1 Hfeq.
-      have Hx: h1 = x. apply Hinj=>//. by rewrite mem_head.
-      by rewrite in_cons Hint1 orbT.
-      subst. by rewrite Hint1 in Hnotin.
-    }
-    rewrite filter_pred1_uniq'; last by rewrite undup_uniq.
-    rewrite mem_undup Hins2/= Hp2h1 count_filter (IH s2)=>//.
-    move=> x y Hinx Hiny Hfxy. apply Hinj=>//; rewrite in_cons.
-    by rewrite Hinx orbT.
-    by rewrite Hiny orbT.
-Qed.
-
-(*Can we prove this? Crucial lemma for bounding size - if we have
-  a list of elements such that all elements are unique, satisfy
-  a predicate, and are in s2, then size s <= count p2 (undup s2).
-  We add an injective mapping as well for generality (we need this
-  to remove the Some in the block-> stream mapping).*)
-Lemma all_in_count_lt {A B: eqType} (p2: pred B) (s: seq A) 
-  (s2: seq B) (f: A -> B):
-  uniq s ->
-  {in s &, injective f} ->
-  all (fun x => p2 (f x) && (f x \in s2)) s ->
-  size s <= count p2 (undup s2).
-Proof.
-  move=> Huniq Hinj Hall.
-  erewrite count_perm; last by 
-    apply (filter_partition_perm (fun x => x \in (map f s))).
-  by rewrite count_cat count_filter/=/predI 
-    (all_in_count_aux Huniq Hinj Hall) leq_addr.
-Qed.
-
-(*In fact, we can say something stronger if everything satisfying
-  p2 in s2 is in s1*)
-Lemma all_in_count_eq {A B: eqType} (p2: pred B) (s: seq A) 
-  (s2: seq B) (f: A -> B):
-  uniq s ->
-  {in s &, injective f} ->
-  all (fun x => p2 (f x) && (f x \in s2)) s ->
-  all (fun x => x \in (map f s)) (filter p2 s2) ->
-  size s = count p2 (undup s2).
-Proof.
-  move=> Huniq Hinj Hall1 Hall2.
-  erewrite count_perm; last by 
-    apply (filter_partition_perm (fun x => x \in (map f s))).
-  rewrite count_cat count_filter/=/predI 
-    (all_in_count_aux Huniq Hinj Hall1).
-  have->: count p2 [seq x <- undup s2 | x \notin [seq f i | i <- s]] = 0;
-    last by rewrite addn0.
-  rewrite -size_filter -filter_predI. apply /eqP.
-  rewrite size_eq0 -(negbK (_ == _)) -has_filter /predI/=.
-  apply /hasP => [[x]] Hinx/= /andP[Hp2] Hnotin.
-  have Hinx': x \in ([seq x <- s2 | p2 x]) by 
-    rewrite mem_filter Hp2 -mem_undup.
-  move: Hall2 => /allP /(_ _ Hinx').
-  by rewrite (negbTE Hnotin).
-Qed.
-
-(*filter is unique if all elements in the original list satisfying
-  the predicate have only one ocurrence*)
-Lemma nth_filter_uniq: forall {A: eqType} (p: pred A) (d: A) (s: seq A),
-  (forall i j, i < size s -> j < size s -> p (nth d s i) -> p (nth d s j) ->
-    nth d s i = nth d s j -> i = j) ->
-  uniq (filter p s).
-Proof.
-  move=> A p d. elim => [// | h t /= IH Hall].
-  have Hih: (forall i j : nat,
-  i < size t ->
-  j < size t ->
-  p (nth d t i) -> p (nth d t j) -> nth d t i = nth d t j -> i = j). {
-    move=> i j Hi Hj Hp1 Hp2 Hntheq.
-    apply eq_add_S.
-    by apply (Hall i.+1 j.+1).
-  }
-  move: IH => /(_ Hih) Huniq. rewrite {Hih}.
-  case Hph: (p h)=>//=.
-  rewrite Huniq andbT.
-  apply /negP. rewrite mem_filter => /andP[_ Hhint].
-  have:=Hhint => /nthP => /(_ d) [i] Hi Hnthi.
-  have//: 0 = i.+1. apply Hall=>//=. by rewrite Hnthi.
 Qed.
 
 (*The packets in a block are unique (TODO: move)*)
@@ -1233,7 +776,6 @@ Lemma add_packet_size: forall (s: seq fpacket) (b1 b2: block)
       subst. by rewrite Hinp1 in Hinpb.
 Qed.
 
-(*TODO*)
 Lemma add_packet_size_notin: forall (s: seq fpacket) (b1 b2: block) 
   (p: fpacket),
   wf_packet_stream s ->
@@ -1413,10 +955,8 @@ Proof.
             by rewrite zseq_Znth; try lia.
             split; try lia. by apply Hwf.
         -- (*proved in other lemma, surprisingly difficult*)
-          apply new_block_recoverable=>//; last
+          apply create_black_recover=>//; last
           by split; try lia; by apply Hwf.
-          have->:fd_h (p_fec_data' p1) = blk_h b by apply Hwfb.
-          by apply Hwfb.
       * (*In this case, we get a data packet - since k =1, it must
           be that p = p1*)
         left. apply /orP. right. rewrite in_cons; apply /orP.

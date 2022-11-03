@@ -6,6 +6,7 @@ Require Import CommonSSR.
 Require Import ByteFacts.
 Require Import Block.
 Require Import Reorder.
+Require Import CommonFEC.
 
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
@@ -277,34 +278,6 @@ Proof.
   - rewrite catA. apply /leP. apply size_undup_fst_le_app.
 Qed. 
 
-(*TODO: could move to Blocks maybe*)
-Lemma decoder_invar_allid: forall (blocks : seq block) prev,
-  wf_packet_stream prev ->
-  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
-  subblock b b') ->
-  forall (b' : block) (p0 : fpacket),
-  b' \in blocks -> packet_in_block p0 b' -> fd_blockId p0 = blk_id b'.
-Proof.
-  move=> blocks prev Hwf Hsubblock b p' Hinb Hinp'.
-  move: Hsubblock=> /(_ b Hinb) [b' [Hinb' Hsubb]].
-  have Hinb2:= (subblock_in Hsubb Hinp').
-  rewrite (proj1 Hsubb).
-  by apply (get_blocks_ids Hwf).
-Qed.
-(*same*)
-Lemma decoder_invar_inprev: forall (blocks: seq block) prev,
-  wf_packet_stream prev ->
-  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
-  subblock b b') ->
-  forall (b: block) (p: fpacket),
-    b \in blocks -> packet_in_block p b -> p \in prev.
-Proof.
-  move=> blocks prev Hwf Hsubblock b p' Hinb Hinpb'.
-  move: Hsubblock => /(_ b Hinb) [b1 [Hinb1 Hsub]].
-  apply (get_blocks_in_orig Hwf Hinb1).
-  apply (subblock_in Hsub Hinpb').
-Qed.
-
 (*We prove that this invariant is preserved. This is the key
   structural lemma to characterize the timeout behavior*)
   Lemma decoder_timeout_invar_preserved_one: forall blocks prev time p,
@@ -516,60 +489,6 @@ Proof.
 Qed.
 
 (*Some intermediate lemmas before proving equivalent to no timeouts.*)
-
-(*We want to show the following: suppose we have lists l1 and l2, and
-  in both, there is 1 element satisfying a predicate. Then, if
-  we "find" the element from each list, these are equal. This
-  turns out to be a bit more work than you would expect.*)
-
-Lemma len1: forall (n: nat),
-  (n <= 1)%N = (n == 0)%N || (n == 1)%N.
-Proof.
-  move=> n. case: n=>//= n'.
-  by rewrite ltn1.
-Qed.
- (*If there is only at most 1 element satisfying a predicate in a list,
-  then any two elements in the last satisfying the predicate must be
-  equal*)
-Lemma nth_uniq_eq: forall {A: eqType} (s: seq A) (p: pred A) (x y: A),
-  (count p s <= 1)%N ->
-  p x ->
-  p y ->
-  x \in s ->
-  y \in s ->
-  x = y.
-Proof.
-  (*TODO: in ListPoly, move size1P to CommonSSR*)
-  move=> A s p x y. rewrite -size_filter len1 => /orP[/eqP Hnil | 
-    /ListPoly.size1P [z Hs]] Hpx Hpy Hinx Hiny.
-  - apply size0nil in Hnil.
-    have: x \in [seq x <- s | p x] by rewrite mem_filter Hpx.
-    by rewrite Hnil.
-  - have: x \in [seq x <- s | p x] by rewrite mem_filter Hpx.
-    have: y \in [seq x <- s | p x] by rewrite mem_filter Hpy.
-    rewrite !Hs !in_cons !orbF => /eqP Hyz /eqP Hxz.
-    by rewrite Hyz Hxz.
-Qed.
-
-(*The lemma we want*)
-Lemma find_uniq_eq: forall {A: eqType} (s1 s2: seq A) (p: pred A) (d: A),
-  (count p s1 <= 1)%N ->
-  (count p s2 <= 1)%N ->
-  has p s1 ->
-  has p s2 ->
-  (forall x, x \in s1 -> x \in s2) ->
-  nth d s1 (find p s1) = nth d s2 (find p s2).
-Proof.
-  move=> A s1 s2 p def Hc1 Hc2 Hhas1 Hhas2 Hsub.
-  case: (findP p s1). by rewrite Hhas1.
-  move=> i1 Hi1 Hnth1 Hbef1.
-  case: (findP p s2). by rewrite Hhas2.
-  move=> i2 Hi2 Hnth2 Hbef2.
-  have Hin1: nth def s1 i1 \in s1 by apply mem_nth.
-  have Hin2: nth def s1 i1 \in s2 by apply Hsub.
-  have Hin2': nth def s2 i2 \in s2 by apply mem_nth.
-  by apply (nth_uniq_eq Hc2).
-Qed.
 
 (*Finally, prove that sorted by blk_order implies count <= 1*)
 Lemma blk_count: forall (blks: list block) (n: nat),

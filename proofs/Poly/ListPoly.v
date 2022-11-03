@@ -514,16 +514,6 @@ Proof.
     + apply IH. by rewrite Hleq.
 Qed.
 
-Lemma size1P: forall {T: Type} (s: seq T),
-  reflect (exists (x: T), s = [:: x]) (size s == 1%N) .
-Proof.
-  move => T s. case : s => [/= | h t /=].
-  - apply ReflectF. by move =>[x Hx].
-  - case : t => [|h' t' /=].
-    + apply ReflectT. by exists h.
-    + apply ReflectF. by move => [x Hx].
-Qed.
-
 Lemma in_seq_of_polyseqs_snd: forall n s,
   s \in (seq_of_polyseqs n).2 = ((last 1 s != 0) && (size s == n.+1)).
 Proof.

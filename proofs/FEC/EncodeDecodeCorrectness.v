@@ -5,6 +5,7 @@ Require Import ZSeq.
 Require Import Encoder.
 Require Import DecoderGeneric.
 Require Import Block.
+Require Import CommonFEC.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -114,6 +115,8 @@ Definition loss_cond (sent received: list fpacket) : Prop :=
   (with [encoder_boundaries_exist]). TODO: do we need
   condition that block in [get_blocks rec] is recoverable
   or that we have k packets in list (and hence can split) *)
+
+End TimeoutCorrect.
 
 
 

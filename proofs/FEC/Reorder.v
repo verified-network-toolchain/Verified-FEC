@@ -5,6 +5,7 @@ Require Import ByteFacts.
 Require Import Block. *)
 Require Import CommonSSR.
 Require Import Lia.
+Require Import CommonFEC.
 (*Require Import AssocList.
 Require Import IP.
 Require Import AbstractEncoderDecoder.
@@ -34,112 +35,6 @@ Section SeqNums.
 
 Open Scope nat_scope.
 
-(*TODO: move*)
-Definition nat_abs_diff (n1 n2: nat) : nat :=
-  maxn (n1 - n2) (n2 - n1).
-
-Lemma nat_abs_diff_sym: forall n1 n2,
-  nat_abs_diff n1 n2 = nat_abs_diff n2 n1.
-Proof.
-  move => n1 n2. by rewrite /nat_abs_diff maxnC.
-Qed.
-
-(*TODO: move*)
-Lemma maxn_0: forall n m,
-  maxn n m = 0 ->
-  n = 0 /\ m = 0.
-Proof.
-  move=> n. case: n=> [//|/= n'  [//| m' //]].
-  move => m. by rewrite max0n => ->.
-  rewrite /maxn. by case: (n'.+1 < m'.+1).
-Qed.
-
-Lemma nat_abs_diff_0: forall n1 n2,
-  nat_abs_diff n1 n2 = 0 ->
-  n1 = n2.
-Proof.
-  move=> n1 n2. rewrite /nat_abs_diff => Hmax.
-  apply maxn_0 in Hmax.
-  case: Hmax => /eqP Hn12 /eqP. move: Hn12.
-  rewrite !subn_eq0 => Hn12 Hn21.
-  apply /eqP. by rewrite eqn_leq Hn12 Hn21.
-Qed.
-
-Lemma maxn_r: forall n1 n2,
-  n1 <= n2 ->
-  maxn n1 n2 = n2.
-Proof.
-  move=> n1 n2 Hn12. rewrite /maxn.
-  move: Hn12; rewrite leq_eqVlt => /orP[/eqP Hn12 | -> //].
-  by rewrite Hn12 ltnn.
-Qed.
-
-Lemma nat_abs_diff_leq: forall n1 n2,
-  n1 <= n2 ->
-  nat_abs_diff n1 n2 = n2 - n1.
-Proof.
-  move=> n1 n2 Hn12. rewrite /nat_abs_diff.
-  apply maxn_r.
-  have Hn0: n1 - n2 <= 0 by
-    rewrite -subn_eq0 in Hn12; move: Hn12 => /eqP ->.
-  apply (leq_trans Hn0). by rewrite leq_subRL // addn0.
-Qed.
-
-Lemma nat_abs_diff_leq': forall n1 n2,
-  n2 <= n1 ->
-  nat_abs_diff n1 n2 = n1 - n2.
-Proof.
-  move=> n1 n2 Hn12. rewrite nat_abs_diff_sym. by apply nat_abs_diff_leq.
-Qed.
-
-(*Useful in expanding [nat_abs_diff]*)
-Lemma abs_ineq: forall n1 n2,
-  (n1 < n2) =
-  (n1 - n2 < n2 - n1).
-Proof.
-  move=> n1 n2. case Hn12: (n1 < n2).
-  - have ->: n1 - n2 = 0. apply /eqP. rewrite subn_eq0. by apply ltnW.
-    by rewrite subn_gt0.
-  - have->: n2 - n1 = 0. apply /eqP. by rewrite subn_eq0 leqNgt Hn12.
-    by rewrite ltn0.
-Qed.
-
-(*Inequalities with nats are annoying to prove manually*)
-Ltac solve_by_lia :=
-  (*Convert addition and subtraction in terms in hypothesis H*)
-  let rec simpl_expr e H :=
-    try match e with
-    | context [ ?x - ?y] => let temp:= fresh in
-       have temp: (x - y = (x - y)%coq_nat) by [];
-       rewrite temp in H; clear temp;
-        simpl_expr x H; simpl_expr y H
-    | context [?x + ?y] => let temp := fresh in 
-      have temp: (x + y = (x + y)%coq_nat) by [];
-      rewrite temp in H; clear temp;
-      simpl_expr x H; simpl_expr y H
-    end in
-  repeat match goal with
-  | H: is_true (?x < ?y) |- _ =>  simpl_expr x H; simpl_expr y H; move: H => /ltP H
-  | H: is_true (?x <= ?y) |- _ =>  simpl_expr x H; simpl_expr y H;  move: H => /leP H
-  | H: (?x < ?y) = ?b |- _ => simpl_expr x H; simpl_expr y H; move: H => /ltP H
-  | H: (?x <= ?y) = ?b |- _ => simpl_expr x H; simpl_expr y H; move: H => /leP H
-  | |- context [ ?x - ?y] => have->: (x - y = (x - y)%coq_nat) by []
-  | |- context [?x + ?y] => have->: (x + y = (x + y)%coq_nat) by []
-  | |- is_true (?x < ?y) => apply /ltP
-  | |- is_true (?x <= ?y) => apply /leP
-  | |- (?x < ?y) = ?b => apply /ltP
-  | |- (?x <= ?y) = ?b => apply /leP 
-  end; lia. 
-
-(*A version of the triangle inequality:
-  |n2 - n3| <= |n2 - n1| + |n3 - n1|*)
-Lemma nat_abs_diff_triag: forall n1 n2 n3,
-  nat_abs_diff n1 n2 <=
-  nat_abs_diff n1 n3 + nat_abs_diff n2 n3.
-Proof.
-  move=> n1 n2 n3. rewrite /nat_abs_diff/maxn -!abs_ineq.
-  case Hn12: (n1 < n2); case Hn23: (n2 < n3); case Hn13: (n1 < n3); solve_by_lia.
-Qed.
 
 Variable pack : eqType.
 
@@ -159,25 +54,6 @@ Variable rec_sub: {subset received <= sent}.
 Definition o_seqNum (p: pack) :=
   index p sent.
 
-  (*TODO: move*)
-Lemma index_inj: forall {A: eqType} (l: list A) (x y: A),
-  x \in l ->
-  y \in l ->
-  index x l = index y l ->
-  x = y.
-Proof.
-  move=> A l. elim : l => [// | /= h t IH x y].
-  rewrite !in_cons.
-  case : (x == h) /eqP => Hxh;
-  case : (y == h) /eqP => Hy; subst; try rewrite eq_refl //=.
-  - have->//: h == y = false. apply /eqP; auto.
-  - have->//: h == x = false. apply /eqP; auto.
-  - move => /= Hinx Hiny. 
-    have->/=: h == x = false by apply /eqP; auto.
-    have->/=: h == y = false by apply /eqP; auto.
-    move=> [Hidx]. by apply IH.
-Qed.
-
 Lemma o_seqNum_inj: forall p1 p2,
   p1 \in sent ->
   p2 \in sent ->
@@ -187,10 +63,6 @@ Proof.
   move=> p1 p2. rewrite /o_seqNum.
   apply index_inj.
 Qed.
-
-(*Keep first appearance rather than last*)
-Definition undup_fst {A: eqType} (s: seq A) :=
-  rev (undup (rev s)).
 
 Definition u_seqNum (p: pack) := index p (undup_fst received).
 
@@ -209,6 +81,7 @@ Definition ri (p : pack) : nat :=
 Definition displ (p: pack) : nat :=
   nat_abs_diff (ri p) (o_seqNum p).
 
+(*TODO: change to sorted by lt*)
 Fixpoint s_incr (s: seq nat) :=
   match s with
   | nil => true
@@ -218,12 +91,6 @@ Fixpoint s_incr (s: seq nat) :=
     | y :: tl' => (x < y) && s_incr tl
     end
   end.
-
-Lemma ltn1: forall n,
-  n < 1 = (n == 0).
-Proof.
-  by move=>[|n].
-Qed.
 
 (*The crucial lemma we need for [uniq_incr_nats] and [s_incr_nth_ltn] - 
   since each element is
@@ -321,40 +188,6 @@ Proof.
     by apply s_incr_nth_leq.
 Qed.
 
-(*Stuff about [uniq_fst] TODO move*)
-(*NOTE: we don't use the fact that it keeps the first ocurrence. We will
-  use this when we need to mantain info in the implementation*)
-
-Lemma undup_fst_uniq: forall {A: eqType} (s : seq A),
-  uniq (undup_fst s).
-Proof.
-  move=> A s. rewrite /undup_fst rev_uniq.
-  by apply undup_uniq.
-Qed.
-
-Lemma mem_undup_fst: forall {A: eqType} (s: seq A),
-  undup_fst s =i s.
-Proof.
-  move=> A s. rewrite /undup_fst => x.
-  by rewrite mem_rev mem_undup mem_rev.
-Qed. 
-
-Lemma undup_fst_subset: forall {A: eqType} (s1 s2: seq A),
-  {subset s1 <= s2} ->
-  {subset (undup_fst s1) <= (filter (fun x => x \in s1) s2) }.
-Proof.
-  move=> A s1 s2 Hsub x.
-  rewrite mem_undup_fst => Hin.
-  rewrite mem_filter Hin. by apply Hsub.
-Qed.
-
-Lemma size_undup_fst: forall {A: eqType} (s1 s2: seq A),
-  {subset s1 <= s2} ->
-  size (undup_fst s1) <= size (filter (fun x => x \in s1) s2).
-Proof.
-  move=> A s1 s2 Hsub. apply uniq_leq_size.
-  apply undup_fst_uniq. by apply undup_fst_subset.
-Qed.
 
 (*A slightly different (and weaker) form of [s_incr_nth_bound] *)
 Lemma s_incr_in_bound: forall n h t,
@@ -536,67 +369,6 @@ Definition duplicates_bounded (default: pack) (k: nat) : Prop :=
   at most a, and suppose duplicates are bounded by k. Then
   we can bound the number of unique packets between them by a + k*)
 
-(*First, some lemmas about [u_seqNum] and [size (undup_fst l)]*)
-
-(*u_seqNum doesn't change when lists are extended*)
-Lemma u_seqNum_app: forall {A: eqType} (x: A) (l1 l2: list A),
-  x \in l1 ->
-  index x (undup_fst (l1 ++ l2)) = index x (undup_fst l1).
-Proof.
-  move=> A x l1 l2 Hin. rewrite /undup_fst.
-  rewrite rev_cat undup_cat rev_cat index_cat.
-  have->//: x \in rev (undup (rev l1)) by rewrite mem_rev mem_undup mem_rev.
-Qed.
-
-(*Relate [size (undup_fst)] to [u_seqNum]*)
-Lemma u_seqNum_size_eq: forall {A: eqType} (l1: list A) (x: A) (l2: list A),
-  x \notin l1 ->
-  index x (undup_fst (l1 ++ [:: x] ++ l2)) = size (undup_fst l1).
-Proof.
-  move=> A l1 x l2 Hnotin.
-  rewrite catA u_seqNum_app; last by rewrite mem_cat in_cons eq_refl orbT.
-  rewrite /undup_fst rev_cat undup_cat rev_cat index_cat.
-  have->/=: x \in rev (undup (rev l1)) = false by 
-    rewrite mem_rev mem_undup mem_rev; apply negbTE.
-  have->/=: x \notin rev l1 by rewrite mem_rev.
-  by rewrite eq_refl addn0.
-Qed.
-
-(*Can get bound on size of [undup_fst] by considering each separately
-(note: lists may be larger because we may be counting later ocurrence)*)
-Lemma size_undup_fst_app: forall {A: eqType} (l1 l2: list A),
-  size (undup_fst (l1 ++ l2)) <= size (undup_fst l1) + size (undup_fst l2).
-Proof.
-  move=> A l1 l2. 
-  by rewrite /undup_fst !size_rev rev_cat undup_cat size_cat addnC 
-    leq_add2l size_filter count_size.
-Qed.
-
-Lemma size_undup_fst_le: forall {A: eqType} (l: list A),
-  size (undup_fst l) <= size l.
-Proof.
-  move=> A l. by rewrite /undup_fst size_rev -(size_rev l) size_undup.
-Qed.
-
-Lemma size_undup_fst_le_app: forall {A: eqType} (l1 l2: list A),
-  size (undup_fst l1) <= size (undup_fst (l1 ++ l2)).
-Proof.
-  move=> A l1 l2. rewrite /undup_fst !size_rev rev_cat undup_cat size_cat.
-  solve_by_lia.
-Qed.
-
-Lemma find_first {A: eqType} (x: A) (l1: list A):
-  x \in l1 ->
-  exists l2 l3, l1 = l2 ++ [:: x] ++ l3 /\ x \notin l2.
-Proof.
-  elim: l1 => [//|h t /= IH].
-  rewrite in_cons. case: (x == h) /eqP => Hxh/= => [_ | Hint].
-  - rewrite Hxh. exists nil. by exists t.
-  - move: IH => /(_ Hint) => [[l2 [l3 [Ht Hxl2]]]].
-    rewrite Ht. exists (h :: l2). exists l3. split. by [].
-    rewrite in_cons (negbTE Hxl2) orbF. by apply /eqP.
-Qed. 
-
 (*The crucial lemma we need which gives the entire relation:
   If the reordering is bounded by a and the duplicate packets
   are bounded by k, then for ANY instances of two packets with
@@ -737,17 +509,6 @@ Proof.
         rewrite Hseqp2. eapply leq_trans. 2: apply leq_addr.
         rewrite -nat_abs_diff_leq //. by apply Hallp.
 Qed.
-
-(*This is why we define [undup_fst] rather than [undup], which
-  keeps the last ocurrence of each element*)
-  Lemma undup_fst_rcons: forall {A: eqType} (s: seq A) (x: A),
-  undup_fst (s ++ [:: x]) = if x \in s then undup_fst s 
-    else undup_fst s ++ [:: x].
-Proof.
-  move=> A s x. rewrite /undup_fst rev_cat/=.
-  case Hin: (x \in rev s); rewrite mem_rev in Hin; rewrite Hin =>//.
-  by rewrite rev_cons -cats1.
-Qed. 
 
 (*We need this version, a simple corollary*)
 Lemma packets_reorder_dup_bound' (default: pack) (P: pack -> Prop) 

@@ -9,6 +9,7 @@ Require Import Endian.
 Require Import ByteFacts.
 (*Require Import ByteField.*) (*For byte equality - TODO: move to ByteFacts*)
 Require Import Block.
+Require Import CommonFEC.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -63,23 +64,6 @@ Proof.
     case : h => [//= a | //=]. by rewrite !Zlength_cons IH.
 Qed. 
 
-Lemma proj_sumbool_false: forall {P Q: Prop} (a: {P} + {Q}), Coqlib.proj_sumbool a = false -> Q.
-Proof.
-  move => P Q a.
-  by case: a.
-Qed. 
-
-(*TODO: CommonSSR?*)
-Lemma nat_pred_bound: forall (m n: nat),
-  (m < n)%N ->
-  (m.-1 < n)%N.
-Proof.
-  move => m n Hmn.
-  apply (leq_ltn_trans (leq_pred m) Hmn).
-Qed.
-
-Definition nat_pred_ord {n : nat} (x: 'I_n) : 'I_n :=
-  Ordinal (nat_pred_bound (ltn_ord x)).
   
 (*The condition we need for [decoder_list_correct]*)
 Lemma find_decoder_list_param_correct_aux: forall (b: block),
@@ -258,7 +242,6 @@ Proof.
   by case: (recoverable (add_fec_packet_to_block p b)).
 Qed.
 
-
 Lemma packet_in_create: forall s (p: fpacket) time,
   wf_packet_stream s ->
   p \in s ->
@@ -349,6 +332,7 @@ Proof.
   by case: (recoverable (add_fec_packet_to_block p b));
     apply other_in_add.
 Qed.
+
 
 (*With these building blocks, we can now define the decoder.
   We do this in several stages and forms
@@ -485,16 +469,6 @@ Proof.
   apply (Hp2cat _ ptl). by rewrite -catA.
 Qed.
 
-(*TODO: move*)
-Lemma add_packet_to_block_black_id: forall p b,
-  blk_id (add_packet_to_block_black p b).1 =
-  blk_id b.
-Proof.
-  move=> p b. rewrite /add_packet_to_block_black.
-  case Hcomp: (black_complete b) => //=.
-  by case Hrec: (recoverable (add_fec_packet_to_block p b)).
-Qed.
-
 (*sortedness*)
 
 (*TODO: we prove a stronger version later: combine?*)
@@ -508,7 +482,7 @@ Proof.
     left. by case: (Z.eq_dec (fd_k p) 1).
   - case: (fd_blockId p == blk_id bhd) /eqP => Hid.
     + rewrite in_cons => /orP[/eqP Hb | Hinb].
-      * left. subst. by rewrite Hid add_packet_to_block_black_id.
+      * left. subst. by rewrite Hid add_black_id.
       * right. exists b. by rewrite in_cons Hinb orbT eq_refl.
     + case Hlt: (fd_blockId p < blk_id bhd)%N=>/=.
       * rewrite !in_cons => /orP[ /eqP -> |/orP[/eqP->|Hinb]].
@@ -524,7 +498,7 @@ Qed.
 
 Definition blk_order: rel block :=
   (fun x y => ((blk_id x) < (blk_id y))%N).
-(*Should make block IDs nats, do everything in terms of nats*)
+
 Lemma decoder_one_step_sorted: forall blocks curr time,
   sorted blk_order blocks ->
   sorted blk_order
@@ -535,9 +509,6 @@ Proof.
   move: (upd_time time curr blocks) => t.
   move: (not_timeout t) => f.
   rewrite {time}.
-  
-  (*apply sorted_filter.
-    move => b1 b2 b3. apply ltn_trans. *)
   move: Hsort. elim: blocks => [// | bhd btl /= IH Hpath].
   have Htl: sorted (fun x y : block => (blk_id x < blk_id y)%N) btl.
     rewrite {IH}. move: Hpath. by case: btl => //= a b /andP[_].
@@ -551,7 +522,7 @@ Proof.
     (*Now filter is gone*)
     move: Hpath.
     case: btl => //= bhd' btl /andP[Hlt Hpath].
-    rewrite Hpath andbT. by rewrite add_packet_to_block_black_id.
+    rewrite Hpath andbT. by rewrite add_black_id.
   - case Hlt: ((fd_blockId curr) < (blk_id bhd))%N=>/=.
     + by case Hk1: (proj_sumbool (Z.eq_dec (fd_k curr) 1))=>/=; rewrite Hlt/=;
       apply (@path_filter_in _ xpredT).
@@ -582,8 +553,7 @@ Qed.
 
 (*Now we want to prove several structural results about the 
   generic decoder which will enable us to prove that it always
-  produces valid packets. (TODO: put in different section because
-  it is complete independent of timeouts) *)
+  produces valid packets. *)
 
 
 (*Prove that if we have ANY recoverable subblock of a completed, well-formed block, 
@@ -782,18 +752,6 @@ Proof.
     + rewrite !Zlength_map. lia.
 Qed.
 
-Lemma in_zip: forall {A B: eqType} (x: A * B) (s1: seq A) (s2: seq B),
-  x \in (zip s1 s2) ->
-  (x.1 \in s1) && (x.2 \in s2).
-Proof.
-  move => A B x s1. elim : s1 => [// s2 | h1 t1 /= IH s2].
-  - by rewrite zip_nil.
-  - case : s2 => [// | h2 t2 /=].
-    rewrite !in_cons. move: IH. case: x => [x1 x2]/= => IH. move => /orP[/eqP[Hx1 Hx2] | Hinz]; subst.
-    by rewrite !eq_refl.
-    apply IH in Hinz. move: Hinz => /andP[Hinx1 Hinx2]. by rewrite Hinx1 Hinx2 !orbT.
-Qed.
-
 (*As a corllary, any packet in [decode_block] was in the original block's data packets*)
 Corollary in_decode_block_in_data: forall (b1 b2: block) (p: packet),
   block_wf b2 ->
@@ -806,7 +764,7 @@ Corollary in_decode_block_in_data: forall (b1 b2: block) (p: packet),
 Proof.
   move => b1 b2 p Hwf Henc Hsub Hrec. rewrite (decode_block_correct Hwf) //= /get_block_diff => /mapP [f Hinf Hf].
   subst. move: Hinf => /mapP [p' Hinp' Hp']. subst. move: Hinp'. rewrite /get_diff -pmap_id_some => /mapP [o].
-  case : o => [o1 o2]. case: o1 => [// |]. case : o2 => [p2 |//]. move => Hinzip. apply in_zip in Hinzip.
+  case : o => [o1 o2]. case: o1 => [// |]. case : o2 => [p2 |//]. move => Hinzip. apply mem_zip in Hinzip.
   move: Hinzip => /= /andP[_ Hinp2] [Hp2]; subst. by exists p2.
 Qed.
 
@@ -825,20 +783,6 @@ Section DecoderSubblocks.
 
 
 (*The decoder has several intermediate functions we need to handle first*)
-
-(*TODO: move these?*)
-Lemma perm_rev': forall {T: eqType} (s: seq T),
-  perm_eq s (rev s).
-Proof.
-  move => T s. have /(_ s):=(perm_rev s). by rewrite perm_refl perm_sym.
-Qed.
-
-(*TODO*)
-Lemma zip_nil_r: forall {A B: Type} (s: seq A),
-  zip s (@nil B) = [::].
-Proof.
-  move => A B s. by case: s.
-Qed. 
 
 (*Intermediate case 1: create a new block*)
 Lemma create_block_subblock: forall (l: list fpacket) (h: fpacket) (time: Z),
@@ -1079,16 +1023,6 @@ Qed.
   output, since we might have removed the block corresponding to a 
   previous packet.*)
 
-(*TODO: did I prove something like this*)
-Lemma sublist_nth: forall {A: Type} `{Inhabitant A} (l: list A) (i: Z),
-  0 <= i < Zlength l ->
-  l = sublist 0 i l ++ [Znth i l] ++ sublist (i+1) (Zlength l) l.
-Proof.
-  move => A Hinhab l i Hi. have Hl1: l = sublist 0 i l ++ sublist i (Zlength l) l. {
-    rewrite cat_app -sublist_split; try lia. by rewrite sublist_same. }
-  rewrite {1}Hl1. rewrite (sublist_next i (Zlength l)); try lia. by rewrite catA.
-Qed.
-
 Transparent create_block_with_packet_black.
 
 (*TODO: move*)
@@ -1220,14 +1154,6 @@ Proof.
   by apply in_update_dec_state_gen in Hin.
 Qed.
 
-
-Lemma Zlength_rev: forall {A: Type} (s: seq A),
-  Zlength (rev s) = Zlength s.
-Proof.
-  move => A s. by rewrite !Zlength_correct -!size_length size_rev.
-Qed.
-
-(*TODO: prove this later when needed*)
 (*TODO: encoder version is in Abstract file - and it is the exact same proof - TODO: generalize to only need 1*)
 Lemma decoder_all_steps_concat: forall received,
   (decoder_all_steps_gen received ).1.2 = concat (mkseqZ 
@@ -1264,34 +1190,6 @@ End DecoderSubblocks.
 (*An alternate characterization of [decoder_one_step_gen]
   that makes many things easier to prove (TODO: maybe
   easier to prove the above with this) - a more functional style*)
-
-Section Insert.
-
-Fixpoint insert {T: Type} (r: rel T) (x: T) (s: seq T) :=
-  match s with
-  | nil => [:: x]
-  | y :: tl => if r x y then x :: y :: tl else
-    y :: insert r x tl
-  end.
-
-Lemma mem_insert: forall {T: eqType} {r: rel T} (x: T) (s: seq T) (y: T),
-  y \in (insert r x s) = (y == x) || (y \in s).
-Proof.
-  move=> T r x s y. elim: s =>[// | h t /= IH].
-  case Hxh: (r x h).
-  - by rewrite !in_cons.
-  - by rewrite !in_cons IH (orbC (y == h)) -orbA (orbC (y \in t)).
-Qed.
-
-Lemma insert_hd: forall {T: eqType} (r: rel T) (x: T) (s: seq T),
-  all (r x) s ->
-  insert r x s = x :: s.
-Proof.
-  move=> T r x s /allP. case: s =>[// | h t /= Hall].
-  have->//: r x h. apply Hall. by rewrite mem_head.
-Qed.  
-
-End Insert.
 
 Lemma blk_order_trans: transitive blk_order.
 Proof.
@@ -1350,24 +1248,6 @@ Proof.
       by rewrite Hlt.
 Qed.
 
-(*TODO: move?*)
-Lemma mem_filter': forall {T: eqType} (a: pred T) (x: T) (s: seq T),
-  x \in [seq x <- s | a x] ->
-  x \in s.
-Proof.
-  move=> T a x s. by rewrite mem_filter => /andP[_].
-Qed.
-
-Lemma mem_rev_orig: forall {T: eqType} (l: seq T) (y x: T),
-  y \in rem x l ->
-  y \in l.
-Proof.
-  move=> T l y x. elim: l =>[// | h t /= IH].
-  case: (h == x) /eqP => Heq.
-  - rewrite in_cons =>->. by rewrite orbT.
-  - rewrite !in_cons => /orP[Hyh | Ht]. by rewrite Hyh.
-    by rewrite IH // orbT.
-Qed.
 
 (*Some other results useful for the timeout version of the decoder*)
 Lemma in_decoder_one_step: forall blocks p time b,
@@ -1457,25 +1337,6 @@ Proof.
           exists b'. by rewrite in_cons Hinb' orbT.
 Qed.
 
-(*TODO: use existsP?*)
-Lemma existsbP: forall {A: eqType} {s: seq A} {P: A -> bool},
-  reflect (exists x, (x \in s) && P x) (existsb P s).
-Proof.
-  move=> A s P. elim: s => [//= | hd tl /= IH].
-  - by apply ReflectF => [[]].
-  - case Hhd: (P hd).
-    + apply ReflectT. exists hd. by rewrite mem_head Hhd.
-    + move: IH. case Htl: (existsb P tl) => IH.
-      * apply ReflectT. apply elimT in IH =>//.
-        case: IH => [x /andP[Hintl Hp]].
-        exists x. by rewrite in_cons Hintl orbT.
-      * apply ReflectF. apply elimF in IH=>//.
-        move => [x]. 
-        rewrite in_cons => /andP[/orP[/eqP Hx | Hintl] Hpx]; subst.
-        by rewrite Hpx in Hhd. apply IH. exists x.
-        by rewrite Hintl Hpx.
-Qed.
-
 (*Sort of the opposite of [in_decoder_one_step]*)
 (*For every block in blocks, either a version of it containing 
   the packet p' (different than p) is in
@@ -1559,77 +1420,5 @@ Proof.
         -- exists bhd. by rewrite !in_cons eq_refl !orbT.
         -- exists bhd. by rewrite mem_head.
 Qed.  
-(*
-Print wf_packet_stream.
-(*Two other properties: all blocks in the state are nonempty
-  and all packets in the state are in the received stream*)
-
-(*A block can never become nonempty from adding another packet*)
-Lemma add_packet_nonempty (b: block) (p curr: fpacket):
-  packet_in_block p b ->
-  Zlength (data_packets b ++ parity_packets b) = (blk_k b + )
-  packet_in_block p (add_fec_packet_to_block curr b) ||
-  packet_in_block curr (add_fec_packet_to_block curr b).
-Proof.
-  rewrite !packet_in_block_eq/= => Hin.
-
-  rewrite /=.
-
-Lemma add_black_nonempty (b: block) (p curr: fpacket):
-  packet_in_block p b ->
-  packet_in_block p (add_packet_to_block_black curr b).1 ||
-  packet_in_block curr (add_packet_to_block_black curr b).1.
-Proof.
-
-
-Lemma dec_state_nonempty (prev_packs packs : list fpacket)
-  (blks: list block) (sent: list packet) (time: Z) :
-  (wf_packet_stream (prev_packs ++ packs)) ->
-  (forall b, b \in blks -> exists p, packet_in_block p b) ->
-  (forall b, b \in 
-    (decoder_multiple_steps_gen prev_packs packs blks sent time).1.1.1 ->
-    exists p, packet_in_block p b).
-Proof.
-  move: prev_packs blks sent time.
-  rewrite /decoder_multiple_steps_gen. 
-  elim: packs => [//= | curr packs /= IH prev blks sent time Hwf Hallin/=].
-  apply IH. by rewrite -catA. move => b.
-  clear -Hallin Hwf.
-  move: (upd_time time curr blks).
-  move: (not_timeout).
-  move: Hallin Hwf. elim: blks => 
-    [//= _ Hwf tm f | bhd btl /= IH Hallin Hwf tm f].
-  - rewrite in_cons orbF => /eqP->.
-    exists curr. apply (packet_in_create _ Hwf).
-    by rewrite mem_cat in_cons eq_refl !orbT.
-  - case Hto: (tm f bhd)=>/=; last by
-      apply IH =>//; move=> b1 Hin; apply Hallin;
-      rewrite in_cons Hin orbT.
-    case Heq: (fd_blockId curr == blk_id bhd).
-    + rewrite in_cons => /orP[/eqP -> |].
-      (*See if we overwrote previous packet or not*)
-      move: Hallin => /( _ _ (mem_head _ _)) [p1].
-      rewrite packet_in_block_eq.
-      rewrite /add_packet_to_block_black/=.
-      Print add_fec_packet_to_block.
-    Search add_packet_to_block_black.
-    rewrite /=.
-  
-  
-  move=> H
-    rewrite mem_cat
-    
-    rewrite packet_in_block_eq.
-    Search create_block_with_packet_black.
-    
-    /create_block_with_packet_black.
-    Print create_block_with_packet_black.
-    Print create_block_with_fec_packet.
-    rewrite packet_in_block_eq/=. move => 
-
-Definition decoder_multiple_steps_gen 
-  (prev_packs packs: list fpacket)
-  (state: list block) (sent: list packet) (time: Z) :
-*)
 
 End GenDecode.

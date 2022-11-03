@@ -8,6 +8,7 @@ Require Import ReedSolomonList.
 Require Import ZSeq.
 Require Import Endian.
 Require Import ByteFacts.
+Require Import CommonFEC.
 (*Require Import ByteField.*) (*For byte equality - TODO: move to ByteFacts*)
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
@@ -40,48 +41,11 @@ Ltac eq_dec_tac :=
   | [ |- forall x y : ?t, {x = y} + {x <> y}] => intros x y
   end.
 
-Ltac split_all := repeat match goal with | |- ?p /\ ?q => split end.
-
 Ltac solve_sumbool :=
   try match goal with
   | [ H: is_true (proj_sumbool ?x) |- _] => destruct x; [clear H | solve [inversion H]]; solve_sumbool
   | [ |- is_true (proj_sumbool ?x)] => destruct x; auto; try lia
   end.
-
-(*Two results about [filter] Zlength we will need. TODO: where to put these?*)
-
-Lemma Zlength_filter: forall {A: Type} (p: pred A) (l: list A),
-  Zlength (filter p l) <= Zlength l.
-Proof.
-  move => A p l. rewrite Zlength_correct -size_length size_filter.
-  rewrite -(Z2Nat.id (Zlength l)); [| list_solve]. apply inj_le. apply /leP.
-  by rewrite ZtoNat_Zlength -size_length count_size.
-Qed.
-
-Lemma filter_all_Zlength: forall {A: eqType} (p: pred A) (s: seq A),
-  Zlength (filter p s) = Zlength s <-> all p s.
-Proof.
-  move => A p s. rewrite !Zlength_correct -!size_length. split.
-  - move => Hsz. rewrite -filter_all_size. apply /eqP. lia.
-  - rewrite -filter_all_size => /eqP Hsz. by rewrite Hsz.
-Qed.
-
-(*TODO: should we replace in CommonSSR?*)
-Lemma inP: forall {A: eqType} (x: A) (l: seq A),
-  reflect (In x l) (x \in l).
-Proof.
-  move=> A x l. elim: l => [//= | h t /= IH].
-  - by apply ReflectF.
-  - rewrite in_cons. apply orPP => //.
-    rewrite eq_sym. apply eqP.
-Qed.
-
-(*TODO: where to put?*)
-Lemma zip_nil: forall {A B: Type} (l: list B),
-  zip (@nil A) l = nil.
-Proof.
-  move => A B l. by case: l.
-Qed.
 
 (** IP/UDP Packets *)
 (*Here, we require our packets to be valid IP/UDP packets*)
@@ -696,6 +660,17 @@ Proof.
   rewrite Znth_app1 in Hin' => //.
   have->:Zlength (data_packets b) = blk_k b by apply Hwf.
   by apply in_data_idx_bound.
+Qed.
+
+Lemma wf_in_data: forall b (p: fpacket),
+  block_wf b ->
+  packet_in_block p b ->
+  fd_isParity p = false ->
+  packet_in_data p b.
+Proof.
+  move=> b p. rewrite packet_in_block_eq 
+    /packet_in_data => Hwf /orP[Hindat //| Hinpar] Hnopar.
+  have: fd_isParity p by apply Hwf. by rewrite Hnopar.
 Qed.
 
 End WFFacts.
@@ -1975,6 +1950,33 @@ Proof.
   - by subst.
   - by apply (subblock_in Hsub).
 Qed. 
+
+Lemma decoder_invar_allid: forall (blocks : seq block) prev,
+  wf_packet_stream prev ->
+  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
+  subblock b b') ->
+  forall (b' : block) (p0 : fpacket),
+  b' \in blocks -> packet_in_block p0 b' -> fd_blockId p0 = blk_id b'.
+Proof.
+  move=> blocks prev Hwf Hsubblock b p' Hinb Hinp'.
+  move: Hsubblock=> /(_ b Hinb) [b' [Hinb' Hsubb]].
+  have Hinb2:= (subblock_in Hsubb Hinp').
+  rewrite (proj1 Hsubb).
+  by apply (get_blocks_ids Hwf).
+Qed.
+
+Lemma decoder_invar_inprev: forall (blocks: seq block) prev,
+  wf_packet_stream prev ->
+  (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
+  subblock b b') ->
+  forall (b: block) (p: fpacket),
+    b \in blocks -> packet_in_block p b -> p \in prev.
+Proof.
+  move=> blocks prev Hwf Hsubblock b p' Hinb Hinpb'.
+  move: Hsubblock => /(_ b Hinb) [b1 [Hinb1 Hsub]].
+  apply (get_blocks_in_orig Hwf Hinb1).
+  apply (subblock_in Hsub Hinpb').
+Qed.
 
 End Subblock.
 
