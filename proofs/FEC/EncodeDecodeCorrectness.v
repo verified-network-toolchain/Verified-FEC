@@ -87,6 +87,9 @@ Qed.
 End GenericCorrect.
 
 Require Import ByteFacts.
+Require Import Reorder.
+Require Import DecoderTimeouts.
+Require Import DecoderNoTimeouts.
 
 (*Correctness With Timeouts/Reordering*)
 Section TimeoutCorrect.
@@ -111,10 +114,111 @@ Definition loss_cond (sent received: list fpacket) : Prop :=
       (undup (sublist (Z.of_nat (i * n)) (Z.of_nat ((i+1) * n)) sent))
       >= Z.to_nat k.
 
+(*TODO: move*)
+Lemma zseq_eq: forall {A: eqType} (z: Z) (x: A) (s: seq A),
+  Zlength s = z ->
+  all (fun y => y == x) s ->
+  s = zseq z x.
+Proof.
+  move=> A z x s Hz Hall.
+  rewrite /zseq.
+  rewrite -Hz ZtoNat_Zlength -size_length. 
+  by apply /all_pred1P.
+Qed. 
+
 (*Now we prove that this implies condition for decoder
   (with [encoder_boundaries_exist]). TODO: do we need
   condition that block in [get_blocks rec] is recoverable
   or that we have k packets in list (and hence can split) *)
+Theorem all_packets_recovered (orig : list packet) 
+  (encoded received: list fpacket)
+  (decoded: list packet) (enc_params: list (Z * Z))
+  (d m: nat) (threshold: Z):
+  (forall p, p \in orig -> packet_valid p) ->
+  (forall p, p \in orig -> encodable p) ->
+  uniq (map p_seqNum orig) ->
+  Zlength enc_params = Zlength orig ->
+  all (fun x => x == (k, h)) enc_params ->
+  encoded = (encoder_all_steps orig enc_params).2 ->
+  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
+  loss_cond encoded received ->
+  (*Bound on reordering and duplication*)
+  duplicates_bounded received fpacket_inhab m ->
+  reorder_bounded encoded received d ->
+  decoded = (decoder_all_steps threshold received).1.2 ->
+  (*Threshold is large enough*)
+  (threshold >= k + h + Z.of_nat (2 * d + m))%Z ->
+  (*We cannot make guarantees about the last portion of the list*)
+  forall p, p \in 
+    sublist 0 (Z.of_nat (size orig %/ Z.to_nat k * Z.to_nat k)) orig -> 
+    exists p', p' \in decoded /\ remove_seqNum p = remove_seqNum p'.
+Proof.
+  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hloss Hdups 
+    Hreord Hdec Hthresh p Hinp.
+  (*First, we use [encoder_concat_nochange_eq] to reason about
+    the encoder with no parameter changes*)
+  have Henceq: enc_params = zseq (Zlength orig) (k, h) by
+    apply zseq_eq.
+  rewrite Henceq in Henc. clear Hlenenc Hallkh Henceq enc_params.
+  move: Henc. rewrite encoder_all_steps_concat 
+    -encoder_concat_nochange_eq => Henc.
+  (*Next, use [encoder_boundaries_exist] to get the boundary*)
+  have:=(encoder_boundaries_exist k_bound h_bound 
+    Hallvalid Hallenc Hseqnum Hinp)=>/= 
+  [[b [f [i [Hpf [Hparf [Hinb [Hinfb [Hencb [Hwfb [Hi [Huniq Hall]]]]]]]]]]]].
+  (*Now, we use [decoder_timeout_notimeout_all] to show that the
+    decoder is equivalent to one without timeouts. We first need
+    the preconditions:*)
+  have Hwf: wf_packet_stream encoded. {
+    (*ugh, dont want to reverse*)
+    rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
+    apply rse_encode_stream_wf=>//.
+    - move=> k' h'. by rewrite /zseq mem_nseq => /andP[_ /eqP[]->->].
+    - by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
+  } 
+  have Hwf': wf_packet_stream received by
+    apply (wf_substream Hwf); apply Hloss.
+  have Hreordup: 
+    reorder_dup_cond threshold (Z.to_nat k) (Z.to_nat h) d m received. {
+    rewrite /reorder_dup_cond. split_all=>//.
+    - rewrite /bounded_reorder_list.
+      (*Here we use [u_seqNum_reorder_bound] to show that the 
+        [reorder_bounded] condition implies that packets do not get too
+        far apar *)
+      move=> p1 p2 Hinp1 Hinp2 Hideq.
+      apply u_seqNum_reorder_bound with(sent:=encoded)=>//.
+      + move=> x. apply Hloss.
+      + (*ugh, dont want to reverse - TODO also prove these separately*)
+        rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
+        apply rse_encode_stream_uniq=>//.
+        * move=> k' h'. by rewrite /zseq mem_nseq => /andP[_ /eqP[]->->].
+        * by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
+      + (*TODO: need to show that all packets in a given block are
+          within k + h (maybe from a version of the boundary lemma 
+          as well, try to prove separately first)*)
+        admit.
+    - move: Hthresh. rewrite !Nat2Z.inj_add. lia.
+  }
+  move: Hdec. rewrite (decoder_timeout_notimeout_all Hwf' Hreordup) 
+    => Hdec.
+  (*Now, we use the loss condition to show that enough packets are seen,
+    hence we can apply [all_packets_in_block_recovered] to get
+    the results we want*)
+  (*TODO: need to show in boundary lemma that blk_k b = k (shouldn't be hard)*)
+  have Hblkk: blk_k b = k by admit.
+  rewrite -Henc in Hinb.
+  rewrite -Henc in Hall.
+  move: Hloss=> [Hsublist]. rewrite -Henc in Hi.
+  move=>/(_ i Hi) Hloss.
+  have Hinpdat: packet_in_data f b by 
+    apply (wf_in_data Hwfb Hinfb (negbTE Hparf)).
+  have:=(all_packets_in_block_recovered Hwf Hsublist 
+    Hwfb Hencb Hinb Hblkk Hall Hloss Hinpdat).
+  rewrite -Hdec => [[Hinf | Hinf0]].
+  - exists p. by rewrite -Hpf.
+  - exists (p_packet f <| p_seqNum := 0 |>). split=>//.
+    by rewrite /remove_seqNum/= Hpf.
+(*Once we solve 2 previous subbproblems, done*)  
 
 End TimeoutCorrect.
 
