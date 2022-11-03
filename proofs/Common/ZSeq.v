@@ -323,19 +323,20 @@ Qed.
 
 Lemma upd_Znth_filter1: forall {A: eqType} `{Inhabitant A} (x: A) (p: pred A) (l: list A) (i: Z),
   0 <= i < Zlength l ->
-  ~~ p (Znth i l) ->
   p x -> 
-  Zlength (filter p (upd_Znth i l x)) = Zlength (filter p l) + 1.
+  Zlength (filter p (upd_Znth i l x)) = 
+    Zlength (filter p l) +
+    (if ~~ (p (Znth i l)) then 1 else 0).
 Proof.
-  move=> A Hinhab x p l i Hi Hnotp Hpx.
+  move=> A Hinhab x p l i Hi Hpx.
   have Hnonneg:=(@Zindex_nonneg _ x l).
   rewrite upd_Znth_unfold; try lia. rewrite !filter_cat. simpl cat.
   rewrite Hpx. 
   have Hl: l = sublist 0 i l ++ [:: (Znth i l)] ++ sublist (i + 1) (Zlength l) l. {
     rewrite /= -sublist_next; try lia. rewrite cat_app -(sublist_split 0 i); try lia.
     by rewrite sublist_same. }
-  rewrite {4}Hl !filter_cat. simpl cat. 
-  rewrite (negbTE Hnotp)=>/=; rewrite !Zlength_app Zlength_cons. lia.
+  rewrite {4}Hl !filter_cat. simpl cat.
+  by case Hpi: (p (Znth i l))=>/=; rewrite !Zlength_app !Zlength_cons; lia.
 Qed. 
 
 Lemma upd_Znth_Zindex_Zlength: forall {A: eqType} (x y: A) (p: pred A) (l: list A),
@@ -345,9 +346,10 @@ Lemma upd_Znth_Zindex_Zlength: forall {A: eqType} (x y: A) (p: pred A) (l: list 
   Zlength (filter p (upd_Znth (Zindex x l) l y)) = 1 + Zlength (filter p l).
 Proof.
   move => A x y p l Hidx Hpx Hpy.
-  rewrite (@upd_Znth_filter1 _ x)=>//. lia.
+  rewrite (@upd_Znth_filter1 _ x)=>//.
+  have->: ~~ p (@Znth _ x (Zindex x l) l); try lia.
+  by rewrite Znth_Zindex//; apply Zindex_In.
   have Hnonneg:=(@Zindex_nonneg _ x l). lia.
-  by rewrite Znth_Zindex //; apply Zindex_In.
 Qed.
 
 End Zindex.
