@@ -1559,6 +1559,7 @@ Proof.
         -- exists bhd. by rewrite !in_cons eq_refl !orbT.
         -- exists bhd. by rewrite mem_head.
 Qed.  
+(*
 Print wf_packet_stream.
 (*Two other properties: all blocks in the state are nonempty
   and all packets in the state are in the received stream*)
@@ -1566,11 +1567,12 @@ Print wf_packet_stream.
 (*A block can never become nonempty from adding another packet*)
 Lemma add_packet_nonempty (b: block) (p curr: fpacket):
   packet_in_block p b ->
+  Zlength (data_packets b ++ parity_packets b) = (blk_k b + )
   packet_in_block p (add_fec_packet_to_block curr b) ||
   packet_in_block curr (add_fec_packet_to_block curr b).
 Proof.
   rewrite !packet_in_block_eq/= => Hin.
-  
+
   rewrite /=.
 
 Lemma add_black_nonempty (b: block) (p curr: fpacket):
@@ -1628,6 +1630,6 @@ Proof.
 Definition decoder_multiple_steps_gen 
   (prev_packs packs: list fpacket)
   (state: list block) (sent: list packet) (time: Z) :
-
+*)
 
 End GenDecode.

@@ -321,6 +321,23 @@ Proof.
   move => A l x. split. apply Zindex_nonneg. apply Zindex_leq_Zlength.
 Qed.
 
+Lemma upd_Znth_filter1: forall {A: eqType} `{Inhabitant A} (x: A) (p: pred A) (l: list A) (i: Z),
+  0 <= i < Zlength l ->
+  ~~ p (Znth i l) ->
+  p x -> 
+  Zlength (filter p (upd_Znth i l x)) = Zlength (filter p l) + 1.
+Proof.
+  move=> A Hinhab x p l i Hi Hnotp Hpx.
+  have Hnonneg:=(@Zindex_nonneg _ x l).
+  rewrite upd_Znth_unfold; try lia. rewrite !filter_cat. simpl cat.
+  rewrite Hpx. 
+  have Hl: l = sublist 0 i l ++ [:: (Znth i l)] ++ sublist (i + 1) (Zlength l) l. {
+    rewrite /= -sublist_next; try lia. rewrite cat_app -(sublist_split 0 i); try lia.
+    by rewrite sublist_same. }
+  rewrite {4}Hl !filter_cat. simpl cat. 
+  rewrite (negbTE Hnotp)=>/=; rewrite !Zlength_app Zlength_cons. lia.
+Qed. 
+
 Lemma upd_Znth_Zindex_Zlength: forall {A: eqType} (x y: A) (p: pred A) (l: list A),
   Zindex x l < Zlength l ->
   ~~ p x ->
@@ -328,16 +345,9 @@ Lemma upd_Znth_Zindex_Zlength: forall {A: eqType} (x y: A) (p: pred A) (l: list 
   Zlength (filter p (upd_Znth (Zindex x l) l y)) = 1 + Zlength (filter p l).
 Proof.
   move => A x y p l Hidx Hpx Hpy.
-   have Hnonneg:=(@Zindex_nonneg _ x l).
-  rewrite upd_Znth_unfold; try lia. rewrite !filter_cat. simpl cat. move: Hpy.
-  case Hpy: (p y) => // _.
-  have Hl: l = sublist 0 (Zindex x l) l ++ [:: (@Znth _ x (Zindex x l) l)] ++ sublist (Zindex x l + 1) (Zlength l) l. {
-    rewrite /= -sublist_next; try lia. rewrite cat_app -(sublist_split 0 (Zindex x l)); try lia.
-    by rewrite sublist_same. }
-  rewrite Znth_Zindex in Hl; last first.
-    by apply Zindex_In.
-  rewrite {6}Hl. rewrite !filter_cat. simpl cat. move: Hpx. case Hpx: (p x) => // _.
-  rewrite !Zlength_app !Zlength_cons cat_app Zlength_app. lia.
+  rewrite (@upd_Znth_filter1 _ x)=>//. lia.
+  have Hnonneg:=(@Zindex_nonneg _ x l). lia.
+  by rewrite Znth_Zindex //; apply Zindex_In.
 Qed.
 
 End Zindex.

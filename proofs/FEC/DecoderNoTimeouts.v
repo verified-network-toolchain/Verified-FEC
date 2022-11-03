@@ -249,7 +249,10 @@ Definition decoder_nto_invar (blks: seq block) (prev: list fpacket)
   (*All blocks are nonempty*)
   (*TODO: can we prove this?*)
   (forall (b: block), b \in blks -> exists (p: fpacket),
-    packet_in_block p b).
+    packet_in_block p b) /\
+  (*If a block is marked complete, it is recoverable*)
+  (forall b, b \in blks -> black_complete b ->
+      recoverable b).
 
 Lemma decoder_nto_invar_pres: forall blks prev output time p,
   wf_packet_stream (prev ++ [:: p]) ->
@@ -793,29 +796,18 @@ Proof.
   apply (subblock_in Hsub Hinpb').
 Qed.
 
-(*Can we prove this? Crucial lemma for bounding size - if we have
-  a list of elements such that all elements are unique, satisfy
-  a predicate, and are in s2, then size s <= count p2 (undup s2).
-  We add an injective mapping as well for generality (we need this
-  to remove the Some in the block-> stream mapping).*)
-Lemma all_in_count_lt {A B: eqType} (p2: pred B) (s: seq A) 
+(*Crucial lemmas for relating the size of the current block
+  with the number of elements satisfying a predicate in the stream.*)
+
+Lemma all_in_count_aux {A B: eqType} (p2: pred B) (s: seq A) 
   (s2: seq B) (f: A -> B):
   uniq s ->
   {in s &, injective f} ->
   all (fun x => p2 (f x) && (f x \in s2)) s ->
-  size s <= count p2 (undup s2).
+  size s = 
+  count [pred x | p2 x & x \in [seq f i | i <- s]] (undup s2).
 Proof.
-  move=> Huniq Hinj Hall.
-  erewrite count_perm; last by 
-    apply (filter_partition_perm (fun x => x \in (map f s))).
-  rewrite count_cat.
-  rewrite count_filter/=/predI.
-  have->:size s = 
-    count [pred x | p2 x & x \in [seq f i | i <- s]] (undup s2);
-  last by rewrite leq_addr.
-  (*The main lemma: we can get one element in (undup s2) per element
-    of s1*)
-  move: Huniq Hinj Hall. move: s2. elim: s => 
+  move: s2. elim: s => 
     [//= s2 _ _ _ | h1 t1 /= IH s2 /andP[Hnotin Huniq] Hinj
       /andP[/andP[Hp2h1 Hins2] Hall]].
   - rewrite -size_filter. apply /eqP. 
@@ -834,7 +826,52 @@ Proof.
     move=> x y Hinx Hiny Hfxy. apply Hinj=>//; rewrite in_cons.
     by rewrite Hinx orbT.
     by rewrite Hiny orbT.
-Qed. 
+Qed.
+
+(*Can we prove this? Crucial lemma for bounding size - if we have
+  a list of elements such that all elements are unique, satisfy
+  a predicate, and are in s2, then size s <= count p2 (undup s2).
+  We add an injective mapping as well for generality (we need this
+  to remove the Some in the block-> stream mapping).*)
+Lemma all_in_count_lt {A B: eqType} (p2: pred B) (s: seq A) 
+  (s2: seq B) (f: A -> B):
+  uniq s ->
+  {in s &, injective f} ->
+  all (fun x => p2 (f x) && (f x \in s2)) s ->
+  size s <= count p2 (undup s2).
+Proof.
+  move=> Huniq Hinj Hall.
+  erewrite count_perm; last by 
+    apply (filter_partition_perm (fun x => x \in (map f s))).
+  by rewrite count_cat count_filter/=/predI 
+    (all_in_count_aux Huniq Hinj Hall) leq_addr.
+Qed.
+
+(*In fact, we can say something stronger if everything satisfying
+  p2 in s2 is in s1*)
+Lemma all_in_count_eq {A B: eqType} (p2: pred B) (s: seq A) 
+  (s2: seq B) (f: A -> B):
+  uniq s ->
+  {in s &, injective f} ->
+  all (fun x => p2 (f x) && (f x \in s2)) s ->
+  all (fun x => x \in (map f s)) (filter p2 s2) ->
+  size s = count p2 (undup s2).
+Proof.
+  move=> Huniq Hinj Hall1 Hall2.
+  erewrite count_perm; last by 
+    apply (filter_partition_perm (fun x => x \in (map f s))).
+  rewrite count_cat count_filter/=/predI 
+    (all_in_count_aux Huniq Hinj Hall1).
+  have->: count p2 [seq x <- undup s2 | x \notin [seq f i | i <- s]] = 0;
+    last by rewrite addn0.
+  rewrite -size_filter -filter_predI. apply /eqP.
+  rewrite size_eq0 -(negbK (_ == _)) -has_filter /predI/=.
+  apply /hasP => [[x]] Hinx/= /andP[Hp2] Hnotin.
+  have Hinx': x \in ([seq x <- s2 | p2 x]) by 
+    rewrite mem_filter Hp2 -mem_undup.
+  move: Hall2 => /allP /(_ _ Hinx').
+  by rewrite (negbTE Hnotin).
+Qed.
 
 (*filter is unique if all elements in the original list satisfying
   the predicate have only one ocurrence*)
@@ -883,6 +920,167 @@ Proof.
   by apply Nat2Z.inj in Hi'.
 Qed.
 
+(*Apply these previous lemmas about size, filter, uniq, etc
+  for the specific case we need*)
+Lemma subblock_size_count: forall (l1 l2: seq fpacket) (blks: list block)
+  (b1 b2: block),
+  wf_packet_stream l2 ->
+  b2 \in (get_blocks l2) ->
+  (forall x, x \in l1 -> x \in l2) ->
+  block_wf b2 ->
+  subblock b1 b2 ->
+  b1 \in blks ->
+  (forall b : block_eqType,
+    b \in blks ->
+    exists b' : block_eqType, b' \in get_blocks l1 /\ subblock b b') ->
+  (forall (p: fpacket), p \in l1 -> exists b,
+    b \in blks /\ packet_in_block p b) ->
+  sorted blk_order blks ->
+  size [seq x <- data_packets b1 ++ parity_packets b1 | isSome x] =
+  count (packet_in_block^~b2) (undup l1).
+Proof.
+  move=> l1 l2 blks b1 b2 Hwf Hinb2 Hsubstream Hwfb2 Hsub Hinb1 Hallsub 
+    Hallinb Hsort.
+  apply all_in_count_eq with (f:= fun (x: option fpacket) =>
+  match x with | Some p => p | None => fpacket_inhab end)=>//.
+  - apply block_pkts_uniq. by apply (subblock_wf Hwfb2).
+  - move=> o1 o2. rewrite !mem_filter.
+    by case: o1; case :o2 =>//= x y _ _ ->.
+  - apply /allP => o. rewrite mem_filter. case: o=>// f /andP[_  Hinf].
+    have Hinfb1: packet_in_block f b1 by 
+      rewrite packet_in_block_eq -mem_cat.
+    rewrite (subblock_in Hsub Hinfb1)/=.
+    have Hwfl1: wf_packet_stream l1. by apply (wf_substream Hwf).
+    by apply (decoder_invar_inprev Hwfl1 Hallsub Hinb1).
+  - apply /allP => f. rewrite !mem_filter => /andP [Hinfb Hinfl1].
+    apply /mapP. exists (Some f)=>//.
+    rewrite mem_filter=>/=.
+    move: Hallinb => /(_ _ Hinfl1) [b3 [Hinb3 Hinfb3]].
+    have->: b1 = b3; last by rewrite mem_cat -packet_in_block_eq. 
+    apply (map_uniq_inj (blk_order_sort_uniq Hsort))=>//.
+    (*Ids are same because they contain the same packet and everything
+      is subblock of a block in [get_blocks], so all wf properties
+      hold*)
+    rewrite (proj1 Hsub) -(get_blocks_ids Hwf Hinb2 Hinfb).
+    have Hwfl1: wf_packet_stream l1 by apply (wf_substream Hwf).
+    move: Hallsub => /(_ b3 Hinb3) [b4 [Hinb4 Hsubb4]].
+    by rewrite (proj1 Hsubb4) 
+    -(get_blocks_ids Hwfl1 Hinb4 (subblock_in Hsubb4 Hinfb3)).
+Qed.
+
+Lemma add_packet_size: forall (s: seq fpacket) (b1 b2: block) 
+  (p: fpacket),
+  wf_packet_stream s ->
+  block_wf b2 ->
+  b2 \in (get_blocks s) ->
+  subblock b1 b2 ->
+  p \in s ->
+  ~~ (packet_in_block p b1) ->
+  fd_blockId p = blk_id b1 ->
+  size (filter isSome (data_packets (add_fec_packet_to_block p b1) ++
+    (parity_packets (add_fec_packet_to_block p b1)))) =
+  (size (filter isSome (data_packets b1 ++ parity_packets b1))).+1.
+Proof.
+  move=> s b1 b2 p Hwf Hwfb2 Hinb2 Hsub Hinps Hnotin Hideq/=.
+  have Hwfb1 : block_wf b1 by apply (subblock_wf Hwfb2).
+  case Hwfb1 => [Hk [Hh [Hallhk [Hallid [Hallith [Hlendat [Hlenpar 
+          [_ [_ [Hdat Hpar]]]]]]]]]].
+  case Hwf => [Hallkheq [Hinj [Hallidx _]]].
+  have:= Hallidx => /(_ p Hinps) => Hpidx.
+
+  rewrite cat_app -(sublist_split); try lia; last by
+    rewrite Zlength_upd_Znth Zlength_app; lia.
+  rewrite sublist_same; try lia; last by rewrite
+    Zlength_upd_Znth Zlength_app; lia.
+  (*Need to know that p is in b1, hence it has the same values for k
+    and h*)
+  have Hinpb1: packet_in_block p b2. {
+    have [b3 /andP[Hinb3 Hinpb3]]:=(get_blocks_allin Hwf Hinps).
+    have Heq: b3 = b2; last by subst. 
+      apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
+      by rewrite -(get_blocks_ids Hwf Hinb3 Hinpb3) Hideq (proj1 Hsub).
+  }
+  have [Hkeq Hheq]: fd_k p = blk_k b2 /\ fd_h p = blk_h b2 by apply Hwfb2.
+  have Hkeq': blk_k b1 = blk_k b2 by apply Hsub.
+  have Hheq': blk_h b1 = blk_h b2 by apply Hsub.
+  have Hidxbound: (0 <= Z.of_nat (fd_blockIndex p) < blk_k b1 + blk_h b1)%Z by lia.
+  remember (data_packets b1 ++ parity_packets b1) as l eqn: Hl.
+  rewrite !size_length -!ZtoNat_Zlength -Z2Nat.inj_succ; last by list_solve.
+  rewrite -Z.add_1_r.
+  have Hbound2: (0 <= Z.of_nat (fd_blockIndex p) < 
+    Zlength (data_packets b1 ++ parity_packets b1))%Z by
+    rewrite Zlength_app Hlendat Hlenpar; lia.
+  rewrite upd_Znth_filter1 //; subst =>//.
+  apply /negP.
+  case Hnth: (Znth (Z.of_nat (fd_blockIndex p)) 
+    (data_packets b1 ++ parity_packets b1)) => [p1 | //].
+    exfalso.
+  (*Now use wf_packet_stream to prove that p = p1*)
+  have Hinp1: packet_in_block p1 b1. {
+    rewrite packet_in_block_eq -mem_cat. apply /inP.
+    rewrite -Hnth. by apply Znth_In.
+  }
+  have Heq: p = p1. {
+    apply Hinj=>//.
+    - apply (get_blocks_in_orig Hwf Hinb2).
+      by apply (subblock_in Hsub).
+    - rewrite Hideq. symmetry. by apply Hwfb1.
+    - apply Hallith in Hnth =>//.
+      by apply Nat2Z.inj in Hnth.
+  }
+  subst. by rewrite Hinp1 in Hnotin.
+Qed.
+
+Lemma add_packet_Zlength: forall p b,
+  Zlength (data_packets b) = blk_k b ->
+  Zlength (data_packets (add_fec_packet_to_block p b)) =
+  blk_k b.
+Proof.
+  move=> p b/= Hlen.
+  by rewrite Zlength_sublist; 
+  [lia |list_solve |rewrite Zlength_upd_Znth Zlength_app; list_solve].
+Qed.
+
+(*black_complete does not affect subblock*)
+Lemma subblock_complete_eq: forall b1 b2 b3,
+  b1 <| black_complete := false |> = b2 <| black_complete := false |> ->
+  subblock b1 b3 <-> subblock b2 b3.
+Proof.
+  by move=> [i1 dat1 par1 k1 h1 c1 t1] [i2 dat2 par2 k2 h2 c2 t2] b3 
+    []->->->->->->.
+Qed.
+
+Lemma packet_in_data_add: forall (p p1: fpacket) (b: block),
+  Zlength (data_packets b) = blk_k b ->
+  packet_in_data p (add_fec_packet_to_block p1 b) ->
+  (p == p1) || packet_in_data p b.
+Proof.
+  move=> p p1 b Hlen.
+  rewrite /packet_in_data/=.
+  have Hk0: (0 <= blk_k b)%Z by list_solve.
+  have [Hdat | [Hpar | Hnotin]] : ((0 <= Z.of_nat (fd_blockIndex p1) < blk_k b)%Z \/
+    (blk_k b <= Z.of_nat (fd_blockIndex p1) < blk_k b + Zlength (parity_packets b))%Z \/
+    ((Z.of_nat (fd_blockIndex p1) < 0)%Z \/ 
+    (Z.of_nat (fd_blockIndex p1) >= blk_k b + Zlength (parity_packets b)))%Z) by list_solve.
+  - rewrite sublist_upd_Znth_lr; try lia; last by
+      rewrite Zlength_app; list_solve.
+    rewrite sublist_app1; try lia.
+    rewrite sublist_same; try lia.
+    move=> /inP Hin. apply In_upd_Znth in Hin.
+    case: Hin => [[]->//| /inP ->].
+    by rewrite eq_refl. by rewrite orbT.
+  - rewrite sublist_upd_Znth_l; try lia; last by
+      rewrite Zlength_app; list_solve.
+    rewrite sublist_app1; try lia.
+    rewrite sublist_same; try lia.
+    by move=>->; rewrite orbT.
+  - rewrite upd_Znth_out_of_range; try lia; last by
+    rewrite Zlength_app; list_solve.
+    rewrite sublist_app1; try lia.
+    rewrite sublist_same; try lia.
+    by move=>->; rewrite orbT.
+Qed.
+
 (*The theorem that we want: For any well-formed, encoded block from sent,
   if at least k packets from this block arrive in the received stream,
   then all data packets in this block will be in the output. *)
@@ -919,7 +1117,7 @@ Proof.
   rewrite /decoder_all_steps_nto/decoder_all_steps_gen.
   rewrite Hrec decoder_multiple_steps_gen_cat/= 
   decoder_multiple_steps_gen_cons/=/triv_timeout !filter_predT/triv_upd_time.
-  move=> [Hsort [Hsubblocks [Hinblocks [Hinoutput Hblknonemp]]]].
+  move=> [Hsort [Hsubblocks [Hinblocks [Hinoutput [Hblknonemp Hcomp]]]]].
   apply (or_impl (@decoder_multiple_output_grows _ _ _ _ _ _ _ _)
     (@decoder_multiple_output_grows _ _ _ _ _ _ _ _)).
   rewrite !mem_cat.
@@ -949,6 +1147,8 @@ Proof.
     (get_blocks_ids Hwf Hbin (data_in_block Hinp)).
   have Hidp1: fd_blockId (p_fec_data' p1) = blk_id b by
     apply (get_blocks_ids Hwf).
+  have Hsubstream': forall x : fpacket, x \in l1 -> x \in sent by
+    move=> x Hinx; apply Hsubstream; rewrite Hrec mem_cat Hinx.
   have Hinp1: p1 \in sent by 
     apply Hsubstream; rewrite Hrec mem_cat mem_head !orbT.
   have Hhpos: (0 <= fd_h (p_fec_data' p1))%Z by apply Hwf.
@@ -1037,8 +1237,8 @@ Proof.
       have Hsubb: subblock b1 b. {
         move: Hsubblocks => /( _ _ Hinb1) [b2 [Hinb2 Hsub2]].
         have [b3 [Hinb3 Hsub3]]: exists b', b' \in (get_blocks sent) 
-          /\ subblock b2 b'. apply get_blocks_sublist with(l2:=l1)=>//=.
-          move=> x Hinx. apply Hsubstream. by rewrite Hrec mem_cat Hinx.
+          /\ subblock b2 b' by apply get_blocks_sublist with(l2:=l1)=>//=.
+        (*TODO: separate lemma?*)
         have Hbeq: b = b3. {
           apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
           rewrite -(get_blocks_ids Hwf Hbin Hinbp2).
@@ -1049,7 +1249,6 @@ Proof.
       }
       by rewrite (proj1 Hsubb).
   - (*Here we deal with the case where a block exists*)
-    (*TODO*)
     have:=Hhas => /hasP [b1] Hinb1 /eqP Hidb1/=.
     have->: (nth block_inhab blks
       (find (fun b0 : block => blk_id b0 == 
@@ -1061,8 +1260,17 @@ Proof.
     }
     rewrite /add_packet_to_block_black.
     (*TODO: add to invariant*)
-    have Hcomp: (forall b, b \in blks -> black_complete b ->
-      recoverable b) by admit.
+    (*have Hcomp: (forall b, b \in blks -> black_complete b ->
+      recoverable b) by admit.*)
+    have Hsub: subblock b1 b. {
+      move: Hsubblocks => /(_ b1 Hinb1) [b2 [Hinb2 Hsub2]].
+      have [b3 [Hinb3 Hsubb3]]: 
+        exists b3, b3 \in get_blocks sent /\ subblock b2 b3 by
+        apply get_blocks_sublist with(l2:=l1)=>//. (*TODO: repetitive*)
+      have->: b = b3; last by apply (subblock_trans Hsub2).
+      apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
+      by rewrite -(proj1 Hsubb3) -(proj1 Hsub2) Hidb1.
+      }
     case Hblackcomp: (black_complete b1).
     + (*If black complete, then recoverable, so we must have seen
       at least k packets with this blockIndex, a contradiction*)
@@ -1072,16 +1280,7 @@ Proof.
         (*How can we prove this?*)
         move: Hrecover => /recoverableP.
         (*Now we want to show that b1 is a subblock of b*)
-        have Hsub: subblock b1 b. {
-          move: Hsubblocks => /(_ b1 Hinb1) [b2 [Hinb2 Hsub2]].
-          have [b3 [Hinb3 Hsubb3]]: 
-            exists b3, b3 \in get_blocks sent /\ subblock b2 b3 by
-            apply get_blocks_sublist with(l2:=l1)=>//; (*TODO: repetitive*)
-            move=> x Hinx; apply Hsubstream; rewrite Hrec mem_cat Hinx.
-          have->: b = b3; last by apply (subblock_trans Hsub2).
-          apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
-          by rewrite -(proj1 Hsubb3) -(proj1 Hsub2) Hidb1.
-         }
+        
         have Hwfb1: block_wf b1:=(subblock_wf Hwfb Hsub).
         have->: (size (data_packets b1) = Z.to_nat k). {
           rewrite size_length -ZtoNat_Zlength. f_equal.
@@ -1089,23 +1288,206 @@ Proof.
           by have->: (blk_k b1 = blk_k b) by apply Hsub.
         }
         move=> Hsz.
-        apply (leq_trans Hsz).
-        apply all_in_count_lt with (f:= fun (x: option fpacket) =>
-          match x with | Some p => p | None => fpacket_inhab end)=>//.
-        - by apply block_pkts_uniq.
-        - move=> o1 o2. rewrite !mem_filter.
-          by case: o1; case :o2 =>//= x y _ _ ->.
-        - apply /allP => o. rewrite mem_filter. case: o=>// f /andP[_  Hinf].
-          have Hinfb1: packet_in_block f b1 by 
-            rewrite packet_in_block_eq -mem_cat.
-          rewrite (subblock_in Hsub Hinfb1)/=.
-          by apply (decoder_invar_inprev Hwfl1 Hsubblocks Hinb1).
+        by rewrite -(@subblock_size_count l1 sent blks b1 b). 
       }
       by rewrite Hcountl1 leq_subrR /= (negbTE Hk0).
-    + (*Block is not yet complete*)
+    + (*Block is not yet complete - here we show that it must
+        be recoverable because we have seen k-1 packets before
+        and we see a new packet now*)
+      have Hrecover: (recoverable (add_fec_packet_to_block p1 b1)). {
+        (*Again use eq lemma to relate count (packet_in_block b)
+          with size of (filter isSome (data ++ parity b1))*)
+        have: size (filter isSome (data_packets b1 ++ parity_packets b1)) =
+          count (packet_in_block^~b) (undup l1) by
+          rewrite -(@subblock_size_count l1 sent blks b1 b) =>//.
+        rewrite Hcountl1.
+        move=> Hsz.
+        have Hwfb1: block_wf b1 by apply (subblock_wf Hwfb Hsub).
+        case Hwfb1 => [Hk [Hh [_ [_ [Hallith [Hlendat [Hlenpar 
+          [_ [_ [Hdat Hpar]]]]]]]]]].
+        apply /recoverableP.
+        rewrite (add_packet_size Hwf Hwfb) //; last first. {
+          apply /negP => Hinpb1.
+          move: Hsubblocks => /(_ b1 Hinb1) [b2 [Hinb2 Hsubb2]].
+          have: p1 \in l1 by apply 
+            (get_blocks_in_orig Hwfl1 Hinb2 (subblock_in Hsubb2 Hinpb1)).
+          by rewrite (negbTE Hnotin).
+        }
+        rewrite Hsz subn1 prednK; last by rewrite lt0n.
+        (*Now, easy to show*)
+        rewrite size_length -ZtoNat_Zlength leq_eqVlt.
+        apply /orP; left; apply /eqP. f_equal.
+        rewrite add_packet_Zlength=>//.
+        rewrite -Hbk. apply Hsub.
+      }
+      rewrite Hrecover/=.
+      (*Know p cannot be in b1*)
+      have Hpnotin: ~~ (packet_in_data p b1). {
+        apply /negP => Hindat.
+        move: Hsubblocks => /(_ b1 Hinb1) [b2 [Hinb2 Hsubb2]].
+        have: p \in l1 by apply 
+          (get_blocks_in_orig Hwfl1 Hinb2 
+          (subblock_in Hsubb2 (data_in_block Hindat))).
+        by rewrite Hinpl1.
+      }
+      have Hparp: fd_isParity p = false by apply Hwfb.
+      (*So check to see if p = p1 or not*)
+      case: (p == p1) /eqP => Hpp1.
+      * subst. rewrite Hparp. left. by rewrite mem_head orbT.
+      * (*Otherwise, in output of [decode_block]*)
+        right. apply /orP; right. rewrite mem_cat; apply /orP; right.
+        have Hsubadd: subblock (add_fec_packet_to_block p1 b1) b. {
+          have Hsubstream'': forall (x: fpacket), 
+            x \in p1 :: l1 -> x \in sent. {
+            move => x. 
+            rewrite in_cons => /orP[Hxp1 | Hinxl1]; 
+            apply Hsubstream; rewrite Hrec; rewrite mem_cat in_cons.
+            by rewrite Hxp1 orbT. by rewrite Hinxl1.
+          }
+          have Hwf': wf_packet_stream (p1 :: l1) by
+            apply (wf_substream Hwf).
+          move: Hsubblocks => /(_ b1 Hinb1) [b2 [Hinb2 Hsubb2]].
+          have Hidp1': fd_blockId (p_fec_data' p1) = blk_id b1 by [].
+          have [Hinb3 ]:=(add_to_block_subblock Hwf' Hidp1' Hinb2 Hsubb2).
+          rewrite /add_packet_to_block_black Hblackcomp Hrecover/= => Hsub3.
+          rewrite (@subblock_complete_eq _ 
+            (add_fec_packet_to_block p1 b1 <| black_complete := true |>))//. 
+          apply (subblock_trans Hsub3).
+          have [b4 [Hinb4 Hsub4]]: exists b4, b4 \in get_blocks sent /\
+            subblock (add_fec_packet_to_block p1 b2) b4 by
+              apply get_blocks_sublist with(l2:=(p1:: l1)).
+          have Heq: b4 = b; last by subst. {
+            apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
+            (*TODO: separate lemma, did a lot*)
+            by rewrite -(proj1 Hsub4)/= -(proj1 Hsubb2) -Hidp1.
+          }
+        }
+        (*Now we can prove that this is in [decode_block]*)
+        rewrite (decode_block_correct Hwfb)=>//.
+        apply (get_block_diff_in Hwf)=>//.
+        apply /negP => Hinpadd.
+        apply packet_in_data_add in Hinpadd; last by apply (subblock_wf Hwfb Hsub).
+        move: Hinpadd => /orP[/eqP Heqp // | Hindat].
+        by rewrite Hindat in Hpnotin.
+Qed.
+      
+        
+        Hwfb1.
+          (*TODO: different lemma?*)
+
+
+        rewrite (decode_block_correct Hwfb)=>//.
+        -- (*TODO: separate?*)
+          apply (get_block_diff_in Hwf)=>//.
+          rewrite /packet_in_data/=. apply /negP=> /inP.
+          rewrite In_Znth_iff Zlength_sublist; try lia; last by
+            rewrite Zlength_upd_Znth zseq_Zlength; lia.
+          move=> [idx] [Hidx]. rewrite Znth_sublist; try lia.
+          rewrite Z.add_0_r.
+          case: (Z.eq_dec idx  (Z.of_nat (fd_blockIndex (p_fec_data' p1))))
+            =>//= Hidxeq.
+          ++ subst. rewrite upd_Znth_same; last by
+            rewrite zseq_Zlength; lia.
+            move=> [Hpp1]. subst. (*contradiction - p not parity*)
+            have: fd_isParity p = false by apply Hwfb.
+            by rewrite Hpar.
+          ++ rewrite upd_Znth_diff; try rewrite zseq_Zlength; try lia.
+            by rewrite zseq_Znth; try lia.
+            split; try lia. by apply Hwf.
+        -- (*proved in other lemma, surprisingly difficult*)
+          apply new_block_recoverable=>//; last
+          by split; try lia; by apply Hwf.
+          have->:fd_h (p_fec_data' p1) = blk_h b by apply Hwfb.
+          by apply Hwfb.
+
+
+        get_block_diff_in
+      
+      
+      have->: fd_isParity p
+      Search get_block_diff.
+      case: (packet_in_block p b1)
+        
+        lia.
+        
+        Search (_ <= _) orb "V".
+        
+        
+        Search Zlength length.
+
+
+        add_packet_Zlength
+        Search data_packets add_fec_packet_to_block.
+        Search (0 < ?x).
+        
+        Search (?x.-1.+1).
+          
+           Search "orig".
+        rewrite Hsz.
+        
+        
+        Lemma add_packet_size: forall (s: seq fpacket) (b1 b2: block) 
+        (p: fpacket),
+        wf_packet_stream s ->
+        block_wf b2 ->
+        b2 \in (get_blocks s) ->
+        subblock b1 b2 ->
+        p \in s ->
+        ~~ (packet_in_block p b1) ->
+        fd_blockId p = blk_id b1 ->
+        size (filter isSome (data_packets (add_fec_packet_to_block p b1) ++
+          (parity_packets (add_fec_packet_to_block p b1)))) =
+        (size (filter isSome (data_packets b1 ++ parity_packets b1))).+1..
+        
+        rewrite !cat_app -(sublist_split); try lia;
+        last by rewrite Zlength_upd_Znth Zlength_app; lia.
+        rewrite size_length -ZtoNat_Zlength Zlength_sublist; try lia;
+        last by rewrite Zlength_upd_Znth Zlength_app; lia.
+        rewrite Z.sub_0_r.
+        (*Yeah let's do separate*)
+        
+        Search Zlength length. Z2Nat_Zlength.
+
+        rewrite sublist_size.
+          
+          x Hinx.
+          apply Hsubstream. by rewrite Hrec mem_cat Hinx.
+
+          }
+        (*TODO: separate lemma?*)
+        (*Prove that in b1, there are at least k-1 packets*)
+        have: size (filter (data_packets b1 ++ parity_packets b1)) <=
+        (*can prove <=, then if recoverable, had to have been equal?
+        not enough - neeed to know = k -1 (or >=)*)
+
+
+
+        Lemma all_in_count_lt {A B: eqType} (p2: pred B) (s: seq A) 
+  (s2: seq B) (f: A -> B):
+  uniq s ->
+  {in s &, injective f} ->
+  all (fun x => p2 (f x) && (f x \in s2)) s ->
+  size s <= count p2 (undup s2).
+
+        apply /recoverableP=>/=.
+      }
       case Hrecover: (recoverable (add_fec_packet_to_block p1 b1)) =>//=; last first.
       * (*TODO: separate lemma that recoverable => at least k so far 
         (prove subblock for (l1 ++ [:: p1]))*)
+        have 
+        have Hsubnew: subblock (create_block_with_fec_packet p1 0) b. {
+          
+          have [b1 [Hinb1 Hsubb1]]:=(create_block_subblock 0 Hwf Hinp1).
+          (*Prove blocks same because they have the same ids*)
+          have->//:b = b1. {
+            apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
+            by rewrite -(proj1 Hsubb1) create_black_id.
+          }
+          move: Hsubb1. rewrite /create_block_with_packet_black Hk1.
+          by case: (Z.eq_dec 1 1).
+        }
+
+
         admit.
       * (*Here, need to case on whether p was seen already
           or if it is p1, or else not seen already so in output
