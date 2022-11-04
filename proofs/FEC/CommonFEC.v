@@ -54,6 +54,10 @@ Proof.
   move => A s. by rewrite !Zlength_correct -!size_length size_rev.
 Qed.
 
+Lemma concat_flatten: forall {A: Type} (s: seq (seq A)),
+  concat s = flatten s.
+Proof. by []. Qed.
+
 End Rewrite.
 
 Section Perm.
@@ -433,6 +437,28 @@ Proof.
   case Hn12: (n1 < n2); case Hn23: (n2 < n3); case Hn13: (n1 < n3); solve_by_lia.
 Qed.
 
+Lemma nat_abs_diff_add: forall (m n1 n2: nat),
+  nat_abs_diff (m + n1) (m + n2) =
+  nat_abs_diff n1 n2.
+Proof.
+  move=> m n1 n2. by rewrite /nat_abs_diff !subnDl.
+Qed.
+
+(*For any two elements, the difference between their indicies
+  is at most the size of the list*)
+Lemma index_diff_le_size: forall {A: eqType} (s: seq A) (x1 x2: A),
+  nat_abs_diff (index x1 s) (index x2 s) <= size s.
+Proof.
+  move=> A s x1 x2. wlog: x1 x2 / (index x1 s <= index x2 s).
+  - move=> Hgen. 
+    case: (orP (leq_total (index x1 s) (index x2 s))) => [Hle | Hle].
+    + by apply Hgen.
+    + rewrite nat_abs_diff_sym. by apply Hgen.
+  - move=> Hle. rewrite nat_abs_diff_leq //.
+    apply (leq_trans (leq_subr _ _)).
+    by rewrite index_size.
+Qed.
+
 End NatAbsDiff.
 
 End Nat.
@@ -506,17 +532,50 @@ Proof.
   by apply mem_take in Hin.
 Qed.
 
-(*TODO: did I prove something like this*)
-(*might be there already see proof of filter1 in Zseq*)
-(*
-Lemma sublist_nth: forall {A: Type} `{Inhabitant A} (l: list A) (i: Z),
-  0 <= i < Zlength l ->
-  l = sublist 0 i l ++ [Znth i l] ++ sublist (i+1) (Zlength l) l.
+Lemma index_flatten_same_eq: forall {A: eqType} (s: seq (seq A)) (s1: seq A)
+  (x1 x2: A),
+  x1 \in s1 ->
+  x2 \in s1 ->
+  s1 \in s ->
+  uniq (flatten s) ->
+  (*Key: n is the same for both, so we can reason about the
+    difference*)
+  exists n,
+    index x1 (flatten s) = n + index x1 s1 /\
+    index x2 (flatten s) = n + index x2 s1.
 Proof.
-  move => A Hinhab l i Hi. have Hl1: l = sublist 0 i l ++ sublist i (Zlength l) l. {
-    rewrite cat_app -sublist_split; try lia. by rewrite sublist_same. }
-  rewrite {1}Hl1. rewrite (sublist_next i (Zlength l)); try lia. by rewrite catA.
-Qed.*)
+  move=> A s. elim s=>//= h t IH s1 x1 x2 Hinx1 Hinx2.
+  rewrite in_cons => /orP[/eqP Hs1h | Hs1t] Huniq.
+  - subst. exists 0.
+    by rewrite !index_cat Hinx1 Hinx2.
+  - rewrite !index_cat. 
+    move: Huniq. rewrite cat_uniq => /andP[Huniqh /andP[Hnotin Huniqt]].
+    move: IH => /(_ s1 x1 x2 Hinx1 Hinx2 Hs1t Huniqt) [n [Hidx1 Hidx2]].
+    exists (size h + n).
+    case Hinx1': (x1 \in h).
+      exfalso. move: Hnotin => /hasP. apply. exists x1=>//.
+      apply /flattenP. by exists s1.
+    case Hinx2': (x2 \in h).
+      exfalso. move: Hnotin => /hasP. apply. exists x2=>//.
+      apply /flattenP. by exists s1.
+    by rewrite Hidx1 Hidx2 !addnA.
+Qed.
+
+(*If two elements are in a list, the difference between their
+  indicies is smaller than the size of the list*)
+Lemma index_flatten_same: forall {A: eqType} (s: seq (seq A)) (s1: seq A)
+  (x1 x2: A),
+  x1 \in s1 ->
+  x2 \in s1 ->
+  s1 \in s ->
+  uniq (flatten s) ->
+  nat_abs_diff (index x1 (flatten s)) (index x2 (flatten s)) <= size s1.
+Proof.
+  move=> A s s1 x1 x2 Hinx1 Hinx2 Hins1 Huniq.
+  have[n [Hidx1 Hidx2]]:=(index_flatten_same_eq Hinx1 Hinx2 Hins1 Huniq).
+  rewrite Hidx1 Hidx2 nat_abs_diff_add.
+  by rewrite index_diff_le_size.
+Qed.
 
 End SublistConcat.
 

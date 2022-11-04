@@ -2417,6 +2417,7 @@ Theorem encoder_boundaries_exist: forall (k h: Z) p orig,
     packet_in_block f b /\ (*TODO: do we need, or just eq of blockId?*)
     block_encoded b /\
     block_wf b /\
+    blk_k b = k /\
     let n := Z.to_nat (k + h) in
     i < size sent %/ n /\
     let l := (sublist (Z.of_nat (i * n)) 
@@ -2448,7 +2449,7 @@ Proof.
   have Hk0: (Z.to_nat k) != 0 by apply /eqP; lia.
   have/=:=(encode_boundary_invar_all (Z.to_nat h) Hk0 orig).
   rewrite !Z2Nat.id; try lia.
-  move => [[l [last [Hconcat [Hdatpar [Hlastsome Hlastnone]]]]] H].
+  move => [[l [last [Hconcat [Hdatpar [Hlastsome Hlastnone]]]]] [Hallk Hidx]].
   (*First, get f*)
   have Hpin': p \in orig. {
     move: Hinp => /inP Hinp. apply sublist_In in Hinp.
@@ -2532,7 +2533,7 @@ Proof.
         have: o \in (data_packets b' ++ parity_packets b') by 
           rewrite mem_cat Hoin.
         by rewrite -Hpkts' => /mapP [x] _ ->.
-      apply H. apply (in_block_option_list _ Hinb').
+      apply Hallk. apply (in_block_option_list _ Hinb').
     }
     (*Now we need to know that filled is not too large*)
     have Hsz2: size filled < Z.to_nat k. {
@@ -2543,14 +2544,14 @@ Proof.
         ((encoder_concat_nochange k h orig).1.1,
         (encoder_concat_nochange k h orig).1.2) by
         rewrite Hcurr/block_option_list/=mem_head.
-      have->: size (data_packets curr) = Z.to_nat k by apply H.
+      have->: size (data_packets curr) = Z.to_nat k by apply Hallk.
       rewrite -maxnE => Hmax. symmetry in Hmax.
       move: Hmax => /maxn_idPr.
       rewrite leq_eqVlt => /orP[/eqP Hsz | //].
       move: Hdatcurr. rewrite Hsz subnn/= cats0 => Hdat.
       (*Contradiction: all are Some, so Zindex is too large*)
       move: Hzidx => /(_ curr Hcurr).
-      have->: blk_k curr = (Z.of_nat (Z.to_nat k)) by apply H.
+      have->: blk_k curr = (Z.of_nat (Z.to_nat k)) by apply Hallk.
       rewrite -Hsz. have->: size filled = size (data_packets curr) by
         rewrite Hdat size_map.
       by rewrite -Zlength_size Zindex_In Hdat => /inP /mapP [x].
@@ -2605,7 +2606,7 @@ Proof.
     rewrite Hdatpar => /mapP [b']. rewrite mem_rev => Hbin Hpkts.
     apply (f_equal size) in Hpkts. move: Hpkts.
     rewrite size_map =>->; rewrite size_cat.
-    have->:size (data_packets b') = Z.to_nat k by apply H;
+    have->:size (data_packets b') = Z.to_nat k by apply Hallk;
       apply in_block_option_list.
     have->:size (parity_packets b') = Z.to_nat h by apply Hallh;
       apply in_block_option_list.
@@ -2618,6 +2619,7 @@ Proof.
   split_all=>//.
   - by apply Henc.
   - by apply Hallwf.
+  - rewrite -(Z2Nat.id k); try lia. by apply Hallk.
   - move: Hinb_rev. rewrite -index_mem => Hlt. apply (ltn_leq_trans Hlt).
     by rewrite size_rev Hszeq Hconcat size_cat Hszl divnMDl // leq_addr.
   - by apply uniq_sublist.
@@ -2663,10 +2665,159 @@ Proof.
     by rewrite packet_in_block_eq -mem_cat.
 Qed.
 
-(*Plan: 
-1. prove for all steps (DONE)
-2. prove condition for each block (in terms of just index i,
-  uniq packets with that block index) (DONE)
-3. give arrival condition (prob in EncodeDecodeCorrectness) (DONE)
-4. prove that 2 + 3 implies subblock condition
-5. work with subblock condition in decoder*)
+(*One additional result we need from the invariant:
+  if two packets in the encoded stream have the same blockId,
+  their index is separated by at most k+h*)
+Lemma same_block_index: forall (k h : Z) (orig: seq packet) (p1 p2: fpacket),
+  (*Need full invariant for knowing that blockIDs are unique*)
+  (0 < k <= fec_n - 1 - fec_max_h)%Z ->
+  (0 < h <= fec_max_h)%Z ->
+  (forall p, p \in orig -> packet_valid p) ->
+  (forall p, p \in orig -> encodable p) ->
+  uniq (map p_seqNum orig) ->
+  let encoded := (concat (encoder_concat_nochange k h orig).2) in
+  p1 \in encoded ->
+  p2 \in encoded ->
+  fd_blockId p1 = fd_blockId p2 ->
+  nat_abs_diff (index p1 encoded) (index p2 encoded) <= Z.to_nat k + Z.to_nat h.
+Proof.
+  (*Lots of boilerplate to get assumptions we need*)
+  move=> k h orig p1 p2 Hkbound Hhbound Hval Henc Huniqseq/=.
+  have Hallinbounds: (forall k0 h0 : Z_eqtype,
+    (k0, h0) \in zseq (Zlength orig) (k, h) ->
+    (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
+    move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
+  have Hsz: size orig = size (zseq (Zlength orig) (k, h)) by
+    rewrite size_nseq ZtoNat_Zlength -size_length.
+  have/=:=(@encode_boundary_h_all (Z.to_nat k) (Z.to_nat h) orig).
+  rewrite /encode_boundary_h_invar.
+  have:= (encoder_all_steps_blocks Hallinbounds Hval Henc Huniqseq Hsz).
+  rewrite {Hallinbounds Hval Henc Hsz}.
+  rewrite !(proj1 (encoder_all_steps_concat_aux orig _))
+    !encoder_all_steps_concat -!encoder_concat_nochange_eq.
+  rewrite !Z2Nat.id; try lia.
+  move => [ [Hperm [Hallwf [_ [_ [_ [_ [_ [Henc [Hinprog [Hwf [Huniq Huniqdat]]]]]]]]]]] Hzidx] Hallh.
+  (*Now get results from [encode_boundary_invar]*)
+  have Hk0: (Z.to_nat k) != 0 by apply /eqP; lia.
+  have/=:=(encode_boundary_invar_all (Z.to_nat h) Hk0 orig).
+  rewrite !Z2Nat.id; try lia.
+  move => [[l [last [Hconcat [Hdatpar [Hlastsome Hlastnone]]]]] [Hallk Hidx]].
+  (*Now the real proof starts*)
+  rewrite Hconcat. 
+  (*Need to know either both are in [concat l] or both are in [last]*)
+  (*Idea: if one is in last, its blockId is id of last block
+    If other is in [concat l], there is some block in 
+    past blocks with the same id. Result follows from [get_blocks]
+    invariant and uniqueness of blocks by id*)
+  have Hnoids: forall (p1 p2 : fpacket), 
+    p1 \in concat l -> p2 \in last ->
+    fd_blockId p1 <> fd_blockId p2. {
+    move=> p1' p2'. move: Hperm. rewrite Hconcat.
+    case Hlast: ((encoder_concat_nochange k h orig).1.2) => [bl | ]; 
+      last by move: Hlastnone => /(_ Hlast) ->//.
+    move: Hlastsome => /(_ bl Hlast) [filled [Hdatbl Hlastfill]].
+    subst => Hperm Hp1' Hp2'.
+    (*Deal with packet in last*)
+    have Hinp2b: packet_in_data p2' bl. {
+      rewrite /packet_in_data Hdatbl mem_cat. apply /orP; left.
+      apply /mapP. by exists p2'.
+    }
+    have->:fd_blockId p2' = blk_id bl. apply (get_blocks_ids Hwf)=>//.
+      by rewrite Hconcat (perm_mem Hperm) /block_option_list/= mem_head.
+      by apply data_in_block.
+    (*Deal with packet in [concat l]*)
+    have:=Hp1'; rewrite concat_flatten =>/flattenP [l2] Hinl2 Hinp1l2.
+    have: (map Some l2) \in [seq [seq Some i | i <- l1] | l1 <- l] by
+      apply /mapP; exists l2.
+    rewrite Hdatpar => /mapP [b1].
+    rewrite mem_rev => Hb1 Hdatb1.
+    have Hinp1b: packet_in_block p1' b1 by
+      rewrite packet_in_block_eq -mem_cat -Hdatb1; 
+      apply /mapP; exists p1'.
+    have->:fd_blockId p1' = blk_id b1 by apply (get_blocks_ids Hwf)=>//;
+      rewrite Hconcat (perm_mem Hperm) /block_option_list/= 
+      in_cons Hb1 orbT.
+    (*Now, use fact that [get_blocks] is unique by blockId*)
+    have:=(get_blocks_id_uniq Hwf).
+    rewrite Hconcat. (*apply (perm_map blk_id) in Hperm.*)
+    rewrite (perm_uniq (perm_map blk_id Hperm)) /block_option_list/=
+      => /andP[Hnotin _].
+    case: (blk_id b1 == blk_id bl) /eqP =>//= Heqid.
+    rewrite -Heqid in Hnotin. exfalso.
+    move: Hnotin => /mapP/=; apply. by exists b1.
+  }
+  rewrite !mem_cat => /orP[Hinp1l | Hp1last] /orP[Hinp2l | Hp2last] Heqid; last first.
+  2 : { by exfalso; apply (Hnoids p2 p1). }
+  2 : { by exfalso; apply (Hnoids p1 p2). }
+  - (*Case for last is easier - know size of last*)
+    rewrite !index_cat.
+    case Hinp1l: (p1 \in concat l); first by
+      exfalso; apply (Hnoids p1 p1).
+    case Hinpl2: (p2 \in concat l); first by
+      exfalso; apply (Hnoids p2 p2).
+    rewrite nat_abs_diff_add.
+    apply (leq_trans (index_diff_le_size _ _ _)).
+    case Hlast: ((encoder_concat_nochange k h orig).1.2) => [bl | ]; 
+    last by move: Hlastnone=> /(_ Hlast)->//.
+    move: Hlastsome => /(_ bl Hlast) [filled [Hdatbl Hlastfill]].
+    subst. 
+    have Hle: size filled <= size (data_packets bl) by
+      rewrite Hdatbl size_cat size_map leq_addr.
+    apply (leq_trans Hle).
+    have->: size (data_packets bl) = Z.to_nat k by apply Hallk;
+      rewrite Hlast/block_option_list/= mem_head.
+    by rewrite leq_addr.
+  - (*Otherwise, we need to get the block that the packets are in
+      and show it is the same*)
+    move: Hinp1l Hinp2l. rewrite !concat_flatten => Hin1 Hin2.
+    rewrite !index_cat Hin1 Hin2.
+    (*Need info about both packets, so do separately*)
+    have Hgetb: forall (p: fpacket), p \in flatten l ->
+      exists l1 b1,
+        l1 \in l /\
+        p \in l1 /\
+        b1 \in (encoder_concat_nochange k h orig).1.1 /\
+        [seq Some i | i <- l1] = data_packets b1 ++ parity_packets b1 /\
+        packet_in_block p b1. {
+      move=> p /flattenP [l1] Hinl1 Hinpl1. exists l1.
+      have: map Some l1 \in [seq [seq Some i | i <- l1] | l1 <- l] by
+        apply /mapP; exists l1.
+      rewrite Hdatpar=> /mapP [b1]. rewrite mem_rev => Hinb1 Hbl1.
+      exists b1. split_all=>//. 
+      by rewrite packet_in_block_eq -mem_cat -Hbl1; 
+        apply /mapP; exists p.
+    }
+    have [l1 [b1 [Hinl1 [Hinp1 [Hinb1 [Hlb1 Hinpb1]]]]]]:=
+      (Hgetb p1 Hin1).
+    have [l2 [b2 [Hinl2 [Hinp2 [Hinb2 [Hlb2 Hinpb2]]]]]]:=
+      (Hgetb p2 Hin2).
+    have Hgb1: b1 \in 
+      get_blocks (concat (encoder_concat_nochange k h orig).2) by
+      rewrite (perm_mem Hperm); apply in_block_option_list.
+    have Hgb2: b2 \in 
+      get_blocks (concat (encoder_concat_nochange k h orig).2) by
+      rewrite (perm_mem Hperm); apply in_block_option_list.
+    have Heqb: b1 = b2. {
+      apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
+      by rewrite -(get_blocks_ids Hwf Hgb1 Hinpb1) 
+      -(get_blocks_ids Hwf Hgb2 Hinpb2).
+    }
+    subst. rewrite {Hgb2 Hinb2}.
+    have Heql: l1 = l2. {
+      have: [seq Some i | i <- l1] = [seq Some i | i <- l2] by 
+        rewrite Hlb1 Hlb2.
+      move=> Heq. apply (f_equal (pmap id)) in Heq.
+      by rewrite !map_pK in Heq.
+    } subst.
+    rewrite {Hlb2 Hinl2}.
+    have Huniq': uniq (flatten l). {
+      move: Huniq. 
+      by rewrite Hconcat concat_flatten cat_uniq => /andP []->.
+    }
+    apply (leq_trans (index_flatten_same Hinp1 Hinp2 Hinl1 Huniq')).
+    rewrite -(size_map Some) Hlb1 size_cat.
+    have->:size (data_packets b2) = Z.to_nat k by apply Hallk;
+      apply in_block_option_list.
+    by have->:size(parity_packets b2) = Z.to_nat h by apply Hallh;
+      apply in_block_option_list.
+Qed.
