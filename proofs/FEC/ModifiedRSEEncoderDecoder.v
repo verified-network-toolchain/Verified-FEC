@@ -187,26 +187,5 @@ Definition update_dec_state (blocks: list block) (curr: fec_packet_act) (time : 
 
 (*Versions without changing params or timeouts*)
 
-Section Simple.
 
-Variable k : Z.
-Variable h : Z.
-Variable Hkbound: 0 < k <= fec_n - 1 - fec_max_h.
-Variable Hhbound: 0 < h <= fec_max_h.
-
-Definition rse_encode_gen_nochange (blocks: seq block) (currBlock: option block) (curr: packet) :=
-  match currBlock with
-  | Some b => 
-      let t := encode_exist curr b in (t.1.1 ++ blocks, t.1.2, t.2)
-  | None => 
-      let t := encode_new curr k h in (t.1.1 ++ blocks, t.1.2, t.2)
-  end.
-
-Definition rse_encode_concat_nochange (orig: seq packet) : list block * option block * list (list fec_packet_act) :=
-  foldl (fun acc x =>
-    let t := rse_encode_gen_nochange acc.1.1 acc.1.2 x in
-    (t.1.1, t.1.2, acc.2 ++ [:: t.2])) (nil, None, nil) orig.
-(*can easily get rse_encode_all_nochange from this if we need it*)
-
-End Simple.
 *)

@@ -196,66 +196,6 @@ Qed.
   the following alternate version of the encoder which outputs a list (list packet) rather than just
   the full concatenated list*)
 
-Definition rse_encode_concat (orig: seq packet) (params: seq (Z * Z)) :=
-  foldl
-  (fun (acc : seq block * option block * seq (seq (fpacket))) (x : packet * (Z * Z)) =>
-   let t := rse_encode_gen acc.1.1 acc.1.2 x.1 x.2.1 x.2.2 in (t.1.1, t.1.2, acc.2 ++ [t.2]))
-  ([::], None, [::]) (combine orig params).
-
-Opaque rse_encode_gen.
-
-Lemma rse_encode_all_concat_aux: forall orig params,
-  (rse_encode_all orig params).1 = (rse_encode_concat orig params).1 /\ 
-  (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
-Proof.
-  move => orig params. rewrite /rse_encode_all/rse_encode_concat/= -(revK (combine _ _)) !foldl_rev. 
-  remember (rev (combine orig params)) as l. rewrite {orig params Heql}. elim : l => [// | h t /= [IH1 IH2]]. 
-  by rewrite !IH1 !IH2//= !concat_app/= !cat_app app_nil_r.
-Qed.
-
-Lemma rse_encode_all_concat: forall orig params,
-  (rse_encode_all orig params).2 = concat (rse_encode_concat orig params).2.
-Proof.
-  move => orig params. by apply rse_encode_all_concat_aux.
-Qed.
-
-(*This lemma will actually be quite easy with previous result*)
-(*From here, we can describe each element of [rse_encode_concat] purely in terms of [rse_encode_func])*)
-Lemma rse_concat_mkseqZ: forall orig params,
-  Zlength orig = Zlength params ->
-  (rse_encode_concat orig params).2 = mkseqZ (fun i => rse_encode_func (sublist 0 i orig) (sublist 0 i params)
-    (Znth i orig) (Znth i params).1 (Znth i params).2) (Zlength orig).
-Proof.
-  move => orig params Hlens. rewrite /rse_encode_concat /rse_encode_func /rse_encode_all.
-  remember (@nil block) as b1. remember (@None block) as b2. remember (@nil fpacket) as b3.
-  remember (@nil (seq fpacket)) as b4. rewrite {1}Heqb4. rewrite -(cat0s (mkseqZ _ _)). rewrite -{2}Heqb4.
-  rewrite {Heqb1 Heqb2 Heqb3 Heqb4}. move: b1 b2 b3 b4 params Hlens.
-  elim : orig => [//= b1 b2 b3 b4 params Hlen | h t /= IH b1 b2 b3 b4 params].
-  - have->/=:Zlength [::] = 0 by list_solve. rewrite mkseqZ_0. by rewrite cats0.
-  - case: params => [| [k' h'] tl/=]; [list_solve |].
-    move => Hlen. erewrite IH. 2: list_solve.
-    have->: Zlength (h::t) = Zlength t + 1 by list_solve.
-    rewrite mkseqZ_1_plus/=; [|list_solve]. rewrite !Znth_0_cons -catA/=. f_equal. f_equal.
-    have Hpos: 0 <= Zlength t by list_solve. apply Znth_eq_ext; rewrite !mkseqZ_Zlength //. 
-    move => i Hi. rewrite !mkseqZ_Znth// !Znth_pos_cons; try lia. rewrite !sublist_0_cons; try lia.
-    by rewrite !Z.add_simpl_r.
-Qed.
-
-Corollary rse_concat_nth: forall orig params i,
-  Zlength orig = Zlength params ->
-  0 <= i < Zlength orig ->
-  Znth i (rse_encode_concat orig params).2 = 
-  rse_encode_func (sublist 0 i orig) (sublist 0 i params) (Znth i orig) (Znth i params).1 (Znth i params).2.
-Proof.
-  move => orig params i Hi Hlens. by rewrite rse_concat_mkseqZ //; zlist_simpl.
-Qed.
-
-Corollary rse_concat_Zlength: forall orig params,
-  Zlength orig = Zlength params ->
-  Zlength (rse_encode_concat orig params).2 = Zlength orig.
-Proof.
-  move => orig params Hlen. by rewrite rse_concat_mkseqZ //; zlist_simpl.
-Qed.
 
 (*TODO: move pmap stuff*)
 
