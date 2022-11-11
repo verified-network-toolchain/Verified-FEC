@@ -71,26 +71,58 @@ Variable threshold : int.
 Definition block_notin_packet block packet : bool :=
     ~~ (packet_in_block packet block).
 
+(*NOTE: We are changing the code to use 64 bit integers and thus
+  Int64 comparison operations. Then, we can assume that all
+  packets have unique sequence numbers (at current network speeds,
+  it would take around 600,000 years before we run into problems).
+  Otherwise, we need to deal with wraparound, which is highly 
+  nontrivial, because we would need to reason both about
+  reorder/duplication as well as loss, in a different way from 
+  the stronger conditions for ensuring packet recovery.
+  TOOD: write this somewhere
+  *)
+
 (*The check to update the time*)
 Fixpoint upd_time_m (time: int) (curr: fpacket) (blocks: list block) :
   int := 
   match blocks with
   | nil => Int.add time Int.one
   | bl :: tl =>
-    let currSeq := Int.repr (Z.of_nat (fd_blockId curr)) in
-    let blkid := Int.repr (Z.of_nat (blk_id bl)) in
-    if Int.eq currSeq blkid then
+    let currSeq := Int64.repr (Z.of_nat (fd_blockId curr)) in
+    let blkid := Int64.repr (Z.of_nat (blk_id bl)) in
+    if Int64.eq currSeq blkid then
       if (block_notin_packet bl curr) 
       then Int.add time Int.one 
       else time
-    else if Int.ltu currSeq blkid then Int.add time Int.one
+    else if Int64.ltu currSeq blkid then Int.add time Int.one
     else upd_time_m time curr tl
   end.
-Print Int.sub.
+
+  (*Here, we use *)
+
+
 (*Integer comparison is more difficult - we don't want
   just Int.ltu - since 0 should be considered larger than
   2^32-1. The following function is based on "Serial number
   arithmetic" in RFC 1982 and the wikipedia article*)
+  (*We use this for comparing times*)
+(**
+Definition seq_comp (i1 i2: int) : Z :=
+  if Int.eq i1 i2 then 0%Z else
+  if Int.ltu b a then Int.signed (Int.sub i1 i2)
+  else 
+
+
+
+  Definition compare (a b: Z) : Z :=
+  if Z.eq_dec a b then 0%Z else 
+  if Z_gt_le_dec a b then Z.modulo (a - b) Int.modulus (*TODO: see*) else
+  Int.max_unsigned - (b - a - 1).
+*)
+(*From netinet/tcp_seq.h*)
+(*This function determines if a sequence number is less than another.
+If |i1 -i2| = 2^31, then this returns true even though the value is
+undefined.*)
 Definition int_seq_lt (i1 i2: int) : bool :=
   Z_lt_ge_dec (Int.signed (Int.sub i1 i2)) 0.
 
@@ -103,7 +135,7 @@ Definition serial_lt (i1 i2: int) : Prop :=
   let a2 := Int.unsigned i2 in
   (a1 < a2 /\ a2 - a1 < Int.half_modulus) \/
   (a1 > a2 /\ a1 - a2 > Int.half_modulus).
-Check Int.signed_repr_eq.
+
   (*From verified-packet-reorder*)
   (*OK, both are equivalent - so I can do either*)
   (*TODO: copy proof/modify as needed, prove properties
@@ -142,6 +174,15 @@ Check Int.signed_repr_eq.
   Int.signed (Int.sub i1 i2) OR
   Int.signed (Int.repr ((Int.unsigned i1 - Int.unsigned i2) mod Int.modulus))*)
   
+Lemma Int_signed_repr_eq_sign: forall x,
+  0 <= x <= Int.max_unsigned ->
+  Int.signed (Int.repr x) > 0 <-> 0 < x < Int.half_modulus.
+Proof.
+  move=> x Hx. rewrite Int.signed_repr_eq. 
+  have->: x mod Int.modulus = x by rewrite Zmod_small; rep_lia.
+  case: zlt; rep_lia.
+Qed.
+
 Lemma Int_signed_repr_eq_sign_neg: forall x,
   0 <= x <= Int.max_unsigned ->
   Int.signed (Int.repr x) < 0 <-> x >= Int.half_modulus.
@@ -151,14 +192,139 @@ Proof.
   case: (zlt x Int.half_modulus); rep_lia.
 Qed.
 
+Definition z_abs_diff (z1 z2: Z) : Z :=
+  Z.abs (z1 - z2).
+
+Lemma z_abs_diff_max: forall z1 z2,
+  z_abs_diff z1 z2 =
+  Z.max (z1 - z2) (z2 - z1).
+Proof.
+  move=> z1 z2. rewrite /z_abs_diff. lia.
+Qed.
+
+Definition int_diff (i1 i2: int) :=
+  z_abs_diff (Int.unsigned i1) (Int.unsigned i2).
+
+Lemma int_diff_le (i1 i2 : int):
+  Int.unsigned i1 <= Int.unsigned i2 ->
+  int_diff i1 i2 = Int.unsigned i2 - (Int.unsigned i1).
+Proof.
+  move=> Hle. rewrite /int_diff /Int.sub z_abs_diff_max. 
+  rewrite Z.max_r; try lia.
+Qed.
+
+Lemma int_diff_ge (i1 i2: int):
+  Int.unsigned i1 >= Int.unsigned i2 ->
+  int_diff i1 i2 = Int.unsigned i1 - (Int.unsigned i2).
+Proof.
+  move=> Hge. rewrite /int_diff /Int.sub z_abs_diff_max.
+  rewrite Z.max_l; try lia.
+Qed.
+
 Lemma int_seq_lt_correct (i1 i2: int):
-  reflect (serial_lt i1 i2) (int_seq_lt i1 i2).
+  reflect 
+  (int_diff i1 i2 = Int.half_modulus \/ serial_lt i1 i2)
+  (int_seq_lt i1 i2) .
 Proof.
   rewrite /serial_lt/int_seq_lt/=.
   case:  (Z_lt_ge_dec (Int.signed (Int.sub i1 i2)) 0) => [Hlt | Hge]/=.
   - apply ReflectT. move: Hlt.
-    rewrite /Int.sub Int.signed_repr_eq.
-    Check Int_signed_repr_eq_sign.
+    rewrite /Int.sub.
+    case : (Z_lt_ge_dec (Int.unsigned i2) (Int.unsigned i1) ) => Hi12/=.
+    + rewrite Int_signed_repr_eq_sign_neg; try rep_lia.
+      rewrite int_diff_ge; lia.
+    + rewrite Int.signed_repr_eq.
+      case: (Z.eq_dec (Int.unsigned i1) (Int.unsigned i2)) => Heq.
+      * rewrite Heq Z.sub_diag /= Zmod_0_l. lia.
+      * rewrite -(Z_mod_plus_full _ 1) !Zmod_small; try rep_lia.
+        case: zlt => Hhalf; try rep_lia. move => _.
+        rewrite int_diff_le; rep_lia.
+  - apply ReflectF => C. move: Hge.
+    rewrite /Int.sub.
+    case : (Z_lt_ge_dec (Int.unsigned i2) (Int.unsigned i1) ) => Hi12/=.
+    + rewrite Int.signed_repr_eq Zmod_small; try rep_lia.
+      case: zlt => [Hlt | Hge]; try rep_lia.
+      (*Contradiction from C*)
+      rewrite int_diff_ge in C; rep_lia.
+    + rewrite int_diff_le in C; try rep_lia. 
+      case: (Z.eq_dec (Int.unsigned i1) (Int.unsigned i2)) => Heq; 
+      first by rep_lia.
+      rewrite Int.signed_repr_eq  -(Z_mod_plus_full _ 1) !Zmod_small; 
+      try rep_lia.
+      case: zlt => Hhalf; rep_lia.
+Qed.
+
+(*Is this lemma true?*)
+(*This cannot be true as written - z2 could be much much larger*)
+Lemma div_le (n m: Z):
+  0 < m ->
+  0 <= n ->
+  n / m <= n.
+Proof.
+  move=> Hm Hn.
+  have:=(Zdiv_interval_2 0 n n m). lia.
+Qed.
+
+Lemma z_abs_diff_sym: forall z1 z2,
+  z_abs_diff z1 z2 = z_abs_diff z2 z1.
+Proof.
+  move=> z1 z2. rewrite /z_abs_diff. lia.
+Qed.
+
+Lemma abs_diff_mod (z1 z2 n: Z):
+  0 < n ->
+  z_abs_diff z1 z2 < n ->
+  z_abs_diff (z1 mod (2 * n)) (z2 mod (2 * n)) <> n.
+Proof.
+  move=> Hn.
+  wlog: z1 z2 /z1 <= z2; last first.
+  - move=> Hle.
+    rewrite !z_abs_diff_max (Z.max_r _ (z2 - z1)); try lia.
+    set (m := 2 * n).
+    move => Hlt C.
+    case: (Z.max_spec_le (z1 mod m - z2 mod m) 
+      (z2 mod m - z1 mod m)) => 
+      [[Hmodle Hmax] | [Hmodle Hmax]].
+    + rewrite Hmax in C.
+      have: z2 mod m - z1 mod m = (z2 - z1) mod m. {
+        rewrite Zminus_mod (Zmod_small (z2 mod m - z1 mod m)); try lia.
+      }
+      rewrite C Zmod_small; try lia. 
+    + rewrite Hmax in C. (*TODO: repetitive*)
+      have: z1 mod m - z2 mod m = (z1 - z2) mod m. {
+        rewrite Zminus_mod (Zmod_small (z1 mod m - z2 mod m)); try lia. 
+      }
+      rewrite C.
+      have Hlower: z1 - z2 > - n by lia.
+      case: (Z.eq_dec z1 z2) => Heq.
+      * (*minor case: when equal, show n = 0*)
+        rewrite Heq Z.sub_diag /= Zmod_0_l. lia.
+      * rewrite -(Z_mod_plus_full _ 1) Zmod_small; lia.
+  - move=> Hwlog Habs.
+    have [H1 | H2]: (z1 <= z2 \/ z2 <= z1) by lia.
+    + by apply Hwlog.
+    + rewrite z_abs_diff_sym. apply Hwlog=>//.
+      by rewrite z_abs_diff_sym.
+Qed.
+
+(*TODO: start here*)
+
+(*Now we will want to prove: if the unsigned value between
+  any two Z is < Int.half_modulus, then this equals the integer lt function*)
+Lemma int_seq_lt_lt (z1 z2: Z):
+  z_abs_diff z1 z2 < Int.half_modulus ->
+  int_seq_lt (Int.repr z1) (Int.repr z2) = Z.ltb z1 z2.
+Proof.
+  rewrite /z_abs_diff => Habs.
+  case: (int_seq_lt (Int.repr z1) (Int.repr z2)) /int_seq_lt_correct.
+  - move => [Heq | Hlt].
+    + move: Heq. rewrite /int_diff !Int.unsigned_repr_eq.
+      move=> Hdiff.
+      (*Hmm, how do we do this?*)
+      exfalso. apply (@abs_diff_mod z1 z2 Int.half_modulus); try rep_lia.
+      by rewrite /z_abs_diff.
+      have->//: 2 * Int.half_modulus = Int.modulus by [].
+    + (*Now do lt case*)
 
 (*We need an integer comparison function that works for any
   2 ints *)
@@ -167,6 +333,9 @@ Definition int_leu (i1 i2: int) : bool :=
   Int.ltu i1 i2 || Int.eq i1 i2.
 
 (*Timeouts if threshold exceeded*)
+(*Hmm, what happens if time wraps around? - maybe for this 
+we should do sequence number comparison because times will 
+always be within threshold?*)
 Definition not_timed_out_m: int -> block -> bool := fun currTime =>
   (fun b => int_leu currTime (Int.add (Int.repr(black_time b)) threshold)).
 
