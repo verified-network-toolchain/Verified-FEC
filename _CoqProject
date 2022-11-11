@@ -30,6 +30,7 @@ proofs/FEC/DecoderGeneric.v
 proofs/FEC/DecoderNoTimeouts.v
 proofs/FEC/Reorder.v
 proofs/FEC/DecoderTimeouts.v
+proofs/FEC/SeqCmp.v
 proofs/FEC/EncodeDecodeCorrectness.v
 #VST(core FEC)
 src/fecActuator/fec.v
