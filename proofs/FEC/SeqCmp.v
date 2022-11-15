@@ -2,6 +2,22 @@
 Require Import VST.floyd.functional_base.
 From Coq Require Import ssreflect.
 
+Definition z_abs_diff (z1 z2: Z) : Z :=
+  Z.abs (z1 - z2).
+
+Lemma z_abs_diff_max: forall z1 z2,
+  z_abs_diff z1 z2 =
+  Z.max (z1 - z2) (z2 - z1).
+Proof.
+  move=> z1 z2. rewrite /z_abs_diff. lia.
+Qed.
+
+Lemma z_abs_diff_sym: forall z1 z2,
+  z_abs_diff z1 z2 = z_abs_diff z2 z1.
+Proof.
+  move=> z1 z2. rewrite /z_abs_diff. lia.
+Qed.
+
 Module SeqCmp(WS: WORDSIZE).
 
 (*Integer comparison is more difficult - we don't want
@@ -44,15 +60,6 @@ Definition serial_lt (i1 i2: I.int) : Prop :=
 (*Part 1: Prove that [seq_lt] is true exactly when
   [serial_lt] holds or the two values are I.half_modulus apart*)
 
-Definition z_abs_diff (z1 z2: Z) : Z :=
-  Z.abs (z1 - z2).
-
-Lemma z_abs_diff_max: forall z1 z2,
-  z_abs_diff z1 z2 =
-  Z.max (z1 - z2) (z2 - z1).
-Proof.
-  move=> z1 z2. rewrite /z_abs_diff. lia.
-Qed.
 
 Definition int_diff (i1 i2: I.int) :=
   z_abs_diff (I.unsigned i1) (I.unsigned i2).
@@ -128,12 +135,6 @@ Lemma div_le (n m: Z):
 Proof.
   move=> Hm Hn.
   have:=(Zdiv_interval_2 0 n n m). lia.
-Qed.
-
-Lemma z_abs_diff_sym: forall z1 z2,
-  z_abs_diff z1 z2 = z_abs_diff z2 z1.
-Proof.
-  move=> z1 z2. rewrite /z_abs_diff. lia.
 Qed.
 
 (*The big intermediate lemma: two ints separated by n
@@ -244,6 +245,91 @@ Proof.
       - I.half_modulus + I.modulus; try rep_lia.
       move: Hdiv.
       rewrite Z.le_lteq => [[Hgt0 | Heq0]]; rep_nia.
+Qed.
+
+(*Equality*)
+Definition seq_eq (i1 i2: I.int) : bool := I.eq i1 i2.
+
+Lemma seq_eq_sym (i1 i2: I.int):
+  seq_eq i1 i2 = seq_eq i2 i1.
+Proof.
+  by rewrite /seq_eq I.eq_sym.
+Qed. 
+
+(*Here, we need a weaker condition*)
+Lemma seq_eq_eq (z1 z2: Z):
+  z_abs_diff z1 z2 < I.modulus ->
+  seq_eq (I.repr z1) (I.repr z2) = Z.eqb z1 z2.
+Proof.
+  wlog: z1 z2 / (z2 <= z1); last first.
+  - rewrite /z_abs_diff => Hlt Habs.
+    rewrite /seq_eq /I.eq !I.unsigned_repr_eq.
+    case: zeq => [Heq | Hneq].
+    + case: (z1 =? z2) /Z.eqb_spec=>// C.
+      (*Idea: if mod is same, need to be equal or separated by >=modulus*)
+      have Hzero: (z1 - z2) mod I.modulus = 0 by
+        rewrite Zminus_mod Heq Z.sub_diag Zmod_0_l.
+      apply Z_div_exact_full_2 in Hzero; try rep_lia.
+      have Hge0: 0 <= ((z1 - z2) / I.modulus) by
+        apply Z.div_pos; rep_lia.
+      apply Zle_lt_or_eq in Hge0. 
+      by rep_nia.
+    + (*easy case*)
+      by case: (z1 =? z2) /Z.eqb_spec=>// Heq; subst.
+  - move=> Hgen Habs.
+    case: (Z.le_ge_cases z1 z2) => Hle.
+    + rewrite seq_eq_sym Z.eqb_sym.
+      apply Hgen=>//. by rewrite z_abs_diff_sym.
+    + by apply Hgen.
+Qed.
+
+(*Another lemma about int equality we need*)
+Lemma int_eq_sub (i1 i2: I.int) :
+  I.eq i1 i2 = Z.eqb (I.signed (I.sub i1 i2)) 0.
+Proof.
+  rewrite /I.eq /I.sub.
+  case: (_ =? _) /Z.eqb_spec=>/=; last first.
+    case: zeq; try rep_lia.
+    move->. rewrite Z.sub_diag/= I.signed_repr_eq !Zmod_0_l.
+    case: zlt; rep_lia.
+  case: zeq=>// Hneq. rewrite I.signed_repr_eq.
+  case: (Z.le_ge_cases (I.unsigned i1) (I.unsigned i2)) => Hle; last first.
+  - rewrite !Zmod_small; try rep_lia.
+    case: zlt; rep_lia.
+  - case: zlt.
+    + move=> Hltmod Hzero.
+      apply Z_div_exact_full_2 in Hzero; try rep_lia.
+      have Hle0: 
+        (((I.unsigned i1 - I.unsigned i2) / I.modulus) <= 0) by rep_nia.
+      apply Zle_lt_or_eq in Hle0. 
+      by rep_nia.
+    + have:=(Z.mod_pos_bound (I.unsigned i1 - I.unsigned i2) I.modulus).
+      rep_lia.
+Qed. 
+      
+(*Sequence Leq*)
+Definition seq_leq (i1 i2: I.int) : bool :=
+  Z_le_gt_dec (I.signed (I.sub i1 i2)) 0.
+
+Lemma seq_leq_equiv (i1 i2: I.int):
+  seq_leq i1 i2 = seq_lt i1 i2 || seq_eq i1 i2.
+Proof.
+  rewrite /seq_leq/seq_lt/seq_eq.
+  case: Z_le_gt_dec => [Hle0 | Hgt0];
+  case: Z_lt_ge_dec=>/=; try lia.
+  - move=> Hge0. rewrite int_eq_sub. lia.
+  - move=> _. move: Hgt0.
+    rewrite /I.eq /I.sub. case: zeq=>//==>->.
+    rewrite Z.sub_diag/= I.signed_repr_eq !Zmod_0_l.
+    case: zlt; rep_lia.
+Qed.
+
+(*And therefore the final lemma is an easy corollary*)
+Lemma seq_leq_leq (z1 z2: Z):
+  z_abs_diff z1 z2 < I.half_modulus ->
+  seq_leq (I.repr z1) (I.repr z2) = Z.leb z1 z2.
+Proof.
+  move=> Habs. rewrite seq_leq_equiv seq_lt_lt // seq_eq_eq; rep_lia.
 Qed.
 
 End SeqCmp.

@@ -27,6 +27,24 @@ Module S32:=SeqCmp Wordsize_32.
 Definition sint (i: int) : S32.I.int :=
   S32.I.mkint (Int.intval i) (Int.intrange i).
 
+(*Ugh, has to be better way - TODO: ask about this*)
+Lemma s32_inj (i1 i2: S32.I.int):
+  S32.I.unsigned i1 = S32.I.unsigned i2 ->
+  i1 = i2.
+Proof.
+  move=> Heq. 
+  by rewrite -(S32.I.repr_unsigned i1) -(S32.I.repr_unsigned i2) Heq.
+Qed.
+
+Lemma sint_repr (z: Z):
+  sint (Int.repr z) = S32.I.repr z.
+Proof.
+  rewrite /sint/=.
+  eapply eq_trans.
+  2: apply s32_inj. 
+  reflexivity. by [].
+Qed.
+
 Definition sint64 (i: int64) : S64.I.int :=
   S64.I.mkint (Int64.intval i) (Int64.intrange i).
 
@@ -114,15 +132,17 @@ Fixpoint upd_time_m (time: int) (curr: fpacket) (blocks: list block) :
   end.
 
 (*TODO: may need to add to SeqCmp.v - SEE*)
+(*
 Definition seq_leq (i1 i2: int) : bool :=
-  Int.eq i1 i2 || S32.seq_lt (sint i1) (sint i2).
+  Int.eq i1 i2 || S32.seq_lt (sint i1) (sint i2).*)
 
 (*Timeouts if threshold exceeded*)
 (*Hmm, what happens if time wraps around? - maybe for this 
 we should do sequence number comparison because times will 
 always be within threshold?*)
 Definition not_timed_out_m: int -> block -> bool := fun currTime =>
-  (fun b => seq_leq currTime (Int.add (Int.repr(black_time b)) threshold)).
+  (fun b => S32.seq_leq (sint currTime) 
+    (sint (Int.add (Int.repr(black_time b)) threshold))).
 
 Fixpoint update_dec_state_m (blocks: list block) (curr: fpacket)
   (time: int) : list block * list packet:=
@@ -168,4 +188,119 @@ Definition decoder_all_steps_m (received: list fpacket) :
 (decoder_multiple_steps_m nil received nil nil Int.zero).1.
 
 (*Now we have to prove equivalence. This means we have to show that
-  every*)
+  every comparison between unsigned ints occurs between those
+  representing a nat within 2^31 of each other, and likewise for
+  longs.*)
+
+(*To do this, we use an assumption that all packet sequence
+  numbers are between 0 and 2^63-1, and they are unique. This is
+  not at all a restrictive assumption - if we could send
+  10^9 packets per second (already at least 2-3 orders of
+  magnitude above current speeds), it would take us nearly
+  300 years to run out of sequence numbers. This also assumes
+  we send no parity packets and have no other traffic on the
+  network.*)
+Section Equiv.
+
+Local Open Scope nat_scope.
+
+(*TODO: formulate bound for orig packets, prove that stream
+  respects this property in encoder*)
+(*Definition seqnum_range_bound (s: seq packet) : bool :=
+  all (fun p => (p_seqNum p) < Z.to_nat (Int64.half_modulus)) s. *)
+Definition fpacket_seqnum_range (s: seq fpacket) : bool :=
+  all (fun (p: fpacket) => (p_seqNum p) < Z.to_nat Int64.half_modulus) s.
+
+(*We also assume that the threshold is less than 2^31-1. This is also
+  safe: if each block was 100 bytes (it can be much larger depending on
+  packet sizes), a larger threshold would require storing at least
+  200 GB *)
+
+(*Our invariant:*)
+Definition dec_machine_invar (blks: seq block)
+  (time: Z) : Prop :=
+  (*All black times are no more than [threshold] behind the
+    current time*)
+  (forall (b: block), b \in blks -> 
+    (Z.abs (black_time b - time) <= Int.unsigned threshold)%Z) /\
+  (*All block ids are smaller than 2^61-1*)
+  (forall (b: block), b \in blks -> 
+    blk_id b < Z.to_nat Int64.half_modulus).
+
+(*First, show this invariant implies equality*)
+
+Local Definition convert_tuple {A B: Type} (x: (A * B * Z)) :
+  A * B * int :=
+  match x with
+  | (a, b, z) => (a, b, Int.repr z)
+  end.
+
+Lemma decoder_one_step_m_eq_aux (blks: seq block) (time: Z) 
+  (curr: fpacket) :
+  p_seqNum curr < Z.to_nat Int64.half_modulus ->
+  (Int.unsigned threshold < Int.half_modulus / 2)%Z ->
+  dec_machine_invar blks time ->
+  (decoder_one_step_m blks curr (Int.repr time)).1 =
+  (decoder_one_step (Int.unsigned threshold) blks curr time).1 /\
+  Int.unsigned (decoder_one_step_m blks curr (Int.repr time)).2 =
+  ((decoder_one_step (Int.unsigned threshold) blks curr time).2).
+Proof.
+  move=> Hcurr Hthreshlt [Hthresh Hallid].
+  rewrite /decoder_one_step_m/decoder_one_step/=.
+  have Htime1: Int.unsigned (upd_time_m (Int.repr time) curr blks) = 
+    upd_time time curr blks. {
+      admit.
+  }
+  have Htime: upd_time_m (Int.repr time) curr blks = 
+    Int.repr (upd_time time curr blks) by
+    rewrite -Htime1 Int.repr_unsigned.
+  split=>[|//].
+  rewrite Htime.
+  have->: [seq x <- blks | 
+    not_timed_out_m (Int.repr (upd_time time curr blks)) x] =
+    [seq x <- blks | 
+    not_timed_out (Int.unsigned threshold) (upd_time time curr blks) x]. 
+    {
+    apply eq_in_filter => b Hinb.
+    rewrite /not_timed_out_m/not_timed_out.
+    rewrite -S32.seq_leq_leq.
+    - rewrite sint_repr. f_equal.
+      rewrite /Int.add sint_repr.
+      apply s32_inj; 
+      rewrite !S32.I.unsigned_repr_eq !Int.unsigned_repr_eq.
+      by rewrite Zplus_mod_idemp_l.
+    - (*Here, use fact that upd_time increases by at most 1
+        and that before, all were within threshold. So here,
+        should be ok*)
+        (*see*)
+        have: (time <= upd_time time curr blks <= time + 1)%Z by admit.
+        rewrite /z_abs_diff.
+        move: Hthresh => /(_ b Hinb).
+        have->: S32.I.half_modulus = Int.half_modulus by [].
+        (*i think this is true with the additional /2 in the half
+        modulus but TODO: and see if we need the bound*)
+        rep_lia.
+        rep_lia.
+
+    (*rewrite -{1}(Int.repr_unsigned threshold).*)
+    rewrite !sint_repr S32.seq_leq_leq.
+    (*TODO: why is this true? Start here and think about wraparound*)
+    
+    !Int.unsigned_repr_eq.
+    Search Zmod (_ + _)%Z.
+    Search ((?x + ?y)%Z mod ?z).
+    
+    S32.seq_leq_leq.
+    
+    
+    /seq_leq.
+    
+
+    Print seq_leq.
+    Search (filter ?f ?l = filter ?g ?l).
+  }
+
+
+(*We prove both that this invariant is preserved and that
+  this invariant implies equality*)
+
