@@ -2821,3 +2821,138 @@ Proof.
     by have->:size(parity_packets b2) = Z.to_nat h by apply Hallh;
       apply in_block_option_list.
 Qed.
+
+(*We need some bounds of the resulting integer values*)
+Section Bounds.
+
+(*First, show all block k and h values are from the input*)
+
+Lemma encoder_block_kh (orig: seq packet) (params: seq (Z * Z)) (b: block) :
+  size orig = size params ->
+  b \in block_option_list (encoder_all_steps orig params).1 ->
+  (blk_k b, blk_h b) \in params.
+Proof.
+  move=> Hsz.
+  (*First, switch to foldr*)
+  rewrite /encoder_all_steps -(revK (combine _ _)) foldl_rev -zip_combine rev_zip // {Hsz}.
+  rewrite -(mem_rev params).
+  move: (rev orig) => o.
+  move: (rev params) => p.
+  rewrite {orig params}. 
+  move: p b. elim: o => [//= p b | curr pkts /= IH [|phd ptl/=] b]; first by
+    rewrite zip_nil.
+    by rewrite zip_nil_r.
+  move: IH => /(_ ptl).
+  move: ((foldr
+  (fun (x : packet * (Z * Z))
+     (z : seq block * option block * seq fpacket) =>
+   ((encoder_one_step z.1.1 z.1.2 x.1 x.2.1 x.2.2).1.1,
+   (encoder_one_step z.1.1 z.1.2 x.1 x.2.1 x.2.2).1.2,
+   z.2 ++ (encoder_one_step z.1.1 z.1.2 x.1 x.2.1 x.2.2).2))
+  ([::], None, [::]) (zip pkts ptl)).1) => blks.
+  rewrite /block_option_list/= /encoder_one_step.
+  (*Lots of tedious cases: do a few here*)
+  move=> IH.
+  have: forall b, b \in blks.1 -> (blk_k b, blk_h b) \in (phd :: ptl). {
+    move: IH. case: blks => [blks [currb |]/= IH b' Hinb']; 
+    rewrite in_cons IH //; try by rewrite orbT.
+    by rewrite in_cons Hinb' orbT.
+  }
+  have: forall curr, blks.2 = Some curr -> (blk_k curr, blk_h curr) \in
+    (phd :: ptl). {
+      move: IH. case: blks=>[blks [currb | //]/= IH currb' []<-].
+      rewrite in_cons IH. by rewrite orbT. by rewrite mem_head.
+  }
+  move: IH.
+  case: blks => [blks [currb |]/=] IH.
+  - move=> /(_ currb erefl) Hcurr Hallin.  
+    (*Repeated case*)
+    have Hnew: b
+      \in match (encode_new curr phd.1 phd.2).1.2 with
+        | Some b0 =>
+            b0
+            :: (encode_new curr phd.1 phd.2).1.1 ++
+              (encode_block currb None).1 :: blks
+        | None =>
+            (encode_new curr phd.1 phd.2).1.1 ++
+            (encode_block currb None).1 :: blks
+        end -> (blk_k b, blk_h b) \in phd :: ptl. {
+      rewrite /encode_new. (*same proof*)
+      case: Z.eq_dec=>Hk1/=;rewrite in_cons in_cons => /orP[/eqP -> | /orP[/eqP -> | Hinb]];
+      try (by rewrite encode_block_k encode_block_h/= mem_head);
+      try (by rewrite encode_block_k encode_block_h);
+      try (by rewrite Hallin).
+      by rewrite mem_head.
+    }
+    case: Z.eq_dec => Hkeq//=.
+    case: Z.eq_dec=> Hheq//=.
+    rewrite /encode_exist/=.
+    case: Z.eq_dec=>/= _.
+    + rewrite in_cons => /orP[/eqP -> | Hinb]; last by
+      apply Hallin.
+      by rewrite encode_block_k encode_block_h
+      add_red_k add_red_h.
+    + rewrite in_cons => /orP[/eqP -> | Hinb]; last by
+      apply Hallin.
+      by rewrite add_red_k add_red_h.
+  - move=> _ Hallin.
+    rewrite /encode_new/=.
+    case: Z.eq_dec=>Hk1/=.
+    + rewrite in_cons => /orP[/eqP -> | Hinb]; last by apply Hallin.
+      by rewrite encode_block_k encode_block_h/= mem_head.
+    + rewrite in_cons=> /orP[/eqP-> /= | Hinb]; last by apply Hallin.
+      by rewrite mem_head.
+Qed.
+
+(*Then, get the bounds we need:*)
+Local Open Scope Z_scope.
+
+(*These bounds are weak, actually the blockIndex is bounded by
+  fec_max_n and k is bounded by fec_max_k. But these bounds suffice
+  for what we need.*)
+Lemma encoder_bounds (orig: list packet) (params: list (Z * Z)) :
+(forall k h, (k, h) \in params -> 
+  (0 < k <= ByteFacts.fec_n - 1 - ByteFacts.fec_max_h /\
+  0 < h <= ByteFacts.fec_max_h)) ->
+  (forall p, p \in orig -> packet_valid p) ->
+  (forall p, p \in orig -> encodable p) ->
+  uniq (map p_seqNum orig) ->
+  size orig = size params ->
+  (forall (p: packet), p \in orig ->
+    Z.of_nat (p_seqNum p) < Int64.half_modulus) ->
+  forall (p: fpacket), p \in (encoder_all_steps orig params).2 ->
+  Z.of_nat (fd_blockId p) < Int64.half_modulus /\
+  Z.of_nat (fd_blockIndex p) <= Int.max_unsigned /\ 
+  0 <= fd_k p < Int.modulus.
+Proof.
+  move=> Hparams Hallval Hallenc Huniq Hsz Hseqbound p Hinp.
+  have [[Hperm [_ [_ [_ [_ [Hinorig [Hids [_ [_ [Hwf _]]]]]]]]]] _]:=
+    (encoder_all_steps_blocks Hparams Hallval Hallenc Huniq Hsz).
+  (*For many of these, need block that p is in and use WF assumptions
+    to relate p's metadata to block metadata*)
+  have [b /andP[Hinbs Hinpb]]:=(get_blocks_allin Hwf Hinp).
+  split.
+  - move: Hids => /(_ b).
+    rewrite -(perm_mem Hperm) => /(_ Hinbs) [p' [Hinp' Hidp']].
+    rewrite (get_blocks_ids Hwf Hinbs Hinpb) Hidp'.
+    apply Hseqbound.
+    apply (Hinorig b p')=>//.
+    by rewrite -(perm_mem Hperm).
+  - (*First, do k bound - use [encoder_block_kh] and bounds on
+      params*)
+    have[Hkeq Hheq]:=(get_blocks_kh Hwf Hinp Hinbs 
+    (get_blocks_ids Hwf Hinbs Hinpb)).
+    have [Hk Hh]: (0 <= fd_k p <= fec_n - 1 - fec_max_h) /\ 
+      0 <= fd_h p <= fec_max_h. {
+      rewrite Hkeq Hheq.
+      rewrite (perm_mem Hperm) in Hinbs.
+      have:=(encoder_block_kh Hsz Hinbs) => Hin.
+      move: Hparams => /(_ _ _ Hin). rep_lia.
+    }
+    split; last by rep_lia.
+    (*Now we bound block_index by k*)
+    have: Z.of_nat (fd_blockIndex p) < fd_k p + fd_h p; try rep_lia.
+    by apply Hwf.
+Qed.
+
+End Bounds.

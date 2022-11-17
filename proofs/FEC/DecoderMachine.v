@@ -542,4 +542,64 @@ Qed.
 
 End Equiv.
 
+Section AllDat.
+
+(*One unequivocal spec we can give of the machine-length decoder:
+  all data packets are outputted*)
+Lemma all_data_outputted_one_m (blks: seq block) (time: Z) 
+  (curr: fpacket):
+  fd_isParity curr = false ->
+  p_packet curr \in (decoder_one_step_m blks curr time).1.2.
+Proof.
+  move=> Hdat.
+  rewrite /decoder_one_step_m/=.
+  move: (upd_time_m time curr blks)=> tm'.
+  move: [seq x <- blks | not_timed_out_m tm' x] => bs.
+  elim: bs =>[//=|b bs /= IH].
+  - by rewrite Hdat mem_cat mem_head.
+  - case: (S64.seq_eq (sint64 (Int64.repr (Z.of_nat (fd_blockId curr))))
+  (sint64 (Int64.repr (Z.of_nat (blk_id b)))))=>/=.
+    + rewrite /add_packet_to_block_black_m Hdat/=.
+      case: (black_complete b) =>/=; by rewrite mem_head.
+    + case: (S64.seq_lt (sint64 (Int64.repr (Z.of_nat (fd_blockId curr))))
+    (sint64 (Int64.repr (Z.of_nat (blk_id b)))))=>//=.
+      by rewrite Hdat mem_head.
+Qed.
+
+Lemma all_data_outputted_multiple_m (blks: seq block) (time: Z)
+  (prev_pkts pkts: seq fpacket) (sent: seq packet):
+  (forall (p: fpacket), p \in prev_pkts ->
+    fd_isParity p = false ->
+    p_packet p \in sent) ->
+  forall (p: fpacket), p \in  (prev_pkts ++ pkts) ->
+    fd_isParity p = false ->
+    p_packet p \in 
+      (decoder_multiple_steps_m prev_pkts pkts blks sent time).1.1.2.
+Proof.
+  rewrite decoder_multiple_steps_m_rewrite.
+  move: blks time prev_pkts sent.
+  elim: pkts => [//= _ _ prev sent Hin p| 
+    curr ptl IH blks time prev sent Hinprev p].
+  - rewrite cats0. by apply Hin.
+  - move=> Hinp Hpar. 
+    Opaque decoder_one_step_m.
+    rewrite /=. apply IH =>//; last by rewrite -catA.
+    move=> p'. rewrite mem_cat in_cons orbF => /orP[Hinp' Hpar' | 
+      /eqP -> /= Hpar'].
+    + by rewrite mem_cat Hinprev.
+    + by rewrite mem_cat all_data_outputted_one_m // orbT.
+Qed.
+
+Corollary all_data_outputted_m (pkts: seq fpacket) :
+  forall (p: fpacket), p \in pkts ->
+  fd_isParity p = false ->
+  p_packet p \in 
+    (decoder_all_steps_m pkts).1.2.
+Proof.
+  move=> p Hinp Hpar.
+  by apply all_data_outputted_multiple_m.
+Qed.
+
+End AllDat.
+
 End Machine.
