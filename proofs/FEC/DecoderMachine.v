@@ -161,6 +161,15 @@ Proof.
   by rewrite !add_m_eq.
 Qed.
 
+Lemma add_black_m_id (curr: fpacket) (b: block) :
+  blk_id (add_packet_to_block_black_m curr b).1 =
+  blk_id b.
+Proof.
+  rewrite /add_packet_to_block_black_m.
+  case: (black_complete b)=>//=.
+  by case: (recoverable (add_fec_packet_to_block_m curr b)).
+Qed.
+
 Variable threshold : int.
 
 (*Once again, will have more efficient version like C code, 
@@ -200,15 +209,8 @@ Fixpoint upd_time_m (time: Z) (curr: fpacket) (blocks: list block) :
     else upd_time_m time curr tl
   end.
 
-(*TODO: may need to add to SeqCmp.v - SEE*)
-(*
-Definition seq_leq (i1 i2: int) : bool :=
-  Int.eq i1 i2 || S32.seq_lt (sint i1) (sint i2).*)
-
-(*Timeouts if threshold exceeded*)
-(*Hmm, what happens if time wraps around? - maybe for this 
-we should do sequence number comparison because times will 
-always be within threshold?*)
+(*Timeouts if threshold exceeded - we again need sequence number
+  comparison because times may wrap around*)
 Definition not_timed_out_m: Z -> block -> bool := fun currTime =>
   (fun b => S32.seq_leq (sint (Int.repr currTime)) 
     (sint (Int.add (Int.repr(black_time b)) threshold))).
@@ -256,6 +258,16 @@ Definition decoder_all_steps_m (received: list fpacket) :
 (list block * list packet * Z) :=
 (decoder_multiple_steps_m nil received nil nil 0).1.
 
+Lemma decoder_multiple_steps_m_rewrite: forall prev packs blks sent time,
+  decoder_multiple_steps_m prev packs blks sent time =
+  (foldl (fun (acc: seq block * seq packet * Z * seq fpacket) (p: fpacket) =>
+    let t := decoder_one_step_m acc.1.1.1 p acc.1.2 in
+    (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p]))
+    (blks, sent, time, prev) packs).
+Proof.
+  by [].
+Qed.
+
 (*Now we have to prove equivalence. This means we have to show that
   every comparison between unsigned ints occurs between those
   representing a nat within 2^31 of each other, and likewise for
@@ -273,17 +285,13 @@ Section Equiv.
 
 Local Open Scope nat_scope.
 
-(*TODO: formulate bound for orig packets, prove that stream
-  respects this property in encoder*)
-(*Definition seqnum_range_bound (s: seq packet) : bool :=
-  all (fun p => (p_seqNum p) < Z.to_nat (Int64.half_modulus)) s. *)
-Definition fpacket_seqnum_range (s: seq fpacket) : bool :=
-  all (fun (p: fpacket) => (p_seqNum p) < Z.to_nat Int64.half_modulus) s.
-
-(*We also assume that the threshold is less than 2^31-1. This is also
+(*We also assume that the threshold is less than 2^30. This is also
   safe: if each block was 100 bytes (it can be much larger depending on
   packet sizes), a larger threshold would require storing at least
-  200 GB *)
+  100 GB *)
+
+Variable thresh_bound: 
+  (Int.unsigned threshold < Int.half_modulus / 2)%Z.
 
 (*Our invariant:*)
 Definition dec_machine_invar (blks: seq block)
@@ -292,18 +300,11 @@ Definition dec_machine_invar (blks: seq block)
     current time*)
   (forall (b: block), b \in blks ->
     (0 <= time - (black_time b) <= Int.unsigned threshold)%Z) /\
-    (*(Z.abs (black_time b - time) <= Int.unsigned threshold)%Z) /\*)
   (*All block ids are smaller than 2^61-1*)
   (forall (b: block), b \in blks -> 
     Z.of_nat (blk_id b) < Int64.half_modulus)%Z.
 
 (*First, show this invariant implies equality*)
-
-Local Definition convert_tuple {A B: Type} (x: (A * B * Z)) :
-  A * B * int :=
-  match x with
-  | (a, b, z) => (a, b, Int.repr z)
-  end.
 
 (*Helpful here*)
 Lemma znat_eq (n1 n2 : nat) :
@@ -328,19 +329,7 @@ Proof.
   by rewrite /Int.add/Int.one !Int.unsigned_repr_eq -Zplus_mod.
 Qed.
 
-(*TODO: move*)
-Lemma upd_time_bound (time: Z) (curr: fpacket) (blks: seq block) :
-  (time <= upd_time time curr blks <= time + 1)%Z.
-Proof.
-  elim: blks => [/= | b btl IH /=]; try lia.
-  case: (fd_blockId curr == blk_id b).
-  - by case: (block_notin_packet b curr); lia.
-  - by case: (fd_blockId curr < blk_id b)%N; lia.
-Qed.
-
-Variable thresh_bound: 
-  (Int.unsigned threshold < Int.half_modulus / 2)%Z.
-
+(*Equality for one step, assuming invariant*)
 Lemma decoder_one_step_m_eq (blks: seq block) (time: Z) 
   (curr: fpacket) :
   (Z.of_nat (fd_blockId curr) < Int64.half_modulus)%Z ->
@@ -429,20 +418,8 @@ Proof.
     - have: (S64.I.half_modulus < S64.I.modulus)%Z by []. lia.
 Qed.
 
-(*TODO; move*)
-Lemma add_black_m_id (curr: fpacket) (b: block) :
-  blk_id (add_packet_to_block_black_m curr b).1 =
-  blk_id b.
-Proof.
-  rewrite /add_packet_to_block_black_m.
-  case: (black_complete b)=>//=.
-  by case: (recoverable (add_fec_packet_to_block_m curr b)).
-Qed.
-
-
 (*Now, we have to prove preservation of the invariant.
-  We use the equality lemma to help (TODO: maybe)*)
-(*Here, we prove for the non-machine version, then use
+  Here, we prove for the non-machine version, then use
   the previous lemma to show the invariant for the machine one*)
 Lemma decoder_m_invar_one_step (blks: seq block) (time: Z) 
   (curr: fpacket) :
@@ -453,12 +430,9 @@ Lemma decoder_m_invar_one_step (blks: seq block) (time: Z)
     (decoder_one_step (Int.unsigned threshold) blks curr time).2.
 Proof.
   rewrite /dec_machine_invar => Hid [Hthresh Hallid].
-  (*First try to do without lemma (so we dont need more
-    assumptions), otherwise, do with lemma - may be easier*)
   rewrite /decoder_one_step/=.
   split.
   - move=> b.
-
     have: forall b, b \in [seq x <- blks
     | not_timed_out (Int.unsigned threshold)
         (upd_time time curr blks) x] ->
@@ -522,6 +496,50 @@ Proof.
           rewrite mem_head. apply IH=>//.
           move=> b'' Hinb''. apply Hallid. by rewrite in_cons Hinb'' orbT.
 Qed.
-        
-(*TODO: connect lemmas to show full preservation of
-  invariant + prove full equality*)
+
+(*Put both lemmas together*)
+Lemma decoder_multiple_steps_m_eq (blks: seq block) (time: Z)
+  (prev_pkts pkts: seq fpacket) (sent: seq packet) :
+  (forall (p: fpacket), p \in prev_pkts ++ pkts -> 
+    (Z.of_nat (fd_blockId p) < Int64.half_modulus)%Z /\
+    (Z.of_nat (fd_blockIndex p) <= Int.max_unsigned)%Z /\
+    (0 <= fd_k p < Int.modulus)%Z) ->
+  dec_machine_invar blks time ->
+  decoder_multiple_steps_m prev_pkts pkts blks sent time =
+  decoder_multiple_steps (Int.unsigned threshold) 
+    prev_pkts pkts blks sent time.
+Proof.
+  rewrite decoder_multiple_steps_rewrite
+  decoder_multiple_steps_m_rewrite.
+  move: blks time prev_pkts sent.
+  elim: pkts => 
+    [//|curr pkts IH blks time prev sent Hbounds Hinvar].
+  Opaque decoder_one_step decoder_one_step_m.
+  rewrite /= IH.
+  - by rewrite decoder_one_step_m_eq //; apply Hbounds;
+    rewrite mem_cat mem_head orbT.
+  - rewrite -catA. by apply Hbounds.
+  - rewrite decoder_one_step_m_eq //; try (by apply Hbounds;
+    rewrite mem_cat mem_head orbT).
+    apply decoder_m_invar_one_step=> //.
+    apply Hbounds. by rewrite mem_cat mem_head orbT.
+Qed.
+
+(*And therefore, if all indicies, ids, and k values are 
+  bounded appropriately, then the machine-length version is
+  equal to the infinte precision decoder.*)
+Corollary decoder_all_steps_m_eq (pkts: seq fpacket) :
+  (forall (p: fpacket), p \in pkts -> 
+  (Z.of_nat (fd_blockId p) < Int64.half_modulus)%Z /\
+  (Z.of_nat (fd_blockIndex p) <= Int.max_unsigned)%Z /\
+  (0 <= fd_k p < Int.modulus)%Z) ->
+  decoder_all_steps_m pkts =
+  decoder_all_steps (Int.unsigned threshold) pkts.
+Proof.
+  move=> Hbounds.
+  by rewrite /decoder_all_steps_m decoder_multiple_steps_m_eq.
+Qed.
+
+End Equiv.
+
+End Machine.

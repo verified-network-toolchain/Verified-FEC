@@ -48,6 +48,15 @@ Fixpoint upd_time (time: Z) (curr: fpacket) (blocks: list block) :
     else upd_time time curr tl
   end.
 
+Lemma upd_time_bound (time: Z) (curr: fpacket) (blks: seq block) :
+(time <= upd_time time curr blks <= time + 1)%Z.
+Proof.
+elim: blks => [/= | b btl IH /=]; try lia.
+case: (fd_blockId curr == blk_id b).
+- by case: (block_notin_packet b curr); lia.
+- by case: (fd_blockId curr < blk_id b)%N; lia.
+Qed.
+
 (*Timeouts if threshold exceeded*)
 Definition not_timed_out: Z -> block -> bool := fun currTime =>
   (fun b => (Z.leb currTime (black_time b + threshold))).
@@ -90,8 +99,8 @@ Variable h : nat.
 Variable d: nat.
 
 (*We proved in Reorder.v that this condition is implied by
-  bounded reordering. We will combine this in the
-  eventual proof (TODO: put info)*)
+  bounded reordering. We combine this in the
+  eventual proof (all_packets_recovered)*)
 Definition bounded_reorder_list (rec: list fpacket):=
   forall (p1 p2: fpacket),
   p1 \in rec ->
