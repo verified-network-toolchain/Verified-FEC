@@ -18,52 +18,8 @@ Set Bullet Behavior "Strict Subproofs".
 From RecordUpdate Require Import RecordSet. (*for updating records easily*)
 Import RecordSetNotations.
 
-Module S64:=SeqCmp Wordsize_64.
-Module S32:=SeqCmp Wordsize_32.
-
-(*Coq module weirdness: it does not recognize
-  S32.I.int and Int.int as equal, though they are.
-  We can give a trivial conversion function*)
-Definition sint (i: int) : S32.I.int :=
-  S32.I.mkint (Int.intval i) (Int.intrange i).
-
-(*Ugh, has to be better way - TODO: ask about this*)
-Lemma s32_inj (i1 i2: S32.I.int):
-  S32.I.unsigned i1 = S32.I.unsigned i2 ->
-  i1 = i2.
-Proof.
-  move=> Heq. 
-  by rewrite -(S32.I.repr_unsigned i1) -(S32.I.repr_unsigned i2) Heq.
-Qed.
-
-Lemma sint_repr (z: Z):
-  sint (Int.repr z) = S32.I.repr z.
-Proof.
-  rewrite /sint/=.
-  eapply eq_trans.
-  2: apply s32_inj. 
-  reflexivity. by [].
-Qed.
-
-Definition sint64 (i: int64) : S64.I.int :=
-  S64.I.mkint (Int64.intval i) (Int64.intrange i).
-
-Lemma s64_inj (i1 i2: S64.I.int):
-  S64.I.unsigned i1 = S64.I.unsigned i2 ->
-  i1 = i2.
-Proof.
-  move=> Heq. 
-  by rewrite -(S64.I.repr_unsigned i1) -(S64.I.repr_unsigned i2) Heq.
-Qed.
-
-Lemma sint64_repr (z: Z):
-  sint64 (Int64.repr z) = S64.I.repr z.
-Proof.
-  rewrite /sint64/=.
-  eapply eq_trans.
-  2: apply s64_inj.
-  reflexivity. by [].
-Qed.
+Module S64:=SeqCmp I64.
+Module S32:=SeqCmp I32.
 
 Section Machine.
 
@@ -200,11 +156,11 @@ Fixpoint upd_time_m (time: Z) (curr: fpacket) (blocks: list block) :
   | bl :: tl =>
     let currSeq := Int64.repr (Z.of_nat (fd_blockId curr)) in
     let blkid := Int64.repr (Z.of_nat (blk_id bl)) in
-    if S64.seq_eq (sint64 currSeq) (sint64 blkid) then
+    if S64.seq_eq currSeq blkid then
       if (block_notin_packet bl curr) 
       then time + 1 (*Int.add (Int.repr time) Int.one*)
       else time
-    else if S64.seq_lt (sint64 currSeq) (sint64 blkid) 
+    else if S64.seq_lt currSeq blkid
       then time + 1 (*Int.add time Int.one*)
     else upd_time_m time curr tl
   end.
@@ -212,8 +168,8 @@ Fixpoint upd_time_m (time: Z) (curr: fpacket) (blocks: list block) :
 (*Timeouts if threshold exceeded - we again need sequence number
   comparison because times may wrap around*)
 Definition not_timed_out_m: Z -> block -> bool := fun currTime =>
-  (fun b => S32.seq_leq (sint (Int.repr currTime)) 
-    (sint (Int.add (Int.repr(black_time b)) threshold))).
+  (fun b => S32.seq_leq (Int.repr currTime)
+    (Int.add (Int.repr(black_time b)) threshold)).
 
 Fixpoint update_dec_state_m (blocks: list block) (curr: fpacket)
   (time: Z) : list block * list packet:=
@@ -223,10 +179,10 @@ match blocks with
 | bl :: tl =>
   let currSeq := Int64.repr (Z.of_nat (fd_blockId curr)) in
   let blkid := Int64.repr (Z.of_nat (blk_id bl)) in
-  if S64.seq_eq (sint64 currSeq) (sint64 blkid) then
+  if S64.seq_eq currSeq blkid then
     let t := add_packet_to_block_black_m curr bl in
     (t.1 :: tl, t.2)
-    else if S64.seq_lt (sint64 currSeq) (sint64 blkid) then
+    else if S64.seq_lt currSeq blkid then
     let t := create_block_with_packet_black curr time in 
       (t.1 :: blocks, t.2)
   else 
@@ -346,14 +302,12 @@ Proof.
     rewrite {Hthresh}. move: Hallid. elim: blks => [_ //=|b btl IH Hallid /=].
       have Hbound: (z_abs_diff 
       (Z.of_nat (fd_blockId curr)) (Z.of_nat (blk_id b)) <
-        S64.I.half_modulus)%Z. {
+        Int64.half_modulus)%Z. {
         (*Easy: both are smaller than half_modulus*)
         rewrite /z_abs_diff.
-        move: Hallid => /(_ _ (mem_head _ _)).
-        have->:S64.I.half_modulus = Int64.half_modulus by [].
-        rep_lia.
+        move: Hallid => /(_ _ (mem_head _ _)). rep_lia.
       }
-      rewrite !sint64_repr S64.seq_eq_eq. 
+      rewrite S64.seq_eq_eq. 
       + rewrite znat_eq.
         case: (fd_blockId curr == blk_id b) /eqP => Hbcurr.
         * by case: (block_notin_packet b curr).
@@ -361,7 +315,7 @@ Proof.
           case: (fd_blockId curr < blk_id b) =>//. 
           apply IH => b' Hinb'. apply Hallid. 
           by rewrite in_cons Hinb' orbT.
-      + have: (S64.I.half_modulus < S64.I.modulus)%Z by []. lia.
+      + have: (Int64.half_modulus < I64.modulus)%Z by []. lia.
   }
   f_equal=>//.
   rewrite Htime.
@@ -373,10 +327,10 @@ Proof.
     apply eq_in_filter => b Hinb.
     rewrite /not_timed_out_m/not_timed_out.
     rewrite -S32.seq_leq_leq.
-    - rewrite sint_repr. f_equal.
-      rewrite /Int.add sint_repr.
-      apply s32_inj; 
-      rewrite !S32.I.unsigned_repr_eq !Int.unsigned_repr_eq.
+    - f_equal.
+      rewrite /Int.add.
+      apply Endian.int_unsigned_inj. (*TODO: move*)
+      rewrite !Int.unsigned_repr_eq.
       by rewrite Zplus_mod_idemp_l.
     - (*Here, use fact that upd_time increases by at most 1
         and that before, all were within threshold. So here,
@@ -384,7 +338,7 @@ Proof.
         have:=(upd_time_bound time curr blks).
         rewrite /z_abs_diff.
         move: Hthresh => /(_ b Hinb).
-        have->: S32.I.half_modulus = Int.half_modulus by [].
+        have->: I32.half_modulus = Int.half_modulus by [].
         move: thresh_bound=>/=. rep_lia.
     }
     move: (upd_time time curr blks) => tm.
@@ -399,14 +353,12 @@ Proof.
     elim: bs => [ _ // | b btl IH Hallid //=].
     have Hbound: (z_abs_diff 
       (Z.of_nat (fd_blockId curr)) (Z.of_nat (blk_id b)) <
-        S64.I.half_modulus)%Z. {
+        Int64.half_modulus)%Z. {
         (*Easy: both are smaller than half_modulus*)
         rewrite /z_abs_diff.
-        move: Hallid => /(_ _ (mem_head _ _)).
-        have->:S64.I.half_modulus = Int64.half_modulus by [].
-        rep_lia.
+        move: Hallid => /(_ _ (mem_head _ _)). rep_lia.
       }
-    rewrite !sint64_repr S64.seq_eq_eq.
+    rewrite S64.seq_eq_eq.
     - rewrite znat_eq.
       case: (fd_blockId curr == blk_id b) /eqP => [Heq|Hneq].
       + by rewrite add_black_m_eq.
@@ -415,7 +367,7 @@ Proof.
         rewrite IH // => b' Hinb'. 
         apply Hallid. 
         by rewrite in_cons Hinb' orbT.
-    - have: (S64.I.half_modulus < S64.I.modulus)%Z by []. lia.
+    - have: (Int64.half_modulus < I64.modulus)%Z by []. lia.
 Qed.
 
 (*Now, we have to prove preservation of the invariant.
@@ -557,12 +509,12 @@ Proof.
   move: [seq x <- blks | not_timed_out_m tm' x] => bs.
   elim: bs =>[//=|b bs /= IH].
   - by rewrite Hdat mem_cat mem_head.
-  - case: (S64.seq_eq (sint64 (Int64.repr (Z.of_nat (fd_blockId curr))))
-  (sint64 (Int64.repr (Z.of_nat (blk_id b)))))=>/=.
+  - case: (S64.seq_eq (Int64.repr (Z.of_nat (fd_blockId curr)))
+      (Int64.repr (Z.of_nat (blk_id b))))=>/=.
     + rewrite /add_packet_to_block_black_m Hdat/=.
       case: (black_complete b) =>/=; by rewrite mem_head.
-    + case: (S64.seq_lt (sint64 (Int64.repr (Z.of_nat (fd_blockId curr))))
-    (sint64 (Int64.repr (Z.of_nat (blk_id b)))))=>//=.
+    + case: (S64.seq_lt (Int64.repr (Z.of_nat (fd_blockId curr)))
+      (Int64.repr (Z.of_nat (blk_id b))))=>//=.
       by rewrite Hdat mem_head.
 Qed.
 

@@ -1,6 +1,105 @@
 (*Comparing Sequence Numbers for an arbitrary wordsize*)
 Require Import VST.floyd.functional_base.
+
+(*We want sequence number comparison that works for both Int and Int64.
+  If we parameterize by the WORDSIZE directly, we end up with two
+  non-identical copies of Int/Int64 that we have to convert between.
+  Instead, we define a Module Type consisting only of the int
+  operations that we need for the sequence number comparison.
+  Then we instantiate this for both Int and Int64 (it could be
+    instantiated with any other size ints if needed).*)
+
+(*Problems if we have ssreflect in scope here*)
+Module Type IntType.
+
+Parameter wordsize: nat.
+Definition modulus : Z := two_power_nat wordsize.
+Definition half_modulus : Z := modulus / 2.
+Definition max_unsigned : Z := modulus - 1.
+Definition max_signed : Z := half_modulus - 1.
+Definition min_signed : Z := - half_modulus.
+
+Parameter int: Type.
+
+Parameter unsigned: int -> Z.
+Parameter signed: int -> Z.
+
+Parameter repr: Z -> int.
+Definition eq (x y: int) : bool :=
+  if zeq (unsigned x) (unsigned y) then true else false.
+Definition sub (x y: int) : int :=
+  repr (unsigned x - unsigned y).
+
+Axiom half_modulus_modulus: modulus = 2 * half_modulus.
+Axiom half_modulus_pos: half_modulus > 0.
+Axiom unsigned_repr_eq:
+  forall x, unsigned (repr x) = Z.modulo x modulus.
+Axiom signed_repr_eq:
+  forall x, signed (repr x) = if zlt (Z.modulo x modulus) half_modulus 
+  then Z.modulo x modulus else Z.modulo x modulus - modulus.
+
+Axiom eq_sym:
+forall x y, eq x y = eq y x.
+
+Axiom unsigned_range:
+  forall i, 0 <= unsigned i < modulus.
+Axiom signed_range:
+  forall i, min_signed <= signed i <= max_signed.
+
+End IntType.
+
+(*Instantiate for Int*)
+Module I32 <: IntType.
+
+Definition wordsize := Int.wordsize.
+Definition modulus := Int.modulus.
+Definition half_modulus := Int.half_modulus.
+Definition max_unsigned := Int.max_unsigned.
+Definition max_signed := Int.max_signed.
+Definition min_signed := Int.min_signed.
+Definition int := int.
+Definition unsigned := Int.unsigned.
+Definition signed := Int.signed.
+Definition repr := Int.repr.
+Definition eq := Int.eq.
+Definition sub := Int.sub.
+Definition half_modulus_modulus := Int.half_modulus_modulus.
+Definition half_modulus_pos := Int.half_modulus_pos.
+Definition unsigned_repr_eq := Int.unsigned_repr_eq.
+Definition signed_repr_eq := Int.signed_repr_eq.
+Definition eq_sym := Int.eq_sym.
+Definition unsigned_range := Int.unsigned_range.
+Definition signed_range := Int.signed_range.
+
+End I32.
+
+(*Instantiate for Int64*)
+Module I64 <: IntType.
+
+Definition wordsize := Int64.wordsize.
+Definition modulus := Int64.modulus.
+Definition half_modulus := Int64.half_modulus.
+Definition max_unsigned := Int64.max_unsigned.
+Definition max_signed := Int64.max_signed.
+Definition min_signed := Int64.min_signed.
+Definition int := Int64.int.
+Definition unsigned := Int64.unsigned.
+Definition signed := Int64.signed.
+Definition repr := Int64.repr.
+Definition eq := Int64.eq.
+Definition sub := Int64.sub.
+Definition half_modulus_modulus := Int64.half_modulus_modulus.
+Definition half_modulus_pos := Int64.half_modulus_pos.
+Definition unsigned_repr_eq := Int64.unsigned_repr_eq.
+Definition signed_repr_eq := Int64.signed_repr_eq.
+Definition eq_sym := Int64.eq_sym.
+Definition unsigned_range := Int64.unsigned_range.
+Definition signed_range := Int64.signed_range.
+
+End I64.
+
 From Coq Require Import ssreflect.
+
 
 Definition z_abs_diff (z1 z2: Z) : Z :=
   Z.abs (z1 - z2).
@@ -18,7 +117,7 @@ Proof.
   move=> z1 z2. rewrite /z_abs_diff. lia.
 Qed.
 
-Module SeqCmp(WS: WORDSIZE).
+Module SeqCmp (I: IntType).
 
 (*Integer comparison is more difficult - we don't want
   just Int.ltu - since 0 should be considered larger than
@@ -26,7 +125,7 @@ Module SeqCmp(WS: WORDSIZE).
   arithmetic" in RFC 1982 and the wikipedia article*)
   (*We use this for comparing times*)
 
-Module I := Make WS.
+(*Module I := Make WS.*)
 
 Ltac rep_lia_setup2 ::=
 pose_lemmas I.unsigned I.unsigned_range;
