@@ -34,7 +34,7 @@ proofs/FEC/SeqCmp.v
 proofs/FEC/DecoderMachine.v
 proofs/FEC/EncodeDecodeCorrectness.v
 #VST(core FEC)
-src/fecActuator/fec.v
+src/modified/mini_prod3/fecActuator/fec.v
 proofs/VST/CommonVST.v
 proofs/VST/Specs.v
 proofs/VST/FECTactics.v
@@ -43,5 +43,8 @@ proofs/VST/Verif_field.v
 proofs/VST/Verif_matrix.v
 proofs/VST/Verif_encode.v
 proofs/VST/Verif_decode.v
+#VST(actuators)
+src/modified/mini_prod3/fecActuator/redFecActuator.v
+src/modified/mini_prod3/fecActuator/blackFecActuator.v
 #Evaluation
 proofs/Eval.v
