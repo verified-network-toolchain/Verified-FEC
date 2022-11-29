@@ -50,12 +50,6 @@
 // XXX: will this work ok with multiple threads?
 char outstring[MAXSTRING];
 
-// fistq_handle *pinfo_qh;	/* fistq on which we send pinfo to Xlator */
-// Should no longer be reported based on discussions with Andrei -- due to
-// reverting to immediate reporting; these packet
-// are supposed to be consumed by the actuators
-// fistq_handle *sender2aggregator;	/* fistq on which we send pinfo to Xlator */
-
 /************************************************************************/
 /*									*/
 /*	global variables.						*/
@@ -97,6 +91,15 @@ void blackFecActuator_init()
 /*		to the IP header.					*/
 /*									*/
 /************************************************************************/
+//Eliminate goto in blackFECActuator_unDeduce
+unsigned char *blackFecActuator_no_deducehdr(unsigned char *packetdata, int length)
+{
+  unsigned char *newpacket;
+  newpacket = calloc(length, sizeof(unsigned char));
+  memcpy(newpacket, packetdata, length);
+  return newpacket;
+}
+
 unsigned char *blackFecActuator_unDeduce(unsigned char *packetdata, int length)
 {
     struct deducehdr *dhdr;
@@ -109,42 +112,36 @@ unsigned char *blackFecActuator_unDeduce(unsigned char *packetdata, int length)
    
     u_int32_t iphl;			/* ip header length.			*/
     u_int32_t size;
-    // u_int32_t srcaddr, dstaddr;
     u_int16_t srcport, dstport;
     u_int16_t iplen, udplen;
-
-    hex_dump(zc_blackFec, ZLOG_LEVEL_DEBUG,
-	       packetdata, length, "Length %u: unDeduce input", length);
 
     bufptr = packetdata;
 
     ipheader = (struct ip *) bufptr;
 
     if (ipheader->ip_p != IPPROTO_UDP)
-	goto no_deducehdr;
-
-    // srcaddr = ipheader->ip_src.s_addr;
-    // dstaddr = ipheader->ip_dst.s_addr;
+	return blackFecActuator_no_deducehdr(packetdata, length);
  
-    iphl = ipheader->ip_hl << 2 ;
+    //iphl = ipheader->ip_hl << 2 ;
+    iphl = (ipheader->ip_hl_v >> 4) << 2; //JOSH - because no bitfields, we need to manually shift
     bufptr += iphl;
     udph = (struct udphdr *) bufptr;
 
     srcport = ntohs(udph->uh_sport);
     if (srcport != DEDUCE_SPORT)
-	goto no_deducehdr;
+	return blackFecActuator_no_deducehdr(packetdata, length);
 
     dstport = ntohs(udph->uh_dport);
     if (dstport != DEDUCE_DPORT)
-	goto no_deducehdr;
+	return blackFecActuator_no_deducehdr(packetdata, length);
 
     iplen = ntohs(ipheader->ip_len);
     udplen = ntohs(udph->uh_ulen);
     if (bufptr + udplen != packetdata + iplen)
-	goto no_deducehdr;
+	return blackFecActuator_no_deducehdr(packetdata, length);
 
     if (udplen < sizeof(struct udphdr) + sizeof(struct deducehdr))
-	goto no_deducehdr;
+	return blackFecActuator_no_deducehdr(packetdata, length);
 
     // get deduce hdr (after udp header), and find length of params
     bufptr += sizeof(struct udphdr);
@@ -175,14 +172,6 @@ unsigned char *blackFecActuator_unDeduce(unsigned char *packetdata, int length)
     // copy packet remainder to new packet
     memcpy(nbufptr, bufptr, length - (bufptr - packetdata));
 
-    hex_dump(zc_blackFec, ZLOG_LEVEL_DEBUG,
-	       newpacket, newlength, "Length %u: unDeduce output", newlength);
-
-    return newpacket;
-
-no_deducehdr:
-    newpacket = calloc(length, sizeof(unsigned char));
-    memcpy(newpacket, packetdata, length);
     return newpacket;
 }
 
@@ -204,23 +193,17 @@ unsigned char *blackFecActuator_removeHeaders(unsigned char *packetdata,
     unsigned char *newBuffer;	/* new buffer.				*/
 
     /* remove the deduce header.					*/
-    zlog_debug(zc_blackFec, "before removing headers: length = %d",
-	       *length);
     tempBuffer = blackFecActuator_unDeduce(packetdata, *length);
     ipheader = (struct ip *) tempBuffer;
     tempLength = ntohs(ipheader->ip_len);
-    zlog_debug(zc_blackFec, "after removing deduce header: templength = %d",
-	       tempLength);
 
     /* remove the IP header.						*/
-    iphl = ipheader->ip_hl << 2;
+    //iphl = ipheader->ip_hl << 2;
+    iphl = (ipheader->ip_hl_v >> 4) << 2; //JOSH - because no bitfields, we need to manually shift
     tempLength -= iphl;
 
     // remove the udp header
     tempLength -= sizeof(struct udphdr);
-
-    zlog_debug(zc_blackFec, "after removing IP and UDP header: templength = %d",
-	       tempLength);
 
     // XXX: can save a calloc by using the same memory and memmove()
     newBuffer = calloc(tempLength, sizeof(unsigned char *));
@@ -247,17 +230,6 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
 	struct packetinfo *pinfo)
 {
     int i;			/* loop counter.			*/
-    // XXX: How does this work with multiple threads?
-    /*    static unsigned char **packetptrs = 0;*/
-				/* pointers to packet data for FEC	*/
-				/* algorithm.				*/
-    // XXX: How does this work with multiple threads?
-    /*    static int *packetsizes = 0;*/
-				/* sizes of packet data for FEC		*/
-				/* algorithm.				*/
-    /*    static char *pstat = 0;*/
-				/* control/status bytes for FEC		*/
-				/* algorithm.				*/
     int maxn = FECMAXBLOCKSIZE;	/* maximum block size supported.	*/
     int k;			/* number of source packets in block.	*/
     int h; 			/* number of parity packets in block.	*/
@@ -294,8 +266,6 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
 	memset(f->bpstat, 0, maxn);
     }
 
-    zlog_debug(zc_blackFec, "regenerateMissingPackets()");
-
     k = fecblock->k;
     h = fecblock->h;
     n = k + h;
@@ -315,14 +285,12 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
     for (i = 0; i < k; i++) {
 	/* allocate space for missing packet and mark it as wanted.	*/
 	if (fecblock->packets[i] == 0) {
-	    zlog_debug(zc_blackFec, "calloc for missing regular packet: %d", i);
 	    f->bpstat[i] = FEC_FLAG_WANTED;
 	    f->bpacketptrs[i] = calloc(maxpacketsize, sizeof(unsigned char));
 	    f->bpacketsizes[i] = maxpacketsize;
 	}
 	/* for present packet, copy information to structures.		*/
 	else {
-	    zlog_debug(zc_blackFec, "unDeduce for regular packet: %d", i);
 	    //	    f->bpacketptrs[i] = fecblock->packets[i]->packetdata;
 	    f->bpacketptrs[i] = blackFecActuator_unDeduce(fecblock->packets[i]->packetdata,
 						      fecblock->packets[i]->length);
@@ -336,12 +304,10 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
     /* allows packets to have arrived out of order.			*/
     for (i = k; i < n; i++) {
 	if (i == blockIndex) {
-	    zlog_debug(zc_blackFec, "match on blockIndex for parity packet: %d", i);
 	    continue;
 	}
 	/* for present packet, copy information to structures.		*/
 	if (fecblock->packets[i] != 0) {
-	    zlog_debug(zc_blackFec, "removeHeaders for parity packet: %d", i);
 	    /* remove headers.						*/
 	    length = fecblock->packets[i]->length;
 	    f->bpacketptrs[i] = blackFecActuator_removeHeaders(fecblock->packets[i]->packetdata,
@@ -352,51 +318,23 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
     /* copy the information from the given packetinfo structure.	*/
     /* remove the headers.						*/
     // XXX: TODO: This assumes this packet (blockindex) is parity packet.
-    zlog_debug(zc_blackFec, "removeHeaders for parity packet blockindex: %d", blockIndex);
     length = pinfo->length;
     f->bpacketptrs[blockIndex] = blackFecActuator_removeHeaders(pinfo->packetdata,
 							    &length);
     f->bpacketsizes[blockIndex] = length;
 
     /* call the packet regeneration code.				*/
-    zlog_debug(zc_blackFec, "Calling rse_code(%d, %d, %d, 0x%p, 0x%p, 0x%p)",
-	       k, 0, maxpacketsize, f->bpacketptrs, f->bpacketsizes, f->bpstat);
     for (i = 0; i < n; i++)
 	zlog_trace(zc_blackFec, "[%d]: f->bpacketptrs = %p, f->bpacketsizes = %u, f->bpstat = 0x%02x", i, f->bpacketptrs[i], f->bpacketsizes[i], f->bpstat[i]);
     rse_code(k, 0, maxpacketsize, f->bpacketptrs, f->bpacketsizes, f->bpstat);
-
-    /* debugging... */
-    for (i = 0; i < n; i++) {
-	if (i < k) {
-	    zlog_debug(zc_blackFec, "Block %d, Source packet %d: packetsize=%d, f->bpstat=%d, first word=0x%08x",
-		       fecblock->blockSeq,    
-		       i, f->bpacketsizes[i], f->bpstat[i],
-		       f->bpacketptrs[i] != 0
-		       ? *((unsigned int *) f->bpacketptrs[i])
-		       : 0);
-	}
-	else {
-	    zlog_debug(zc_blackFec, "Block %d, Parity packet %d: packetsize=%d, pstat=%d, first word=0x%08x",
-		       fecblock->blockSeq,
-		       i, f->bpacketsizes[i], f->bpstat[i],
-		       f->bpacketptrs[i] != 0
-		       ? *((unsigned int *) f->bpacketptrs[i])
-		       : 0);
-	}
-	hex_dump(zc_blackFec, ZLOG_LEVEL_DEBUG, f->bpacketptrs[i], f->bpacketsizes[i], "Length %u: Block %d, Source packet %d", length, fecblock->blockSeq, i);
-    }
 
     /* create the packetinfo structures for the regenerated packets.	*/
     for (i = 0; i < k; i++) {
 	/* only generate structure for packet that was missing.		*/
 	if (fecblock->packets[i] == 0) {
-	    zlog_debug(zc_blackFec, "Regenerating source packet %d of %d.",
-		       i, k);
 	    /* expect non-zero first byte of IP header.  If zero,	*/
 	    /* the regenerated packet never existed.			*/
 	    if (f->bpacketptrs[i][0] == 0) {
-		zlog_debug(zc_blackFec, "Regenerated null packet %d ptr %p.  Not forwarding.", i, f->bpacketptrs[i]);
-		hex_dump(zc_blackFec, ZLOG_LEVEL_TRACE, f->bpacketptrs[i], f->bpacketsizes[i], "Length %u: null packet", length);
 		free(f->bpacketptrs[i]);
 		continue;
 	    }
@@ -414,19 +352,14 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
 
 	    /* thought we could use the data as is since we allocated	*/
 	    /* the space earlier, but causes problems.			*/
-	    /*	    newpinfo->packetdata = f->bpacketptrs[i]; 
-		    newpinfo->length = f->bpacketsizes[i];*/
 	    newpinfo->packetdata = calloc(f->bpacketsizes[i], sizeof(unsigned char));
 	    memcpy(newpinfo->packetdata, f->bpacketptrs[i], f->bpacketsizes[i]); 
-	    // newpinfo->length = f->bpacketsizes[i];
 
 	    /* adjust the IP header.					*/
 	    /* copy information from given parity packet.		*/
 	    ipheader = (struct ip *) pinfo->packetdata;
 	    newipheader = (struct ip *) newpinfo->packetdata;
-	    // newipheader->ip_len = htons(newpinfo->length);
 	    newipheader->ip_ttl = ipheader->ip_ttl;
-	    //	    newipheader->ip_sum = ?
 
 	    newpinfo->length = ntohs(newipheader->ip_len);
 
@@ -439,14 +372,8 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
 	    newpinfo->remaindersize = newpinfo->length - newpinfo->iphdrsize;
 
 	    /* adjust parameters.					*/
-	    // newpinfo->flowSeq = fecblock->blockSeq + i;
 	    newpinfo->blockIndex = i;
 	    newpinfo->isParity = 0;
-
-	    zlog_notice(zc_blackFec, "Regenerated packet (source packet %d of %d).  Data=%p",
-		        i, k, newpinfo->packetdata);
-	    //hex_dump(zc_blackFec, ZLOG_LEVEL_TRACE, newpinfo->packetdata, 20, "Length %u: Regenerated packet %d (source packet %d of %d)", newpinfo->length, newpinfo->flowSeq, i, k);
-	    hex_dump(zc_blackFec, ZLOG_LEVEL_DEBUG, newpinfo->packetdata, newpinfo->length, "Length %u: Regenerated packet <NA> (source packet %d of %d)", newpinfo->length, i, k);
 	}
     }	
 
@@ -479,8 +406,6 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
     struct packetinfo *newpinfo;
 				/* regenerated packet list.		*/
 
-    zlog_debug(zc_blackFec, "blackFecActuator_initBlockWithPacket().");
-
     /* initilize the block.						*/
     fecblock->blockSeq = blockSeq;
     fecblock->k = k;
@@ -494,32 +419,13 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
     if (isParity) {
 	fecblock->packets[pindex] = pinfo;
 	if (fecblock->packetCount == fecblock->k) {
-	    zlog_debug(zc_blackFec, "initBlock: parity packet completes block.  Regenerating missing packets.");
 	    fecblock->complete = 1;
 	    newpinfo
 		= blackFecActuator_regenerateMissingPackets(f,
 							    fecblock,
 							    pinfo);
 	    // FREE: We still need to free this since a new packet info is created
-	    // packetinfo_free(pinfo);
-
-	    // zlog_info(zc_blackFec, "Sending parity packet packetinfo %p to aggregator: %d/%d", pinfo, pinfo->inLinkSeq, pinfo->outLinkSeq);
-
-	    // if(pinfo->srcEnclaveId == 0 || pinfo->dstEnclaveId == 0)
-	    // {
-	    //	zlog_warn(zc_blackFec,
-	    //		  "%s:%d srcEnclaveId=%d, dstEnclaveId=%d, capturePoints=%d, tuple=%s",
-	    //		  __FILE__, __LINE__,
-	    //		  pinfo->srcEnclaveId, pinfo->dstEnclaveId,
-	    //		  pinfo->capturePointsVisited,
-	    //		  pinfo->pflow->tuplestr_buff);
-	    // } 
-	    // packetinfo_auditAdd(pinfo);
-			// in immediate capture reporting, we're suppressing this sender 2 aggregator, but
-			// we then have to free the pinfo memory
 			packetinfo_free(pinfo);
-
-	    // fistq_enqueue_pinfo(sender2aggregator, pinfo, FISTQ_FLUSH);
 
 	    return newpinfo;
 	}
@@ -531,9 +437,6 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
     /* to be made in case it is needed to regenerate a missing packet.	*/
     else {
 	if (fecblock->packets[pindex] != 0) {
-	    zlog_error(zc_blackFec,
-		      "Saving packet %p to pindex %d, already occupied with %p.  RARE CASE",
-		      pinfo, pindex, fecblock->packets[pindex]);
 	    /* don't know which should have been the valid packet,	*/
 	    /* but can't let this index be counted twice - otherwise	*/
 	    /* will result in some other index having null pointer when	*/
@@ -542,7 +445,6 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
 	    fecblock->packetCount--;
 	}
 	if (fecblock->packetCount == fecblock->k) {
-	    zlog_debug(zc_blackFec, "initBlock: source packet completes block.  Emitting.");  
 	    fecblock->complete = 1;
 	    fecblock->packets[pindex] = 0;
 	}
@@ -571,34 +473,21 @@ struct packetinfo *blackFecActuator_addPacketToBlock(struct flow *f,
     struct packetinfo *newpinfo;	/* copy of original packetinfo	*/
 			    		/* structure.			*/
 
-    zlog_debug(zc_blackFec, "addPacketToBlock... complete=%d, parity=%d",
-	       fecblock->complete, pinfo->isParity);
-    fecBlock_log(zc_blackFec, fecblock);
-
     /* if the block is already complete, drop the packet		*/
     /* (which must be a parity packet).					*/
     if (fecblock->complete == 1) {
-	zlog_debug(zc_blackFec, "Already complete.  Freeing packet %p.", pinfo);
 
 	// FREE: Still needs to be freed
-	// packetinfo_free(pinfo);
-
-	zlog_info(zc_blackFec, "Sending packetinfo %p to aggregator:", pinfo);
 
 	packetinfo_free(pinfo);
-
-	// fistq_enqueue_pinfo(sender2aggregator, pinfo, FISTQ_FLUSH);
 
 	return 0;
     }
 
     fecblock->packetCount++;
-    zlog_debug(zc_blackFec, "packetcount=%d, k=%d.",
-	       fecblock->packetCount, fecblock->k);
     
     /* packet completes block.						*/
     if (fecblock->packetCount == fecblock->k) {
-	zlog_debug(zc_blackFec, "Packet completes block.");
 	/* mark the block as complete.					*/
 	fecblock->complete = 1;
 	/* if it's a parity packet, then recompute missing packets.	*/
@@ -607,25 +496,14 @@ struct packetinfo *blackFecActuator_addPacketToBlock(struct flow *f,
 		= blackFecActuator_regenerateMissingPackets(f,
 							    fecblock,
 							    pinfo);
-	    zlog_debug(zc_blackFec, "Freeing parity packet %p used to regenerate missing packets.", pinfo);
 	    // FREE:
-	    // packetinfo_free(pinfo);	/* no longer need it.		*/
-
-	    // zlog_info(zc_blackFec, "Sending packetinfo %p to aggregator:", pinfo);
-	    // packetinfo_auditAdd(pinfo);
-	    // in immediate capture reporting, we're suppressing this sender 2 aggregator, but
-	    // we then have to free the pinfo memory
 	    packetinfo_free(pinfo);
 
-	    // fistq_enqueue_pinfo(sender2aggregator, pinfo, FISTQ_FLUSH);
-
 	    /* return the list of regenerated packets.			*/
-	    zlog_debug(zc_blackFec, "Complete: Parity packet - returning regenerated packets.");
 	    return newpinfo;
 	}
 	/* if it's a source packet, just emit the packet.		*/
 	else {
-	    zlog_debug(zc_blackFec, "Complete: Source packet - returning original packet.");
 	    return pinfo;
 	}
     }
@@ -634,11 +512,7 @@ struct packetinfo *blackFecActuator_addPacketToBlock(struct flow *f,
     /* a source packet, save a copy and return the original.		*/
     /* If it's a parity packet, save it, and return nothing.		*/
     else {
-	zlog_debug(zc_blackFec, "Packet does not complete block.");
 	if (fecblock->packets[pinfo->blockIndex] != 0) {
-	    zlog_error(zc_blackFec,
-		      "Saving packet %p to pinfo->blockIndex %d, already occupied with %p.",
-		      pinfo, pinfo->blockIndex, fecblock->packets[pinfo->blockIndex]);
 	    /* don't know which should have been the valid packet,	*/
 	    /* but can't let this index be counted twice - otherwise	*/
 	    /* will result in some other index having null pointer when	*/
@@ -648,13 +522,10 @@ struct packetinfo *blackFecActuator_addPacketToBlock(struct flow *f,
 	}
 	if (pinfo->isParity) {
 	    fecblock->packets[pinfo->blockIndex] = pinfo;
-	    zlog_debug(zc_blackFec, "Incomplete: Stored parity packet.  Returning 0.");
 	    return 0;
 	}
 	else {
 	    fecblock->packets[pinfo->blockIndex] = packetinfo_copyWithData(pinfo);
-
-	    zlog_debug(zc_blackFec, "Incomplete: Stored copy of source packet.  Returning original.");
 	    return pinfo;
 	}
     }
@@ -681,6 +552,28 @@ struct packetinfo *blackFecActuator_addPacketToBlock(struct flow *f,
 /*									*/
 /************************************************************************/
 
+//Eliminate GOTO
+u_int32_t blackFecActuator_return(struct packetinfo **pbeg, 
+  struct packetinfo **pend, struct packetinfo *returnlist) {
+  struct packetinfo *p;
+  struct packetinfo *pinfo;
+
+  /* the beginning of the list.         */
+  *pbeg = returnlist;
+  /* find the end of the list.          */
+  for (pinfo = returnlist; pinfo != 0 && pinfo->next != 0; pinfo = pinfo->next) {
+    /* do nothing.              */
+  }
+  *pend = pinfo;
+
+  if (*pbeg == 0) {
+    return STATE_NOSEND;
+  }
+  else {
+    return STATE_CONTINUE;
+  }
+}
+
 DECLARE(blackFecActuator)
 //struct packetinfo *blackFecActuator(struct packetinfo *pinfo)
 {
@@ -706,10 +599,6 @@ DECLARE(blackFecActuator)
     struct packetinfo *returnlist;
 				/* list of packet structures to return.	*/
 
-    zlog_debug(zc_blackFec, "*** blackFecActuator() %s",
-	       // pinfo->srcEnclave->id, pinfo->dstEnclave->id,
-	       pinfo->pflow->tuplestr_buff);
-
     /* get the FEC parameters from the packet.				*/
     packetinfo_getAParam(pinfo, &fecparams, sizeof(struct fecParams));
     k = fecparams.fec_k;
@@ -718,16 +607,6 @@ DECLARE(blackFecActuator)
     flowSeq = ntohl(fecparams.block_seq);
     blockSeq = 0;
     pinfo->blockIndex = pindex;
-    zlog_debug(zc_blackFec, "Got FEC parameters from %p, fec_k=%d, fec_h=%d, fec_seq=%d block_seq=%d",
-	       pinfo, k, h, pindex, blockSeq);
-    
-    flowTuple_log(zc_blackFec, ZLOG_LEVEL_DEBUG, pinfo->tuple);
-
-    /* get the needed information from the deduce header.		*/
-    // dheader = packetinfo_get_deducehdrFromExternal(pinfo);
-    // flowSeq = deducehdr_getFlowSequence(dheader);
-
-    deducehdr_logAll(zc_blackFec, ZLOG_LEVEL_DEBUG, packetinfo_get_deducehdrFromPacket(pinfo), pinfo->actuatorParams, pinfo->deduceparamsizeWithPad);
 
     /* determine whether source or parity packet and determine the	*/
     /* block number for the packet.  The block is identified by the flow*/
@@ -746,10 +625,6 @@ DECLARE(blackFecActuator)
 	// blockSeq = 0 ;            // TO DO: Add it to deduce header, or make it a parameter
     }
 
-    zlog_debug(zc_blackFec, "%s pinfo=%p, k=%d, h=%d,  blockseq=%d pindex=%d isParity=%d",
-	       pinfo->pflow->tuplestr_buff,
-	       pinfo, k, h, blockSeq, pindex, isParity);
-
     /* FEC state is stored in the flow structure associated with the	*/
     /* packet.								*/
     f = pinfo->pflow;
@@ -763,7 +638,6 @@ DECLARE(blackFecActuator)
     /* handle case of empty block list.  Create a new block for the	*/
     /* packet and initialize the list.					*/
     if (currblock == 0) {
-	zlog_debug(zc_blackFec, "Empty block list.  Initializing.");
 	
 	/* initialize the block list with a new block structure.	*/
 	currblock = fecBlock_new();
@@ -771,9 +645,6 @@ DECLARE(blackFecActuator)
 	f->blockListTail = currblock;
 	/* initialize the new block structure with the information	*/
 	/* from the current packet.					*/
-	zlog_debug(zc_blackFec,
-		   "Before blackFecActuator_initBlockWithPacket()");
-	fecBlock_log(zc_blackFec, currblock);
 	returnlist = blackFecActuator_initBlockWithPacket(
 					     f,
 					     currblock,
@@ -784,13 +655,8 @@ DECLARE(blackFecActuator)
 					     pindex,
 					     isParity,
 					     currTime + FECTIMEOUT);
-	zlog_debug(zc_blackFec, "After blackFecActuator_initBlockWithPacket()");
-	fecBlock_log(zc_blackFec, currblock);
-	goto RETURN;
+	return blackFecActuator_return(pbeg, pend, returnlist);
     }
-
-    zlog_debug(zc_blackFec, "Current block.  Packet's blockSeq=%d", blockSeq);
-    fecBlock_log(zc_blackFec, currblock);
 
     /* packet is for current block.  This implies that the packet's	*/
     /* FEC type is the same as that of the current block.  Add the	*/
@@ -799,15 +665,12 @@ DECLARE(blackFecActuator)
     /* packets will be returned.  Parity packets will just be stored	*/
     /* or deleted.							*/
     if (blockSeq == currblock->blockSeq) {
-	zlog_debug(zc_blackFec, "Adding packet to current block.");
 	
 	returnlist = blackFecActuator_addPacketToBlock(f,
 						       currblock,
 						       pinfo);
-	zlog_debug(zc_blackFec, "After addPacketToBlock()");
-	fecBlock_log(zc_blackFec, currblock);
 	
-	goto RETURN;
+	return blackFecActuator_return(pbeg, pend, returnlist);
     }
 
     /* packet is for a newer block (i.e. a block following the current	*/
@@ -816,7 +679,6 @@ DECLARE(blackFecActuator)
     /* block.  If the previous block hasn't completed it will		*/
     /* eventually complete and/or expire.				*/
     else if (blockSeq > currblock->blockSeq) {
-	zlog_debug(zc_blackFec, "Adding packet to later block.");
 
 	/* insert a new block structure into the block list.		*/
 	oldblock = currblock;
@@ -826,8 +688,6 @@ DECLARE(blackFecActuator)
 	pinfo->pflow->blockListTail = currblock;
 	/* initialize the new block structure with the information	*/
 	/* from the current packet.					*/
-	zlog_debug(zc_blackFec, "Before blackFecActuator_initBlockWithPacket()");
-	fecBlock_log(zc_blackFec, currblock);
 	returnlist = blackFecActuator_initBlockWithPacket(
 		f,
 		currblock,
@@ -838,16 +698,13 @@ DECLARE(blackFecActuator)
 		pindex,
 		isParity,
 		currTime + FECTIMEOUT);
-	zlog_debug(zc_blackFec, "After blackFecActuator_initBlockWithPacket()");
-	fecBlock_log(zc_blackFec, currblock);
 	
-	goto RETURN;
+	return blackFecActuator_return(pbeg, pend, returnlist);
     }
 
     /* packet belongs to a previous block.  The block could be of the	*/
     /* same FEC type as the current block or a different FEC type.	*/
     else {	/* blockSeq < fecblock->blockSeq			*/
-	zlog_debug(zc_blackFec, "Adding packet to earlier block.");
 
 	/* find the block.  While searching, delete expired blocks	*/
 	/* if convenient.  (If the packet belongs to an expired block,	*/
@@ -860,7 +717,6 @@ DECLARE(blackFecActuator)
 	    
 	    /* delete expired blocks.					*/
 	    if (currTime > fecblock->timeout) {
-		zlog_debug(zc_blackFec, "Deleting expired block.");
 		/* packet is from earlier block than block that is	*/
 		/* timed out.  There's no information about it's	*/
 		/* block so just release it (if a source packet)	*/
@@ -868,26 +724,8 @@ DECLARE(blackFecActuator)
 		if (blockSeq <= fecblock->blockSeq) {
 		    /* drop/free expired parity packet.			*/
 		    if (isParity) {
-			zlog_debug(zc_blackFec, "Discarding (freeing) expired parity packet %p.", pinfo);
 			// FREE:
-			//			packetinfo_free(pinfo);
-			// zlog_info(zc_blackFec, "Sending packetinfo %p to aggregator: %d/%d", pinfo, pinfo->inLinkSeq, pinfo->outLinkSeq);
-
-			// if(pinfo->srcEnclaveId == 0 || pinfo->dstEnclaveId == 0)
-			// {
-			//    zlog_warn(zc_blackFec,
-			//	      "%s:%d srcEnclaveId=%d, dstEnclaveId=%d, capturePoints=%d, tuple=%s",
-			//	      __FILE__, __LINE__,
-			//	      pinfo->srcEnclaveId, pinfo->dstEnclaveId,
-			//	      pinfo->capturePointsVisited,
-			//	      pinfo->pflow->tuplestr_buff);
-			// }
-			// packetinfo_auditAdd(pinfo);
-	    // in immediate capture reporting, we're suppressing this sender 2 aggregator, but
-	    // we then have to free the pinfo memory
 	    packetinfo_free(pinfo);
-
-			// fistq_enqueue_pinfo(sender2aggregator, pinfo, FISTQ_FLUSH);
 
 			pinfo = 0;
 		    }
@@ -908,16 +746,13 @@ DECLARE(blackFecActuator)
 			fecblock->next->prev = fecblock->prev;
 		    }
 		    /* delete the block and any saved packets.		*/
-		    zlog_debug(zc_blackFec, "About to free fecBlock %p.", fecblock);
 		    fecBlock_free(fecblock);
-		    zlog_debug(zc_blackFec, "Successfully freed.");
 		    /* release source packet even if expired.  This	*/
 		    /* will be a duplicate if the packet was		*/
 		    /* regenerated earlier.  This should be a rare	*/
 		    /* case.						*/
-		    zlog_debug(zc_blackFec, "Returning expired source packet %p.", pinfo);
 		    returnlist = pinfo;
-		    goto RETURN;
+		    return blackFecActuator_return(pbeg, pend, returnlist);
 		}
 	    }
 	    
@@ -932,7 +767,6 @@ DECLARE(blackFecActuator)
 	    /* cause problems except for an occasional duplicated	*/
 	    /* source packet.						*/
 	    if (fecblock->blockSeq > blockSeq) {
-		zlog_warn(zc_blackFec, "Packet for missing block.  Creating block.  UNCOMMON CASE.");
 		/* insert a new block structure into the block list.	*/
 		newblock = fecBlock_new();
 		newblock->next = fecblock;
@@ -946,8 +780,6 @@ DECLARE(blackFecActuator)
 		}
 		/* initialize the new block structure with the		*/
 		/* information from the current packet.			*/
-		zlog_debug(zc_blackFec, "Before blackFecActuator_initBlockWithPacket()");
-		fecBlock_log(zc_blackFec, fecblock);
 		/* Note: had been initializing fecblock rather than	*/
 		/* newblock, and was getting rare core dumps.  With	*/
 		/* this fix, shouldn't have the core dumps.		*/
@@ -962,89 +794,32 @@ DECLARE(blackFecActuator)
 			pindex,
 			isParity,
 			currTime + FECTIMEOUT);
-		zlog_debug(zc_blackFec, "After blackFecActuator_initBlockWithPacket()");
-		fecBlock_log(zc_blackFec, fecblock);
-		goto RETURN;
+		return blackFecActuator_return(pbeg, pend, returnlist);
 	    }
 	    
 	    /* packet is in the block.  Add the packet to the block.	*/
 	    else if (fecblock->blockSeq == blockSeq) {
-		zlog_debug(zc_blackFec, "Packet is in block %d.  Adding packet to block.", blockSeq);
 		returnlist = blackFecActuator_addPacketToBlock(f,
 							       fecblock,
 							       pinfo);
-		zlog_debug(zc_blackFec, "After addPacketToBlock()");
-		fecBlock_log(zc_blackFec, fecblock);
-		goto RETURN;
+		return blackFecActuator_return(pbeg, pend, returnlist);
 	    }
 	    else {
-		zlog_debug(zc_blackFec, "Packet doesn't match fecblock.  Checking next block.");
 	    }
 	}
-	zlog_debug(zc_blackFec, "Dropped out of earlier block loop.");
 	/* all earlier blocks must have expired.			*/
 	/* discard parity packet.  Release source packet.		*/
 	if (isParity) {
-	    zlog_debug(zc_blackFec, "Reporting expired parity packet %p.", pinfo);
 
 	    // FREE:
-	    // packetinfo_free(pinfo);
-	    // zlog_debug(zc_blackFec, "Successfully freed.");
-
-	    //zlog_info(zc_blackFec, "Sending packetinfo %p to aggregator: %d/%d", pinfo, pinfo->inLinkSeq, pinfo->outLinkSeq);
-	    //if(pinfo->srcEnclaveId == 0 || pinfo->dstEnclaveId == 0)
-	    //{
-	    //	zlog_warn(zc_blackFec,
-	    //		  "%s:%d srcEnclaveId=%d, dstEnclaveId=%d, capturePoints=%d, tuple=%s",
-	    //		  __FILE__, __LINE__,
-	    //		  pinfo->srcEnclaveId, pinfo->dstEnclaveId,
-	    //		  pinfo->capturePointsVisited,
-	    //		  pinfo->pflow->tuplestr_buff);
-	    //}
-	    // packetinfo_auditAdd(pinfo);
-	    // in immediate capture reporting, we're suppressing this sender 2 aggregator, but
-	    // we then have to free the pinfo memory
 	    packetinfo_free(pinfo);
-
-	    // fistq_enqueue_pinfo(sender2aggregator, pinfo, FISTQ_FLUSH);
 
 	    pinfo = 0;
 	    returnlist = 0;
 	}
 	else {
-	    zlog_debug(zc_blackFec, "Releasing expired source packet %p.", pinfo);
 	    returnlist = pinfo;
 	}
-    }
-
- RETURN:
-    zlog_debug(zc_blackFec, "Returning...  returnlist=%p", returnlist);
-    struct packetinfo *p;
-    for (p = returnlist; p != 0; p = p->next) {
-	zlog_debug(zc_blackFec, "\tpinfo=%p, pflow=%p blockSeq=<NA> blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   // p->flowSeq,
-		   // p->isParity ? p->flowSeq : (p->flowSeq - p->blockIndex),
-		   p->blockIndex,
-		   p->isParity);
-    }
-
-    /* the beginning of the list.					*/
-    *pbeg = returnlist;
-    /* find the end of the list.					*/
-    for (pinfo = returnlist;
-	 pinfo != 0 && pinfo->next != 0;
-	 pinfo = pinfo->next) {
-	/* do nothing.							*/
-    }
-    *pend = pinfo;
-
-    if (*pbeg == 0) {
-	return STATE_NOSEND;
-    }
-    else {
-	return STATE_CONTINUE;
     }
 }
 
