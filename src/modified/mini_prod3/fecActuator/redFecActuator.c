@@ -113,9 +113,6 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
 				/* value as first source packet		*/
 				/* sequence number.			*/    
 
-    zlog_debug(zc_redFec, "redFecActuator_generateParity(%p, %p)",
-	       f, pinfo);
-
     /* make sure no stray pointer.		*/
     if (pinfo != 0) {
 	pinfo->next = 0;
@@ -174,11 +171,8 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
 	if (p->length > maxlength) {
 	    maxlength = p->length;
 	}
-	hex_dump(zc_redFec, ZLOG_LEVEL_DEBUG, f->packetptrs[pindex], f->packetsizes[pindex], "Length %u: Block NA, Source packet %d", f->packetsizes[pindex], pindex);
 	pindex++;
     }
-
-    zlog_debug( zc_redFec, "pindex = %d, fec parity (k) = %d", pindex, f->fec_k ) ;
 
     assert(pindex < f->fec_k);
 
@@ -193,7 +187,6 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
 	if (pinfo->length > maxlength) {
 	    maxlength = pinfo->length;
 	}
-	hex_dump(zc_redFec, ZLOG_LEVEL_DEBUG, f->packetptrs[pindex], f->packetsizes[pindex], "Length %u: Block NA, Source packet %d", f->packetsizes[pindex], pindex);
 	pindex++;
     }
 
@@ -207,31 +200,8 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
     }
 
     /* generate the parity packets.					*/
-    zlog_debug(zc_redFec, "Calling rse_code(%d, %d, %d, 0x%p, 0x%p, 0x%p)",
-	       f->fec_k, f->fec_h, maxlength, f->packetptrs, f->packetsizes, f->pstat);
     rse_code(f->fec_k, f->fec_h, maxlength,
 	     f->packetptrs, f->packetsizes, f->pstat);
-
-    /* debugging... */
-    for (pindex = 0; pindex < f->fec_n; pindex++) {
-	if (pindex < f->fec_k) {
-	    zlog_debug(zc_redFec, "Block %d Source packet %d: packetsize=%d, pstat=%d, first word=0x%08x",
-		       paritySeq,
-		       pindex, f->packetsizes[pindex], f->pstat[pindex],
-		       f->packetptrs[pindex] != 0
-		       ? *((unsigned int *) f->packetptrs[pindex])
-		       : 0);
-	}
-	else {
-	    zlog_debug(zc_redFec, "Block %d, Parity packet %d: packetsize=%d, pstat=%d, first word=0x%08x",
-		       paritySeq, 
-		       pindex, f->packetsizes[pindex], f->pstat[pindex],
-		       f->packetptrs[pindex] != 0
-		       ? *((unsigned int *) f->packetptrs[pindex])
-		       : 0);
-	}
-	hex_dump(zc_redFec, ZLOG_LEVEL_DEBUG, f->packetptrs[pindex], f->packetsizes[pindex], "Length %u: Block %d, Source packet NA", f->packetsizes[pindex], pindex);
-    }
 
     /* free the copies of the source packet data.			*/
     for (pindex = 0; pindex < f->fec_k; pindex++) {
@@ -249,11 +219,6 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
     else {
 	base_pinfo = f->fecBlockTail;
     }
-
-    zlog_debug(zc_redFec, "base_pinfo=%p, base_pinfo->pflow=%p, base_pinfo->blockIndex=%d",
-	       base_pinfo,
-	       base_pinfo->pflow,
-	       base_pinfo->blockIndex);
 
     for (pindex = f->fec_k; pindex < f->fec_n; pindex++) {
 	struct udphdr *udph;
@@ -307,16 +272,12 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
 	bufptr += sizeof(struct udphdr);
 
 	/* copy the generated parity payload into the packet.		*/
-	zlog_debug(zc_redFec, "Copying %d byte parity into f->packetptrs[%d] (max parity size=%d).",
-		  f->packetsizes[pindex], pindex, maxlength);
 	memcpy(bufptr, f->packetptrs[pindex], f->packetsizes[pindex]);
 
 	/* free memory allocated for parity data.			*/
 	free(f->packetptrs[pindex]);
 	f->packetptrs[pindex] = 0;
 	f->packetsizes[pindex] = 0;
-	zlog_debug(zc_redFec, "Generated parity packet %d:", pindex);
-	hex_dump(zc_redFec, ZLOG_LEVEL_TRACE, new_pinfo->packetdata, new_pinfo->length, "Length %u: Generated parity packet %d: %p", new_pinfo->length, pindex, new_pinfo);
 	/* add generated parity packet to returned packet list.		*/
 	if (pinfotail == 0) {
 	    pinfolist = new_pinfo;
@@ -325,7 +286,6 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
 	    pinfotail->next = new_pinfo;
 	}
 	pinfotail = new_pinfo;
-	zlog_debug(zc_redFec, "new_pinfo->pflow = %p", new_pinfo->pflow);
     }
 
     /* free the stored copies of source packets.			*/
@@ -337,18 +297,6 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
     }
     f->fecBlockHead = 0;
     f->fecBlockTail = 0;
-
-    /* debugging... */
-    zlog_debug(zc_redFec, "generateParity returning...");
-    for (p = pinfolist; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p flowSeq=%d blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
-	packetinfo_log(zc_redFec, ZLOG_LEVEL_DEBUG, p);
-    }
 
     return pinfolist;
 }
@@ -390,18 +338,6 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
     /* state is stored in the flow structure associated with the	*/
     /* packet.								*/
     f = pinfo->pflow;
-    zlog_debug(zc_redFec, "*** redFecActuator() - %s",
-	       f->tuplestr_buff);
-
-    zlog_debug(zc_redFec, "Stored packets at start:");
-    for (p = f->fecBlockHead; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p flow_seq=%u, blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
-    }
 
     /* get the FEC parameters from the composition.			*/
     k = pinfo->comp->fec_k;
@@ -419,17 +355,11 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
     /* The first time, the flow's fec_type should be 0, but the		*/
     /* fecPacketCount should also be zero, so the flow's fec_type	*/
     /* should be initialized without any parity generation.		*/
-    zlog_debug(zc_redFec,
-	       "f->fec_k=%d, f->fec_h=%d, comp->fec_k=%d, comp->fec_h=%d",
-	       f->fec_k, f->fec_h,
-	       pinfo->comp->fec_k, pinfo->comp->fec_n);
     prepend_pinfo = 0;
     if ((pinfo->comp->fec_k != f->fec_k)
 	|| (pinfo->comp->fec_h != f->fec_h)) {
 	/*    if (pinfo->comp->fec_type != f->fec_type) {*/
 	if (f->fecPacketCount > 0) {
-	    zlog_debug(zc_redFec, "generating parity for previous FEC block (fec_k=%d, fec_h=%d)",
-		       f->fec_k, f->fec_h);
 	    prepend_pinfo = redFecActuator_generateParity(f, 0);
 	}
 
@@ -438,30 +368,12 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
 	f->fec_h = h;
 	f->fec_n = k + h;
 	f->fecPacketCount = 0;
-	zlog_debug(zc_redFec, "changed FEC type to k=%d, h=%d\n",
-		   f->fec_k, f->fec_n);
-    }
-
-    /* debugging. */
-    zlog_debug(zc_redFec, "Checked for changed FEC.  If so generated parity...");
-    for (p = prepend_pinfo; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p, flow_seq=%u, blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
     }
 
     pinfo->blockIndex = f->fecPacketCount;
-    zlog_debug(zc_redFec, "Checking for complete block.  Current blockIndex=%d.\n",
-	       f->fecPacketCount);
-
 
     /* if the new packet completes a block then generate parity packets	*/
     if (++(f->fecPacketCount) >= k) {
-	zlog_debug(zc_redFec, "Block is complete (%d packets).  Generating parity.",
-		   f->fecPacketCount);
 	pinfo = redFecActuator_generateParity(f, pinfo);
 	f->fecPacketCount = 0;
     }
@@ -470,8 +382,6 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
     /* list for the block.  The packet count has already been updated	*/
     /* above.								*/
     else {
-	zlog_debug(zc_redFec, "Block is not complete (%d packets).  Saving copy of packet.\n",
-		   f->fecPacketCount);
 	pcopy = packetinfo_copyWithData(pinfo);
 	if (f->fecBlockHead == 0) {
 	    f->fecBlockHead = pcopy;
@@ -482,20 +392,8 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
 	f->fecBlockTail =  pcopy;
     }
 
-    /* debugging. */
-    zlog_debug(zc_redFec, "Checked for completed block.  If so generated parity...");
-    for (p = pinfo; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p, flow_seq=%u, blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
-    }
-
     /* prepend packets from a preceding FEC block.			*/
     if (prepend_pinfo != 0) {
-	zlog_debug(zc_redFec, "Prepending packets from preceding block.");
 	for (p = prepend_pinfo; p != 0; p = p->next) {
 	    if (p->next == 0) {
 		p->next = pinfo;
@@ -505,38 +403,11 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
 	pinfo = prepend_pinfo;
     }
 
-    zlog_debug(zc_redFec, "Stored packets at end:");
-    for (p = f->fecBlockHead; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p, flow_seq=%u, blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
-    }
-
-    zlog_debug(zc_redFec, "Final pinfo list:");
-    for (p = pinfo; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p, flow_seq=%u, blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
-    }
-
     /* add the FEC parameters to the packets, and determine the		*/
     /* tail of the packet list.						*/
-    zlog_debug(zc_redFec, "Adding FEC parameters:");
     
     plisttail = pinfo;		/* in case pinfo is null.		*/
     for (p = pinfo; p != 0; p = p->next) {
-	zlog_debug(zc_redFec, "\tpinfo=%p, pflow=%p, flow_seq=%u, blockIndex=%d, isParity=%d",
-		   p,
-		   p->pflow,
-		   p->flow_seq,
-		   p->blockIndex,
-		   p->isParity);
 	plisttail = p;		/* the last time through the loop, this	*/
 				/* will be the tail of the list.	*/
 	fecparams.fec_k = p->fec_k;
@@ -544,20 +415,11 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
 	fecparams.fec_seq = p->blockIndex;
 	fecparams.reserved = 0;
 	fecparams.block_seq = htonl(p->flow_seq);
-	zlog_debug(zc_redFec, "Adding parameters to %p: fec_k=%d, fec_h=%d, fec_seq=%d",
-		   p, fecparams.fec_k, fecparams.fec_h, fecparams.fec_seq);
 	packetinfo_addAParam(p, &fecparams, sizeof(struct fecParams));
     }
 
     *pbeg = pinfo;
     *pend = plisttail;
-
-    zlog_debug(zc_redFec, "*pbeg = %p, *pend = %p", *pbeg, *pend);
-    for (p = pinfo; p != 0; p = p->next) {
-	hex_dump(zc_redFec, ZLOG_LEVEL_TRACE, p->packetdata, p->length, "Length %u: End of %s: %p", p->length, __func__, p);
-	packetinfo_log(zc_redFec, ZLOG_LEVEL_DEBUG, p);
-	deducehdr_logAll(zc_redFec, ZLOG_LEVEL_DEBUG, packetinfo_get_deducehdrFromPacket(p), p->actuatorParams, p->deduceparamsizeWithPad);
-    }
 
     if (*pbeg == 0) {
 	return STATE_NOSEND;
