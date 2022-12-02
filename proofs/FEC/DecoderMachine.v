@@ -196,9 +196,10 @@ list block * list packet * Z :=
   which makes the block timeout is the kth packet; we should not
   recover this block (it makes our invariants much harder).*)
 let tm := upd_time_m time curr blocks in
-let blks := filter (not_timed_out_m tm) blocks in
-let t := update_dec_state_m blks curr tm in
-(t, tm).
+let t := update_dec_state_m blocks curr tm in
+let blks := filter (not_timed_out_m tm) t.1 in
+(blks, t.2, tm).
+
 
 Definition decoder_multiple_steps_m
 (prev_packs packs: list fpacket)
@@ -285,6 +286,30 @@ Proof.
   by rewrite /Int.add/Int.one !Int.unsigned_repr_eq -Zplus_mod.
 Qed.
 
+Lemma not_timed_out_m_add (time: Z) (curr: fpacket) (b: block) :
+  not_timed_out_m time (add_packet_to_block_black curr b).1 =
+  not_timed_out_m time b.
+Proof.
+  by rewrite /not_timed_out_m add_black_time.
+Qed.
+
+Lemma not_timed_out_add (thresh: Z) (time: Z) (curr: fpacket) (b: block):
+  not_timed_out thresh time (add_packet_to_block_black curr b).1 =
+  not_timed_out thresh time b.
+Proof.
+  by rewrite /not_timed_out add_black_time.
+Qed.
+
+Opaque create_block_with_packet_black.
+
+(*TODO: move to Common, use more*)
+Lemma in_prop_tl: forall {A: eqType} (h: A) (s: seq A) (P: A -> Prop),
+  (forall x, x \in (h :: s) -> P x) ->
+  (forall x, x \in s -> P x).
+Proof.
+  move => A s h p Hall x Hxin. apply Hall. by rewrite in_cons Hxin orbT.
+Qed.
+
 (*Equality for one step, assuming invariant*)
 Lemma decoder_one_step_m_eq (blks: seq block) (time: Z) 
   (curr: fpacket) :
@@ -319,12 +344,11 @@ Proof.
   }
   f_equal=>//.
   rewrite Htime.
-  have->: [seq x <- blks | 
-    not_timed_out_m (upd_time time curr blks) x] =
-    [seq x <- blks | 
-    not_timed_out (Int.unsigned threshold) (upd_time time curr blks) x]. 
-    {
-    apply eq_in_filter => b Hinb.
+  have Hblkstime: forall b, b \in blks ->
+    not_timed_out_m (upd_time time curr blks) b =
+    not_timed_out (Int.unsigned threshold) (upd_time time curr blks) b.
+  {
+    move=> b Hinb.
     rewrite /not_timed_out_m/not_timed_out.
     rewrite -S32.seq_leq_leq.
     - f_equal.
@@ -341,33 +365,53 @@ Proof.
         have->: I32.half_modulus = Int.half_modulus by [].
         move: thresh_bound=>/=. rep_lia.
     }
+    move: Hblkstime.
     move: (upd_time time curr blks) => tm.
-    have: forall b, b \in 
-    [seq x <- blks | not_timed_out (Int.unsigned threshold) tm x] ->
-    (Z.of_nat (blk_id b) < Int64.half_modulus)%Z. {
-      move=> b'. rewrite mem_filter => /andP[_ Hinb]. by apply Hallid.
+    rewrite {Htime}.
+    move: Hthresh Hallid.
+    have Hadd: Int.add (Int.repr tm) threshold =
+    I32.repr (tm + Int.unsigned threshold). {
+      rewrite /Int.add.
+      apply Endian.int_unsigned_inj. (*TODO: move*)
+      rewrite !Int.unsigned_repr_eq.
+      by rewrite Zplus_mod_idemp_l.
     }
-    rewrite {Htime Hthresh Hallid}.
-    move: ([seq x <- blks | not_timed_out (Int.unsigned threshold) tm x] ) => bs.
-    (*Now show equality - similar to time proof above*)
-    elim: bs => [ _ // | b btl IH Hallid //=].
-    have Hbound: (z_abs_diff 
+    have Htm: (z_abs_diff tm (tm + Int.unsigned threshold) < I32.half_modulus)%Z. {
+      rewrite /z_abs_diff.
+      have->:(Z.abs (tm - (tm + Int.unsigned threshold)) =
+        Int.unsigned threshold) by rep_lia.
+      have: (Int.half_modulus / 2 < I32.half_modulus)%Z by [].
+      lia.
+    }
+    elim: blks=>[_ _ _ //| b btl IH Hthresh Hallid /= Hbtime].
+    - f_equal. rewrite /not_timed_out/not_timed_out_m /update_dec_state_m.
+      by rewrite /= create_black_time Hadd S32.seq_leq_leq //. 
+    - have Hbound: (z_abs_diff 
       (Z.of_nat (fd_blockId curr)) (Z.of_nat (blk_id b)) <
         Int64.half_modulus)%Z. {
         (*Easy: both are smaller than half_modulus*)
         rewrite /z_abs_diff.
         move: Hallid => /(_ _ (mem_head _ _)). rep_lia.
       }
-    rewrite S64.seq_eq_eq.
-    - rewrite znat_eq.
+      rewrite S64.seq_eq_eq; last first.
+        have: (Int64.half_modulus < I64.modulus)%Z by []. lia.
+      rewrite znat_eq.
+      have Htl: [seq x <- btl | not_timed_out_m tm x] =
+      [seq x <- btl | not_timed_out (Int.unsigned threshold) tm x] by
+        apply eq_in_filter => b' Hinb'; apply Hbtime;
+        rewrite in_cons Hinb' orbT.
       case: (fd_blockId curr == blk_id b) /eqP => [Heq|Hneq].
-      + by rewrite add_black_m_eq.
+      + rewrite add_black_m_eq //. simpl filter. 
+        by rewrite not_timed_out_m_add not_timed_out_add 
+          -(Hbtime b (mem_head _ _)) Htl.
       + rewrite S64.seq_lt_lt // znat_lt.
-        case: (fd_blockId curr < blk_id b) =>//.
-        rewrite IH // => b' Hinb'. 
-        apply Hallid. 
-        by rewrite in_cons Hinb' orbT.
-    - have: (Int64.half_modulus < I64.modulus)%Z by []. lia.
+        case: (fd_blockId curr < blk_id b) =>//=.
+        * by rewrite {1}/not_timed_out_m 
+          {1}/not_timed_out !create_black_time Hadd
+          S32.seq_leq_leq // (Hbtime b (mem_head _ _)) Htl.
+        * move: IH => /(_ (in_prop_tl Hthresh) (in_prop_tl Hallid) 
+          (in_prop_tl Hbtime)) [] ->->.
+          by rewrite (Hbtime _ (mem_head _ _)).
 Qed.
 
 (*Now, we have to prove preservation of the invariant.
@@ -385,68 +429,48 @@ Proof.
   rewrite /decoder_one_step/=.
   split.
   - move=> b.
-    have: forall b, b \in [seq x <- blks
-    | not_timed_out (Int.unsigned threshold)
-        (upd_time time curr blks) x] ->
-    ((upd_time time curr blks) <= 
-      black_time b + Int.unsigned threshold)%Z /\
-      (0 <= time - black_time b)%Z. {
-      move=> b'. rewrite mem_filter => /andP. 
-      rewrite /not_timed_out => [[]] /Z.leb_spec0 Hle Hinb'.
-      move: Hthresh => /(_ _ Hinb').
-      lia.
-    }
-    have:=(upd_time_bound time curr blks).
-    move: (upd_time time curr blks) => tm.
-    move: [seq x0 <- blks | not_timed_out (Int.unsigned threshold) tm x0] => bs.
-    rewrite {Hthresh Hallid blks}.
-    elim: bs => [// Htm Hallid /=|bhd btl IH Htm Hallid /=].
+    rewrite mem_filter /not_timed_out =>/andP[/Z.leb_spec0 Htime].
+    move=> Hinb.
+    split; try lia.
+    move: Hinb Hthresh. (*TODO: do we need Htime?*)
+    clear.
+    elim: blks => [//=| bhd btl IH /=].
     + rewrite in_cons orbF => /eqP ->.
-      case: Z.eq_dec=>//=; rep_lia.
-    + have Hhd: (0 <= tm - black_time bhd <= Int.unsigned threshold)%Z by
-      move: Hallid => /( _ _ (mem_head _ _)); rep_lia.
-      have Htl: forall b, b \in btl ->
-      (0 <= tm - black_time b <= Int.unsigned threshold)%Z. {
-        move=> b' Hinb.
-        move: Hallid => /(_ b'). rewrite in_cons Hinb orbT => /(_ isT).
-        rep_lia.
-      }
-    case: (fd_blockId curr == blk_id bhd).
+      rewrite create_black_time. lia.
+    + move=> Hinb Hthresh; move: Hinb.
+      have Hhd:=(Hthresh bhd (mem_head _ _)).
+      have Htl:=(in_prop_tl Hthresh).
+      case: (fd_blockId curr == blk_id bhd).
       * rewrite in_cons => /orP[/eqP -> | Hinb].
-        -- by rewrite add_black_time.
-        -- by apply Htl.
-      * case: (fd_blockId curr < blk_id bhd)=>/=.
-        -- case: Z.eq_dec=>/= Hk1;
-          rewrite !in_cons => /orP[/eqP -> /= | /orP[/eqP -> | Hinb]];
-            try rep_lia; by apply Htl.
-        -- rewrite in_cons => /orP[/eqP -> // | Hinb].
-          apply IH =>//. move=> b' Hinb'. apply Hallid.
-          by rewrite in_cons Hinb' orbT.
+        -- rewrite add_black_time. 
+          by case: (block_notin_packet bhd curr); lia.
+        -- by case: (block_notin_packet bhd curr);
+          move: Htl => /(_ _ Hinb); lia.
+      * case: (fd_blockId curr < blk_id bhd).
+        -- rewrite in_cons => /orP[/eqP -> | Hinb].
+          ++ rewrite create_black_time. lia.
+          ++ move: Hthresh => /(_ _ Hinb); lia.
+        -- rewrite in_cons => /orP[/eqP -> | Hinb].
+          ++ have:=(upd_time_bound time curr btl).
+            lia.
+          ++ by apply IH in Hinb.
   - (*This invariant is a bit easier*)
-     have: forall b, b \in 
-     [seq x <- blks
-     | not_timed_out (Int.unsigned threshold)
-         (upd_time time curr blks) x] ->
-    (Z.of_nat (blk_id b) < Int64.half_modulus)%Z. {
-      move=> b'. rewrite mem_filter=> /andP[_ Hinb'].
-      by apply Hallid.
-    }
-    rewrite {Hthresh Hallid}.
-    move: (upd_time time curr blks) => tm.
-    move: [seq x <- blks | not_timed_out (Int.unsigned threshold) tm x] => bs.
-    elim: bs => [Hallid b/=|b bs IH Hallid /=].
-    + rewrite in_cons orbF => /eqP ->. by case: Z.eq_dec => Hk1//=.
-    + move=> b'.
-      case: (fd_blockId curr == blk_id b).
-      * rewrite in_cons => /orP[/eqP -> | Hinb']; last by
-        apply Hallid; rewrite in_cons Hinb' orbT.
-        rewrite add_black_id. apply Hallid. by rewrite mem_head.
-      * case: (fd_blockId curr < blk_id b).
-        -- rewrite in_cons => /orP[/eqP -> | Hinb']; last by apply Hallid.
-          by case: Z.eq_dec.
-        -- rewrite in_cons => /orP[/eqP -> | Hin]; first by apply Hallid;
-          rewrite mem_head. apply IH=>//.
-          move=> b'' Hinb''. apply Hallid. by rewrite in_cons Hinb'' orbT.
+    move=> b. rewrite mem_filter => /andP[_]. move: b.
+    move: Hallid. clear -Hid. elim: blks => [//= _ b | bhd btl IH /= Hallid b].
+    + rewrite in_cons orbF=> /eqP ->.
+      by rewrite create_black_id.
+    + have Hhd:=(Hallid _ (mem_head _ _)).
+      have Htl:=(in_prop_tl Hallid).
+      case: (fd_blockId curr == blk_id bhd).
+      * rewrite in_cons => /orP[/eqP -> | Hinb].
+        -- by rewrite add_black_id.
+        -- by apply Htl.
+      * case: (fd_blockId curr < blk_id bhd).
+        -- rewrite in_cons => /orP[/eqP -> | Hinb].
+          ++ by rewrite create_black_id.
+          ++ by apply Hallid. 
+        -- rewrite in_cons => /orP[/eqP -> // | Hinb].
+          by apply IH.
 Qed.
 
 (*Put both lemmas together*)
@@ -506,8 +530,7 @@ Proof.
   move=> Hdat.
   rewrite /decoder_one_step_m/=.
   move: (upd_time_m time curr blks)=> tm'.
-  move: [seq x <- blks | not_timed_out_m tm' x] => bs.
-  elim: bs =>[//=|b bs /= IH].
+  elim blks => [//= | b bs /= IH].
   - by rewrite Hdat mem_cat mem_head.
   - case: (S64.seq_eq (Int64.repr (Z.of_nat (fd_blockId curr)))
       (Int64.repr (Z.of_nat (blk_id b))))=>/=.
