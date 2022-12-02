@@ -50,9 +50,16 @@ Proof.
   have Hidx: 0 <= Z.of_nat (fd_blockIndex (Znth i received)) < fd_k (Znth i received) + fd_h (Znth i received). {
     split; try lia; apply Hwfrec. rewrite in_mem_In. by apply Znth_In. }
   have Hcurrh: 0 <= fd_h (Znth i received). { apply Hwfrec. rewrite in_mem_In. by apply Znth_In. }
+  have Hsubstream: forall x : fpacket_eqType,
+    x \in Znth i received :: sublist 0 i received ->
+    x \in (encoder_all_steps orig enc_params).2. {
+      move=> x. rewrite in_cons => /orP[/eqP Hx | Hinrec].
+      - rewrite Hx. apply Hloss. apply /inP. by apply Znth_In.
+      - apply Hloss. by apply (mem_sublist Hinrec).
+    }
   (*Step 2: Thus, p either was in received or was produced by running [decode_block].*) 
   apply in_decode_func_in_block in Hp =>//.
-  case : Hp => [[b [Hb [Hrec Hp]]] | [Hp Hpar]]; last first.
+  case : Hp => [[Hp Hpar] | [b1 [b2 [Hinb2 [Hsub [Hrec Hpin]]]]]].
   - (*In the first case, this is easy, since all data packets produced by the encoder are in the original stream*)
     exists p. split => //. rewrite -Hp. apply (rse_encode_stream_from_orig Hencparams) => //.
     apply Hloss. rewrite in_mem_In. by apply Znth_In.
@@ -61,28 +68,26 @@ Proof.
       since the subblock in the decoder is a subblock of a block in (get_blocks received), which is a subblock
       of a block from (get_blocks encoded). Once we have this, we can use [in_decode_block_in_data], which
       uses the correctness of the (Reed Solomon) decoder*)
-    have [b' [Hsubb' [Hwfb' [Hencb' Hgetb]]]]: exists b', subblock b b' /\ block_wf b' /\ block_encoded b' /\
+    have [b' [Hsubb' [Hwfb' [Hencb' Hgetb]]]]: exists b', subblock b1 b' /\ block_wf b' /\ block_encoded b' /\
       b' \in (get_blocks (encoder_all_steps orig enc_params).2) . {
-      move: Hb. rewrite !cat_app -!sublist_last_1; try lia. move=> Hb.
-      have Htb:=Hb.
-      apply decoder_all_steps_state_subblocks in Htb.
-      (*The blocks from (get_blocks received)*)
-      case : Htb => [b2 [Hinb2 Hsub2]].
-      have [b1 [Hinb1 Hsub1]]: exists b1, b1 \in (get_blocks (encoder_all_steps orig enc_params).2) /\ subblock b2 b1. {
-        apply (@get_blocks_sublist _ (sublist 0 (i + 1) received)) => // x Hinx. apply Hloss.
-        move: Hinx. rewrite !in_mem_In => Hsub. by apply sublist_In in Hsub. }
-      exists b1. have Hbb1: subblock b b1 by apply (subblock_trans Hsub2). split_all => //.
+      (*Idea: b2 is a subblock of something in received (by sublist), 
+        which is a subblock of something in encoded (by sublist), then
+        we use transitivity*)
+      have [b3 [Hinb3 Hsubb3]]:= 
+        (get_blocks_sublist Hwfenc Hsubstream Hinb2).
+      exists b3. split_all=>//.
+      - by apply (subblock_trans Hsub).
       - by apply (rse_encode_stream_blocks_wf Hencparams Hallvalid).
       - apply (rse_encode_stream_recoverable_encoded Hencparams Hallvalid) => //.
-        by apply (subblock_recoverable Hbb1).
-      - apply (wf_substream Hwfrec). move => x. rewrite !in_mem_In => Hin. by apply sublist_In in Hin.
+        by apply (subblock_recoverable (subblock_trans Hsub Hsubb3)).
     }
     (*Now we apply [in_decode_block_in_data]*)
-    have [p' [Hpin Hpnum]]:=in_decode_block_in_data Hwfb' Hencb' Hsubb' Hrec Hp.
+    have [p' [Hpin' Hpnum]]:=in_decode_block_in_data Hwfb' Hencb' Hsubb' Hrec Hpin.
     exists (p_packet p'). split => //.
     have Hpar': fd_isParity p' = false. apply Hwfb'=>//. 
     apply (rse_encode_stream_from_orig Hencparams) => //.
     apply (get_blocks_in_orig Hwfenc Hgetb). by apply data_in_block.
+  - by apply (wf_substream Hwfenc Hsubstream).
 Qed.
 
 End GenericCorrect.
