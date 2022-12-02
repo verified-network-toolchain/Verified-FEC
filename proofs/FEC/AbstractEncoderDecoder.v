@@ -134,8 +134,20 @@ Definition decoder_list (dec: decoder) (received: list fec_packet) (decoded: lis
   forall (i:Z), 0 <= i < Zlength received ->
     dec (sublist 0 i received) (sublist 0 i decoded) (Znth i received) (Znth i decoded).
 
+(*We will say that a transcript is valid if the streams were produced
+  by an encoder-decoder pair*)
+Variable enc: encoder.
+Variable dec: decoder.
+Definition valid_transcript (t: transcript) :=
+  encoder_list enc (orig t) (encoded t) /\
+  decoder_list dec (received t) (decoded t).
 
-(*Finally, we need a loss relation that drops and/or reorders some packets over the channel*)
+(*We can state generic properties of an encoder/decoder pair, but
+  not those which rely on specific aspects of the state or the
+  packet stream. We give one example: all packets
+  outputted by the decoder were given as input to the encoder:*)
+
+(*First, we need a loss relation that drops and/or reorders some packets over the channel*)
 (*loss_r l1 l2 means that we dropped/reordered l1 to get l2*)
 Definition loss_r := list fec_packet -> list fec_packet -> Prop.
 
@@ -152,15 +164,16 @@ Definition loss_rel : loss -> loss_r := (fun r => proj1_sig r).
 Coercion loss_rel : loss >-> loss_r.
 
 (*Some loss relations may not reorder (or duplicate) packets*)
+(*
 Definition no_reorder (l: loss) : Prop :=
   forall (l1 l2: list fec_packet),
     (loss_rel l) l1 l2 ->
-    subseq l2 l1.
+    subseq l2 l1.*)
 
 (*Correctness properties we may want:*)
 
 (*All encoder/decoder pairs should satisfy: decoder produces only packets originally received by encoder*)
-Definition valid_encoder_decoder (enc: encoder) (dec: decoder) : Prop :=
+Definition no_bad_packets (enc: encoder) (dec: decoder) : Prop :=
   forall orig received encoded decoded (l: loss),
     (*If all incoming packets are valid and encodable*)
     (forall p, p \in orig -> packet_valid (p_header p) (p_contents p)) ->
@@ -174,21 +187,11 @@ Definition valid_encoder_decoder (enc: encoder) (dec: decoder) : Prop :=
     decoder_list dec received decoded ->
     (loss_rel l) received (concat encoded) ->
     forall (x: packet), x \in (concat decoded) -> exists y, (y \in orig) /\ (remove_seqNum x = remove_seqNum y).
-
+(*
 (*The C implementations will produce transcripts that are consistent with
   some encoder and decoder. We will say that a transcript is valid if this is the case*)
 
-Variable enc: encoder.
-Variable dec: decoder.
 Variable l: loss. (*TODO: how to handle loss relation, which we don't know, maybe just assume*)
-
-Definition valid_transcript (t: transcript) :=
-  (forall p, p \in (orig t) -> packet_valid (p_header p) (p_contents p)) /\
-  (forall p, p \in (orig t) -> encodable_pred p) /\
-  uniq (map p_seqNum (orig t)) /\
-  encoder_list enc (orig t) (encoded t) /\
-  decoder_list dec (received t) (decoded t) /\
-  (loss_rel l) (received t) (concat (encoded t)).
 
 (*Then, we have the results about the decoded packets:*)
 Lemma valid_transcript_enc_dec: forall (t: transcript),
@@ -197,6 +200,6 @@ Lemma valid_transcript_enc_dec: forall (t: transcript),
   (forall p, p \in concat (decoded t) -> exists p', p' \in (orig t) /\ remove_seqNum p = remove_seqNum p').
 Proof.
   rewrite /valid_encoder_decoder /valid_transcript => t Hval [Hvalid [Hencode [Huniq [Henc [Hdec Hloss]]]]]. eauto.
-Qed.
+Qed.*)
 
 End AbstractSpecs.

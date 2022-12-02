@@ -178,42 +178,42 @@ Proof.
   rewrite /decoder_multiple_steps_gen.
   elim: packs => [//= | p ptl /= 
     IH blks1 blks2 prev time1 time2 sent Heqblks].
+  move: IH.
+  rewrite /triv_timeout !filter_predT => IH.
   (*All of the interesting stuff is in this proof, we separate it
     to reduce duplication*)
-  have [Hupd1 Hupd2]: 
-  (update_dec_state_gen blks1 p (u1 time1 p blks1)).2 =
-  (update_dec_state_gen blks2 p (u2 time2 p blks2)).2 /\
-  [seq b <| black_time := 0 |>
-    | b <- (update_dec_state_gen blks1 p (u1 time1 p blks1)).1] =
-  [seq b <| black_time := 0 |>
-    | b <- (update_dec_state_gen blks2 p (u2 time2 p blks2)).1]. {
-    rewrite {IH}.
-    move: (u1 time1 p blks1) => t1.
-    move: (u2 time2 p blks2) => t2.
-    clear -Heqblks.
-    move: blks2 t1 t2 Heqblks. elim: blks1 => 
-      [// [//= | bhd2 btl2 //] t1 t2 _ | bhd1 btl1 /= IH].
-    - split; f_equal. 
-      apply create_black_time_eq. 
-    - move=> [// | bhd2 btl2 /= t1 t2  Heq].
-      apply cons_inv in Heq. case: Heq => [Hhd Htl].
-      have Hideq: blk_id bhd1 = blk_id bhd2 by apply black_time_eq.
-      rewrite -!Hideq.
-      case: (fd_blockId p == blk_id bhd1) /eqP => Heq/=.
-      + rewrite /=. f_equal=>//. split. by apply add_black_time_eq_packets.
-        f_equal=>//. by apply add_black_time_eq.
-      + case Hlt: (fd_blockId p < blk_id bhd1)%N.
-        * rewrite /=. split=>//. f_equal=>//. apply create_black_time_eq.
-          by f_equal.
-        * rewrite /=. split. by apply IH. f_equal=>//. by apply IH.
+    have [Hupd1 Hupd2]: 
+    (update_dec_state_gen blks1 p (u1 time1 p blks1)).2 =
+    (update_dec_state_gen blks2 p (u2 time2 p blks2)).2 /\
+    [seq b <| black_time := 0 |>
+      | b <- (update_dec_state_gen blks1 p (u1 time1 p blks1)).1] =
+    [seq b <| black_time := 0 |>
+      | b <- (update_dec_state_gen blks2 p (u2 time2 p blks2)).1]. {
+      rewrite {IH}.
+      move: (u1 time1 p blks1) => t1.
+      move: (u2 time2 p blks2) => t2.
+      clear -Heqblks.
+      move: blks2 t1 t2 Heqblks. elim: blks1 => 
+        [// [//= | bhd2 btl2 //] t1 t2 _ | bhd1 btl1 /= IH].
+      - split; f_equal. 
+        apply create_black_time_eq. 
+      - move=> [// | bhd2 btl2 /= t1 t2  Heq].
+        apply cons_inv in Heq. case: Heq => [Hhd Htl].
+        have Hideq: blk_id bhd1 = blk_id bhd2 by apply black_time_eq.
+        rewrite -!Hideq.
+        case: (fd_blockId p == blk_id bhd1) /eqP => Heq/=.
+        + rewrite /=. f_equal=>//. split. by apply add_black_time_eq_packets.
+          f_equal=>//. by apply add_black_time_eq.
+        + case Hlt: (fd_blockId p < blk_id bhd1)%N.
+          * rewrite /=. split=>//. f_equal=>//. apply create_black_time_eq.
+            by f_equal.
+          * rewrite /=. split. by apply IH. f_equal=>//. by apply IH.
   }
   (*The rest of the proof is basically trivial*)
-  rewrite (IH _ ((update_dec_state_gen
+  by rewrite (IH _ ((update_dec_state_gen
   [seq x <- blks2 | triv_timeout (u2 time2 p blks2) x] p
   (u2 time2 p blks2)).1) _ _ (u2 time2 p blks2) _ ) // {IH}
-  /triv_timeout/= !filter_predT/=.
-  - by rewrite Hupd1.
-  - by rewrite Hupd2.
+  /triv_timeout/= !filter_predT//= Hupd1.
 Qed.
 
 (*Lift this result to all packets*)
@@ -503,14 +503,11 @@ Proof.
   rewrite /decoder_multiple_steps_gen foldl_cat//=.
   move: (foldl
   (fun (acc : seq block * seq packet * Z * seq fpacket) (p : fpacket) =>
-   ((update_dec_state_gen
-       [seq x <- acc.1.1.1 | timeout (upd acc.1.2 p acc.1.1.1) x] p
-       (upd acc.1.2 p acc.1.1.1)).1,
+   ([seq x <- (update_dec_state_gen acc.1.1.1 p (upd acc.1.2 p acc.1.1.1)).1
+       | timeout (upd acc.1.2 p acc.1.1.1) x],
    acc.1.1.2 ++
-   (update_dec_state_gen
-      [seq x <- acc.1.1.1 | timeout (upd acc.1.2 p acc.1.1.1) x] p
-      (upd acc.1.2 p acc.1.1.1)).2, upd acc.1.2 p acc.1.1.1, 
-   acc.2 ++ [:: p]))) => f.
+   (update_dec_state_gen acc.1.1.1 p (upd acc.1.2 p acc.1.1.1)).2,
+   upd acc.1.2 p acc.1.1.1, acc.2 ++ [:: p])) ) => f.
   by case: (f (blks, sent, time, prev) rec1)=>/= [[[a b] c] d]/=.
 Qed.
 

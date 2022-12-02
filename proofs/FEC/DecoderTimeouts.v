@@ -341,20 +341,20 @@ Proof.
   - (*For the second invariant, we need to show that every new block
     satisfies the condition. The difficult part is to show that
     the current packet has not been seen before.*)
-    move=> b Hinb.
-    apply in_decoder_one_step in Hinb.
+    move=> b.
+    rewrite /decoder_one_step mem_filter => /andP[Hnoto Hinb].
+    apply in_upd_dec_state with(not_timeout:=not_timed_out) in Hinb=>//.
     case: Hinb => [Hinb | [[Hb Hall] | H]].
     + (*easy case: follows from IH*)
       move: Hcreate => /(_ b Hinb) [p' [l1 [l2 [Hidp' [Hprev [Hpnotin Hl1time]]]]]].
       exists p'. exists l1. exists (l2 ++ [:: p]). repeat split =>//.
-      rewrite Hprev. by rewrite !catA.
+      by rewrite Hprev/= -!catA.
     + (*Once again, if there was a block with p that timed out,
       we have a similar contradiction.*)
       case Hinp: (p \in prev); last first.
       * (*easy case*) exists p. exists prev. exists nil.
-        split_all.
+        split_all=>//.
         -- by rewrite Hb create_black_id. 
-        -- by rewrite cats0.
         -- by rewrite Hinp.
         -- rewrite Hb create_black_time Nat2Z.inj_succ -Htime.
           rewrite upd_time_spec=>//.
@@ -399,9 +399,8 @@ Proof.
       split_all=>//.
       * by rewrite Hb add_black_id.
       * by rewrite Hprev -catA.
-      * by rewrite Hb add_black_time.  
-    + by [].
-  - (*To prove the 3rd invariant, we have 2 cases:
+      * by rewrite Hb add_black_time.
+  -  (*To prove the 3rd invariant, we have 2 cases:
       1. If p' is the current packet, then immediate 
         contradiction, since there is always a block with p in it
       2. If p' is in prev, then we again have 2 cases:
@@ -413,25 +412,65 @@ Proof.
           (from the 2nd invariant) as the packet we need to 
           prove the invariant *)
     move=> p'. case: (p' == p) /eqP => [Hpp' _ | Hpp']. 
-    + move => Hnotex.
-      exfalso. apply Hnotex. subst. apply (packet_in_one_step _ _ _ Hwf).
-      * by rewrite mem_cat mem_head orbT.
-      * move=> b1 p1 Hinp1 Hinb1 Hids.
-        move: Hsubblock => /( _ _ Hinb1) [b2 [Hinb2 Hsub]].
-        (*Not quite enough, need a block from [get_blocks (prev ++ [:: p])]*)
-        have Hsubstream: (forall (x: fpacket), x \in prev -> 
-          x \in prev ++ [:: p]) by move=> x; rewrite mem_cat=>->.
-        have [b3 [Hinb3 Hsub2]]:=(get_blocks_sublist Hwf Hsubstream Hinb2).
-        have Hsub3 :=(subblock_trans Hsub Hsub2).
-        have Hideq: blk_id b1 = blk_id b3 by apply Hsub3.
-        rewrite Hideq in Hids. rewrite {Hideq}.
-        have[-> ->]:blk_k b1 = blk_k b3 /\ blk_h b1 = blk_h b3 by apply Hsub3.
-        apply (get_blocks_kh Hwf)=>//. by rewrite mem_cat mem_head orbT.
-      * move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
-          [b'' [Hinb'' [Hids [Hdat [Hpars [Hk Hh]]]]]].
-        rewrite Hk Hh (proj1 Hdat) (proj1 Hpars).
-        by apply (get_blocks_Zlength Hwf').
-    + rewrite mem_cat in_cons orbF => /orP[Hinp' | /eqP //].
+    + (*Idea: if p' is current block, we take the block is belonged
+        to, which must have timed out. If there was no such block,
+        there could not have been a timeout, a contradiction*)
+      move=> Hnotex.
+      case: (existsb (fun b => blk_id b == fd_blockId p') blocks) /existsbP.
+      * move=> [b /andP[Hinb /eqP Hidb]].
+        (*Use invariant to get first one*)
+        move: Hcreate => /( _ b Hinb) [p1 [l1 [l2 [Hidp1 [Hprev [Hnotin Htimeb]]]]]].
+        exists p1. exists l1. exists (l2 ++ [:: p]).
+        move: Hsubblock => /(_ b Hinb) [b1 [Hinb1 Hsub1]].
+        have Hidbb1:blk_id b = blk_id b1 by apply Hsub1.
+        split_all=>//. by rewrite Hidp1 Hidb.
+        by rewrite Hprev !catA.
+        (*To prove this, we use the fact that if it were not
+          true, this block would still be in [decoder_one_step]*)
+        have: not_timed_out (upd_time time p blocks) b = false. {
+          case Hto: (not_timed_out (upd_time time p blocks) b)=>//.
+          exfalso. apply Hnotex. 
+          exists (add_packet_to_block_black p b).1. move: Hto.
+          rewrite mem_filter /not_timed_out add_black_time=>->/=.
+          rewrite update_dec_state_gen_eq =>//.
+          have Hhas: has (fun b0 : block => blk_id b0 == fd_blockId p) blocks.
+            apply /hasP. exists b=>//. by rewrite Hidb Hpp'.
+          rewrite Hhas /= mem_insert.
+          have<-/=:b =
+          (nth block_inhab blocks
+          (find (fun b0 : block => blk_id b0 == fd_blockId p) blocks)).
+          {
+            (*Have the same block id, both in blks, so the same*)
+            apply (map_uniq_inj (blk_order_sort_uniq Hsort))=>//.
+            apply mem_nth. by rewrite -has_find.
+            rewrite Hidb Hpp'. symmetry. apply /eqP.
+            by rewrite (nth_find _ Hhas).
+          }
+          rewrite eq_refl/=. rewrite Hpp'.
+          rewrite Hpp' in Hidb.
+          by apply (@packet_in_add_black' _ _ _ b1 Hwfcons).
+        }
+        rewrite /not_timed_out -Hupdtime -Htimeb => /Z.leb_spec0. lia.
+      * (*In the other case, when none existed, then we add a new one,
+          which cannot have timed out*)
+        move=> Hnotex'.
+        exfalso. apply Hnotex. exists (create_block_with_packet_black p 
+          (upd_time time p blocks)).1.
+        rewrite mem_filter update_dec_state_gen_eq//.
+        have->:has (fun b : block => blk_id b == fd_blockId p) blocks = false.
+          apply /hasP. move=> [b1 Hinb1 /eqP Hidb1]. 
+          apply Hnotex'. exists b1. by rewrite Hinb1/= Hidb1; subst.
+        rewrite mem_insert eq_refl andbT.
+        apply /andP; split.
+        -- rewrite /not_timed_out create_black_time.
+          apply /Z.leb_spec0. move: Hreord; rewrite /reorder_dup_cond. 
+          lia.
+        -- subst. apply (packet_in_create _ Hwfcons).
+          by rewrite mem_head.
+    + (*Second case: p \in prev. In this case, we see if there is
+        a block with p' in prev. If not, use IH. If so, then
+        it must have timed out, so we use the beginning of this block *)
+      rewrite mem_cat in_cons orbF => /orP[Hinp' | /eqP //].
       move=> Hnotex.
       (*Case 1: there is no block with p' in prevs*)
       case: (existsb [eta packet_in_block p'] blocks) /existsbP; last first.
@@ -456,20 +495,45 @@ Proof.
             exfalso. apply Hpp'. apply Hwf=>//; rewrite mem_cat.
             by rewrite Hinp'. by rewrite mem_head orbT.
           }
-        (*Now we apply [notin_decoder_one_step] to know that the block
-          must have timed out*)
+        (*Now we know that the block
+          must have timed out, or else contradiction*)
+        (*TODO: refactor out - very similar to previous*)
         have: not_timed_out (upd_time time p blocks) b = false. {
-          apply (notin_decoder_one_step Hidpp')=>//.
-          (*These all follow from the subblock relation and 
-            [wf_packet_stream], proved in Block.v*)
-          - move=> b' Hinb'. move: Hsubblock=>/(_ b' Hinb') 
-            [b'' [Hinb'' [Hids [Hdat [Hpars [Hk Hh]]]]]].
-            rewrite Hk Hh (proj1 Hdat) (proj1 Hpars).
-            by apply (get_blocks_Zlength Hwf').
-          - move => b' p'' Hinb' Hinp''.
-            move: Hsubblock =>/(_ b' Hinb')
-            [b'' [Hinb'' Hsub]].
-            by apply (get_blocks_sub_Znth Hwf' Hinb'' Hsub).
+          case Hto: (not_timed_out (upd_time time p blocks) b)=>//.
+          exfalso. apply Hnotex.
+          have Hidb: blk_id b = fd_blockId p' by 
+              symmetry; apply Hallid.
+          case: (fd_blockId p == fd_blockId p') /eqP => Hideq.
+          - exists (add_packet_to_block_black p b).1.
+            move: Hto.
+            rewrite mem_filter /not_timed_out add_black_time=>->/=.
+            rewrite update_dec_state_gen_eq =>//.
+            have Hhas: has (fun b0 : block => blk_id b0 == fd_blockId p') blocks.
+              apply /hasP. exists b=>//. by rewrite Hidb.
+            rewrite Hideq Hhas /= mem_insert.
+            have<-/=:b =
+            (nth block_inhab blocks
+            (find (fun b0 : block => blk_id b0 == fd_blockId p') blocks)).
+            {
+              (*Have the same block id, both in blks, so the same*)
+              apply (map_uniq_inj (blk_order_sort_uniq Hsort))=>//.
+              apply mem_nth. by rewrite -has_find.
+              rewrite Hidb. symmetry. apply /eqP.
+              by rewrite (nth_find _ Hhas).
+            }
+            rewrite eq_refl/=.
+            move: Hsubblock => /(_ b Hinb) [b1 [Hinb1 Hsub1]].
+            have Hidbb1:blk_id b = blk_id b1 by apply Hsub1.
+            apply (@other_in_add_black' _ _ _ _ b1 Hwf')=>//.
+            by case: Hidpp'.
+          - exists b. rewrite mem_filter Hto Hinpb update_dec_state_gen_eq//.
+            case Hhas: (has (fun b0 : block => blk_id b0 == fd_blockId p) blocks);
+            rewrite mem_insert/= andbT.
+            + apply /orP; right. rewrite rem_in_neq //.
+              apply /eqP => Hbeq. apply Hideq.
+              rewrite -Hidb Hbeq. symmetry; apply /eqP.
+              by rewrite (nth_find _ Hhas).
+            + by apply /orP; right.
         }
         rewrite /not_timed_out.
         (*Now we need to get info about times*)
@@ -559,12 +623,14 @@ Proof.
   have Hwf': wf_packet_stream prev. {
     apply (wf_substream Hwf). move=> x Hinx. by rewrite mem_cat Hinx.
   }
+  have Hsort1' : sorted blk_order blks1 by apply Hinvar.
+  (*
   have Hsort1': sorted blk_order 
     [seq x <- blks1 | not_timed_out (upd_time time p blks1) x] by
     (apply sorted_filter; [apply blk_order_trans | apply Hinvar]).
   have Hsort2': sorted blk_order 
     [seq x <- blks2 | triv_timeout (upd_time time p blks2) x] by
-    (apply sorted_filter=>//; apply blk_order_trans).
+    (apply sorted_filter=>//; apply blk_order_trans).*)
   have Hwf'': wf_packet_stream (prev ++ [:: p]). {
     apply (wf_substream Hwf). move=> x. 
     rewrite !mem_cat !in_cons orbF => /orP[Hinp | Hxp].
@@ -630,42 +696,42 @@ Proof.
     we need the following lemma:*)
   have Hntheq: 
     has (fun b0 : block => blk_id b0 == fd_blockId p)
-      [seq x <- blks1 | not_timed_out (upd_time time p blks1) x] ->
+      blks1 ->
     has (fun b0 : block => blk_id b0 == fd_blockId p)
-      [seq x <- blks2 | triv_timeout (upd_time time p blks2) x] ->
-    nth block_inhab [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]
+      blks2 ->
+    nth block_inhab blks1
     (find (fun b0 : block => blk_id b0 == fd_blockId p)
-      [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]) =
-    nth block_inhab [seq x <- blks2 | triv_timeout (upd_time time p blks2) x]
+      blks1) =
+    nth block_inhab blks2
     (find (fun b0 : block => blk_id b0 == fd_blockId p)
-      [seq x <- blks2 | triv_timeout (upd_time time p blks2) x]). {
+      blks2). {
     move=> Hhas1 Hhas2.
-    apply find_uniq_eq=>//; last by
-    move=> x; rewrite !mem_filter/= =>/andP[_ Hinx];
-    apply Hblksub.
-    all: apply blk_count; apply sorted_filter=>//; try apply
-      blk_order_trans.
-    apply Hinvar.
+    apply find_uniq_eq=>//.
+    all: by apply blk_count.  
   }
   (*Then, it is impossible to have a block with p's id in blks2 but not
     blks1 after timeouts. This contradicts the bounded reordering*)
+    (*TODO: see what we need*)
   have Hhasfalse: has (fun b0 : block => blk_id b0 == fd_blockId p)
-      [seq x <- blks1 | not_timed_out (upd_time time p blks1) x] = false ->
+      blks1 = false ->
     has (fun b0 : block => blk_id b0 == fd_blockId p)
-      [seq x <- blks2 | triv_timeout (upd_time time p blks2) x] = false. {
+      blks2 = false. {
     move=> Hhas1.
     case Hhas2: (has (fun b0 : block => blk_id b0 == fd_blockId p)
-    [seq x <- blks2 | triv_timeout (upd_time time p blks2) x]) =>//.
+    blks2) =>//.
     (*If so, this is in blks1 by the invariant, so this block
       must have timed out. This will contradict our reordering
       assumption*)
-    exfalso. move: Hhas2 => /hasP [b2]. 
-    rewrite mem_filter/= => Hinb2 /eqP Hidb2.
+    exfalso. move: Hhas2 => /hasP [b2] Hinb2 /eqP Hidb2. 
     have Hinb21: b2 \in blks1 by rewrite (Hblks p) // mem_head.
+    move: Hhas1 => /hasP Hhas1. exfalso. apply Hhas1.
+      exists b2=>//. by rewrite Hidb2.
+  }
+  (* 
     have: not_timed_out (upd_time time p blks1) b2 = false. {
       case Hto: (not_timed_out (upd_time time p blks1) b2) =>//.
       move: Hhas1 => /hasP Hhas1. exfalso. apply Hhas1.
-      exists b2. by rewrite mem_filter Hto. by rewrite Hidb2. 
+      exists b2=>//. by rewrite Hidb2. 
     }
     rewrite /not_timed_out Z.leb_antisym => Htimeout.
     apply negbFE in Htimeout.
@@ -683,17 +749,19 @@ Proof.
     move: Htimeout. rewrite -Hblacktime.
     rewrite Hupdtime.
     case: (p \in prev); try lia. rewrite !size_cat addn1. lia.
-  }
+  }*)
   (*The final lemma that is the core of proving the invariant:
     every block for a future packet is in blks1 iff it is blks2, 
     after we process timeouts. In other words, we only delete
     blocks where no future packets arrive.*)
+  (*
   have Htimeouteq: forall (p': fpacket) (b: block),
     p' \in ptl ->
     blk_id b = fd_blockId p' ->
     (b \in [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]) =
     (b \in [seq x <- blks2 | triv_timeout (upd_time time p blks1) x]). {
-    move=> p' b Hinp' Hidp'.
+      clear -Hblks Hinvar.
+    move=> p' b Hinp' Hidp'. (*HERE*) 
     rewrite !mem_filter/=.
     (*The core: we cannot time out the block with a packet
       arriving later, or else we contradict the bounded
@@ -733,14 +801,12 @@ Proof.
           (*From invariant preservation*)
           apply decoder_timeout_invar_preserved_one.
       lia.
-  }
-  rewrite (IH _ (update_dec_state_gen
-  [seq x <- blks2 | triv_timeout (upd_time time p blks2) x] p
-  (upd_time time p blks2)).1 _ _ _ ); rewrite {IH}.
+  }*)
+  rewrite (IH _ [seq x <- (update_dec_state_gen blks2 p (upd_time time p blks2)).1
+  | triv_timeout (upd_time time p blks2) x] _ _ _ ); rewrite {IH}.
   - (*Prove this invariant implies equality (not too hard)*)
     rewrite /triv_timeout/= !filter_predT -!Htimeeq.
-    have->//: (update_dec_state_gen
-      [seq x <- blks1 | not_timed_out (upd_time time p blks1) x] p
+    have->//: (update_dec_state_gen blks1 p
       (upd_time time p blks1)).2 =
       (update_dec_state_gen blks2 p (upd_time time p blks1)).2.
     (*We must show that the outputted packets in this step are
@@ -748,20 +814,20 @@ Proof.
     rewrite !update_dec_state_gen_eq //.
     (*First case: if a block with p's idx is in blks1 after timeouts*)
     case Hhas1: (has (fun b : block => blk_id b == fd_blockId p)
-      [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]).
+      blks1).
     + (*In this case, must be in blks2 as well*)
-      have:=Hhas1 => /hasP [b1]. 
-      rewrite mem_filter => /andP[Hnoto Hinb1] /eqP Hidb1.
+      have:=Hhas1 => /hasP [b1] Hinb1 /eqP Hidb1. 
       have Hhas2: (has (fun b0 : block => blk_id b0 == fd_blockId p)
         blks2).
         apply /hasP. exists b1. by rewrite -(Hblks p) // mem_head.
         by apply /eqP.
       rewrite Hhas2/=.
-      by rewrite Hntheq /triv_timeout//= !filter_predT.
+      by rewrite Hntheq.
     + (*Know by Hhasfalse that must also not be in blks2*)
       have->//=: has (fun b : block => blk_id b == fd_blockId p) blks2 = false.
-      apply Hhasfalse in Hhas1. move: Hhas1.
-      by rewrite /triv_timeout !filter_predT.
+      apply /hasP=> [[b2 Hinb2 Hidb2]].
+      move: Hhas1 => /hasP. apply. exists b2=>//.
+      rewrite (Hblks p) //. by rewrite mem_head. by apply /eqP.
   - by rewrite -catA.
   - by rewrite -catA.
   - by apply decoder_timeout_invar_preserved_one.
@@ -786,58 +852,122 @@ Proof.
     by rewrite -(perm_mem Hperm).
   - (*Now we prove that every block in blks1 is in blks2*)
     move=> b.
+    rewrite !mem_filter {1}Htimeeq => /andP[Hnto]/=.
     rewrite !update_dec_state_gen_eq //.
+
     (*First, see if there is a block with blockId p in blks1*)
     case Hhas1: (has (fun b0 : block => blk_id b0 == fd_blockId p)
-    [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]).
+    blks1).
     + (*In this case, must be in blks2 as well*)
-      have:=Hhas1 => /hasP [b1]. 
-      rewrite mem_filter => /andP[Hnoto Hinb1] /eqP Hidb1.
+      have:=Hhas1 => /hasP [b1] Hinb1 /eqP Hidb1.
       have Hhas2: (has (fun b0 : block => blk_id b0 == fd_blockId p)
-        [seq x <- blks2 | triv_timeout (upd_time time p blks2) x]).
-        apply /hasP. exists b1. rewrite mem_filter/= -(Hblks p) //.
-        by rewrite mem_head. by apply /eqP.
+        blks2).
+        apply /hasP. exists b1. by rewrite -(Hblks p) // mem_head.
+        by apply /eqP.
       rewrite Hhas2/=.
       rewrite !mem_insert.
       rewrite Hntheq // => /orP[Hb | Hinb].
       by rewrite Hb.
       apply /orP; right. move: Hinb.
       rewrite !mem_rem_uniq /in_mem/=.
-      * move => /andP[Hnotb]. rewrite !mem_filter/= => /andP[_ Hinb].
+      * move => /andP[Hnotb] Hinb.
         rewrite Hnotb/=. by apply Hblksub.
-      * by apply (blk_order_sort_uniq Hsort2').
+      * by apply (blk_order_sort_uniq Hsort).
       * by apply (blk_order_sort_uniq Hsort1').
-    + (*If nothing in blks1 after timeouts, we proved that there is
-      nothing in blks2*)
-      rewrite Hhasfalse //= !mem_insert => /orP[Hnew | Hold].
+    + rewrite Hhasfalse //=.
+      rewrite !mem_insert => /orP[Hnew | Hold].
       * by rewrite -Htimeeq Hnew.
-      * apply /orP. right. move: Hold.
-        rewrite !mem_filter/= => /andP[_ Hinb1].
-        by apply Hblksub.
+      * apply /orP; right. by apply Hblksub.
   - (*Now we prove the preservation of the equality invariant, 
       the key part. This is easy, because we did all the
       hard work above (Htimeouteq)*)
-    move=> p' b Hinp' Hidp'.
+    move=> p' b Hinp' .
+    (*The main result*)
+    (*TODO: move*)
+    have Hnottimeout: forall (b: block),
+      b \in blks2 ->
+      blk_id b = fd_blockId p' ->
+      not_timed_out (upd_time time p blks1) b. {
+      move=> b' Hinb2 Hidb'.
+      (*We know that b' is in blks1, so we can get the start
+        by the invariant*)
+      have Hinb1: b' \in blks1 by rewrite (Hblks p')=>//;
+      rewrite in_cons Hinp' orbT.
+      case Hinvar => [Htime [Hstart _]].
+      move: Hstart => /(_ b' Hinb1) 
+        [p'' [l1 [l2 [Hidp'' [Hprev [Hnotin Hblacktime]]]]]].
+      rewrite /not_timed_out Z.leb_antisym. 
+      apply /negP => /Z.ltb_spec0 Hto.
+      (*Now we need to split ptl into the parts before p' and after*)
+      have [l3 [l4 [Hptl Hnotin1]]]:= (find_first Hinp').
+      exfalso.
+      apply (@same_block_close (prev ++ [:: p] ++ l3) p' p'' l1 (l2 ++ [:: p] ++ l3))=>//.
+      -- apply (@reorder_dup_cond_cat_fst _ l4). 
+        by rewrite -!catA -Hptl.
+      -- by rewrite Hprev !catA.
+      -- by rewrite Hidp'' Hidb'.
+      -- (*Just some tedious inequality manipulation*)
+        have->: (l1 ++ [:: p''] ++ (l2 ++ [:: p] ++ l3) ++ [:: p']) =
+          ((prev ++ [:: p]) ++ (l3 ++ [:: p'])) by rewrite Hprev !catA.
+        have Hbound: 
+          Z.of_nat (size (undup_fst ((prev ++ [:: p]) ++ l3 ++ [:: p']))) >=
+          Z.of_nat (size (undup_fst (prev ++ [:: p]))).
+          apply inj_ge. apply /leP. apply size_undup_fst_le_app.
+        move: Hto. rewrite undup_fst_rcons (negbTE Hnotin) size_cat addn1. 
+        rewrite -Hblacktime.
+        have->: upd_time time p blks1 = 
+          Z.of_nat (size (undup_fst ((prev ++ [:: p])))) by
+            (*From invariant preservation*)
+            apply decoder_timeout_invar_preserved_one.
+        lia.
+    }
+    move=> Hidp'.
     rewrite !update_dec_state_gen_eq //.
     (*First, see if there is a block with blockId p in blks1*)
     case Hhas1: (has (fun b0 : block => blk_id b0 == fd_blockId p)
-    [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]).
+    blks1).
     + (*In this case, must be in blks2 as well*)
-      have:=Hhas1 => /hasP [b1]. 
-      rewrite mem_filter => /andP[Hnoto Hinb1] /eqP Hidb1.
+      have:=Hhas1 => /hasP [b1] Hinb1 Hidb1. 
       have Hhas2: (has (fun b0 : block => blk_id b0 == fd_blockId p)
-        [seq x <- blks2 | triv_timeout (upd_time time p blks2) x]).
-        apply /hasP. exists b1. rewrite mem_filter/= -(Hblks p) //.
+        blks2).
+        apply /hasP. exists b1=>//. rewrite -(Hblks p) //.
         by rewrite mem_head. by apply /eqP.
       rewrite Hhas2/= !Hntheq//.
-      rewrite !mem_insert. f_equal.
-      rewrite -!Htimeeq !mem_rem_uniq/in_mem//=.
-      * f_equal. by apply (Htimeouteq p').
-      * by apply (blk_order_sort_uniq Hsort2').
-      * by apply (blk_order_sort_uniq Hsort1').
+      rewrite !mem_filter !mem_insert/=. 
+      rewrite !mem_rem_uniq/in_mem//=; last by
+      apply (blk_order_sort_uniq Hsort1'). 2: by
+      apply (blk_order_sort_uniq Hsort).
+      (*I Think this is the lemma we need*)
+      
+
+      case: ((b ==
+      (add_packet_to_block_black p
+         (nth block_inhab blks2
+            (find (fun b0 : block => blk_id b0 == fd_blockId p) blks2))).1))
+      /eqP => Hb/=.
+      * (*Here, have to show that b is not timed out*)
+        rewrite andbT Hb /not_timed_out add_black_time -/not_timed_out.
+        apply Hnottimeout. apply mem_nth. by rewrite -has_find.
+        apply /eqP. by rewrite -Hidp' Hb add_black_id eq_refl.
+      * case Hbnth: ( b != nth block_inhab blks2
+          (find (fun b0 : block => blk_id b0 == fd_blockId p) blks2)) 
+          ; (*TODO: see if we need name*)
+          last by rewrite andbF.
+        rewrite /=.
+        rewrite (Hblks p')=>//; last by rewrite in_cons Hinp' orbT.
+        case Hinb2: (b \in blks2); last by rewrite andbF.
+        by rewrite Hnottimeout.
     + (*By lemma above, know cannot be any block in blks2*)
-      rewrite Hhasfalse //= !mem_insert -Htimeeq. f_equal.
-      by apply (Htimeouteq p').
+      rewrite Hhasfalse // !mem_filter // !mem_insert -Htimeeq.
+      case: (b == (create_block_with_packet_black p 
+        (upd_time time p blks1)).1) /eqP=> Hbeq/=.
+      * (*cannot time out created block*) 
+        rewrite andbT Hbeq /not_timed_out create_black_time.
+        apply /Z.leb_spec0. move: Hreord; rewrite /reorder_dup_cond. 
+        lia.
+      * rewrite (Hblks p')=>//; last by rewrite in_cons Hinp' orbT.
+        case Hinb2: (b \in blks2); last by rewrite andbF.
+        by rewrite Hnottimeout.
 Qed.
 
 (*Now we lift to all steps easily, and we get the result
