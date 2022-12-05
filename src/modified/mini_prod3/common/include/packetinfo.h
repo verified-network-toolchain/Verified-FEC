@@ -53,6 +53,21 @@
 /*									*/
 /************************************************************************/
 
+  u_int32_t flow_seq1; //JOSH: our sequence number is now 64 bit, which we
+  u_int32_t flow_seq2; //represent as 2 32-bit numbers (for ntonl)
+
+/*
+ * We use 64-bit unsigned ints as sequence numbers. However, since we need
+ * functions ntohl and htonl, we express this as a pair of 32-bit unsigned
+ * ints. The only operations we need are comparison and increment, so
+ * it is not hard to implement.
+ */
+struct seqNum {
+  u_int32_t seq_high; //The higher-order bits 
+  u_int32_t seq_low; //The lower-order bits
+
+}
+
 
 struct packetinfo {
     char *queue;		/* queue that structure was created for.*/
@@ -68,7 +83,7 @@ struct packetinfo {
     struct flow *pflow;		/* flow that packet belongs to.		*/
 
     BOOLEAN newFlow;		/* flag for first packet in flow.	*/
-  u_int32_t flow_seq;           
+    struct seqNum flow_seq;    
 
     /* packet metadata.							*/
     struct nfq_q_handle *qh;	/* queue handle.			*/
@@ -118,6 +133,24 @@ struct packetinfo {
 /*	global variables.						*/
 /*									*/
 /************************************************************************/
+
+//TODO: maybe just cast this to 64 bit int
+
+/*
+Facilities for dealing with sequence numbers. Note that these do "serial
+  number arithmetic"
+*/
+//TODO: we pass in the structs/64-bit ints directly, rather than as pointers
+//Is this correct?
+BOOLEAN seqNum_eq(struct seqNum s1, struct seqNum s2);
+
+BOOLEAN seqNum_lt(struct seqNum s1, struct seqNum s2);
+
+BOOLEAN seqNum_leq(struct seqNum s1, struct seqNum s2);
+
+//Subtract n from the (64-bit) int represented by s1
+struct seqNum seqNum_sub(struct seqNum s1, int n); 
+
 
 
 /************************************************************************/

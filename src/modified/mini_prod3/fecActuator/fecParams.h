@@ -57,7 +57,8 @@ struct fecParams {
   u_int8_t fec_h;
   u_int8_t fec_seq;
   u_int8_t reserved;
-  u_int32_t block_seq;
+  u_int32_t block_seq1; //sequence number is 64 bit value
+  u_int32_t block_seq2;
 };
 
 

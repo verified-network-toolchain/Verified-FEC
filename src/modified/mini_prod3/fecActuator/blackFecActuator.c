@@ -51,6 +51,35 @@
 // XXX: will this work ok with multiple threads?
 char outstring[MAXSTRING];
 
+//Sequence numbers
+BOOLEAN seqNum_eq(struct seqNum s1, struct seqNum s2) {
+  return ((u_int64_t) s1 == (u_int64_t) s2);
+}
+
+//Works as long as s1 and s2 are within 2^63-1 of each other, incorporates
+//wraparound
+BOOLEAN seqNum_lt(struct seqNum s1, struct seqNum s2) {
+  u_int64_t i1 = (u_int64_t) s1;
+  u_int64_t i2 = (u_int64_t) s2;
+  return ((int64_t) (i1 - i2) < 0);
+}
+
+BOOLEAN seqNum_leq(struct seqNum s1, struct seqNum s2) {
+  u_int64_t i1 = (u_int64_t) s1;
+  u_int64_t i2 = (u_int64_t) s2;
+  return ((int64_t) (i1 - i2) <= 0);
+}
+
+struct seqNum seqNum_sub(struct seqNum s1, int n) {
+  u_int64_t i1 = (u_int64_t) s1;
+  return (seqNum) (i1 - n);
+} 
+
+//Compare times, also with wraparound
+BOOLEAN time_leq(u_int32_t t1, u_int32_t t2) {
+  return ((int32_t) (t1 - t2) <= 0);
+}
+
 /************************************************************************/
 /*                  */
 /*  global variables.           */
@@ -216,6 +245,46 @@ unsigned char *blackFecActuator_removeHeaders(unsigned char *packetdata,
   return newBuffer;
 }
 
+//Find c (the max length of a packet) in the given block
+int find_c (struct fecBlock *fecblock) {
+  int k = fecblock->k;
+  int h = fecblock->h;
+  //First, try to find a parity packet, whose length must be c
+  for(int i = 0; i < h; i++) {
+    struct packetinfo *pinfo = fecblock->packets[k + i];
+    if (pinfo != 0) {
+      return pinfo->length;
+    }
+  }
+  //Otherwise, take the maximum of the data packets
+  int maxlen = 0;
+  for(int i = 0; i < k; i++) {
+    fecblock->packets[k + i]
+    if(fecblock->packets[i]->length > maxlen) {
+      maxlen = fecblock->packets[i]->length;
+    }
+  }
+  return maxlen;
+}
+
+
+struct fecBlock {
+    BOOLEAN complete;   /* 1 if all needed packets received.  */
+    int blockSeq;   /* flow sequence number of first packet */
+        /* and all parity packets in block. */
+    int k;      /* number of source packets.    */
+    int h;      /* number of parity packets.    */
+    struct packetinfo *packets[FECMAXBLOCKSIZE];
+        /* storage for packetinfo structures. */    
+    int packetCount;    /* number of packets in packet list.  */
+    //double timeout;   /* last arrival time plus fixed timeout.*/
+    unsigned int timeout; //JOSH - last arrival time plus fixed timeout
+
+    struct fecBlock *prev;
+    struct fecBlock *next;
+};
+
+
 
 /************************************************************************/
 /*                  */
@@ -227,6 +296,8 @@ unsigned char *blackFecActuator_removeHeaders(unsigned char *packetdata,
 /*
 JOSH - Changes
 1. Remove check for isParity - any packet can be the last in the block
+2. Because of this, add calculation of c
+3. TODO: fix header stuff
 */
 
 struct packetinfo *blackFecActuator_regenerateMissingPackets(
@@ -274,7 +345,13 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
 
   /* the passed packet should be a parity packet, so its length */
   /* should equal the maximum in the block.       */
-  maxpacketsize = pinfo->length;
+  if(pinfo->isParity) {
+    maxpacketsize = pinfo->length;
+  }
+  else {
+    maxpacketsize = find_c(fecblock);
+  }
+  
 
   /* get the packet sequence number (within the block) for the  */
   /* provided parity packet.            */
@@ -406,7 +483,8 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
   int h,      /* number of parity packets.    */
   int pindex,   /* packet index in block.   */
   BOOLEAN isParity, /* 1 if parity packet.      */
-  unsigned int timeout)   /* timeout for block.     */
+  unsigned int timeout /* timeout for block.     */
+  )   
 {
   struct packetinfo *newpinfo;
   /* regenerated packet list.   */
@@ -427,10 +505,10 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
     fecblock->packets[pindex] = pinfo;
     if (fecblock->packetCount == fecblock->k) {
       fecblock->complete = 1;
-      newpinfo
-        = blackFecActuator_regenerateMissingPackets(f,
-            fecblock,
-            pinfo);
+      //newpinfo
+      //  = blackFecActuator_regenerateMissingPackets(f,
+      //      fecblock,
+      //      pinfo);
       // FREE: We still need to free this since a new packet info is created
       //JOSH - why do they free this packet? We still want it in the structure to
       // check for duplicates 
@@ -438,9 +516,10 @@ struct packetinfo *blackFecActuator_initBlockWithPacket(
 
       return newpinfo;
     }
-    else {
-      return 0;
-    }
+    return 0;
+    //else {
+    //  return 0;
+   //}
   }
   /* source packets are released to the pipeline, so a copy needs */
   /* to be made in case it is needed to regenerate a missing packet.  */
@@ -584,13 +663,15 @@ DECLARE(blackFecActuator)
   int k;      /* number of source packets in block. */
   int h;      /* number of parity packets in block. */
   // struct deducehdr *dheader; /* deduce header.     */
-  int flowSeq;    /* flow sequence number for packet. */
+  struct seqNum flowSeq;
+  //int flowSeq;    /* flow sequence number for packet. */
   int pindex;     /* packet index within block.   */
   BOOLEAN isParity;   /* flag indicating packet is parity */
   /* packet.        */
-  int blockSeq;   /* block sequence number: flow sequence */
+  struct seqNum blockSeq;
+  //int blockSeq;   /* block sequence number: flow sequence */
   /* number of first packet in FEC block. */
-  double currTime;    /* current time (Unix time with   */
+  u_int32_t currTime;    /* current time (Unix time with   */
   /* microseconds).     */
   struct fecBlock *currblock; /* current (most recent) FEC block. */
   struct fecBlock *fecblock;  /* packet's fec block if not current. */
@@ -606,7 +687,9 @@ DECLARE(blackFecActuator)
   k = fecparams.fec_k;
   h = fecparams.fec_h;
   pindex = fecparams.fec_seq;
-  flowSeq = ntohl(fecparams.block_seq);
+  flowSeq.seq_high = ntohl(fecparams.block_seq1);
+  flowSeq.seq_low = ntohl(fecparams.block_seq2);
+  //flowSeq = ntohl(fecparams.block_seq);
   blockSeq = 0;
   pinfo->blockIndex = pindex;
 
@@ -617,13 +700,15 @@ DECLARE(blackFecActuator)
   if (pindex < k) {   /* source packet.     */
     isParity = 0;
     pinfo->isParity = 0;
-    blockSeq = flowSeq - pindex;
+    blockSeq = seqNum_sub(flowSeq, pindex);
+    //blockSeq = flowSeq - pindex;
     // blockSeq = 0 ;              // TO DO: Add it to deduce header, or make it a parameter
   }
   else {      /* parity packet.     */
     isParity = 1;
     pinfo->isParity = 1;
     blockSeq = flowSeq;
+    //blockSeq = flowSeq;
     // blockSeq = 0 ;            // TO DO: Add it to deduce header, or make it a parameter
   }
 
@@ -632,13 +717,14 @@ DECLARE(blackFecActuator)
   f = pinfo->pflow;
 
   /* get the current time to use for setting and checking timeouts. */
-  currTime = util_getCurrentTime();
+  currTime = f->time;
 
   /* the current block is the last block in the flow's block list.  */
   currblock = f->blockListTail;
 
   /* handle case of empty block list.  Create a new block for the */
   /* packet and initialize the list.          */
+  // JOSH - in this case, it is safe to not timeout anything
   if (currblock == 0) {
 
     /* initialize the block list with a new block structure.  */
@@ -660,19 +746,24 @@ DECLARE(blackFecActuator)
     return blackFecActuator_return(pbeg, pend, returnlist);
   }
 
+  // JOSH - part 1: find the block corresponding to the packet, 
+  // or create it if no block exists. Generate the packets to
+  // return and update the time appropriately.
+  // We will process timeouts later
+
   /* packet is for current block.  This implies that the packet's */
   /* FEC type is the same as that of the current block.  Add the  */
   /* packet to the block and use it to regenerate missing packets */
   /* if it completes the block.  A list of source and regenerated */
   /* packets will be returned.  Parity packets will just be stored  */
-  /* or deleted.              */
-  if (blockSeq == currblock->blockSeq) {
+  /* or deleted.
+                */
+  if(seqNum_eq(blockSeq, currblock->blockSeq)) {
 
     returnlist = blackFecActuator_addPacketToBlock(f,
                  currblock,
                  pinfo);
-
-    return blackFecActuator_return(pbeg, pend, returnlist);
+    //return blackFecActuator_return(pbeg, pend, returnlist);
   }
 
   /* packet is for a newer block (i.e. a block following the current  */
@@ -680,7 +771,9 @@ DECLARE(blackFecActuator)
   /* has the same FEC type as the current block.  Create the new  */
   /* block.  If the previous block hasn't completed it will   */
   /* eventually complete and/or expire.       */
-  else if (blockSeq > currblock->blockSeq) {
+  //TODO: make sure this is OK, because comparison might not be antisymmetric
+  else if (seqNum_lt(currblock->blockSeq, blockSeq)) {
+  //else if (blockSeq > currblock->blockSeq) {
 
     /* insert a new block structure into the block list.    */
     oldblock = currblock;
@@ -701,74 +794,31 @@ DECLARE(blackFecActuator)
                    isParity,
                    currTime + FECTIMEOUT);
 
-    return blackFecActuator_return(pbeg, pend, returnlist);
+    //return blackFecActuator_return(pbeg, pend, returnlist);
   }
 
   /* packet belongs to a previous block.  The block could be of the */
   /* same FEC type as the current block or a different FEC type.  */
+
+  //TODO: 
+
+
   else {  /* blockSeq < fecblock->blockSeq      */
 
     /* find the block.  While searching, delete expired blocks  */
     /* if convenient.  (If the packet belongs to an expired block,  */
     /* the later expired blocks won't be deleted in this round.)  */
-    fecblocknext = 0;
+    
     for (fecblock = f->blockListHead; fecblock != currblock;
-         fecblock = fecblocknext) {
-      /* save the next pointer in case block is deleted.    */
-      fecblocknext = fecblock->next;
-
-      /* delete expired blocks.         */
-      if (currTime > fecblock->timeout) {
-        /* packet is from earlier block than block that is  */
-        /* timed out.  There's no information about it's  */
-        /* block so just release it (if a source packet)  */
-        /* or drop it (if a parity packet).     */
-        if (blockSeq <= fecblock->blockSeq) {
-          /* drop/free expired parity packet.     */
-          if (isParity) {
-            // FREE:
-            packetinfo_free(pinfo);
-
-            pinfo = 0;
-          }
-          /* remove the block from the flow's block list. */
-          if (fecblock->prev == 0) {
-            f->blockListHead = fecblock->next;
-            if (fecblock->next == 0) {
-              f->blockListTail = 0;
-            }
-          }
-          else {
-            fecblock->prev->next = fecblock->next;
-            if (fecblock->next == 0) {
-              f->blockListTail = fecblock->prev;
-            }
-          }
-          if (fecblock->next != 0) {
-            fecblock->next->prev = fecblock->prev;
-          }
-          /* delete the block and any saved packets.    */
-          fecBlock_free(fecblock);
-          /* release source packet even if expired.  This */
-          /* will be a duplicate if the packet was    */
-          /* regenerated earlier.  This should be a rare  */
-          /* case.            */
-          returnlist = pinfo;
-          return blackFecActuator_return(pbeg, pend, returnlist);
-        }
+         fecblock = fecblock->next) {
+      //Found block
+      if(seqNum_eq(blockSeq, fecblock->blockSeq)) {
+        returnlist =  blackFecActuator_addPacketToBlock(f,
+                     fecblock,
+                     pinfo);
       }
-
-      /* packet is for missing block.  Create the block.    */
-      /* Since the loop walks from earlier blocks to later ones,  */
-      /* if the current block is has a sequence number greater  */
-      /* than that of the packet, the packet's block has    */
-      /* either not been created or has expired (possible   */
-      /* only if the prev pointer is 0).  In the expired case,  */
-      /* a new block will be created and will have to expire  */
-      /* again.  This is an unlikely case, but shouldn't    */
-      /* cause problems except for an occasional duplicated */
-      /* source packet.           */
-      if (fecblock->blockSeq > blockSeq) {
+      //No block for this packet, add it
+      else if(seqNum_lt(blockSeq, fecblock->blockSeq)) {
         /* insert a new block structure into the block list.  */
         newblock = fecBlock_new();
         newblock->next = fecblock;
@@ -796,33 +846,46 @@ DECLARE(blackFecActuator)
                        pindex,
                        isParity,
                        currTime + FECTIMEOUT);
-        return blackFecActuator_return(pbeg, pend, returnlist);
       }
-
-      /* packet is in the block.  Add the packet to the block.  */
-      else if (fecblock->blockSeq == blockSeq) {
-        returnlist = blackFecActuator_addPacketToBlock(f,
-                     fecblock,
-                     pinfo);
-        return blackFecActuator_return(pbeg, pend, returnlist);
-      }
-      else {
-      }
-    }
-    /* all earlier blocks must have expired.      */
-    /* discard parity packet.  Release source packet.   */
-    if (isParity) {
-
-      // FREE:
-      packetinfo_free(pinfo);
-
-      pinfo = 0;
-      returnlist = 0;
-    }
-    else {
-      returnlist = pinfo;
     }
   }
+
+  //JOSH: part 2: process timeouts, if time changed
+  u_int32_t newTime = f->time;
+  if(currTime != newTime) {
+    fecblocknext = 0;
+    for (fecblock = f->blockListHead; fecblock != 0;
+      fecblock = fecblocknext) {
+
+      /* save the next pointer in case block is deleted.    */
+      fecblocknext = fecblock->next;
+
+      if(!(time_leq(newTime, fecblock->timeout))) {
+        //delete expired block
+        /* remove the block from the flow's block list. */
+        if (fecblock->prev == 0) {
+          f->blockListHead = fecblock->next;
+          if (fecblock->next == 0) {
+            f->blockListTail = 0;
+          }
+        }
+        else {
+          fecblock->prev->next = fecblock->next;
+          if (fecblock->next == 0) {
+            f->blockListTail = fecblock->prev;
+          }
+        }
+        if (fecblock->next != 0) {
+          fecblock->next->prev = fecblock->prev;
+        }
+
+      }
+
+    }
+  }
+
+  //Now return the packets
+  return blackFecActuator_return(pbeg, pend, returnlist);
 }
 
 

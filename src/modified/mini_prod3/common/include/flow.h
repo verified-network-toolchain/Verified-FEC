@@ -97,7 +97,7 @@ struct flow {
     char *bpstat;		/* status of buffers for core FEC code.	*/
 				/* control/status bytes for FEC		*/
 				/* algorithm.				*/
-    unsigned int time; //JOSH - for recording the current time
+    u_int32_t time; //JOSH - for recording the current time
     
   struct flow* next;
   char tuplestr_buff[128];	/* written when flow_add() called,	*/

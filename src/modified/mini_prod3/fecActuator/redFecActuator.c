@@ -109,7 +109,8 @@ struct packetinfo *redFecActuator_generateParity(struct flow *f,
     struct ip *ipheader;	/* pointer to ip header.		*/
     int iphl;			/* length of ip header.			*/
     unsigned char *bufptr;	/* pointer into packetdata buffer.	*/
-    int paritySeq;		/* parity sequence number - set to same	*/
+    struct seqNum paritySeq;
+    //int paritySeq;		/* parity sequence number - set to same	*/
 				/* value as first source packet		*/
 				/* sequence number.			*/    
 
@@ -414,7 +415,9 @@ u_int32_t redFecActuator(struct packetinfo *pinfo,
 	fecparams.fec_h = p->fec_h;
 	fecparams.fec_seq = p->blockIndex;
 	fecparams.reserved = 0;
-	fecparams.block_seq = htonl(p->flow_seq);
+  fecparams.block_seq1 = htonl(p.flow_seq.seq_high);
+  fecparams.block_seq2 = htonl(p.flow_seq.seq_low);
+	//fecparams.block_seq = htonl(p->flow_seq);
 	packetinfo_addAParam(p, &fecparams, sizeof(struct fecParams));
     }
 
