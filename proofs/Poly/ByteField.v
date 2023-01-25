@@ -933,7 +933,7 @@ Proof.
     + rewrite Byte.unsigned_repr //. split; try rep_lia. apply Z_shiftl_nonneg'. rep_lia.
   - apply val_inj.
     have [Hlo Hhi]: 0 <= Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus <= Byte.max_unsigned. {
-      move: Hbig. rewrite Zbits.Zshiftl_mul_two_p; try lia. have->: two_p 1 = 2 by [].
+      move: Hbig. rewrite Zbits.Zshiftl_mul_two_p; try lia. have->: two_p 1 = 2%Z by [].
       rewrite Z.mul_comm => Hbig. pose proof (xor_modulus_bound Hbig). rep_lia. }
     have Hbyte: Byte.unsigned (Byte.repr (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus)) =
       Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus by rewrite Byte.unsigned_repr.

@@ -994,9 +994,9 @@ Function gauss_all_steps {m n} (A: 'M[F]_(m, n)) (r : option 'I_m) (c : option '
   end.
 Proof.
 move => m n A r c r' Hrr' c' Hcc' A' or. subst.
-rewrite /gauss_one_step. case Fz : (fst_nonzero A c' r') => [k |]; rewrite //=;
-move => G; case : G => Ha' Hor; subst; rewrite ord_bound_convert_plus;
-rewrite subnS; apply Lt.lt_pred_n_n; apply (elimT ltP); by rewrite subn_gt0. 
+rewrite /gauss_one_step. by case Fz : (fst_nonzero A c' r') => [k |]; rewrite //=;
+move => [Ha' Hor]; subst; apply /ltP; 
+rewrite ord_bound_convert_plus subnS pred_lt // subn_gt0. 
 Defined.
 
 Lemma gauss_multiple_steps_row_none: forall {m n} (A: 'M[F]_(m, n)) oc s,

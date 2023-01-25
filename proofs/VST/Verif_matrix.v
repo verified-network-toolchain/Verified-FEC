@@ -272,7 +272,7 @@ Proof.
                     assert_PROP ((field_address (tarray tuchar (m * n)) 
                         [ArraySubsc (i * n + n - 1 - (n - 1))] s) =
                         (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s)) as Htemp. {
-                    entailer!. solve_offset. }
+                    entailer!. }
                     rewrite Htemp in H2; clear Htemp.
                     assert_PROP (j < n) as Hjn. { entailer!. apply ptr_comparison_gt_iff in H2; auto. all: simpl; lia. }
                     clear H2.
@@ -315,7 +315,7 @@ Proof.
                     { assert_PROP ((field_address (tarray tuchar (m * n)) 
                         [ArraySubsc (i * n + n - 1 - (n - 1))] s) =
                         (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s)) as Htemp. {
-                      entailer!. solve_offset. } 
+                      entailer!. } 
                       rewrite Htemp in H2; clear Htemp.
                       (*need to know that j = n at end of loop*)
                       assert (Hjn: j >= n). { apply typed_false_not_true in H2. rewrite (not_iff_compat) in H2.
@@ -552,7 +552,7 @@ Proof.
               { (*simplify if condition*)
                 assert_PROP (field_address (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s = 
                   (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s)) as Hfa. { entailer!.
-                solve_offset. } rewrite Hfa in HRE; clear Hfa.
+                } rewrite Hfa in HRE; clear Hfa.
                 assert_PROP (j < n) as Hjn. { entailer!. 
                  rewrite ptr_comparison_gt_iff in HRE; auto; simpl; lia. } clear HRE.
                 (*simplify n so we can dereference*)

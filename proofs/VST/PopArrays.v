@@ -346,7 +346,8 @@ Lemma modn_mod_Z: forall (z1 z2: Z),
   Z.to_nat (z1 mod z2) = ((Z.to_nat z1) %% (Z.to_nat z2))%N.
 Proof.
   move => z1 z2 Hz1 Hz2. rewrite modn_mod_nat; last first. apply /ltP; lia.
-  apply Nat2Z.inj. rewrite mod_Zmod; try lia. rewrite !Z2Nat.id; try lia.
+  apply Nat2Z.inj.
+  rewrite Nat2Z.inj_mod !Z2Nat.id; try lia.
   by apply Z.mod_pos_bound.
 Qed.
 
@@ -672,13 +673,15 @@ Proof.
         -- have->//:(x mod (2 * xh) <? j + 1). apply /Z.ltb_spec0. lia.
         -- case : (x mod (2 * xh) <? j + 1) /Z.ltb_spec0 => [Hmod' //=| Hmod' //=].
           ++ have Hxj: x mod (2 * xh) = j by lia.
-             have Hxcon: x = i * xh * 2 + j by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
+             by have Hxcon: x = i * xh * 2 + j by
+              rewrite (Z_div_mod_eq_full x (2 * xh)); lia.
           ++ case : (xh <=? x mod (2 * xh)) /Z.leb_spec0 => [Hxmod/=|//].
              case : (x mod (2 * xh) <? j + xh) /Z.ltb_spec0 => [Hxjmod /= | Hxjmod /=].
             ** have->//: x mod (2 * xh) <? j + 1 + xh. apply /Z.ltb_spec0; lia.
             ** case : (x mod (2 * xh) <? j + 1 + xh) /Z.ltb_spec0 => [Hxjmod' /= | //].
                have Hjeq: x mod (2 * xh) = j + xh by lia.
-               have Hxcon: x = i * xh * 2 + j + xh by rewrite (Z_div_mod_eq x (2 * xh)); lia. by [].
+               by have Hxcon: x = i * xh * 2 + j + xh by 
+                rewrite (Z_div_mod_eq_full x (2 * xh)); lia.
 Qed.
 
 Arguments Z.div a b : simpl never.

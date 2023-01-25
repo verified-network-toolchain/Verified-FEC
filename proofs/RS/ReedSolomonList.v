@@ -148,6 +148,19 @@ Proof.
   by move: Hall; rewrite Forall_forall => /(_ _ Hin).
 Qed.
 
+(*TODO: move*)
+Lemma or_false_r (P: Prop):
+  (P \/ False) <-> P.
+Proof.
+  split=>[[Hp |]|Hp]//. by left.
+Qed.
+
+Lemma or_false_l (P: Prop):
+  (False \/ P) <-> P.
+Proof.
+  by rewrite or_comm or_false_r.
+Qed.
+
 Lemma find_lost_found_aux_in_spec: forall f base pack l x,
   Forall (fun x => 0 <= x <= Byte.max_unsigned) l ->
   In x (find_lost_found_aux f Byte.repr base pack l) <-> 
@@ -157,7 +170,8 @@ Proof.
   - by split => [Hin | [Hin | [Hfalse Hf]]]; try left.
   - have Hhbound: 0 <= h <= Byte.max_unsigned by apply Forall_inv in Hbound.
     apply Forall_inv_tail in Hbound. case Hfh : (f (Znth h pack)).
-    + rewrite IH // in_app_iff /= binop_lemmas2.or_False or_assoc. apply or_iff_compat_l.
+    + rewrite IH // in_app_iff /= or_false_r or_assoc. 
+      apply or_iff_compat_l.
       split.
       * move => [Hxh | [Hin Hh]].
         -- subst. rewrite !Byte.unsigned_repr; try rep_lia. split. by left. by [].
@@ -345,7 +359,7 @@ Proof.
   move => l k x Hk Hxk.
   have Hiota: Forall (fun x0 : Z => 0 <= x0 <= Byte.max_unsigned) (Ziota 0 k). 
     rewrite Forall_Znth Zlength_Ziota; try lia. move => i Hi. rewrite Znth_Ziota; try lia.
-  rewrite !find_lost_found_aux_in_spec //= !binop_lemmas2.False_or.
+  rewrite !find_lost_found_aux_in_spec //= !or_false_l.
   have Hin: In (Byte.unsigned x) (Ziota 0 k) by rewrite Ziota_In; lia.
   have Hand: forall (P Q: Prop), P -> ((P /\ Q) <-> Q) by tauto. rewrite !Hand {Hand} //.
   symmetry. apply rwN. apply idP.
@@ -469,7 +483,7 @@ Proof.
   - by split => [ Hin //| [Hin // | [Hfalse Hex //]]]; left.
   - have Hhbound: 0 <= h <= Byte.max_unsigned by apply Forall_inv in Hbound.
     apply Forall_inv_tail in Hbound. case Hnth : (Znth h par) => [c |]; rewrite IH //=.
-    + rewrite in_app_iff /= or_assoc binop_lemmas2.or_False. apply or_iff_compat_l. split.
+    + rewrite in_app_iff /= or_assoc or_false_r. apply or_iff_compat_l. split.
       * move => [Hxh | [Hint Hex]]. 
         -- subst. rewrite Byte.unsigned_repr; try rep_lia. split. by left. by exists c.
         -- split. by right. by [].

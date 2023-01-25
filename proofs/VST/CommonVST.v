@@ -340,7 +340,7 @@ Proof.
         rewrite <- !Z.add_assoc. f_equal. simpl Ctypes.sizeof. replace (Z.max 0 m) with m by lia.
         rewrite <- Z.mul_assoc. rewrite <- Z.mul_add_distr_l. f_equal.
         replace (Z.max 0 m) with m by lia.
-        rewrite <- Z_div_mod_eq. reflexivity. lia.
+        rewrite <- Z_div_mod_eq_full. reflexivity. 
     - split. assumption. inversion Hal2; subst. inversion H.
       inversion Hal1; subst. inversion H.  apply align_compatible_rec_Tarray. intros j Hj.
       apply align_compatible_rec_Tarray. intros k Hk.
@@ -514,7 +514,10 @@ Lemma remove_upd_Znth: forall {A: Type} (l: list A) (i : Z) (x: A),
   0 <= i < Zlength l ->
   remove_nth i (upd_Znth i l x) = remove_nth i l.
 Proof. 
-  intros. unfold remove_nth. list_solve.
+  intros. unfold remove_nth.
+  rewrite sublist_upd_Znth_l by lia.
+  rewrite Zlength_upd_Znth, sublist_upd_Znth_r by lia. 
+  reflexivity.
 Qed. 
 
 (* We want a similar definition for when only some of the data exists, and the others are null pointers*)
