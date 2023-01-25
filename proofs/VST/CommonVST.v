@@ -514,7 +514,9 @@ Lemma remove_upd_Znth: forall {A: Type} (l: list A) (i : Z) (x: A),
   0 <= i < Zlength l ->
   remove_nth i (upd_Znth i l x) = remove_nth i l.
 Proof. 
-  intros. unfold remove_nth. list_solve.
+  intros. unfold remove_nth.  
+  rewrite sublist_upd_Znth_l; try lia.
+  rewrite !sublist_upd_Znth_r; try lia; list_solve.
 Qed. 
 
 (* We want a similar definition for when only some of the data exists, and the others are null pointers*)
