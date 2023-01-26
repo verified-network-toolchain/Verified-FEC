@@ -9,6 +9,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.finalg.
+Require Import mathcomp.algebra.countalg.
+
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -61,6 +63,7 @@ Qed.
 
 Canonical bool_comunitring := [comUnitRingType of bool].
 Canonical bool_idomaintype := IdomainType bool bool_mulf_eq0.
+Canonical bool_countRingtype := [countRingType of bool].
 
 Lemma bool_fieldMixin : GRing.Field.mixin_of bool_comunitring.
 Proof.

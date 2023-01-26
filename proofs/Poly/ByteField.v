@@ -9,6 +9,8 @@ Unless required by applicable law or agreed to in writing, software distributed 
 Require Import VST.floyd.functional_base.
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
+From mathcomp Require Import qpoly qfpoly.
+
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -16,7 +18,6 @@ Set Bullet Behavior "Strict Subproofs".
 Require Import ListPoly.
 Require Import CommonSSR.
 Require Import mathcomp.algebra.poly.
-Require Import PolyField.
 Require Import BoolField.
 Require Import ZSeq.
 Require Import ByteFacts.
@@ -224,7 +225,6 @@ Local Open Scope ring_scope.
 
 Variable F : finFieldType.
 Variable p : {poly F}.
-Variable p_irred: irreducible_poly p.
 Variable p_prim: primitive_poly p.
 Variable p_notx: (2 < size p)%N.
 
@@ -235,32 +235,53 @@ Proof.
   apply (ltn_trans gt_01). by apply finfield.finRing_gt1.
 Qed.
 
-Notation QF := (qpoly_fieldType p_irred).
+Notation QF := {poly %/ p with primitive_mi p_prim}.
 
-Definition dlog_alt (q: QF) : 'I_(#|F| ^ (@size F p).-1) :=
-  if q == 1 then (Ordinal field_size_lt) else (widen_ord (ltnW field_size_lt) (dlog p_irred p_notx q)).
+Definition dlog (q : QF) :=  Ordinal (qlogp_lt p_notx q).
+
+Definition dlog_alt (q: QF) : 'I_(#|F| ^ (size p).-1) :=
+  if q == 1 then Ordinal field_size_lt 
+  else (widen_ord (ltnW field_size_lt) (dlog q)).
 
 Lemma dlog_alt_nonzero (q: QF):
   q != 0 ->
   nat_of_ord (dlog_alt q) != 0%N.
 Proof.
-move=> q_neq0. rewrite /dlog_alt.
+move=> q_neq0; rewrite /dlog_alt.
 case q_neq1: (q == 1) =>/=.
-- rewrite -lt0n. by apply field_gt0.
-- case log_zero: (nat_of_ord (dlog p_irred p_notx q) != 0%N) => //.
-  apply negbFE in log_zero. move: log_zero => /eqP log_zero.
-  have log_exp := (exp_dlog p_prim p_notx q_neq0).
-  move: log_exp. rewrite log_zero GRing.expr0 => q_eq1.
+- by rewrite -lt0n card_finField_gt0.
+- apply/eqP => log_zero.
+  have := qlogp_eq p_notx q_neq0.
+  rewrite log_zero GRing.expr0 => q_eq1.
   move: q_neq1. by rewrite -q_eq1 eq_refl.
 Qed.
 
+Lemma qX_order_card : 'qX ^+ (#|F| ^ (size p).-1).-1 = 1 :> QF.
+Admitted.
+
+Lemma qX_order_dvd (i : nat) :
+  'qX ^+ i = 1  :> QF -> ((#|F| ^ (size p).-1).-1 %| i)%N.
+Admitted.
+
+Lemma qlogp0 : qlogp p_notx (0 : QF) = 0%N.
+Admitted.
+
+Lemma qlogp_eq0 (q : QF): qlogp p_notx q = 0%N -> q = 0.
+Admitted.
+
+Lemma qX_exp_neq0 i : 'qX ^+ i != 0 :> QF.
+Admitted.
+
+Lemma qX_expK i :
+  (i < (#|F| ^ (size p).-1).-1)%N -> qlogp p_notx ('qX ^+ i : QF) = i.
+Admitted.
+
 Lemma dlog_alt_correct (q: QF) : 
-  q != 0 ->
-  (qx p_notx) ^+ (dlog_alt q) = q.
+  q != 0 -> 'qX ^+ (dlog_alt q) = q.
 Proof.
 move=> q_neq0. rewrite /dlog_alt.
-case: (q == 1) /eqP => /= q1; last by apply exp_dlog.
-rewrite q1. by apply qx_field_sz1.
+case: (q == 1) /eqP => /= q1; last by apply: qlogp_eq.
+by rewrite q1 qX_order_card.
 Qed.
 
 Lemma dlog_alt_zero: nat_of_ord (dlog_alt 0) = 0%N.
@@ -268,7 +289,8 @@ Proof.
 rewrite /dlog_alt.
 have->:0 == 1 = false. move => R. apply /eqP => eq_10.
 have: (@GRing.one R) != 0 by apply (GRing.oner_neq0). by rewrite eq_10 eq_refl.
-by apply dlog0.
+rewrite /=.
+by rewrite qlogp0.
 Qed.
 
 Lemma dlog_alt_eq0 (q: QF):
@@ -281,24 +303,18 @@ case: (nat_of_ord (dlog_alt q) == 0%N) /eqP => // log_zero.
 apply dlog_alt_correct in q_eq0.
 move: q_eq0. rewrite log_zero GRing.expr0 => q_eq1.
 move: log_zero. rewrite -q_eq1/dlog_alt eq_refl/= => field0.
-have: (0 < 0)%N. rewrite -{2}field0. by apply field_gt0.
+have: (0 < 0)%N. rewrite -{2}field0. by apply card_finField_gt0.
 by rewrite ltnn.
 Qed.
 
-Lemma dlog_map_zero (q: qpolyNZ p_irred):
-  nat_of_ord (dlog_map p_notx q) = 0%N ->
-  qq q = (@GRing.one QF).
+Lemma dlog_map_zero (q: {unit QF}):
+  qlogp p_notx (val q) = 0%N -> val q = 1.
 Proof.
 move=> log_eq.
-have: dlog_map p_notx q = Ordinal (field_gt0 p_irred p_notx) by apply val_inj.
-have unit1: qunit p_irred (@GRing.one QF).
-  by rewrite /qunit; apply GRing.oner_neq0.
-have<-: dlog_map p_notx (Qnz unit1) = Ordinal (field_gt0 p_irred p_notx).
-  have->:(Qnz unit1) = qpow_map p_irred p_notx (Ordinal (field_gt0 p_irred p_notx)).
-    rewrite /qpow_map/=. apply val_inj=>/=. by rewrite GRing.expr0.
-  by rewrite qpow_map_can.
-move: log_eq => _ log_eq. apply (@dlog_map_inj _ _ p_irred p_prim p_notx) in log_eq.
-by rewrite log_eq.
+have q_neq0 : val q != 0.
+  by rewrite -GRing.unitfE //; apply/valP.
+have := qlogp_eq p_notx q_neq0.
+by rewrite log_eq GRing.expr0.
 Qed.
 
 Lemma dlog_alt_inj: injective dlog_alt.
@@ -307,31 +323,24 @@ move=> q1 q2. rewrite /dlog_alt.
 case: (q1 == 1) /eqP => q1_eq1; case: (q2 == 1) /eqP => q2_eq1 //.
 - by rewrite q1_eq1 q2_eq1.
 - move => eq_ord. apply (f_equal val) in eq_ord. move: eq_ord => /=eq_dlog.
-  have: (nat_of_ord (dlog p_irred p_notx q2) <  (#|F| ^ (size p).-1).-1)%N by [].
+  have: (qlogp p_notx q2 <  (#|F| ^ (size p).-1).-1)%N by apply: qlogp_lt.
   by rewrite -eq_dlog ltnn.
 - move => eq_ord. apply (f_equal val) in eq_ord. move: eq_ord => /=eq_dlog.
-  have: (nat_of_ord (dlog p_irred p_notx q1) <  (#|F| ^ (size p).-1).-1)%N by [].
+  have: (qlogp p_notx q1 <  (#|F| ^ (size p).-1).-1)%N by apply: qlogp_lt.
   by rewrite eq_dlog ltnn.
 - move => [].
-  (*need to break abstraction here*)
-  rewrite /dlog. move: erefl erefl.
-  case: {2 3} (qunit p_irred q2); case: {2 3} (qunit p_irred q1).
-  + move=> q2_unit q1_unit log_eq.
-    have: Qnz q1_unit = Qnz q2_unit by apply (@dlog_map_inj _ _ p_irred p_prim p_notx), ord_inj, log_eq.
-    by move => [].
-  + move=> q2_unit q1_nunit/=. have /eqP->: q1 == 0 by apply negbFE.
-    move=> log0. symmetry in log0. by apply dlog_map_zero in log0.
-  + move=>q2_nunit q1_unit/=. have /eqP->:q2 == 0 by apply negbFE.
-    move=> log0. by apply dlog_map_zero in log0.
-  + move=>q2_nunit q1_nunit _. have /eqP->: q1 == 0 by apply negbFE.
-    by have /eqP->:q2 == 0 by apply negbFE.
+  case: (q1 =P 0) => [->|/eqP q1_neq0].
+    by rewrite qlogp0 => H; rewrite [q2]qlogp_eq0.
+  case: (q2 =P 0) => [->|/eqP q2_neq0 Hq].
+    by rewrite qlogp0 => H; rewrite [q1]qlogp_eq0.
+  by rewrite -[q1]qlogp_eq // Hq qlogp_eq.
 Qed.
 
 (*We also define the corresponding power map*)
 Definition qpow_map_alt (i: 'I_(#|F|^((size p).-1))) : QF := 
-  if (nat_of_ord i == 0%N) then (@GRing.zero QF) else (qx p_notx) ^+ i.
+  if (nat_of_ord i == 0%N) then 0 else 'qX ^+ i.
 
-Definition qpow_map_full (i: 'I_(#|F|^((size p).-1))): QF := (qx p_notx) ^+ i.
+Definition qpow_map_full (i: 'I_(#|F|^((size p).-1))): QF := 'qX ^+ i.
 
 Lemma qpow_map_full_equiv i:
   nat_of_ord i != 0%N ->
@@ -340,86 +349,49 @@ Proof.
 rewrite /qpow_map_alt /qpow_map_full. by case : (nat_of_ord i == 0%N).
 Qed.
 
-Lemma dlog_map_val (q1 q2: qpolyNZ p_irred):
-  val q1 = val q2 ->
-  dlog_map p_notx q1 = dlog_map p_notx q2.
-Proof.
-move=>val_eq. by rewrite /dlog_map; rewrite !val_eq.
-Qed.
-
-Lemma qpow_map_full_inv i:
-  nat_of_ord i != 0%N ->
-  dlog_alt (qpow_map_full i) = i.
+Lemma qpow_map_full_inv (i : 'I_ _) :
+  i != 0%N :> nat -> dlog_alt (qpow_map_full i) = i.
 Proof.
 move=>i_neq0. rewrite qpow_map_full_equiv//.
 rewrite /qpow_map_alt /dlog_alt.
 rewrite (negbTE i_neq0).
 case: (i == Ordinal field_size_lt) /eqP => i_big.
-  by rewrite i_big/= qx_field_sz1 // eq_refl.
+  by rewrite i_big /= qX_order_card eqxx.
 (*Now we have an ordinal in the correct range*)
-have i_small: (nat_of_ord i < (#|F| ^ (size p).-1).-1)%N.
+have i_small: (i < (#|F| ^ (size p).-1).-1)%N.
   rewrite ltn_neqAle. apply /andP; split.
     apply /eqP => i_eq. apply i_big. by apply ord_inj.
-  rewrite leq_predR // -qpoly_size. apply /card_gt0P.
-  by exists (qx p_notx).
-case x_ieq1: (qx p_notx ^+ i == 1); last first.
-  apply ord_inj=>/=.
-  rewrite /dlog. move: erefl.
-  case: {2 3} (qunit p_irred (qx p_notx ^+ i)); last
-    by have->: qunit p_irred (@GRing.exp QF (qx p_notx) i) by apply qpow_unit.
-  move=> pow_unit.
-  have->:Qnz pow_unit = (@qpow_map _ _ p_irred p_notx (Ordinal i_small)) by apply val_inj.
-  by rewrite qpow_map_can.
-have pow_unit: qunit p_irred (@GRing.exp QF (qx p_notx) i) by apply qpow_unit.
-have log_i: dlog_map p_notx (Qnz pow_unit) = (Ordinal i_small).
-  have->:Qnz pow_unit = (@qpow_map _ _ p_irred p_notx (Ordinal i_small)) by apply val_inj.
-  by rewrite qpow_map_can.
-have unit1: qunit p_irred (@GRing.one QF) by rewrite /qunit GRing.oner_neq0.
-have val_eq: val (Qnz pow_unit) = val (Qnz unit1)
-  by rewrite /=; apply /eqP.
-have log_0: dlog_map p_notx (Qnz pow_unit) = (Ordinal (field_gt0 p_irred p_notx)).
-  rewrite (dlog_map_val val_eq)/=.
-  have pows_eq: qpow_map p_irred p_notx (dlog_map p_notx (Qnz unit1)) = 
-    qpow_map p_irred p_notx (Ordinal (field_gt0 p_irred p_notx)).
-    rewrite dlog_map_can //. apply val_inj=>/=. by rewrite GRing.expr0.
-  by apply (bij_inj (qpow_map_bij p_irred p_prim p_notx)) in pows_eq.
-move: log_i. rewrite log_0 => i_eq0.
-apply (f_equal (@nat_of_ord _)) in i_eq0; move: i_eq0=>/= i_eq0.
-move: i_neq0. by rewrite -i_eq0 eq_refl.
+  by rewrite -ltnS prednK // (leq_trans (card_finField_gt0 p_notx)) ?leq_pred.
+rewrite ifN; last first.
+  have i_gt0 : (0 < i)%N by rewrite lt0n.
+  apply/eqP => /qX_order_dvd /(dvdn_leq i_gt0).
+  by rewrite leqNgt i_small.
+apply/val_inj => /=.
+by apply: qX_expK.
 Qed.
 
 Lemma qpow_map_full_neq0 i:
   qpow_map_full i != 0.
 Proof.
-rewrite /qpow_map_full. rewrite GRing.expf_neq0 //. apply qx_neq0.
+rewrite /qpow_map_full. rewrite GRing.expf_neq0 //.
+by rewrite -['qX]GRing.expr1 qX_exp_neq0.
 Qed.
 
 End DlogAlt.
 
-Section ByteQpolyMap.
+Section QF.
 
 (*Work directly with field of polys over p256*)
-Lemma p256_irred: polydiv.Pdiv.Field.irreducible_poly (Poly p256).
-Proof.
-  pose proof p256_primitive as [Hirred HRest]. by rewrite polyseqK.
-Qed.
+Notation p256_irred := (primitive_mi p256_primitive).
+Notation QF := {poly %/ p256 with p256_irred}.
 
-(*We give a new definition to avoid clashing with the previous canonical structures*)
-Definition qpoly_p256 : Type := qpoly (Poly p256).
+Section ByteQpolyMap.
 
-Definition qpoly_p256_finMixin := @qpoly_finMixin GF2 (Poly p256) p256_irred.
-Canonical qpoly_p256_finType : finType := FinType qpoly_p256 qpoly_p256_finMixin. 
-
-Definition qpoly_p256_fieldMixin := @qpoly_fieldmixin GF2 (Poly p256) p256_irred.
-Canonical qpoly_p256_fieldType : fieldType := FieldType qpoly_p256 qpoly_p256_fieldMixin.
-
-Lemma size_p256: size (Poly p256) = 9%N.
-Proof.
-  by rewrite size_Poly_lpoly.
-Qed.
+Lemma size_p256: size p256 = 9%N.
+Proof. by []. Qed.
 
 (*Now we can convert between bytes and qpolys*)
-Definition qpoly_to_Z (q: @qpoly GF2 (Poly p256)) : Z :=
+Definition qpoly_to_Z (q: @qpoly GF2 p256) : Z :=
   poly_to_Z q.
 
 Lemma qpoly_to_Z_bound: forall q,
@@ -427,53 +399,60 @@ Lemma qpoly_to_Z_bound: forall q,
 Proof.
   move => [p Hp].
   rewrite /qpoly_to_Z /=. pose proof (poly_to_Z_size p) as [Hlo Hhi].
-  move: Hp; rewrite size_p256 => /ltP Hp.
-  have {}Hp : (size p <= 8)%coq_nat by lia.
+  move: Hp; rewrite mk_qpolyE; last by apply: p256_irred.
+  rewrite size_p256 /= qualifE => /leP/inj_le /= Hp.
   have->: Byte.modulus = 256 by []. split; try lia.
-  have: 2 ^ Z.of_nat (size p) - 1 <= 2 ^ 8 - 1. rewrite -Z.sub_le_mono_r.
-    apply Z.pow_le_mono_r; lia.
+  have: 2 ^ Z.of_nat (size p) - 1 <= 2 ^ 8 - 1.
+    rewrite -Z.sub_le_mono_r.
+    by apply Z.pow_le_mono_r.
   have->: (2 ^ 8 - 1)%Z = 255 by []. move => Hhi'. 
   have: poly_to_Z p <= 255 by apply (Z.le_trans _ _ _ Hhi Hhi'). lia.
 Qed.
 
-Lemma qpoly_to_Z_0: forall q,
-  qpoly_to_Z q = 0 <-> q = (GRing.zero qpoly_p256_fieldType).
+Lemma qpoly_to_Z_0: forall q : QF, qpoly_to_Z q = 0 <-> q = 0%R.
 Proof.
   move => [[p Hlast] Hsz]. rewrite /qpoly_to_Z /poly_to_Z. split.
-  - move => /= Hb. apply val_inj. apply val_inj. rewrite /=. rewrite polyseq0. 
+  - move => Hb. apply val_inj. apply val_inj. rewrite /=. rewrite polyseq0. 
     by apply (bits_to_Z_zero Hlast).
   - move ->. by rewrite polyseq0.
 Qed.
 
-Definition qpoly_to_byte (q: qpoly_p256) : byte :=
-  Byte.mkint _ (qpoly_to_Z_bound q).
+Definition qpoly_to_byte (q: QF) : byte := Byte.mkint _ (qpoly_to_Z_bound q).
 
 Definition byte_to_poly (b: byte) :  {poly BoolField.bool_fieldType} :=
   Z_to_poly (@Byte_unsigned_nonneg b).
 
 Lemma byte_to_poly_range: forall b,
-  (size (byte_to_poly b) < size (Poly p256))%N.
+  (size (byte_to_poly b) < size p256)%N.
 Proof.
   move => b. rewrite /byte_to_poly Z_to_poly_size size_p256. case : (Z.eq_dec (Byte.unsigned b) 0) => [//= | /= Hb].
   rewrite -addn1 -(addn1 8) leq_add2r. apply /ltP.
   pose proof (byte_log2_range b). lia.
 Qed.
+  
+Definition byte_to_qpoly (b: byte) : QF := in_qpoly _ (byte_to_poly b).
 
-Definition byte_to_qpoly (b: byte) : qpoly_p256 :=
-  @Qpoly GF2 (Poly p256) _ (byte_to_poly_range b).
-
+Lemma byte_to_qpolyE (b: byte) :
+  byte_to_qpoly b = byte_to_poly b :> {poly bool}.
+Proof.
+rewrite in_qpoly_small // mk_qpolyE ?byte_to_poly_range //.
+by apply/primitive_mi/p256_primitive.
+Qed.
 
 (*Now, we have to show that these maps form a bijection, and then we can define the ring and field operations*)
 Lemma byte_qpoly_cancel: cancel byte_to_qpoly qpoly_to_byte.
 Proof.
-  move => b. apply byte_unsigned_inj. rewrite /qpoly_to_byte /byte_to_qpoly /= /qpoly_to_Z /= /byte_to_poly /=
-  /poly_to_Z /Z_to_poly /=. apply bits_Z_cancel. rep_lia.
+  move => b. apply byte_unsigned_inj.
+  rewrite /qpoly_to_byte /qpoly_to_Z /Byte.unsigned /Byte.intval byte_to_qpolyE.
+  apply bits_Z_cancel =>> /=.
+  case: b. rep_lia.
 Qed.
 
 Lemma qpoly_byte_cancel: cancel qpoly_to_byte byte_to_qpoly.
 Proof.
-  move => s. apply val_inj. rewrite /= /byte_to_poly /qpoly_to_byte /=.
-  apply val_inj. rewrite /= /qpoly_to_Z /poly_to_Z. apply Z_bits_cancel.
+  move => s. apply val_inj.
+  rewrite [LHS]byte_to_qpolyE.
+  apply val_inj. apply Z_bits_cancel.
   by case : s => [[p Hp] Hsz /=].
 Qed.
 
@@ -504,7 +483,7 @@ Proof.
 Qed.
 
 Definition byte_eqMixin := EqMixin beq_axiom.
-Canonical byte_eqType := EqType byte byte_eqMixin.
+Canonical byte_eQFype := EqType byte byte_eqMixin.
 
 (*We can get choice and finite types from the above bijection*)
 Definition byte_choiceMixin := CanChoiceMixin byte_qpoly_cancel.
@@ -516,7 +495,10 @@ Canonical byte_finType := FinType byte byte_finMixin.
 
 Lemma card_byte: #|byte_finType| = 256%N.
 Proof.
-  by rewrite (bijective_card byte_qpoly_bij) qpoly_size size_p256 /= card_bool.
+  rewrite (bijective_card byte_qpoly_bij) card_qpoly card_bool.
+  rewrite mk_qpolyE ?size_p256 //.
+  apply: primitive_mi.
+  apply: p256_primitive.
 Qed. 
 
 (*Zmodtype*)
@@ -539,12 +521,15 @@ Proof.
 Qed.
 
 Lemma xor_qpoly: forall (b1 b2: byte),
-  byte_to_qpoly (Byte.xor b1 b2) = @GRing.add qpoly_p256_fieldType (byte_to_qpoly b1) (byte_to_qpoly b2).
+  byte_to_qpoly (Byte.xor b1 b2) = (byte_to_qpoly b1 + byte_to_qpoly b2).
 Proof.
-  move => b1 b2. apply val_inj. rewrite /=. rewrite /byte_to_poly /Byte.xor.
+  move => b1 b2. apply val_inj. rewrite /byte_to_poly /Byte.xor.
+  rewrite [LHS]byte_to_qpolyE /byte_to_poly.
   rewrite (@Z_to_poly_eq _ (Z.lxor (Byte.unsigned b1) (Byte.unsigned b2))).
   - apply Z_lxor_nonneg'; rep_lia.
-  - move => Hxor. by apply xor_poly.
+  - move => Hxor.
+    rewrite [RHS]GRing.linearD ![_ (byte_to_qpoly _)]byte_to_qpolyE.
+    by apply: xor_poly.
   - rewrite Byte.unsigned_repr //. split. apply Z_lxor_nonneg'; rep_lia.
     pose proof (Z.log2_lxor (Byte.unsigned b1) (Byte.unsigned b2)).
     have: Z.max (Z.log2 (Byte.unsigned b1)) (Z.log2 (Byte.unsigned b2)) <= Z.log2 255. {
@@ -553,46 +538,43 @@ Proof.
     move => Hloglt. apply Z.log2_lt_cancel in Hloglt. rep_lia.
 Qed.
 
-Lemma byte_zero_qpoly: byte_to_qpoly Byte.zero = (q0 (p256_irred)).
+Lemma byte_zero_qpoly: byte_to_qpoly Byte.zero = 0.
 Proof.
-  rewrite /byte_to_qpoly /q0. apply val_inj. rewrite /= /byte_to_poly /= /Z_to_poly /=.
+  apply val_inj.
+  rewrite [LHS]byte_to_qpolyE.
   apply val_inj. by rewrite /= polyseq0 /Byte.zero Byte.unsigned_repr.
 Qed.
 
-Lemma byte_zero_qpoly_iff: forall b, (byte_to_qpoly b == (@GRing.zero qpoly_p256_fieldType)) = (b == Byte.zero).
+Lemma byte_zero_qpoly_iff: forall b, (byte_to_qpoly b == 0) = (b == Byte.zero).
 Proof.
-  move => b. case Hb: (b == Byte.zero).
-  - apply (elimT eqP) in Hb. by rewrite Hb byte_zero_qpoly eq_refl.
-  - case Hbq: (byte_to_qpoly b == 0) => [|//]. apply (elimT eqP) in Hbq. move: Hbq.
-    have->: (@GRing.zero qpoly_p256_fieldType) = (q0 (p256_irred)) by [].
-    rewrite /byte_to_qpoly /q0 => Hq. apply (@congr1 _ _ val (Qpoly (byte_to_poly_range b)) _) in Hq.
-    move: Hq; rewrite /= /byte_to_poly /Z_to_poly => Hp.
-    apply (@congr1 _ _ val (Polynomial (Z_to_bits_last (Byte_unsigned_nonneg (b:=b))))) in Hp.
-    move: Hp; rewrite /= polyseq0 => Hz. apply (congr1 bits_to_Z) in Hz. move: Hz.
-    rewrite bits_Z_cancel /=. have->: 0%Z = Byte.unsigned Byte.zero by rewrite Byte.unsigned_zero.
-    move => Hun. apply byte_unsigned_inj in Hun. by rewrite Hun in Hb. apply Byte_unsigned_nonneg.
+  move=> b.
+  have <-: byte_to_qpoly Byte.zero = 0.
+    apply/val_inj; rewrite [LHS]byte_to_qpolyE /=.
+    apply/val_inj => //=.
+    rewrite Byte.unsigned_repr_eq Z.mod_0_l //=.
+    by rewrite polyseq0.
+  by rewrite (inj_eq byte_to_qpoly_inj).
 Qed.
 
-Lemma byte_one_qpoly: byte_to_qpoly Byte.one = (q1 (p256_irred)).
+Lemma byte_one_qpoly: byte_to_qpoly Byte.one = 1.
 Proof.
-  rewrite /byte_to_qpoly /q1. apply val_inj. rewrite /= /byte_to_poly /= /Z_to_poly /=.
-  apply val_inj. by rewrite /= polyseq1 /Byte.one Byte.unsigned_repr.
+  apply/val_inj; rewrite [LHS]byte_to_qpolyE.
+  apply/val_inj. by rewrite /= polyseq1 /Byte.one Byte.unsigned_repr.
 Qed.
 
 (*opp is easy*)
-Lemma opp_qpoly: forall (b1: byte),
-  byte_to_qpoly b1 = @GRing.opp qpoly_p256_fieldType (byte_to_qpoly b1).
+Lemma opp_qpoly: forall (b1: byte), byte_to_qpoly b1 = - (byte_to_qpoly b1).
 Proof.
-  move => b1. apply val_inj. rewrite /= /byte_to_poly /= /Z_to_poly /=.
-  rewrite -polyP => i. by rewrite /= coef_opp_poly /=.
+  move => b1. apply val_inj; 
+  rewrite [LHS]byte_to_qpolyE [RHS]GRing.linearN [X in _ = - X]byte_to_qpolyE.
+  rewrite -polyP => i. by rewrite /= coef_opp_poly.
 Qed.
 
 (*We define multiplication and division in terms of qpolys directly*)
 Definition byte_mul (b1 b2: byte) : byte :=
-  qpoly_to_byte (@GRing.mul qpoly_p256_fieldType (byte_to_qpoly b1) (byte_to_qpoly b2)).
+  qpoly_to_byte (byte_to_qpoly b1 * byte_to_qpoly b2).
 
-Definition byte_inv (b: byte) : byte :=
-  qpoly_to_byte (@GRing.inv qpoly_p256_fieldType (byte_to_qpoly b)).
+Definition byte_inv (b: byte) : byte := qpoly_to_byte ((byte_to_qpoly b)^-1).
 
 (*This proves (implictly) that these rings are isomorphic. Since we need the canonical instances, we prove
   all the conditions manually, but they all follow from the above isomorphism*)
@@ -654,9 +636,9 @@ Definition bunit : pred byte :=
   fun x => x != Byte.zero.
 
 Lemma bunit_qunit: forall b,
-  bunit b = qunit p256_irred (byte_to_qpoly b).
+  bunit b = (byte_to_qpoly b != 0).
 Proof.
-  move => b. by rewrite /bunit /qunit byte_zero_qpoly_iff.
+  move => b. by rewrite /bunit byte_zero_qpoly_iff.
 Qed.
 
 Lemma byte_mulVr: {in bunit, left_inverse Byte.one byte_inv byte_mul}.
@@ -675,14 +657,16 @@ Lemma byte_unitP : forall x y : byte, (y * x) = 1 /\ (x * y) = 1 -> bunit x.
 Proof.
   move => x y. have->: (x * y) = byte_mul x y by [].
   have->: (y * x) = byte_mul y x by []. rewrite /byte_mul => [[Hun1 Hun2]].
-  have Hun: @GRing.mul qpoly_p256_fieldType (byte_to_qpoly y) (byte_to_qpoly x) = (q1 p256_irred) /\
-        @GRing.mul qpoly_p256_fieldType (byte_to_qpoly x) (byte_to_qpoly y) = (q1 p256_irred). {
+  have Hun: byte_to_qpoly y * byte_to_qpoly x = 1 /\
+        byte_to_qpoly x * byte_to_qpoly y = 1. {
   split.
   - apply (congr1 byte_to_qpoly) in Hun1. move: Hun1; rewrite qpoly_byte_cancel. move ->.
     apply byte_one_qpoly.
   - apply (congr1 byte_to_qpoly) in Hun2. move: Hun2; rewrite qpoly_byte_cancel. move ->.
     apply byte_one_qpoly. }
-  apply (qpoly_unitP) in Hun. by rewrite bunit_qunit.
+  rewrite bunit_qunit.
+  apply/eqP=> H0; case: Hun => /eqP; rewrite H0 GRing.mulr0.
+  by rewrite eq_sym GRing.oner_eq0.
 Qed.
 
 Lemma byte_inv0id : {in [predC bunit], byte_inv =1 id}.
@@ -698,8 +682,9 @@ Canonical byte_unitringtype := UnitRingType byte byte_unitringmixin.
 Lemma byte_mulf_eq0 : forall x y : byte, (x * y) = 0 -> (x == 0) || (y == 0).
 Proof.
   move => x y. have->: (x * y) = byte_mul x y by []. have->:0 = Byte.zero by []. rewrite /byte_mul => Hq.
-  apply (congr1 byte_to_qpoly) in Hq. move: Hq; rewrite qpoly_byte_cancel byte_zero_qpoly => Hz.
-  apply qpoly_mulf_eq0 in Hz. by rewrite -!byte_zero_qpoly_iff.
+  apply (congr1 byte_to_qpoly) in Hq. move: Hq; rewrite qpoly_byte_cancel byte_zero_qpoly => /eqP Hz.
+  rewrite GRing.mulf_eq0 in Hz.
+  by rewrite -!byte_zero_qpoly_iff.
 Qed.
 
 Canonical byte_comunitring := [comUnitRingType of byte].
@@ -754,23 +739,25 @@ Definition byte_to_ord (b: byte) : 'I_#|byte_finType| := Ordinal (byte_ord_bound
 
 (*Now, we can define the power and inverse power (log) maps*)
 
-Lemma p256_geq_2: (2 < size (Poly p256))%N.
+Lemma p256_geq_2: (2 < size p256)%N.
 Proof.
   by rewrite size_p256.
 Qed.
 
-Lemma byte_qpoly_size: #|byte_finType| = (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1)%N.
+Lemma byte_qpoly_size: #|byte_finType| = (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size p256).-1)%N.
 Proof.
   by rewrite card_bool size_p256 card_byte.
 Qed.
 
 (*We don't want to use Byte.modulus directly because it will simplify*)
 
+
 Definition byte_pow_map (b: byte) : byte :=
-  qpoly_to_byte (qpow_map_full p256_irred p256_geq_2 (eq_ord byte_qpoly_size (byte_to_ord b))).
+  qpoly_to_byte (qpow_map_full p256_primitive (eq_ord byte_qpoly_size (byte_to_ord b))).
 
 Definition byte_log_map (b: byte) : byte :=
-  ord_to_byte (eq_ord (esym byte_qpoly_size) (dlog_alt p256_geq_2 (byte_to_qpoly b))).
+  ord_to_byte (eq_ord (esym byte_qpoly_size) (dlog_alt p256_geq_2 
+      ((byte_to_qpoly b) : QF))).
 
 Definition byte_pows : seq byte :=
   mkseqByte byte_pow_map fec_n.
@@ -823,16 +810,15 @@ Qed.
 (* The power map *)
 
 (*The element "x"*)
-Definition bx := qpoly_to_byte (qx p256_geq_2).
+Definition bx := qpoly_to_byte 'qX.
 
-Lemma byte_exp_unfold: forall (q: qpoly_p256) n,
-  qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q n) = (qpoly_to_byte q) ^+ n.
+Lemma byte_exp_unfold: forall (q: QF) n,
+  qpoly_to_byte (q ^+ n) = (qpoly_to_byte q) ^+ n.
 Proof.
   move => q n. elim : n => [//= | n' /= IH].
   - rewrite !GRing.expr0. apply byte_to_qpoly_inj. by rewrite byte_one_qpoly qpoly_byte_cancel.
-  - rewrite !GRing.exprS -IH. apply byte_to_qpoly_inj. rewrite qpoly_byte_cancel.
-    have->: (@GRing.mul byte_fieldType (qpoly_to_byte q) (qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q n'))) = 
-      byte_mul (qpoly_to_byte q) (qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q n')) by [].
+  - rewrite !GRing.exprS -IH.
+   apply byte_to_qpoly_inj. rewrite qpoly_byte_cancel.
     by rewrite /byte_mul !qpoly_byte_cancel.
 Qed.
 
@@ -852,7 +838,6 @@ Lemma byte_logs_elts: forall i,
 Proof.
   move => i Hi. rewrite byte_logs_Znth // /byte_log_map; try lia. rewrite /bx/= Nat2Z.id -byte_exp_unfold dlog_alt_correct.
   - apply byte_qpoly_cancel.
-  - rewrite polyseqK. apply p256_primitive.
   - apply negbT. rewrite byte_zero_qpoly_iff. apply /eqP. move => Hiz. apply (congr1 Byte.unsigned) in Hiz.
     move: Hiz. rewrite Byte.unsigned_zero Byte.unsigned_repr; rep_lia.
 Qed.
@@ -880,9 +865,9 @@ Proof.
   rep_lia.
 Qed.
 
-Lemma modulus_val_poly: Z_to_poly modulus_nonneg = Poly p256.
+Lemma modulus_val_poly: Z_to_poly modulus_nonneg = p256.
 Proof.
-  apply val_inj. by rewrite polyseqK /= modulus_eq.
+  apply val_inj. by rewrite/= modulus_eq.
 Qed. 
 
 (*Multiply a byte by x, directly*)
@@ -907,28 +892,35 @@ Opaque p256.
 (*We need the crucial step from above (which is also used in the VST proof - when we xor
   the current value with 285, the result fits in a byte*)
 Lemma byte_mulX_correct: forall b,
-  byte_to_qpoly (byte_mulX b) = @GRing.mul qpoly_p256_fieldType (qx p256_geq_2) (byte_to_qpoly b).
+  byte_to_qpoly (byte_mulX b) = 'qX * byte_to_qpoly b.
 Proof.
   move => b. rewrite /byte_mulX. case : (Z_lt_ge_dec (Z.shiftl (Byte.unsigned b) 1) Byte.modulus) => [Hsmall |Hbig];
   rewrite /proj_sumbool.
-  - rewrite /byte_to_qpoly /=. apply qpoly_inj.
-    have->:(@GRing.mul qpoly_p256_fieldType (qx p256_geq_2) (Qpoly (byte_to_poly_range b))) =
-      qmul p256_irred (qx p256_geq_2) (Qpoly (byte_to_poly_range b)) by [].
-    rewrite /qmul /= /byte_to_poly /= (@Z_to_poly_eq _ (Z.shiftl (Byte.unsigned b) 1)).
+  - apply: val_inj.
+    rewrite [LHS]byte_to_qpolyE.
+    rewrite /byte_to_poly.
+    rewrite (@Z_to_poly_eq _ (Z.shiftl (Byte.unsigned b) 1)).
     + apply Z_shiftl_nonneg'. rep_lia.
     + move => Hb1. rewrite Z_shiftl_poly. apply Byte_unsigned_nonneg. move => Hb0.
-      rewrite modp_small. f_equal. by apply Z_to_poly_eq.
+      rewrite  [RHS]Pdiv.CommonRing.rmodp_small.
+        congr (_ * _); first by rewrite qpolyXE.
+        rewrite [RHS]byte_to_qpolyE.
+        by apply Z_to_poly_eq.
       have [{}Hb0 | {}Hb0]: Byte.unsigned b <> 0%Z \/ Byte.unsigned b = 0%Z by lia.
       * rewrite size_mul.
-        -- rewrite size_polyX /= Z_to_poly_size; try rep_lia.
+        -- rewrite qpolyXE // size_polyX [in X in (_ < X)%N]mk_qpolyE; last first.
+             by apply/primitive_mi/p256_primitive.
+           rewrite byte_to_qpolyE /= Z_to_poly_size; try rep_lia.
           case : (Z.eq_dec (Byte.unsigned b) 0) => [// | {}Hb0 /=]; try lia.
           have {}Hsmall: Z.shiftl (Byte.unsigned b) 1 <= 255 by rep_lia.
           have Hlog: Z.log2 (Z.shiftl (Byte.unsigned b) 1) = (Z.log2 (Byte.unsigned b) + 1)%Z. {
             rewrite Z.log2_shiftl; rep_lia. } apply /ltP.
           apply Z.log2_le_mono in Hsmall. move: Hsmall; rewrite Hlog /= size_p256. lia.
-        -- by rewrite polyX_eq0.
-        -- apply /eqP. by rewrite Z_to_poly_zero.
-      * have->: Z_to_poly (Byte_unsigned_nonneg (b:=b)) = 0%R by rewrite Z_to_poly_zero.
+        -- by rewrite qpolyXE // polyX_eq0.
+        --  rewrite byte_to_qpolyE.
+            apply /eqP. by rewrite Z_to_poly_zero.
+    * rewrite byte_to_qpolyE /byte_to_poly.
+     have->: Z_to_poly (Byte_unsigned_nonneg (b:=b)) = 0%R by rewrite Z_to_poly_zero.
         by rewrite GRing.mulr0 size_poly0 size_p256.
     + rewrite Byte.unsigned_repr //. split; try rep_lia. apply Z_shiftl_nonneg'. rep_lia.
   - apply val_inj.
@@ -937,13 +929,16 @@ Proof.
       rewrite Z.mul_comm => Hbig. pose proof (xor_modulus_bound Hbig). rep_lia. }
     have Hbyte: Byte.unsigned (Byte.repr (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus)) =
       Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus by rewrite Byte.unsigned_repr.
-    have Hlopoly: Z_to_poly Hlo = (('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + (Poly p256))). {
+    have Hlopoly: Z_to_poly Hlo = (('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + p256)). {
       rewrite xor_poly. apply Z_shiftl_nonneg'; rep_lia. rep_lia.
       move => Hshl Hp256. rewrite Z_shiftl_poly. rep_lia. move => Hb0.
       f_equal. f_equal. by apply Z_to_poly_eq. rewrite -modulus_val_poly. by apply Z_to_poly_eq. }
     rewrite /= /byte_to_poly /= (@Z_to_poly_eq _  (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus)).
-    + rewrite Hlopoly -(@modp_small _ ('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + Poly p256) (Poly p256)).
-      * by rewrite modpD modpp GRing.addr0.
+    + rewrite -!Pdiv.IdomainMonic.modpE // mk_qpolyE; last first.
+        by apply/primitive_mi/p256_primitive.
+     rewrite Hlopoly -(@modp_small _ ('X * Z_to_poly (Byte_unsigned_nonneg (b:=b)) + p256) p256).
+      * rewrite modpD modpp GRing.addr0 modp_mod.
+        by rewrite modp_mul [in RHS]GRing.mulrC modp_mul [in RHS]GRing.mulrC.
       * rewrite -Hlopoly Z_to_poly_size size_p256.
         case : (Z.eq_dec (Z.lxor (Z.shiftl (Byte.unsigned b) 1) modulus) 0) => [// | /= Hx0].
         apply /ltP. apply Z.log2_le_mono in Hhi. rewrite /= in Hhi. rep_lia.
@@ -1047,9 +1042,9 @@ Proof.
   lia.
 Qed.
 
-Lemma p256_primitive': primitive_poly (Poly p256).
+Lemma p256_primitive': primitive_poly p256.
 Proof.
-  rewrite polyseqK. apply p256_primitive.
+  apply p256_primitive.
 Qed.
 
 (*Now, we need to prove that this is actually correct*)
@@ -1093,7 +1088,7 @@ Proof.
            have Hprev: (Znth (z - 1) (populate_pows_logs_iota_aux (Z.of_nat n) base).1) = byte_pow_map (Byte.repr (z-1)).
            apply IH; try lia. by []. rewrite Hcurr in Hprev. rewrite Hprev. apply byte_to_qpoly_inj.
            rewrite byte_mulX_correct. rewrite /byte_pow_map !qpoly_byte_cancel /qpow_map_full.
-           rewrite -{1}(GRing.expr1 (qx p256_geq_2)) -GRing.exprD. f_equal. rewrite /=.
+           rewrite -{1}(GRing.expr1 'qX) -GRing.exprD. f_equal. rewrite /=.
            rewrite !Byte.unsigned_repr; try rep_lia. 
            have->:(1 + Z.to_nat (Z.of_nat n - 1))%N = (1 + Z.to_nat (Z.of_nat n - 1))%coq_nat by []. lia. }
     split => [//| ].  rewrite populate_pows_logs_iota_aux_plus_1; try lia.
@@ -1101,7 +1096,7 @@ Proof.
     * rewrite Hn0 /populate_pows_logs_iota_aux /= /byte_log_map. split => [//|b Hb]. 
       move: Hb => Hpow. apply nat_leq_1 in Hpow.
       rewrite ord_to_byte_zero //.
-      apply (introT eqP) in Hpow. move: Hpow. rewrite dlog_alt_eq0; last first. apply p256_primitive'.
+      apply (introT eqP) in Hpow. move: Hpow. rewrite dlog_alt_eq0; last first.
       rewrite byte_zero_qpoly_iff => /eqP Hb0. 
       by rewrite Hb0 Byte.unsigned_zero.
     * split. 
@@ -1110,7 +1105,8 @@ Proof.
         rewrite populate_pows_logs_aux_length2; rep_lia.
         rewrite Hinv1; try lia. rewrite /byte_pow_map /= => Hzero. apply esym in Hzero; move: Hzero.
         rewrite qpoly_to_Z_0 => Hpow.
-        have: (GRing.zero qpoly_p256_fieldType) != 0. rewrite -{1}Hpow. apply qpow_map_full_neq0. by rewrite eq_refl.
+        set u := eq_ord _ _ in Hpow.
+        by have /eqP[] := qpow_map_full_neq0 p256_primitive isT u.
       }
       { move => b Hb. rewrite Hinv1; try lia. apply z_leq_n_1 in Hb. case : Hb => [Hbef | Hcurr].
         { rewrite upd_Znth_diff. apply IH; try by []. rep_lia.
@@ -1118,23 +1114,22 @@ Proof.
           rewrite populate_pows_logs_aux_length2; rep_lia.
           move: Hbef. rewrite -Nat2Z.inj_lt /byte_pow_map => Hpow Hbpow. 
           apply byte_unsigned_inj in Hbpow. apply (congr1 byte_to_qpoly) in Hbpow. 
-          apply (congr1 (@dlog_alt _ _ p256_irred p256_geq_2)) in Hbpow.  move: Hbpow.
+          apply (congr1 (@dlog_alt _ _ p256_primitive p256_geq_2)) in Hbpow. move: Hbpow.
           rewrite qpoly_byte_cancel qpow_map_full_inv //.
           { move => Hbpow. rewrite Hbpow in Hpow. move: Hpow.
             rewrite /= Byte.unsigned_repr; rep_lia. }
-          { by apply p256_primitive'. }
           { rewrite /=. apply /eqP. rewrite Byte.unsigned_repr; rep_lia. }
         }
         { have Hbpow: (byte_pow_map (Byte.repr (Z.of_nat n))) = b. {
             apply Nat2Z.inj in Hcurr. rewrite /byte_pow_map. apply byte_to_qpoly_inj.
-            rewrite qpoly_byte_cancel. apply (@dlog_alt_inj _ _ (p256_irred) (p256_primitive') p256_geq_2).
-            rewrite qpow_map_full_inv //=. apply ord_inj. rewrite Hcurr /=. by rewrite Byte.unsigned_repr; rep_lia.
-            apply p256_primitive'. apply /eqP. by rewrite Byte.unsigned_repr; rep_lia. }
+            rewrite qpoly_byte_cancel. apply (@dlog_alt_inj _ _ (p256_primitive) p256_geq_2).
+            rewrite qpow_map_full_inv //=. apply ord_inj => /=.
+            rewrite Hcurr /=. by rewrite Byte.unsigned_repr; rep_lia.
+            apply /eqP. by rewrite Byte.unsigned_repr; rep_lia. }
           rewrite Hbpow upd_Znth_same; last first.
           rewrite populate_pows_logs_aux_length2; rep_lia. move: Hbpow.
           rewrite /byte_log_map /byte_pow_map. move <-. rewrite qpoly_byte_cancel qpow_map_full_inv /=.
           { apply byte_unsigned_inj. rewrite /=. rep_lia. }
-          { apply p256_primitive'. }
           { apply /eqP. by rewrite Byte.unsigned_repr; rep_lia. }
       }
     }
@@ -1223,10 +1218,9 @@ Proof.
 Qed.
 
 (*Part of definition of primitive poly*)
-Lemma prim_fieldsize: qx p256_geq_2 ^+ 255 = (GRing.one qpoly_p256_fieldType).
+Lemma prim_fieldsize: 'qX ^+ 255 = 1 :> QF.
 Proof.
-rewrite-(qx_field_sz1 p256_irred p256_primitive' p256_geq_2). f_equal.
-by rewrite size_p256 card_bool.
+  by rewrite -qX_order_card // card_bool.
 Qed.
   
 (*Inverse calculation is correct (the key part of the inverse proof)*)
@@ -1235,17 +1229,20 @@ Lemma inv_calc: forall b,
    byte_pow_map (Byte.repr (fec_n - 1 - Byte.unsigned (byte_log_map b))) = byte_inv b.
 Proof.
   move => b Hb. rewrite /byte_pow_map /byte_log_map /byte_inv /= /qpow_map_full /=.
-  have /ltP Hbound: (nat_of_ord (dlog_alt p256_geq_2 (byte_to_qpoly b)) < 256)%N. {
+  have /ltP Hbound: (nat_of_ord (dlog_alt p256_geq_2 
+             ((byte_to_qpoly b) : QF)) < 256)%N. { 
     case : (dlog_alt p256_geq_2 (byte_to_qpoly b)) => [m Hm /=].
-    move : Hm. by rewrite card_bool size_p256. } 
+    move : Hm. by rewrite card_bool size_p256.
+     } 
   rewrite Byte.unsigned_repr; last first.
   - remember (nat_of_ord (dlog_alt p256_geq_2 (byte_to_qpoly b))) as x. rewrite -Heqx. rep_lia.
-  - f_equal. symmetry. apply (@GRing.mulr1_eq qpoly_p256_fieldType). remember (byte_to_qpoly b) as q.
-    have Hq0: q != (GRing.zero qpoly_p256_fieldType). rewrite Heqq byte_zero_qpoly_iff.
-    by apply /eqP. apply (dlog_alt_correct p256_primitive' p256_geq_2) in Hq0.
+  - f_equal. symmetry.
+   apply: GRing.mulr1_eq. remember (byte_to_qpoly b) as q.
+    have Hq0: q != 0. rewrite Heqq byte_zero_qpoly_iff.
+    by apply /eqP. apply (dlog_alt_correct p256_geq_2) in Hq0.
     rewrite -{1}Hq0 -GRing.exprD.
-    have->: (dlog_alt p256_geq_2 q +
-      Z.to_nat (fec_n - 1 - Z.of_nat (dlog_alt p256_geq_2 q)))%N = 255%N.
+    have->: (dlog_alt p256_geq_2 (q : QF) +
+      Z.to_nat (fec_n - 1 - Z.of_nat (dlog_alt p256_geq_2 (q : QF))))%N = 255%N.
     { rewrite Z2Nat.inj_sub; try rep_lia. rewrite Nat2Z.id /=.
       remember (nat_of_ord (dlog_alt p256_geq_2 q)) as x. rewrite -Heqx. 
       have->: (x + (Z.to_nat (fec_n - 1) - x)%coq_nat)%N = (x + (Z.to_nat (fec_n - 1) - x)%coq_nat)%coq_nat by [].
@@ -1257,7 +1254,7 @@ Lemma inv_calc_zero:
   byte_pow_map (Byte.repr (fec_n - 1 - Byte.unsigned (byte_log_map Byte.zero))) = Byte.one.
 Proof.
   rewrite /byte_log_map /= byte_zero_qpoly /=. 
-  have->:nat_of_ord (@dlog_alt _ _ p256_irred p256_geq_2 (q0 p256_irred)) = 0%N. apply /eqP.
+  have->:nat_of_ord (@dlog_alt _ _ p256_primitive p256_geq_2 0) = 0%N. apply /eqP.
     by rewrite dlog_alt_zero.
   rewrite /= Z.sub_0_r /byte_pow_map. apply byte_to_qpoly_inj. 
   rewrite qpoly_byte_cancel byte_one_qpoly /qpow_map_full /=.
@@ -1284,8 +1281,10 @@ Proof.
   move => i base Hi. have Hinat: i = Z.of_nat (Z.to_nat i) by lia. move: Hinat Hi ->. move : base.
   elim : (Z.to_nat i) => [//= base Hi Hlen Hb0 | n IH base].
   - rewrite /populate_invs_aux /=. split =>[//|b].
-    have->: (@GRing.inv (qpoly_fieldType p256_irred)) (byte_to_qpoly b) = @qinv _ _ p256_irred (byte_to_qpoly b) by [].
-    pose proof (@qpoly_to_Z_bound) (qinv p256_irred (byte_to_qpoly b)). lia.
+  (*
+    have->: (@GRing.inv (qpoly_fieldType p256_irred)) (byte_to_qpoly b) = @qinv _ _ p256_irred (byte_to_qpoly b) by []. *)
+    pose proof (@qpoly_to_Z_bound) ((byte_to_qpoly b) ^- 1). 
+    set u := qpoly_to_Z _ in H *; lia.
   - have->: Z.of_nat n.+1 = (Z.of_nat n + 1) %Z by lia. move => Hn1 Hlen Hb0.
     rewrite populate_invs_aux_plus_1; try lia.
     (*Need first one separately*)
@@ -1361,17 +1360,14 @@ Qed.
 (*A key result, needed in a few places: if a and b are equal mod 255, then x ^+ a = x^+ b*)
 Lemma powX_eq_mod: forall a b,
   modn a 255%N = modn b 255%N ->
-  (@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) a) = (qx p256_geq_2) ^+ b.
+  ('qX ^+ a) = 'qX ^+ b :> QF.
 Proof.
-have->:255%N=(#|bool_finFieldType| ^ (size (Poly p256)).-1).-1 by rewrite size_p256 card_bool.
-apply qpoly_exp_modn.
-apply p256_primitive'.
-Qed.
+have->:255%N=(#|bool_finFieldType| ^ (size p256).-1).-1 by rewrite size_p256 card_bool.
+Admitted.
 
 (*Therefore, we can add the field size without changing anything*)
 Lemma powX_add_255: forall a,
-  (@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) a) =
-  (qx p256_geq_2) ^+ (a + 255).
+  'qX ^+ a = 'qX ^+ (a + 255) :> {poly %/ p256 with primitive_mi p256_primitive}.
 Proof.
   move => a. apply powX_eq_mod. by rewrite addnC modnDl.
 Qed. 
@@ -1386,20 +1382,20 @@ Proof.
   move => Hbig. f_equal.
   (*so we don't have to do it twice*)
   have Hnz: forall (x y : byte), fec_n - 1 <
-       Z.of_nat (dlog_alt p256_geq_2 (byte_to_qpoly x)) +
-       Z.of_nat (dlog_alt p256_geq_2 (byte_to_qpoly y)) ->
+       Z.of_nat (dlog_alt p256_geq_2 ((byte_to_qpoly x) : QF)) +
+       Z.of_nat (dlog_alt p256_geq_2 ((byte_to_qpoly y : QF))) ->
        x != 0. { move => x y Hbig'.
     case Hx: (x == 0) => [|//]. rewrite -byte_zero_qpoly_iff in Hx.
     apply (elimT eqP) in Hx. move: Hbig'.
-    rewrite Hx. have->:nat_of_ord (dlog_alt p256_geq_2 (GRing.zero qpoly_p256_fieldType)) = 0%N.
+    rewrite Hx. have->:nat_of_ord (dlog_alt p256_geq_2 (0 : QF)) = 0%N.
       apply /eqP. by rewrite dlog_alt_zero. rewrite Nat2Z.inj_0 Z.add_0_l.
     case : (dlog_alt p256_geq_2 (byte_to_qpoly y)) => [m Hm].
     move: Hm. rewrite size_p256 card_bool /=. have->: (2^ 8)%N = 256%N by []. move => /ltP Hm. rep_lia. }
   have Hb1: b1 != 0. apply (Hnz b1 b2 Hbig).
   have Hb2: b2 != 0. rewrite Z.add_comm in Hbig. apply (Hnz b2 b1 Hbig). rewrite {Hnz}.
   rewrite -byte_zero_qpoly_iff in Hb1. rewrite -byte_zero_qpoly_iff in Hb2.
-  apply (dlog_alt_correct p256_primitive' p256_geq_2) in Hb1.
-  apply (dlog_alt_correct p256_primitive' p256_geq_2) in Hb2.
+  apply (dlog_alt_correct p256_geq_2) in Hb1.
+  apply (dlog_alt_correct p256_geq_2) in Hb2.
   rewrite powX_add_255 -{2}Hb1 -{2}Hb2 -GRing.exprD. f_equal. cbn.
   move: Hbig.  remember (nat_of_ord (dlog_alt p256_geq_2 (byte_to_qpoly b1))) as a. rewrite -Heqa.
   remember (nat_of_ord (dlog_alt p256_geq_2 (byte_to_qpoly b2))) as b. rewrite -Heqb => Hbig.
@@ -1423,17 +1419,20 @@ Lemma mult_small: forall b1 b2,
 Proof.
   move => b1 b2 /eqP Hb1 /eqP Hb2 Hsmall.
   rewrite -byte_zero_qpoly_iff in Hb1. rewrite -byte_zero_qpoly_iff in Hb2.
-  apply (dlog_alt_correct p256_primitive' p256_geq_2) in Hb1.
-  apply (dlog_alt_correct p256_primitive' p256_geq_2) in Hb2.
+  apply (dlog_alt_correct p256_geq_2) in Hb1.
+  apply (dlog_alt_correct p256_geq_2) in Hb2.
   move: Hsmall.
   rewrite /byte_log_map /byte_pow_map /byte_mul /qpow_map_full !ord_byte_simpl !nat_eq_ord => Hsmall.
   rewrite -{2}Hb1 -{2}Hb2 -GRing.exprD. f_equal. f_equal. cbn. move: Hsmall.
   case : (dlog_alt p256_geq_2 (byte_to_qpoly b1)) => [a].
-  case : (dlog_alt p256_geq_2 (byte_to_qpoly b2)) => [b]. rewrite card_bool size_p256 /=.
+  case : (dlog_alt p256_geq_2 (byte_to_qpoly b2)) => [b]. 
+  rewrite  card_bool /=.
   have ->: (2 ^ 8)%N = 256%N by []. move => /ltP Ha /ltP Hb Hab.
   rewrite Byte.unsigned_repr ; try rep_lia.
   have->:(a + b)%Nrec = (a + b)%coq_nat by []. rep_lia.
 Qed.
 
 End Mult.
+
+End QF.
   
