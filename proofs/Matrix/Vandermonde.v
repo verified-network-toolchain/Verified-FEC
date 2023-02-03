@@ -591,7 +591,7 @@ Proof.
     apply IH.
     + move => x Hinx. apply Hinadd. by rewrite in_cons Hinx orbT.
     + apply (elimT andP) in Hunadd. apply Hunadd.
-    + apply /eqP. rewrite -eqSS Hszadd. apply /eqP. eapply Lt.S_pred. apply /ltP. apply Hk.
+    + apply /eqP. by rewrite -eqSS Hszadd prednK.
     + by apply rem_nth_uniq.
     + apply rem_nth_subseq' with (y:=xm); try by [].
       have->: nth xm all_rows j = Ordinal Hhm.  apply ord_inj. by eq_subst Hj. by [].

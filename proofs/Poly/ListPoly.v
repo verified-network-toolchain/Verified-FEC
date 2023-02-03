@@ -837,7 +837,7 @@ Lemma find_primP: forall (l: lpoly F) n,
 Proof.
   move => l n Hszl Hn. 
   have Hpow0: (2 ^ (size l).-1).-1 != 0%N. { have: 2^ 1 <= 2 ^((size l).-1) by rewrite leq_exp2l // ltn_predRL.
-    have->: 2 ^ 1 = 2 by []. move => Hbound. by rewrite -lt0n ltn_predRL. }
+    have->: 2 ^ 1 = 2%N by []. move => Hbound. by rewrite -lt0n ltn_predRL. }
   case Hprim: (find_prim l n).
   - apply ReflectT. move: Hprim; rewrite /find_prim /primitive_poly => 
     /andP[/andP [/(find_irredP Hszl Hn) Hirred Hdiv] / prim_div_check_spec Hdivcheck].

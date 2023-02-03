@@ -238,7 +238,7 @@ Lemma concat_Znth: forall {A: Type} `{Inhabitant A} (l: list (list A)) m n i,
   Znth i (concat l) = Znth (i mod n) (Znth (i / n) l).
 Proof.
   intros A Hinhab l m n i Hn0 Hm Hn Hi.
-  rewrite (Z_div_mod_eq i n) at 1 by lia. rewrite Z.mul_comm.
+  rewrite (Z_div_mod_eq_full i n) at 1 by lia. rewrite Z.mul_comm.
   pose proof (find_indices_correct _ _ _ Hn0 Hi) as [Hdiv Hmod].
   rewrite (concat_Znth' _ m n); try assumption. reflexivity.
 Qed.
@@ -278,7 +278,7 @@ Proof.
   - lia. 
   - rewrite Hconcatlen. intros i Hi. rewrite (concat_Znth _ m n); try lia.
     + unfold unconcat. rewrite mkseqZ_Znth. 2: apply find_indices_correct; lia.
-      rewrite mkseqZ_Znth. rewrite <- Z_div_mod_eq; try lia. reflexivity.
+      rewrite mkseqZ_Znth. rewrite <- Z_div_mod_eq_full; try lia. reflexivity.
       pose proof (find_indices_correct m n i). lia.
     + apply unconcat_length1; auto.
     + apply unconcat_length2; auto.
@@ -339,7 +339,8 @@ Proof.
   intros m n mx i Hwf Hi. assert (Hn: 0 < n). {
     assert (0 <= m) by (apply (lmatrix_m_pos Hwf)).
     assert (0 <= n) by (apply (lmatrix_n_pos Hwf)). lia. } 
-  assert (Hieq: i = (i / n) * n + i mod n). rewrite Z.mul_comm. apply Z_div_mod_eq. lia.
+  assert (Hieq: i = (i / n) * n + i mod n). rewrite Z.mul_comm.
+  apply Z_div_mod_eq_full. 
   assert (Hmod: i mod n = n - 1 - (n - 1 - i mod n)) by lia. rewrite Hmod in Hieq.
   rewrite Hieq at 1. rewrite !Z.add_sub_assoc. apply (flatten_mx_Znth _ _ _ Hwf).
   apply find_indices_correct; lia. pose proof (find_indices_correct m n i). lia.

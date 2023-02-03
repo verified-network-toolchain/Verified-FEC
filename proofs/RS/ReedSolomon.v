@@ -263,7 +263,7 @@ Section SpecializedDecoder.
 (*For the matrix multiplication decoder to be correct, we need to be in a field of characteristic 2, so
   addition and subtraction are the same thing*)
 
-Variable Hchar: 2 \in [char F].
+Variable Hchar: 2%N \in [char F].
 
 Lemma max_n_pos: 0 < max_n.
 Proof.
