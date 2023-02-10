@@ -13,7 +13,7 @@ Proof.
   unfold wordsize. auto.
 Qed.
 End Wordsize_4.
-Module Nibble := (Make Wordsize_4).
+Module Nibble := Make Wordsize_4.
 Notation nibble := Nibble.int.
 
 Module Wordsize_16 <: WORDSIZE.
@@ -23,7 +23,7 @@ Proof.
   unfold wordsize. auto.
 Qed.
 End Wordsize_16.
-Module Short := (Make Wordsize_16).
+Module Short := Make Wordsize_16.
 Notation short := Short.int.
 
 (** Tactics *)
