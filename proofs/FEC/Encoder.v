@@ -2393,6 +2393,13 @@ Proof.
   rewrite /block_option_list/=. by rewrite in_cons Hbl orbT.
 Qed.
 
+Lemma filter_concat {A: Type} (l: list (list A)) (p: A -> bool):
+  filter p (concat l) = concat (map (fun x => filter p x) l).
+Proof.
+  elim: l=>[//|h t IH/=].
+  by rewrite filter_cat IH.
+Qed.
+
 (*TODO: we need some kind of theorem which says:
   block i in the output contains packets i *k to (i+1) * k of the input
   Right now we do everything by permutation. Think we can do with invar but
@@ -2400,7 +2407,15 @@ Qed.
   (*TODO: do by index in block_list-OPtion or whatever (and maybe prove length of
     main one is size orig / k), and also prove that this sublist of sent
     equals sublist of orig*)
-Lemma block_boundaries k h orig (i: nat):
+Theorem block_boundaries k h orig (i: nat):
+(*Some assumptions on the orig stream and parameters for our
+  invariants*)
+  (0 < k <= fec_n - 1 - fec_max_h)%Z ->
+  (0 < h <= fec_max_h)%Z ->
+  (forall p, p \in orig -> packet_valid p) ->
+  (forall p, p \in orig -> encodable p) ->
+  uniq (map p_seqNum orig) -> (*TODO: we will require that this
+    is the index but don't need until reorder stuff later*)
   i < size orig %/ Z.to_nat k ->
   let output :=
     encoder_concat_nochange k h orig in
@@ -2421,14 +2436,245 @@ Lemma block_boundaries k h orig (i: nat):
     (size orig %% (Z.to_nat k)) /\
   size output.1.1 = size orig %/ (Z.to_nat k).
 Proof.
+  move=> Hkbound Hhbound Hval Henc Huniqseq Hi output sent b n encoded.
+  have Hallinbounds: (forall k0 h0 : Z_eqtype,
+    (k0, h0) \in zseq (Zlength orig) (k, h) ->
+    (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
+    move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
+  have Hsz: size orig = size (zseq (Zlength orig) (k, h)) by
+    rewrite size_nseq ZtoNat_Zlength -size_length.
+  have/=:=(@encode_boundary_h_all (Z.to_nat k) (Z.to_nat h) orig).
+  rewrite /encode_boundary_h_invar.
+  have:= (encoder_all_steps_blocks Hallinbounds Hval Henc Huniqseq Hsz).
+  (*Get info about how orig relates to output from 
+    [encoder_all_steps_sent_data]*)
+  have:=(encoder_all_steps_sent_data Hsz).
+  (*Remove unneeded assumptions and get relevant [encoder_props] 
+    in context*)
+  rewrite {Hallinbounds Hval Henc Hsz}.
+  rewrite !(proj1 (encoder_all_steps_concat_aux orig _))
+    !encoder_all_steps_concat -!encoder_concat_nochange_eq.
+  rewrite !Z2Nat.id; try lia.
+  (*Now get results from [encode_boundary_invar]*)
+  have Hk0: (Z.to_nat k) != 0 by apply /eqP; lia.
+  have/=:=(encode_boundary_invar_all (Z.to_nat h) Hk0 orig).
+  rewrite !Z2Nat.id; try lia.
+  (*Redo abbreviations*)
+  subst b.
+  subst encoded.
+  subst output.
+  subst sent.
+  set (output := encoder_concat_nochange k h orig).
+  set (sent := concat output.2).
+  set (b:= nth block_inhab (rev output.1.1) i).
+  set (encoded := (sublist (Z.of_nat (i * n)) (Z.of_nat ((i+1) * n)) sent)).
+  move => [[l [last [Hconcat [Hdatpar [Hlastsome Hlastnone]]]]] [Hallk Hidx]].
+  move => Horig [ [Hperm [Hallwf [_ [_ [_ [_ [_ [Henc [Hinprog [Hwf [Huniq Huniqdat]]]]]]]]]]] Hzidx] Hallh.
+  (*Now we begin the main proof*)
+  (*These invariants are pretty difficult to work with*)
+  (*First, we need to know lots of size info*)
+  have Hszeq: size (output).1.1 = size l. {
+    apply (f_equal size) in Hdatpar. rewrite !size_map in Hdatpar.
+    by rewrite Hdatpar size_rev.
+  }
+  have Hallsz: all (fun l0 : seq fpacket => size l0 == Z.to_nat (k + h)) l. {
+    apply /allP. move=> pkts Hinpkts.
+    apply /eqP. 
+    have: map Some pkts \in [seq [seq Some i | i <- l1] | l1 <- l] by
+      apply /mapP; exists pkts.
+    rewrite Hdatpar => /mapP [b']. rewrite mem_rev => Hbin Hpkts.
+    apply (f_equal size) in Hpkts. move: Hpkts.
+    rewrite size_map =>->; rewrite size_cat.
+    have->:size (data_packets b') = Z.to_nat k by apply Hallk;
+      apply in_block_option_list.
+    have->:size (parity_packets b') = Z.to_nat h by apply Hallh;
+      apply in_block_option_list.
+    rewrite Z2Nat.inj_add //; lia.
+  }
+  have Hszl: (size (concat l) = (size l) * (Z.to_nat (k+h))) by
+    apply size_concat. 
+  (*Prove this*)
+  (*Quite complicated to show: relies on concat results and
+    knowing that all data/parities are filled and have correct
+    fd_isParity values*)
+  have Hallpar: all (fun l0 : seq fpacket => size l0 == Z.to_nat k)
+    [seq [seq i1 <- i0 | ~~ fd_isParity (p_fec_data' i1)] | i0 <- l]. {
+    apply /allP => pkts Hpkts.
+    apply /eqP.
+    have [pkts' []]: exists l',
+      map Some l' \in [seq [seq Some i | i <- l1] | l1 <- l] /\
+      pkts = filter (fun (x: fpacket) => ~~ fd_isParity x) l'. {
+      move: Hpkts => /mapP [pkts'] Hinpkts->.
+      exists pkts'. split=>//. apply /mapP. by exists pkts'. 
+    }
+    rewrite Hdatpar => /mapP [b']. 
+    rewrite mem_rev => Hinb' Hpkts' => ->.
+    have Hpkts'':=Hpkts'.
+    apply pmap_id_inv in Hpkts''. 
+    rewrite Hpkts'' pmap_cat filter_cat size_cat.
+    have->/=:[seq x <- pmap id (data_packets b') | 
+      ~~ fd_isParity (p_fec_data' x)] =
+      pmap id (data_packets b'). {
+      apply /all_filterP. apply /allP. move=> p'.
+      rewrite -pmap_id_some => Hindat.
+      have->//: fd_isParity (p_fec_data' p') = false. 
+      by apply (Hallwf _ (in_block_option_list _ Hinb')).
+    }
+    have->/=:[seq x <- pmap id (parity_packets b') | 
+      ~~ fd_isParity (p_fec_data' x)] = nil. {
+      rewrite -(filter_pred0 (pmap id (parity_packets b'))).
+      apply eq_in_filter => p'/=. rewrite -pmap_id_some => Hinpar.
+      apply negbF. by apply (Hallwf _ (in_block_option_list _ Hinb')).
+    }
+    rewrite addn0 size_pmap -size_filter.
+    have->:[seq x <- data_packets b' | isSome x] = data_packets b'.
+      apply /all_filterP. apply /allP. move => o Hoin.
+      have: o \in (data_packets b' ++ parity_packets b') by 
+        rewrite mem_cat Hoin.
+      by rewrite -Hpkts' => /mapP [x] _ ->.
+    apply Hallk. apply (in_block_option_list _ Hinb').
+  }
+  have Hsz1: size [seq i | i <- concat l & ~~ fd_isParity (p_fec_data' i)] =
+    (size l) * (Z.to_nat k). {
+    (*TODO: repetitive below - can we improve?*)
+    rewrite concat_flatten filter_flatten -concat_flatten size_map.
+    by rewrite (@size_concat _ (Z.to_nat k)); first by
+      rewrite !size_map.
+  }
+  (*First, prove that all packets in last 
+    are not parities*)
+  have Hlastdat: all (fun x => negb(fd_isParity (p_fec_data' x))) last. {
+    move: Hlastnone Hlastsome Hconcat.
+    case Hcurr: (output.1.2) => [curr |//]; last by
+    move=> /(_ erefl) ->// _ _.
+    move=> _ /(_ curr erefl) [filled [Hdatcurr Hlast]].
+    have Hszdatcurr:=Hdatcurr.
+    move=> Hconcat. apply /allP => fp Hfp.
+    apply negbT. apply (Hallwf curr).
+      by rewrite Hcurr/block_option_list/=mem_head.
+    rewrite /packet_in_data Hdatcurr mem_cat -Hlast mem_map.
+      by rewrite Hfp.
+    by apply some_inj.
+  }
+  (*Then, prove last is small, prove mod after*)
+  have Hlast_sm: size last < Z.to_nat k. {
+    move: Hlastnone Hlastsome Hconcat.
+    case Hcurr: (output.1.2) => [curr |//]; last first.
+      move=> /(_ erefl) ->/= _ _. apply /ltP; lia.
+    move=> _ /(_ curr erefl) [filled [Hdatcurr Hlast]].
+    have Hszdatcurr:=Hdatcurr.
+    apply (f_equal (@size _)) in Hszdatcurr. move: Hszdatcurr.
+    rewrite size_cat size_map size_nseq.
+    have Hinopt: curr \in block_option_list
+      ((encoder_concat_nochange k h orig).1.1,
+      (encoder_concat_nochange k h orig).1.2) by
+      rewrite Hcurr/block_option_list/=mem_head.
+    have->: size (data_packets curr) = Z.to_nat k by apply Hallk.
+    rewrite -maxnE => Hmax. symmetry in Hmax.
+    move: Hmax => /maxn_idPr.
+    rewrite leq_eqVlt => /orP[/eqP Hsz | //].
+    move: Hdatcurr. rewrite Hsz subnn/= cats0 => Hdat.
+    (*Contradiction: all are Some, so Zindex is too large*)
+    move: Hzidx => /(_ curr Hcurr).
+    have->: blk_k curr = (Z.of_nat (Z.to_nat k)) by apply Hallk.
+    rewrite -Hsz. have->: size filled = size (data_packets curr) by
+      rewrite Hdat size_map.
+    by rewrite -Zlength_size Zindex_In Hdat => /inP /mapP [x].
+    by rewrite Hlast.
+  }
+  (*Now prove size of blocks list and orig*)
+  have Hszout: size output.1.1 = size orig %/ Z.to_nat k. {
+    rewrite -Horig Hconcat !filter_cat map_cat size_cat.
+    move: Hsz1. rewrite !size_map=> ->.
+    rewrite divnDl.
+    + rewrite mulnK; last by apply /ltP; lia.
+      rewrite divn_small; first by rewrite addn0.
+      apply (@leq_ltn_trans (size last))=>//.
+      by rewrite size_filter count_size.
+    + apply dvdn_mull. by rewrite dvdnn.
+  }
+  (*Now we can prove the relation between [size orig] and [size l]*)
+  have Hszorig_strong: size orig = size l * (Z.to_nat k) +
+    size last. {
+    rewrite -Horig Hconcat !filter_cat map_cat size_cat.
+    move: Hsz1. rewrite !size_map=>->. f_equal. apply /eqP.
+    by rewrite filter_all_size.
+  }
+  
+  (*have Horig':=Horig.
+  move: Horig. rewrite Hconcat filter_cat !map_cat => Horig.*)
+  move: Hsz1; rewrite size_map => Hsz1.
+  have Hkgt0: 0 < Z.to_nat k by apply /ltP; lia.
+  (*Two corollaries: *)
+  have Hszorig: size orig %/ Z.to_nat k = size l
+    by rewrite -Hszout.
+  have Hlastmod: size last = (size orig) %% (Z.to_nat k)
+    by rewrite Hszorig_strong modnMDl modn_small.
+  have Hn: n = Z.to_nat (k+ h)
+    by rewrite Z2Nat.inj_add; try lia.
+  (*Step 2: Get information about [size sent]*)
+  have Hsz_sent1: size sent = (size orig %/ (Z.to_nat k)) * n +
+    (size orig %% (Z.to_nat k)) by
+    rewrite Hszorig Hconcat size_cat Hszl Hlastmod Hn.
+  (*Now we can start proving the goals*)
+  have Hnthl: map Some (nth nil l i) = 
+    data_packets b ++ parity_packets b. {
+    apply (f_equal (fun l => nth (@nil (option fpacket)) l i)) in Hdatpar.
+    move: Hdatpar. rewrite (nth_map nil);
+      last by rewrite -Hszorig.
+    move->. by rewrite (nth_map block_inhab) // size_rev Hszout.
+  }
+  have Halln: all (fun l0 : seq fpacket => size l0 == n) l. {
+    erewrite eq_all. apply Hallsz. move=> x. by rewrite Hn.
+  }
+  have Hiplus1: (0 <= Z.of_nat (i * n) <= Z.of_nat ((i + 1) * n))%Z. {
+    rewrite (mulnDl i 1 n) mul1n.
+    have->:(i * n + n) = (i * n + n)%coq_nat by []. lia.
+  }
+  have Hiplus1': (Z.of_nat ((i + 1) * n) <= Zlength (concat l))%Z. {
+    rewrite Zlength_size Hszl -Hszorig.
+    move: Hi.
+    case: (size orig %/ Z.to_nat k) => [//| j].
+    rewrite ltnS => Hij.
+    rewrite addn1 -Hn. apply inj_le.
+    apply /leP. rewrite leq_pmul2r //.
+    apply /ltP; lia.
+  }
+  split_all=>//.
+  - subst encoded. rewrite Hconcat sublist_app1; try lia.
+    by rewrite (sublist_concat nil) // -Hszorig. 
+  - (*Idea: suppose we have (concat l) and we filter by p
+    and we know that all  *)
+    have Hkex : k = Z.of_nat (Z.to_nat k) by lia.
+    subst encoded.
+    rewrite -Horig !Hconcat filter_cat map_cat !sublist_app1; try lia.
+    + rewrite sublist_map filter_concat.
+      have Hhex: h = Z.of_nat (Z.to_nat h) by lia.
+      have->:(Z.of_nat i * k)%Z = (Z.of_nat (i * (Z.to_nat k))) by
+        rewrite {1}Hkex -Nat2Z.inj_mul.
+      have->:(Z.of_nat (i + 1) * k)%Z = (Z.of_nat ((i+1) * Z.to_nat k)) by
+        rewrite {1}Hkex -Nat2Z.inj_mul.
+      rewrite (sublist_concat nil).
+      * rewrite (sublist_concat nil).
+        -- rewrite (nth_map nil); last by rewrite -Hszorig.
+          (*TODO: prove for any well-formed, 
+              completed block, filter relation holds*)
+          admit.
+        -- by rewrite -Hszorig.
+        -- by [].
+      * by rewrite size_map -Hszorig.
+      * by [].
+    + rewrite addn1. lia.
+    + rewrite Zlength_size size_map Hsz1 -Hszorig.
+      move: Hi.
+      case: (size orig %/ Z.to_nat k) => [//| j].
+      rewrite ltnS => Hij.
+      rewrite {1}Hkex -Nat2Z.inj_mul.
+      apply inj_le.
+      apply /leP. by rewrite leq_pmul2r // addn1.
 Admitted.
+ 
 
-(*TODO: move*)
-Lemma size_block_option_list_lb l o:
-  size l <= size (block_option_list (l, o)).
-Proof.
-  rewrite /block_option_list. by case: o => //=.
-Qed.
 
 Theorem encoder_boundaries_i: forall (k h: Z) p orig (i: nat),
 (*Some assumptions on the orig stream and parameters for our
@@ -2533,7 +2779,7 @@ Proof.
 Qed.
 
 
-
+(*old stuff*)
 
   (*First, get f*)
   have Hpin': p \in orig. {
