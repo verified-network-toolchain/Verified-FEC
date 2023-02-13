@@ -687,14 +687,11 @@ Lemma recoverableP (b: block):
       size (data_packets b)).
 Proof.
   apply iff_reflect. rewrite /recoverable.
-  rewrite -Zlength_app -cat_app -filter_cat !Zlength_correct -!size_length.
-  case : (Z_ge_lt_dec
-  (Z.of_nat (size [seq x <- data_packets b ++ parity_packets b | isSome x]))
-  (Z.of_nat (size (data_packets b)))) =>//= Hsz.
-  - apply Nat2Z.inj_ge in Hsz.
-    split=>// _. by move: Hsz => /leP.
-  - apply Nat2Z.inj_lt in Hsz. split=>// Hle.
-    move: Hsz => /ltP. by rewrite ltnNge Hle.
+  rewrite -Zlength_app -cat_app -filter_cat !Zlength_size.
+  case : (Z_ge_lt_dec _ _) =>//= Hsz.
+  - split=>//_. apply Z.ge_le in Hsz. move: Hsz. by to_ssrnat.
+  - split=>//. move: Hsz. to_ssrnat => Hsz.
+    by rewrite leqNgt Hsz.
 Qed. 
 
 Lemma add_packet_size: forall (s: seq fpacket) (b1 b2: block) 
@@ -734,8 +731,7 @@ Lemma add_packet_size: forall (s: seq fpacket) (b1 b2: block)
     have Hheq': blk_h b1 = blk_h b2 by apply Hsub.
     have Hidxbound: (0 <= Z.of_nat (fd_blockIndex p) < blk_k b1 + blk_h b1)%Z by lia.
     remember (data_packets b1 ++ parity_packets b1) as l eqn: Hl.
-    rewrite !size_length -!ZtoNat_Zlength.
-    (*rewrite -Z.add_1_r.*)
+    rewrite !size_Zlength.
     have Hbound2: (0 <= Z.of_nat (fd_blockIndex p) < 
       Zlength (data_packets b1 ++ parity_packets b1))%Z by
       rewrite Zlength_app Hlendat Hlenpar; lia.
@@ -743,7 +739,7 @@ Lemma add_packet_size: forall (s: seq fpacket) (b1 b2: block)
     rewrite Z2Nat.inj_add; [| list_solve | 
     by case: (Znth (Z.of_nat (fd_blockIndex p)) 
       (data_packets b1 ++ parity_packets b1)) ].
-    rewrite addnC. have->:(forall x y, (x + y) = (x + y)%coq_nat) by [].
+    rewrite addnC. to_ssrnat.
     f_equal.
     have->: isSome (Znth (Z.of_nat (fd_blockIndex p)) 
       (data_packets b1 ++ parity_packets b1)) =
@@ -980,9 +976,8 @@ Proof.
       exfalso. have /hasP: has (packet_in_block^~b) (undup l1). {
         rewrite has_count Hcountl1.
         have Hkeq: fd_k (p_fec_data' p1) = blk_k b by apply Hwfb.
-        move: Hk0 => /eqP => Hk0. 
-        apply /ltP. have->: (Z.to_nat k - 1) = (Z.to_nat k - 1)%coq_nat by [].
-        lia.
+        move: Hk0 => /eqP => Hk0.
+        apply /ltP. rewrite subn1. lia.
       }
       move=> [p2] Hinp2 Hinbp2.
       (*Contradiction since every previous packet is in a block*)
@@ -1041,7 +1036,7 @@ Proof.
         
         have Hwfb1: block_wf b1:=(subblock_wf Hwfb Hsub).
         have->: (size (data_packets b1) = Z.to_nat k). {
-          rewrite size_length -ZtoNat_Zlength. f_equal.
+          rewrite !size_Zlength. f_equal.
           have->: (Zlength (data_packets b1) = blk_k b1) by apply Hwfb1.
           by have->: (blk_k b1 = blk_k b) by apply Hsub.
         }
@@ -1073,7 +1068,7 @@ Proof.
         }
         rewrite Hsz subn1 prednK; last by rewrite lt0n.
         (*Now, easy to show*)
-        rewrite size_length -ZtoNat_Zlength leq_eqVlt.
+        rewrite !size_Zlength leq_eqVlt.
         apply /orP; left; apply /eqP. f_equal.
         rewrite add_packet_Zlength=>//.
         rewrite -Hbk. apply Hsub.

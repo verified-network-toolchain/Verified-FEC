@@ -21,8 +21,7 @@ Section GenericCorrect.
 Variable upd_time : Z -> fpacket -> seq block -> Z.
 Variable not_timeout: Z -> block -> bool.
 
-(*One of our correctness theorems: all outputted packets are valid.
-  TODO: do relational version later*)
+(*One of our correctness theorems: all outputted packets are valid.*)
   
 (* The first (strongest) version of the theorem*)
 Theorem all_decoded_in_Z: forall (orig : list packet) (encoded received: list fpacket)
@@ -44,7 +43,7 @@ Proof.
   (*Step 1: since p is in the decoder, it must have been in [rse_decode_func] at some point*)
   move: Hind. rewrite decoder_all_steps_concat // in_mem_In in_concat => [[dec]] [Hinp].
   rewrite In_Znth_iff; zlist_simpl => [[i] [Hi]]. zlist_simpl. move => Hdec. subst. move: Hinp. rewrite -in_mem_In => Hp.
-  have Hleno': size orig = size enc_params by rewrite !size_length -!ZtoNat_Zlength Hleno.
+  have Hleno': size orig = size enc_params by rewrite !size_Zlength Hleno.
   have Hwfenc: wf_packet_stream (encoder_all_steps orig enc_params).2 by apply rse_encode_stream_wf.
   have Hwfrec: wf_packet_stream received by apply (wf_substream Hwfenc).
   have Hidx: 0 <= Z.of_nat (fd_blockIndex (Znth i received)) < fd_k (Znth i received) + fd_h (Znth i received). {
@@ -120,37 +119,6 @@ Definition loss_cond_i (sent received: list fpacket) (i: nat) : Prop :=
 Definition loss_cond (sent received: list fpacket) : Prop :=
   forall i, loss_cond_i sent received i.
 
-(*TODO: move*)
-Lemma zseq_eq: forall {A: eqType} (z: Z) (x: A) (s: seq A),
-  Zlength s = z ->
-  all (fun y => y == x) s ->
-  s = zseq z x.
-Proof.
-  move=> A z x s Hz Hall.
-  rewrite /zseq.
-  rewrite -Hz ZtoNat_Zlength -size_length. 
-  by apply /all_pred1P.
-Qed. 
-
-(*TODO: move*)
-Lemma in_sublist_widen {A: Type} `(H: Inhabitant A) (lo1 lo2 hi1 hi2: Z)
-  (l: list A) (x: A):
-  In x (sublist lo1 hi1 l) ->
-  (0 <= lo2 <= lo1)%Z ->
-  (lo1 <= hi1)%Z ->
-  (hi1 <= hi2 <= Zlength l)%Z ->
-  In x (sublist lo2 hi2 l).
-Proof.
-  move=> Hin Hlo Hlohi Hhi.
-  have:=(In_Znth _ _ Hin)=>/(_ H) [i [Hi Hnth]].
-  rewrite Zlength_sublist in Hi; try lia.
-  rewrite Znth_sublist in Hnth; try lia.
-  rewrite In_Znth_iff. exists (i + (lo1-lo2))%Z.
-  rewrite Zlength_sublist; try lia.
-  rewrite Znth_sublist; try lia.
-  split; try lia. rewrite -Hnth. f_equal. lia.
-Qed.
-
 (*If at least k of packets (i(k+h)) to (i+1)(k+h) in
   the encoded stream are recovered, then all packets
   from ik to (i+1)k in the original stream are recovered*)
@@ -190,27 +158,6 @@ Proof.
   rewrite Henceq in Henc. clear Hlenenc Hallkh Henceq enc_params.
   move: Henc. rewrite encoder_all_steps_concat 
     -encoder_concat_nochange_eq => Henc.
-    (*TODO: see if we need*)
-  (*
-  have Hinp': p \in sublist 0 (Z.of_nat (size orig %/ Z.to_nat k * Z.to_nat k)) orig. {
-    move: Hinp => /inP Hinp.
-    apply /inP. apply (in_sublist_widen _ Hinp); try lia.
-    - have->:(i+1)=(i+1)%coq_nat by []. lia.
-    - split.
-      + (*The hard case*) 
-        have Hk: k = Z.of_nat (Z.to_nat k) by rewrite Z2Nat.id; lia.
-        rewrite {1}Hk -Nat2Z.inj_mul.
-        apply inj_le. apply /leP.
-        have->:((i + 1) * Z.to_nat k)%coq_nat = ((i+1) * Z.to_nat k) by [].
-        rewrite addn1 mulSnr.
-        move: Hi.
-        case: (size orig %/ Z.to_nat k)=>[| n' Hn']//=.
-        rewrite ltnS in Hn'.
-        have Hk0: 0 < Z.to_nat k by apply /ltP; lia.
-        by rewrite mulSnr leq_add2r leq_pmul2r.
-      + rewrite Zlength_size.
-        apply inj_le. apply /leP. apply leq_trunc_div.
-   }*)
   (*Next, use [encoder_boundaries_i] to get the boundary*)
   have:=(encoder_boundaries_i k_bound h_bound 
     Hallvalid Hallenc Hseqnum Hinp Hi)=>/=.
@@ -238,8 +185,7 @@ Proof.
         far apart *)
       move=> p1 p2 Hinp1 Hinp2 Hideq.
       apply u_seqNum_reorder_bound with(sent:=encoded)=>//.
-      + (*ugh, dont want to reverse - TODO also prove these separately*)
-        rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
+      + rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
         apply rse_encode_stream_uniq=>//.
         * move=> k' h'. by rewrite /zseq mem_nseq => /andP[_ /eqP[]->->].
         * by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
@@ -256,15 +202,14 @@ Proof.
   have Hi': let n:= Z.to_nat (k + h) in 
     size encoded %/ n = size orig %/ Z.to_nat k. {
     rewrite Hszenc/= Z2Nat.inj_add; try lia.
-    have Hplus:(Z.to_nat k + Z.to_nat h)%coq_nat = (Z.to_nat k + Z.to_nat h) by [].
-    rewrite Hplus.
+    to_ssrnat.
     set n:=(Z.to_nat k + Z.to_nat h).
     rewrite divnDl; last by apply dvdn_mull; rewrite dvdnn.
-    have Hn0: 0 < n by subst n; rewrite -Hplus; apply /ltP; lia.
+    have Hn0: 0 < n by subst n; solve_by_lia.
     rewrite mulnK // (@divn_small (_ %% _)); first by rewrite addn0.
     have Hk0: 0 < Z.to_nat k by apply /ltP; lia.
-    apply (ltn_leq_trans (ltn_pmod _ Hk0)). apply /leP.
-    subst n; rewrite -Hplus; lia.
+    apply (ltn_leq_trans (ltn_pmod _ Hk0)). subst n.
+    by rewrite leq_addr.
   }
   move: Hi'. rewrite /loss_cond_i /= => -> /(_ Hi) Hloss.
   have Hinpdat: packet_in_data f b by 
@@ -278,78 +223,6 @@ Proof.
   - exists p. by rewrite -Hpf.
   - exists (p_packet f <| p_seqNum := 0 |>). split=>//.
     by rewrite /remove_seqNum/= Hpf.
-Qed.
-
-(*TODO: move all this*)
-Lemma in_Znth_sublist {A: Type} `{H: Inhabitant A} (i: Z) (l: list A) lo hi:
-  (0 <= i < Zlength l)%Z ->
-  (0 <= lo <= i)%Z ->
-  (i < hi <= Zlength l)%Z ->
-  In (Znth i l) (sublist lo hi l).
-Proof.
-  move=> Hi Hlo Hhi.
-  apply (@in_sublist_widen _ _ i _ (i+1)%Z); try lia.
-  rewrite sublist_len_1 //=. by left.
-Qed.
-
-(*TODO: move and use*)
-Ltac to_ssrnat :=
-  repeat match goal with
-  | |- context [(?x + ?y)%coq_nat] => have->:(x + y)%coq_nat = x+y by []
-  | |- context [(?x * ?y)%coq_nat] => have->:(x*y)%coq_nat = x*y by []
-  | |- (?x < ?y)%coq_nat => apply /ltP
-  | |- (?x <= ?y)%coq_nat => apply /leP
-  end.
-
-(*Helpful with mod*)
-Lemma ltSmod (d n m: nat):
-  0 < d ->
-  d %| m ->
-  n < m ->
-  (n %/ d + 1) * d <= m.
-Proof.
-  move=> Hd Hdiv Hlt.
-  rewrite -(divnK Hdiv) leq_pmul2r // addn1 ltn_divRL //.
-  by apply (leq_ltn_trans (leq_trunc_div n d)).
-Qed.
-
-
-(*TODO: move*)
-(*For a list of length n * m, find which m-batch an element is in*)
-Lemma find_batch {A: eqType} (l: list A) (m: nat) (x: A):
-  0 < m ->
-  m %| size l ->
-  x \in l ->
-  exists i, i < size l %/ m /\ x \in 
-    (sublist (Z.of_nat i * Z.of_nat m) (Z.of_nat (i+1) *Z.of_nat m)) l.
-Proof.
-  move=> H0m Hmdiv Hinx.
-  (*The value of i is [index x l] %/ m (could just put this in lemma)*)
-  exists (index x l %/ m).
-  split.
-  - by rewrite ltn_divLR // divnK // index_mem.
-  - have Hx: nth x l (index x l) = x by apply nth_index.
-    rewrite -{1}Hx nth_nth nth_Znth'.
-    apply /inP.
-    have Hindex: index x l < size l by rewrite index_mem.
-    apply in_Znth_sublist.
-    + rewrite Zlength_size. split; try lia.
-      apply inj_lt. by to_ssrnat. 
-    + split; try lia. rewrite -Nat2Z.inj_mul.
-      apply inj_le. to_ssrnat.
-      by apply leq_trunc_div.
-    + rewrite -Nat2Z.inj_mul. split.
-      * apply inj_lt. to_ssrnat.
-        by rewrite {1}(divn_eq (index x l) m) 
-          mulnDl ltn_add2l mul1n ltn_pmod.
-      * rewrite Zlength_size. apply inj_le. to_ssrnat. by apply ltSmod.
-Qed.
-
-(*TODO: move and use*)
-Lemma size_Zlength: forall {A: Type} (s: seq A),
-  size s = Z.to_nat (Zlength s).
-Proof.
-  move=> A s. by rewrite ZtoNat_Zlength size_length.
 Qed.
 
 (*A corollary: if for all i, the loss condition holds, then any
@@ -404,10 +277,8 @@ Proof.
   have Hk: k = Z.of_nat (Z.to_nat k) by lia.
   rewrite {1 2}Hk.
   split; try lia.
-  - rewrite -!Nat2Z.inj_mul. to_ssrnat.
-    apply inj_le. to_ssrnat. by rewrite addn1 mulSn leq_addl.
-  - rewrite {1}Hk -Nat2Z.inj_mul. apply inj_le. to_ssrnat.
-    by rewrite leq_pmul2r// addn1.
+  - to_ssrnat. by rewrite addn1 mulSn leq_addl.
+  - rewrite {1}Hk. to_ssrnat. by rewrite leq_pmul2r// addn1.
 Qed.
 
 (*A simple corollary: if we send some multiple of k packets,

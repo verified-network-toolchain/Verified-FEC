@@ -11,6 +11,30 @@ Set Bullet Behavior "Strict Subproofs".
 
 Ltac split_all := repeat match goal with | |- ?p /\ ?q => split end.
 
+(*TODO: maybe use before also*)
+(*Put inequalities and numeric goals in a form such that
+  we can use ssreflect lemmas*)
+Ltac to_ssrnat :=
+  repeat match goal with
+  (*First, try to simplify the goal directly*)
+  | |- (?x < ?y)%coq_nat => apply /ltP
+  | |- (?x <= ?y)%coq_nat => apply /leP
+  | |- (Z.of_nat ?x < Z.of_nat ?y)%Z => apply inj_lt
+  | |- (Z.of_nat ?x <= Z.of_nat ?y)%Z => apply inj_le
+  | |- Z.of_nat ?x = Z.of_nat ?y => apply Nat2Z.inj_iff
+  (*Then search for rewrites*)
+  | |- context [ Z.to_nat (Z.of_nat ?x)] => rewrite Nat2Z.id
+  | |- context [(?x + ?y)%coq_nat] => have->:(x + y)%coq_nat = x+y by []
+  | |- context [(?x * ?y)%coq_nat] => have->:(x*y)%coq_nat = x*y by []
+  | |- context[(Z.of_nat ?x < Z.of_nat ?y)%Z] => rewrite -Nat2Z.inj_lt
+  | |- context[(Z.of_nat ?x <= Z.of_nat ?y)%Z] => rewrite -Nat2Z.inj_le
+  | |- context [(?x < ?y)%coq_nat] => rewrite (rwP ltP)
+  | |- context [(?x <= ?y)%coq_nat] => rewrite (rwP leP)
+  | |- context [ Z.of_nat ?x = Z.of_nat ?y] => rewrite (@Nat2Z.inj_iff x y)
+  | |- context [Z.of_nat ?x = 0%Z] => have->: 0%Z = Z.of_nat 0 by []
+  | |- context [(Z.of_nat ?x * Z.of_nat ?y)%Z] => rewrite -Nat2Z.inj_mul
+  end.
+
 (*We have lots of general results:*)
 
 Local Open Scope nat_scope.
@@ -48,10 +72,16 @@ Proof.
   move=> A s. by rewrite Zlength_correct size_length.
 Qed.
 
+Lemma size_Zlength: forall {A: Type} (s: seq A),
+  size s = Z.to_nat (Zlength s).
+Proof.
+  move=> A s. by rewrite ZtoNat_Zlength size_length.
+Qed.
+
 Lemma Zlength_rev: forall {A: Type} (s: seq A),
   Zlength (rev s) = Zlength s.
 Proof.
-  move => A s. by rewrite !Zlength_correct -!size_length size_rev.
+  move => A s. by rewrite !Zlength_size size_rev.
 Qed.
 
 Lemma concat_flatten: forall {A: Type} (s: seq (seq A)),
@@ -92,17 +122,15 @@ Section FilterSize.
 Lemma Zlength_filter: forall {A: Type} (p: pred A) (l: list A),
   (Zlength (filter p l) <= Zlength l)%Z.
 Proof.
-  move => A p l. rewrite Zlength_correct -size_length size_filter.
-  rewrite -(Z2Nat.id (Zlength l)); [| list_solve]. apply inj_le. apply /leP.
-  by rewrite ZtoNat_Zlength -size_length count_size.
+  move => A p l. rewrite !Zlength_size size_filter.
+  to_ssrnat. by rewrite count_size.
 Qed.
 
 Lemma filter_all_Zlength: forall {A: eqType} (p: pred A) (s: seq A),
   Zlength (filter p s) = Zlength s <-> all p s.
 Proof.
-  move => A p s. rewrite !Zlength_correct -!size_length. split.
-  - move => Hsz. rewrite -filter_all_size. apply /eqP. lia.
-  - rewrite -filter_all_size => /eqP Hsz. by rewrite Hsz.
+  move => A p s. rewrite !Zlength_size. to_ssrnat. split;
+  by rewrite -filter_all_size => /eqP.
 Qed.
 
 Lemma size_filter_lt: forall {A: Type} (p: pred A) (s: seq A),
@@ -118,21 +146,26 @@ Qed.
 Lemma filter_none_Zlength: forall {A: eqType} (p: pred A) (s: seq A),
   Zlength [seq x <- s | p x] = 0%Z <-> ~~ has p s.
 Proof.
-  move=> A p s. rewrite Zlength_correct -size_length has_filter.
-  have->: 0%Z = Z.of_nat 0 by [].
-  rewrite Nat2Z.inj_iff negbK -size_eq0. 
+  move=> A p s. rewrite Zlength_size has_filter. to_ssrnat. 
+  rewrite negbK -size_eq0. 
   by apply (reflect_iff _ _ eqP).
 Qed.
 
 Lemma filter_Zlength_lt: forall {A: eqType} (p: pred A) (s: seq A),
   (Zlength [seq x <- s | p x] < Zlength s)%Z <-> ~~ all p s.
 Proof.
-  move=> A p s. 
-  rewrite -size_filter_lt !Zlength_correct -!size_length -Nat2Z.inj_lt.
-  by apply (reflect_iff _ _ ltP).
+  move=> A p s. rewrite -size_filter_lt !Zlength_size. 
+  by to_ssrnat.
 Qed.
 
 End FilterSize.
+
+Lemma filter_concat {A: Type} (l: list (list A)) (p: A -> bool):
+  filter p (concat l) = concat (map (fun x => filter p x) l).
+Proof.
+  elim: l=>[//|h t IH/=].
+  by rewrite filter_cat IH.
+Qed.
 
 Lemma mem_filter': forall {T: eqType} (a: pred T) (x: T) (s: seq T),
   x \in [seq x <- s | a x] ->
@@ -504,7 +537,7 @@ Lemma sublist_concat: forall {A: Type} (d: seq A) (n: nat) (s: seq (seq A)) (i: 
   nth d s i.
 Proof.
   move=> A d n s i Hi Hall.
-  rewrite /sublist !Nat2Z.id.
+  rewrite /sublist. to_ssrnat.
   move: s n Hi Hall. elim : i => 
     [//= [//= | h t /=] n | i' /= IH [//= | h t /=] n].
   - move => Hi /andP[/eqP Hszh Hall].
@@ -1063,6 +1096,17 @@ Proof.
     rewrite in_cons (negbTE Hxl2) orbF. by apply /eqP.
 Qed. 
 
+Lemma cat_inj {A: Type} (s1 s2 s3 s4: seq A):
+  s1 ++ s2 = s3 ++ s4 ->
+  size s1 = size s3 ->
+  s1 = s3 /\ s2 = s4.
+Proof.
+  move: s3. elim: s1 => [[|x3 t3] // | 
+    x1 t1 IH [//|x3 t3/=] [Hxs] Htls [Hsz]].
+  move: IH => /(_ _ Htls Hsz) [Ht1 Hs2].
+  by rewrite Hxs Ht1 Hs2.
+Qed.
+
 End OtherList.
 
 (*A few other random results*)
@@ -1118,7 +1162,7 @@ Proof.
   remember (Ziota 0 (Zlength l)) as ints.
   have: uniq ints by rewrite Heqints uniq_NoDup; apply Ziota_NoDup.
   have: size l = size ints by
-    rewrite Heqints /Ziota size_map size_iota ZtoNat_Zlength size_length.
+    rewrite Heqints /Ziota size_map size_iota size_Zlength.
   have: (forall z1 z2 a1 a2,
     z1 \in ints -> z2 \in ints -> f a1 z1 = f a2 z2 -> z1 = z2). {
     move=> z1 z2 a1 a2 Hz1 Hz2 Hfeq.
@@ -1148,3 +1192,82 @@ Proof.
 Qed.
 
 End MapWithIdx.
+
+(*General list lemmas*)
+Section List. 
+
+Lemma in_sublist_widen {A: Type} `(H: Inhabitant A) (lo1 lo2 hi1 hi2: Z)
+  (l: list A) (x: A):
+  In x (sublist lo1 hi1 l) ->
+  (0 <= lo2 <= lo1)%Z ->
+  (lo1 <= hi1)%Z ->
+  (hi1 <= hi2 <= Zlength l)%Z ->
+  In x (sublist lo2 hi2 l).
+Proof.
+  move=> Hin Hlo Hlohi Hhi.
+  have:=(In_Znth _ _ Hin)=>/(_ H) [i [Hi Hnth]].
+  rewrite Zlength_sublist in Hi; try lia.
+  rewrite Znth_sublist in Hnth; try lia.
+  rewrite In_Znth_iff. exists (i + (lo1-lo2))%Z.
+  rewrite Zlength_sublist; try lia.
+  rewrite Znth_sublist; try lia.
+  split; try lia. rewrite -Hnth. f_equal. lia.
+Qed.
+
+Lemma in_Znth_sublist {A: Type} `{H: Inhabitant A} (i: Z) (l: list A) lo hi:
+  (0 <= i < Zlength l)%Z ->
+  (0 <= lo <= i)%Z ->
+  (i < hi <= Zlength l)%Z ->
+  In (Znth i l) (sublist lo hi l).
+Proof.
+  move=> Hi Hlo Hhi.
+  apply (@in_sublist_widen _ _ i _ (i+1)%Z); try lia.
+  rewrite sublist_len_1 //=. by left.
+Qed.
+
+End List.
+
+
+Section Mod.
+
+(*Helpful with mod*)
+Lemma ltSmod (d n m: nat):
+  0 < d ->
+  d %| m ->
+  n < m ->
+  (n %/ d + 1) * d <= m.
+Proof.
+  move=> Hd Hdiv Hlt.
+  rewrite -(divnK Hdiv) leq_pmul2r // addn1 ltn_divRL //.
+  by apply (leq_ltn_trans (leq_trunc_div n d)).
+Qed.
+
+(*For a list of length n * m, find which m-batch an element is in*)
+Lemma find_batch {A: eqType} (l: list A) (m: nat) (x: A):
+  0 < m ->
+  m %| size l ->
+  x \in l ->
+  exists i, i < size l %/ m /\ x \in 
+    (sublist (Z.of_nat i * Z.of_nat m) (Z.of_nat (i+1) *Z.of_nat m)) l.
+Proof.
+  move=> H0m Hmdiv Hinx.
+  (*The value of i is [index x l] %/ m (could just put this in lemma)*)
+  exists (index x l %/ m).
+  split.
+  - by rewrite ltn_divLR // divnK // index_mem.
+  - have Hx: nth x l (index x l) = x by apply nth_index.
+    rewrite -{1}Hx nth_nth nth_Znth'.
+    apply /inP.
+    have Hindex: index x l < size l by rewrite index_mem.
+    apply in_Znth_sublist.
+    + rewrite Zlength_size. split; try lia. 
+      by to_ssrnat.
+    + split; try lia. to_ssrnat. 
+      by apply leq_trunc_div.
+    + to_ssrnat. split.
+      * by rewrite {1}(divn_eq (index x l) m) 
+          mulnDl ltn_add2l mul1n ltn_pmod.
+      * rewrite Zlength_size. to_ssrnat. by apply ltSmod.
+Qed.
+
+End Mod.

@@ -105,6 +105,7 @@ apply (mk_pkt nil nil 0).
 Defined.
 
 Variable fec_packet_inhab: Inhabitant fec_packet.
+(*
 
 (** Abstract state *)
 
@@ -201,5 +202,5 @@ Lemma valid_transcript_enc_dec: forall (t: transcript),
 Proof.
   rewrite /valid_encoder_decoder /valid_transcript => t Hval [Hvalid [Hencode [Huniq [Henc [Hdec Hloss]]]]]. eauto.
 Qed.*)
-
+*)
 End AbstractSpecs.

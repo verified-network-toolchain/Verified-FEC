@@ -284,7 +284,7 @@ Proof.
       apply Nat2Z.inj_gt. eapply Zgt_le_trans. apply Htimeout. lia.
     }
     by rewrite ltnNge Hcon.
-  - rewrite catA. apply /leP. apply size_undup_fst_le_app.
+  - rewrite catA. to_ssrnat. apply size_undup_fst_le_app.
 Qed. 
 
 (*We prove that this invariant is preserved. This is the key

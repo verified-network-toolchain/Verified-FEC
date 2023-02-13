@@ -259,6 +259,17 @@ Proof.
   move => i Hi. rewrite Znth_sublist; try lia. by rewrite !zseq_Znth; try lia.
 Qed.
 
+Lemma zseq_eq: forall {A: eqType} (z: Z) (x: A) (s: seq A),
+  Zlength s = z ->
+  all (fun y => y == x) s ->
+  s = zseq z x.
+Proof.
+  move=> A z x s Hz Hall.
+  rewrite /zseq.
+  rewrite -Hz ZtoNat_Zlength -size_length. 
+  by apply /all_pred1P.
+Qed. 
+
 End ZSeq.
 
 (*TODO: where to put this?*)

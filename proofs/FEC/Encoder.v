@@ -6,7 +6,6 @@ Require Import CommonSSR.
 Require Import ReedSolomonList.
 Require Import ZSeq.
 Require Import ByteFacts.
-(*Require Import ByteField.*) (*For byte equality - TODO: move to ByteFacts*)
 Require Import Block.
 Require Import CommonFEC.
 From mathcomp Require Import all_ssreflect.
@@ -160,7 +159,7 @@ Proof.
 Qed. 
 
 (*Then, we have our final function and predicate*)
-
+(*
 Definition rse_encode_func' (orig: list packet) (encoded: list (list fpacket)) (curr: packet) (param: Z * Z) :
   list fpacket :=
   let prevStates := pmap id (map get_encode_params encoded) in
@@ -171,7 +170,7 @@ Definition rse_encoder: (@encoder fec_data) :=
     exists (k h: Z),
     0 < k <= fec_n - 1 - fec_max_h /\ 0 < h <= fec_max_h /\
     new = rse_encode_func' orig encoded curr (k, h).
-
+*)
 End Encoder.
 
 (*We want to prove the properties we will need of our encoder.
@@ -2113,8 +2112,7 @@ Lemma add_red_data_size: forall p curr,
   size (data_packets (add_packet_to_block_red p curr)) = size (data_packets curr).
 Proof.
   move=> p curr/=.
-  by rewrite size_length -ZtoNat_Zlength 
-    Zlength_upd_Znth ZtoNat_Zlength -size_length.
+  by rewrite !size_Zlength Zlength_upd_Znth.
 Qed.
 
 (*Need that k is nonzero*)
@@ -2278,18 +2276,17 @@ Proof.
         split_all=>//.
         -- by rewrite Hsent -catA Hnone.
         -- move=> b [] <-. exists [:: new_fec_packet p (Z.of_nat k) (Z.of_nat h)].
-          split=>//=.
-          rewrite /zseq Nat2Z.id. 
+          split=>//=. rewrite /zseq. to_ssrnat. 
           move: Hk1 k_not0. case: k =>// n. case: n => // n _ _/=.
           by rewrite upd_Znth0.
       * move=> b. rewrite /block_option_list/= in_cons 
         => /orP[/eqP ->/= | Hinb].
-        -- split=>//. apply Nat2Z.inj.
-          rewrite -Zlength_size Zlength_upd_Znth zseq_Zlength //. lia.
+        -- split=>//. 
+          by rewrite size_Zlength Zlength_upd_Znth zseq_Zlength; lia. 
         -- by apply Hallk.
-      * move=> b [] <-/=; rewrite /zseq Nat2Z.id.
+      * move=> b [] <-/=; rewrite /zseq; to_ssrnat.
         move: k_not0 Hk1. case: k => // n. case: n => // n _ _.
-        rewrite /Zindex. apply inj_lt. apply /ltP.
+        rewrite /Zindex. to_ssrnat.
         by rewrite /= upd_Znth0/=.
 Qed.
 
@@ -2342,9 +2339,9 @@ Proof.
       move: Hinvar => /(_ curr (mem_head _ _)) [Hh1 Hh2].
       split_all; first by rewrite encode_block_h add_red_h.     
       rewrite encode_some/= size_map.
-      apply Nat2Z.inj. rewrite -!Zlength_size Zlength_map_with_idx
-      populate_packets_Zlength.
-      rewrite encoder_list_Zlength //; last by apply blk_c_nonneg. lia.
+      rewrite size_Zlength Zlength_map_with_idx populate_packets_Zlength
+      encoder_list_Zlength //; try lia.
+      by apply blk_c_nonneg.
     + rewrite in_cons => /orP[/eqP ->/= | Hinb]; last by
         apply Hinvar; rewrite in_cons Hinb orbT.
       by apply Hinvar; rewrite mem_head.
@@ -2353,11 +2350,10 @@ Proof.
     + (*same proof*) 
       rewrite in_cons => /orP[/eqP -> | Hinb]; last by apply Hinvar.
       rewrite encode_block_h/= encode_some/= size_map. split=>//.
-      apply Nat2Z.inj. rewrite -!Zlength_size Zlength_map_with_idx
-      populate_packets_Zlength.
-      rewrite encoder_list_Zlength //; last by apply blk_c_nonneg. lia.
+      rewrite size_Zlength Zlength_map_with_idx populate_packets_Zlength
+      encoder_list_Zlength; try lia. by apply blk_c_nonneg.
     + rewrite in_cons => /orP[/eqP -> /= | Hinb]; last by apply Hinvar.
-      split=>//. by rewrite /zseq size_nseq Nat2Z.id.
+      split=>//. by rewrite /zseq size_nseq; to_ssrnat.
 Qed. 
 
 (*All steps version*)
@@ -2391,64 +2387,6 @@ Lemma in_block_option_list: forall (o: option block)
 Proof.
   move=> [a b l Hbl/= |b l //].
   rewrite /block_option_list/=. by rewrite in_cons Hbl orbT.
-Qed.
-
-Lemma filter_concat {A: Type} (l: list (list A)) (p: A -> bool):
-  filter p (concat l) = concat (map (fun x => filter p x) l).
-Proof.
-  elim: l=>[//|h t IH/=].
-  by rewrite filter_cat IH.
-Qed.
-
-(*One general corollary we need*)
-
-(*TODO: move*)
-Lemma cat_inj {A: Type} (s1 s2 s3 s4: seq A):
-  s1 ++ s2 = s3 ++ s4 ->
-  size s1 = size s3 ->
-  s1 = s3 /\ s2 = s4.
-Proof.
-  move: s3. elim: s1 => [[|x3 t3] // | 
-    x1 t1 IH [//|x3 t3/=] [Hxs] Htls [Hsz]].
-  move: IH => /(_ _ Htls Hsz) [Ht1 Hs2].
-  by rewrite Hxs Ht1 Hs2.
-Qed.
-
-(*TODO: prob move to Block*)
-Lemma filter_block_encoded (b: block) (l: list fpacket):
-  map Some l = data_packets b ++ parity_packets b ->
-  size l = Z.to_nat (blk_k b + blk_h b) ->
-  block_wf b ->
-  filter (fun x => ~~ fd_isParity (p_fec_data' x)) l =
-  sublist 0 (blk_k b) l.
-Proof.
-  move=> Hl Hsz [Hk [Hh [_ [_ [_ [Hlendat [Hlenpar [_ [_ [Hdat Hpar]]]]]]]]]].
-  have Hlenl': Zlength l = (blk_k b + blk_h b)%Z by
-    rewrite Zlength_size; lia.
-  have Hlsplit: l = sublist 0 (blk_k b) l ++ sublist (blk_k b) (blk_k b + blk_h b)%Z l. {
-    rewrite cat_app -sublist_split; try lia.
-    by rewrite sublist_same.
-  }
-  rewrite {1}Hlsplit filter_cat.
-  move: Hl. rewrite {1}Hlsplit map_cat => Hleq.
-  apply cat_inj in Hleq; last first. {
-    rewrite size_map. apply Nat2Z.inj.
-    rewrite -!Zlength_size. list_solve. }
-  case: Hleq => [Hdateq Hpareq].
-  have Hfst: [seq x <- sublist 0 (blk_k b) l | ~~ fd_isParity (p_fec_data' x)] =
-    sublist 0 (blk_k b) l. {
-    apply /all_filterP. apply /allP. move=> x Hinxl.
-    rewrite Hdat // /packet_in_data -Hdateq mem_map //.
-    by apply some_inj.
-  }
-  have Hsnd: [seq x <- sublist (blk_k b) (blk_k b + blk_h b) l 
-    | ~~ fd_isParity (p_fec_data' x)] = [::]. {
-    apply /eqP. rewrite -(negbK (_ == _)) -has_filter /predI/=.
-    apply /hasP => [[x]] Hinx.
-    rewrite Hpar // /packet_in_parity -Hpareq mem_map //.
-    by apply some_inj.
-  }
-  by rewrite Hfst Hsnd cats0.
 Qed.
 
 (*The crucial result which lets us reason about the blocks
@@ -2494,7 +2432,7 @@ Proof.
     (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
     move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
   have Hsz: size orig = size (zseq (Zlength orig) (k, h)) by
-    rewrite size_nseq ZtoNat_Zlength -size_length.
+    rewrite size_nseq !size_Zlength.
   have/=:=(@encode_boundary_h_all (Z.to_nat k) (Z.to_nat h) orig).
   rewrite /encode_boundary_h_invar.
   have:= (encoder_all_steps_blocks Hallinbounds Hval Henc Huniqseq Hsz).
@@ -2506,7 +2444,7 @@ Proof.
   rewrite {Hallinbounds Hval Henc Hsz}.
   rewrite !(proj1 (encoder_all_steps_concat_aux orig _))
     !encoder_all_steps_concat -!encoder_concat_nochange_eq.
-  rewrite !Z2Nat.id; try lia.
+  (*rewrite !Z2Nat.id; try lia.*)
   (*Now get results from [encode_boundary_invar]*)
   have Hk0: (Z.to_nat k) != 0 by apply /eqP; lia.
   have/=:=(encode_boundary_invar_all (Z.to_nat h) Hk0 orig).
@@ -2680,16 +2618,15 @@ Proof.
     erewrite eq_all. apply Hallsz. move=> x. by rewrite Hn.
   }
   have Hiplus1: (0 <= Z.of_nat (i * n) <= Z.of_nat ((i + 1) * n))%Z. {
-    rewrite (mulnDl i 1 n) mul1n.
-    have->:(i * n + n) = (i * n + n)%coq_nat by []. lia.
+    rewrite (mulnDl i 1 n) mul1n. split; try lia; to_ssrnat.
+    by rewrite leq_addr.
   }
   have Hiplus1': (Z.of_nat ((i + 1) * n) <= Zlength (concat l))%Z. {
     rewrite Zlength_size Hszl -Hszorig.
     move: Hi.
     case: (size orig %/ Z.to_nat k) => [//| j].
     rewrite ltnS => Hij.
-    rewrite addn1 -Hn. apply inj_le.
-    apply /leP. rewrite leq_pmul2r //.
+    rewrite addn1 -Hn. to_ssrnat. rewrite leq_pmul2r //.
     apply /ltP; lia.
   }
   have Hinb: b \in output.1.1
@@ -2709,17 +2646,14 @@ Proof.
     rewrite -Horig !Hconcat filter_cat map_cat !sublist_app1; try lia.
     + rewrite sublist_map filter_concat.
       have Hhex: h = Z.of_nat (Z.to_nat h) by lia.
-      have->:(Z.of_nat i * k)%Z = (Z.of_nat (i * (Z.to_nat k))) by
-        rewrite {1}Hkex -Nat2Z.inj_mul.
-      have->:(Z.of_nat (i + 1) * k)%Z = (Z.of_nat ((i+1) * Z.to_nat k)) by
-        rewrite {1}Hkex -Nat2Z.inj_mul.
+      rewrite Hkex. to_ssrnat.
       rewrite (sublist_concat nil).
       * rewrite (sublist_concat nil).
         -- rewrite (nth_map nil); last by rewrite -Hszorig.
           have Hbk: blk_k b = k by rewrite Hk -Hkex.
           have Hbh: blk_h b = h by move: Hallh => /( _ _ Hinb') [] ->.
           rewrite (filter_block_encoded Hnthl)=>//.
-          ++ by rewrite Hbk.
+          ++ by rewrite -Hkex Hbk.
           ++ rewrite Hbk Hbh. apply /eqP.
             move: Hallsz =>/allP -> //. 
             by rewrite mem_nth // -Hszorig. 
@@ -2732,9 +2666,8 @@ Proof.
       move: Hi.
       case: (size orig %/ Z.to_nat k) => [//| j].
       rewrite ltnS => Hij.
-      rewrite {1}Hkex -Nat2Z.inj_mul.
-      apply inj_le.
-      apply /leP. by rewrite leq_pmul2r // addn1.
+      rewrite {1}Hkex addn1. to_ssrnat.
+      by rewrite leq_pmul2r. 
 Qed.
 
 (*From this, we prove the main result we need: for any packet p
@@ -2778,7 +2711,7 @@ Proof.
     (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
     move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
   have Hsz: size orig = size (zseq (Zlength orig) (k, h)) by
-    rewrite size_nseq ZtoNat_Zlength -size_length.
+    rewrite size_nseq !size_Zlength. 
   have/=:=(@encode_boundary_h_all (Z.to_nat k) (Z.to_nat h) orig).
   rewrite /encode_boundary_h_invar.
   have:= (encoder_all_steps_blocks Hallinbounds Hval Henc Huniqseq Hsz).
@@ -2869,7 +2802,7 @@ Proof.
     (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
     move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
   have Hsz: size orig = size (zseq (Zlength orig) (k, h)) by
-    rewrite size_nseq ZtoNat_Zlength -size_length.
+    rewrite size_nseq !size_Zlength.
   have/=:=(@encode_boundary_h_all (Z.to_nat k) (Z.to_nat h) orig).
   rewrite /encode_boundary_h_invar.
   have:= (encoder_all_steps_blocks Hallinbounds Hval Henc Huniqseq Hsz).

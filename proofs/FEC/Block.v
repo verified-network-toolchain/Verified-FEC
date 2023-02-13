@@ -673,6 +673,41 @@ Proof.
   have: fd_isParity p by apply Hwf. by rewrite Hnopar.
 Qed.
 
+Lemma filter_block_encoded (b: block) (l: list fpacket):
+  map Some l = data_packets b ++ parity_packets b ->
+  size l = Z.to_nat (blk_k b + blk_h b) ->
+  block_wf b ->
+  filter (fun x => ~~ fd_isParity (p_fec_data' x)) l =
+  sublist 0 (blk_k b) l.
+Proof.
+  move=> Hl Hsz [Hk [Hh [_ [_ [_ [Hlendat [Hlenpar [_ [_ [Hdat Hpar]]]]]]]]]].
+  have Hlenl': Zlength l = (blk_k b + blk_h b)%Z by
+    rewrite Zlength_size; lia.
+  have Hlsplit: l = sublist 0 (blk_k b) l ++ sublist (blk_k b) (blk_k b + blk_h b)%Z l. {
+    rewrite cat_app -sublist_split; try lia.
+    by rewrite sublist_same.
+  }
+  rewrite {1}Hlsplit filter_cat.
+  move: Hl. rewrite {1}Hlsplit map_cat => Hleq.
+  apply cat_inj in Hleq; last first. {
+    rewrite size_map. rewrite !size_Zlength. list_solve. }
+  case: Hleq => [Hdateq Hpareq].
+  have Hfst: [seq x <- sublist 0 (blk_k b) l | ~~ fd_isParity (p_fec_data' x)] =
+    sublist 0 (blk_k b) l. {
+    apply /all_filterP. apply /allP. move=> x Hinxl.
+    rewrite Hdat // /packet_in_data -Hdateq mem_map //.
+    by apply some_inj.
+  }
+  have Hsnd: [seq x <- sublist (blk_k b) (blk_k b + blk_h b) l 
+    | ~~ fd_isParity (p_fec_data' x)] = [::]. {
+    apply /eqP. rewrite -(negbK (_ == _)) -has_filter /predI/=.
+    apply /hasP => [[x]] Hinx.
+    rewrite Hpar // /packet_in_parity -Hpareq mem_map //.
+    by apply some_inj.
+  }
+  by rewrite Hfst Hsnd cats0.
+Qed.
+
 End WFFacts.
 
 (** Getting blocks from a stream *)
@@ -1883,8 +1918,8 @@ Proof.
     have: Zlength [seq x <- data_packets b1 | isSome x] = Zlength (data_packets b1). {
       have H:=(@Zlength_filter _ isSome (data_packets b1)). (*why doesnt lia work?*)
       have Htemp: forall (z1 z2 : Z), z1 >= z2 -> z1 <= z2 -> z1 = z2 by lia. by apply Htemp. }
-    rewrite {Hlenge} !Zlength_correct -!size_length => Hlens. apply Nat2Z.inj in Hlens.
-    move: Hlens => /eqP Hlens. move: Hlens. rewrite size_filter -all_count => Hall.
+    rewrite !Zlength_size. to_ssrnat => /eqP.
+    rewrite size_filter -all_count => Hall.
     have Hallin: forall o, o \in (data_packets b2) -> o \in (data_packets b1). {
       move=> o /inP Hin. apply /inP; move: Hin.  
       rewrite !In_Znth_iff. move: Hsubdata. rewrite /subseq_option => [[Hlendata Hnth] [i [Hi Hith]]].
