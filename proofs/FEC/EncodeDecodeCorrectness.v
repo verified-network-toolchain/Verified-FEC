@@ -108,8 +108,6 @@ Variable k_bound: (0 < k <= fec_n - 1 - fec_max_h)%Z.
 Variable h_bound: (0 < h <= fec_max_h)%Z.
 
 Definition loss_cond_i (sent received: list fpacket) (i: nat) : Prop :=
-  (*No new packets are added*)
-  (forall p, p \in received -> p \in sent) /\
   (*At least k unique packets are received from 
     packets i(k+h) to (i+1)(k+h)*)
     let n := Z.to_nat (k+h) in
@@ -166,6 +164,8 @@ Theorem block_i_recovered_Z (orig : list packet)
   Zlength enc_params = Zlength orig ->
   all (fun x => x == (k, h)) enc_params ->
   encoded = (encoder_all_steps orig enc_params).2 ->
+  (*No new packets are added*)
+  (forall p, p \in received -> p \in encoded) ->
   (*At least k packets in i(k+h) to (i+1) (k+h) received*)
   i < size orig %/ Z.to_nat k ->
   loss_cond_i encoded received i->
@@ -175,12 +175,13 @@ Theorem block_i_recovered_Z (orig : list packet)
   decoded = (decoder_all_steps threshold received).1.2 ->
   (*Threshold is large enough*)
   (threshold >= k + h + Z.of_nat (2 * d + m))%Z ->
-  (*We cannot make guarantees about the last portion of the list*)
+  (*Then any packet from ik to (i+1)k in the original list
+    appears in the output*)
   forall p, p \in 
     sublist (Z.of_nat i * k) (Z.of_nat (i+1) * k) orig -> 
     exists p', p' \in decoded /\ remove_seqNum p = remove_seqNum p'.
 Proof.
-  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hi Hloss Hdups 
+  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hsub Hi Hloss Hdups 
     Hreord Hdec Hthresh p Hinp.
   (*First, we use [encoder_concat_nochange_eq] to reason about
     the encoder with no parameter changes*)
@@ -189,6 +190,8 @@ Proof.
   rewrite Henceq in Henc. clear Hlenenc Hallkh Henceq enc_params.
   move: Henc. rewrite encoder_all_steps_concat 
     -encoder_concat_nochange_eq => Henc.
+    (*TODO: see if we need*)
+  (*
   have Hinp': p \in sublist 0 (Z.of_nat (size orig %/ Z.to_nat k * Z.to_nat k)) orig. {
     move: Hinp => /inP Hinp.
     apply /inP. apply (in_sublist_widen _ Hinp); try lia.
@@ -207,11 +210,13 @@ Proof.
         by rewrite mulSnr leq_add2r leq_pmul2r.
       + rewrite Zlength_size.
         apply inj_le. apply /leP. apply leq_trunc_div.
-   }
-  (*Next, use [encoder_boundaries_exist] to get the boundary*)
-  have:=(encoder_boundaries_exist k_bound h_bound 
-    Hallvalid Hallenc Hseqnum Hinp')=>/= 
-  [[b [f [i' [Hpf [Hparf [Hinb [Hinfb [Hencb [Hwfb [Hbk [Hi' [Huniq Hall]]]]]]]]]]]]].
+   }*)
+  (*Next, use [encoder_boundaries_i] to get the boundary*)
+  have:=(encoder_boundaries_i k_bound h_bound 
+    Hallvalid Hallenc Hseqnum Hinp Hi)=>/=.
+  rewrite -Henc.
+  set (b := nth block_inhab (rev (encoder_concat_nochange k h orig).1.1) i).
+  move=> [Hinb [Hencb [Hwfb [Hbk [Huniq [Hall [Hszenc [f [Hpf [Hparf Hinfb]]]]]]]]]].
   (*Now, we use [decoder_timeout_notimeout_all] to show that the
     decoder is equivalent to one without timeouts. We first need
     the preconditions:*)
@@ -223,7 +228,7 @@ Proof.
     - by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
   } 
   have Hwf': wf_packet_stream received by
-    apply (wf_substream Hwf); apply Hloss.
+    apply (wf_substream Hwf); apply Hsub.
   have Hreordup: 
     reorder_dup_cond threshold (Z.to_nat k) (Z.to_nat h) d m received. {
     rewrite /reorder_dup_cond. split_all=>//.
@@ -233,14 +238,13 @@ Proof.
         far apart *)
       move=> p1 p2 Hinp1 Hinp2 Hideq.
       apply u_seqNum_reorder_bound with(sent:=encoded)=>//.
-      + move=> x. apply Hloss.
       + (*ugh, dont want to reverse - TODO also prove these separately*)
         rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
         apply rse_encode_stream_uniq=>//.
         * move=> k' h'. by rewrite /zseq mem_nseq => /andP[_ /eqP[]->->].
         * by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
       + rewrite Henc.
-        by apply same_block_index=>//; rewrite -Henc; apply Hloss.
+        by apply same_block_index=>//; rewrite -Henc; apply Hsub.
     - move: Hthresh. rewrite !Nat2Z.inj_add. lia.
   }
   move: Hdec. rewrite (decoder_timeout_notimeout_all Hwf' Hreordup) 
@@ -248,13 +252,27 @@ Proof.
   (*Now, we use the loss condition to show that enough packets are seen,
     hence we can apply [all_packets_in_block_recovered] to get
     the results we want*)
-  rewrite -Henc in Hinb.
-  rewrite -Henc in Hall.
-  move: Hloss=> [Hsublist]. rewrite -Henc in Hi'.
-  move=>/(_ i' Hi') Hloss.
+  move: Hloss.
+  have Hi': let n:= Z.to_nat (k + h) in 
+    size encoded %/ n = size orig %/ Z.to_nat k. {
+    rewrite Hszenc/= Z2Nat.inj_add; try lia.
+    have Hplus:(Z.to_nat k + Z.to_nat h)%coq_nat = (Z.to_nat k + Z.to_nat h) by [].
+    rewrite Hplus.
+    set n:=(Z.to_nat k + Z.to_nat h).
+    rewrite divnDl; last by apply dvdn_mull; rewrite dvdnn.
+    have Hn0: 0 < n by subst n; rewrite -Hplus; apply /ltP; lia.
+    rewrite mulnK // (@divn_small (_ %% _)); first by rewrite addn0.
+    have Hk0: 0 < Z.to_nat k by apply /ltP; lia.
+    apply (ltn_leq_trans (ltn_pmod _ Hk0)). apply /leP.
+    subst n; rewrite -Hplus; lia.
+  }
+  move: Hi'. rewrite /loss_cond_i /= => -> /(_ Hi) Hloss.
   have Hinpdat: packet_in_data f b by 
     apply (wf_in_data Hwfb Hinfb (negbTE Hparf)).
-  have:=(all_packets_in_block_recovered Hwf Hsublist 
+  have Hkh: Z.to_nat (k+h) = Z.to_nat k + Z.to_nat h by
+    rewrite Z2Nat.inj_add //; lia.
+  rewrite Hkh in Hloss.
+  have:=(all_packets_in_block_recovered Hwf Hsub 
     Hwfb Hencb Hinb Hbk Hall Hloss Hinpdat).
   rewrite -Hdec => [[Hinf | Hinf0]].
   - exists p. by rewrite -Hpf.
@@ -262,14 +280,82 @@ Proof.
     by rewrite /remove_seqNum/= Hpf.
 Qed.
 
+(*TODO: move all this*)
+Lemma in_Znth_sublist {A: Type} `{H: Inhabitant A} (i: Z) (l: list A) lo hi:
+  (0 <= i < Zlength l)%Z ->
+  (0 <= lo <= i)%Z ->
+  (i < hi <= Zlength l)%Z ->
+  In (Znth i l) (sublist lo hi l).
+Proof.
+  move=> Hi Hlo Hhi.
+  apply (@in_sublist_widen _ _ i _ (i+1)%Z); try lia.
+  rewrite sublist_len_1 //=. by left.
+Qed.
 
-loss_cond_i
+(*TODO: move and use*)
+Ltac to_ssrnat :=
+  repeat match goal with
+  | |- context [(?x + ?y)%coq_nat] => have->:(x + y)%coq_nat = x+y by []
+  | |- context [(?x * ?y)%coq_nat] => have->:(x*y)%coq_nat = x*y by []
+  | |- (?x < ?y)%coq_nat => apply /ltP
+  | |- (?x <= ?y)%coq_nat => apply /leP
+  end.
 
-(*Now we prove that this implies condition for decoder
-  (with [encoder_boundaries_exist]). TODO: do we need
-  condition that block in [get_blocks rec] is recoverable
-  or that we have k packets in list (and hence can split) *)
-Theorem all_packets_recovered_Z (orig : list packet) 
+(*Helpful with mod*)
+Lemma ltSmod (d n m: nat):
+  0 < d ->
+  d %| m ->
+  n < m ->
+  (n %/ d + 1) * d <= m.
+Proof.
+  move=> Hd Hdiv Hlt.
+  rewrite -(divnK Hdiv) leq_pmul2r // addn1 ltn_divRL //.
+  by apply (leq_ltn_trans (leq_trunc_div n d)).
+Qed.
+
+
+(*TODO: move*)
+(*For a list of length n * m, find which m-batch an element is in*)
+Lemma find_batch {A: eqType} (l: list A) (m: nat) (x: A):
+  0 < m ->
+  m %| size l ->
+  x \in l ->
+  exists i, i < size l %/ m /\ x \in 
+    (sublist (Z.of_nat i * Z.of_nat m) (Z.of_nat (i+1) *Z.of_nat m)) l.
+Proof.
+  move=> H0m Hmdiv Hinx.
+  (*The value of i is [index x l] %/ m (could just put this in lemma)*)
+  exists (index x l %/ m).
+  split.
+  - by rewrite ltn_divLR // divnK // index_mem.
+  - have Hx: nth x l (index x l) = x by apply nth_index.
+    rewrite -{1}Hx nth_nth nth_Znth'.
+    apply /inP.
+    have Hindex: index x l < size l by rewrite index_mem.
+    apply in_Znth_sublist.
+    + rewrite Zlength_size. split; try lia.
+      apply inj_lt. by to_ssrnat. 
+    + split; try lia. rewrite -Nat2Z.inj_mul.
+      apply inj_le. to_ssrnat.
+      by apply leq_trunc_div.
+    + rewrite -Nat2Z.inj_mul. split.
+      * apply inj_lt. to_ssrnat.
+        by rewrite {1}(divn_eq (index x l) m) 
+          mulnDl ltn_add2l mul1n ltn_pmod.
+      * rewrite Zlength_size. apply inj_le. to_ssrnat. by apply ltSmod.
+Qed.
+
+(*TODO: move and use*)
+Lemma size_Zlength: forall {A: Type} (s: seq A),
+  size s = Z.to_nat (Zlength s).
+Proof.
+  move=> A s. by rewrite ZtoNat_Zlength size_length.
+Qed.
+
+(*A corollary: if for all i, the loss condition holds, then any
+  packet in the first |O|/k packets (ie: all but the last, in-progress
+  batch) is recovered*)
+Corollary all_packets_recovered_Z (orig : list packet) 
   (encoded received: list fpacket)
   (decoded: list packet) (enc_params: list (Z * Z))
   (d m: nat) (threshold: Z):
@@ -279,8 +365,11 @@ Theorem all_packets_recovered_Z (orig : list packet)
   Zlength enc_params = Zlength orig ->
   all (fun x => x == (k, h)) enc_params ->
   encoded = (encoder_all_steps orig enc_params).2 ->
-  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
-  loss_cond encoded received ->
+  (*No new packets are added*)
+  (forall p, p \in received -> p \in encoded) ->
+  (*At least k packets in i(k+h) to (i+1) (k+h) received, for all i*)
+  (forall i, i < size orig %/ Z.to_nat k -> 
+    loss_cond_i encoded received i) ->
   (*Bound on reordering and duplication*)
   duplicates_bounded received fpacket_inhab m ->
   reorder_bounded encoded received d ->
@@ -292,67 +381,33 @@ Theorem all_packets_recovered_Z (orig : list packet)
     sublist 0 (Z.of_nat (size orig %/ Z.to_nat k * Z.to_nat k)) orig -> 
     exists p', p' \in decoded /\ remove_seqNum p = remove_seqNum p'.
 Proof.
-  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hloss Hdups 
-    Hreord Hdec Hthresh p Hinp.
-  (*First, we use [encoder_concat_nochange_eq] to reason about
-    the encoder with no parameter changes*)
-  have Henceq: enc_params = zseq (Zlength orig) (k, h) by
-    apply zseq_eq.
-  rewrite Henceq in Henc. clear Hlenenc Hallkh Henceq enc_params.
-  move: Henc. rewrite encoder_all_steps_concat 
-    -encoder_concat_nochange_eq => Henc.
-  (*Next, use [encoder_boundaries_exist] to get the boundary*)
-  have:=(encoder_boundaries_exist k_bound h_bound 
-    Hallvalid Hallenc Hseqnum Hinp)=>/= 
-  [[b [f [i [Hpf [Hparf [Hinb [Hinfb [Hencb [Hwfb [Hbk [Hi [Huniq Hall]]]]]]]]]]]]].
-  (*Now, we use [decoder_timeout_notimeout_all] to show that the
-    decoder is equivalent to one without timeouts. We first need
-    the preconditions:*)
-  have Hwf: wf_packet_stream encoded. {
-    (*ugh, dont want to reverse*)
-    rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
-    apply rse_encode_stream_wf=>//.
-    - move=> k' h'. by rewrite /zseq mem_nseq => /andP[_ /eqP[]->->].
-    - by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
-  } 
-  have Hwf': wf_packet_stream received by
-    apply (wf_substream Hwf); apply Hloss.
-  have Hreordup: 
-    reorder_dup_cond threshold (Z.to_nat k) (Z.to_nat h) d m received. {
-    rewrite /reorder_dup_cond. split_all=>//.
-    - rewrite /bounded_reorder_list.
-      (*Here we use [u_seqNum_reorder_bound] to show that the 
-        [reorder_bounded] condition implies that packets do not get too
-        far apart *)
-      move=> p1 p2 Hinp1 Hinp2 Hideq.
-      apply u_seqNum_reorder_bound with(sent:=encoded)=>//.
-      + move=> x. apply Hloss.
-      + (*ugh, dont want to reverse - TODO also prove these separately*)
-        rewrite Henc encoder_concat_nochange_eq -encoder_all_steps_concat.
-        apply rse_encode_stream_uniq=>//.
-        * move=> k' h'. by rewrite /zseq mem_nseq => /andP[_ /eqP[]->->].
-        * by rewrite /zseq size_nseq Zlength_size Nat2Z.id.
-      + rewrite Henc.
-        by apply same_block_index=>//; rewrite -Henc; apply Hloss.
-    - move: Hthresh. rewrite !Nat2Z.inj_add. lia.
+  move=> Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hsub Hloss Hdups 
+  Hreord Hdec Hthresh p Hinp.
+  (*The only thing we need is to find which batch the packet is in,
+    which we get from [find_batch]*)
+  have Hszsub: size (sublist 0 (Z.of_nat (size orig %/ Z.to_nat k * Z.to_nat k)) orig) =
+    (size orig %/ Z.to_nat k * Z.to_nat k). {
+      rewrite size_Zlength Zlength_sublist; try lia.
+      rewrite Zlength_size. apply inj_le. to_ssrnat.
+      by rewrite leq_trunc_div.
   }
-  move: Hdec. rewrite (decoder_timeout_notimeout_all Hwf' Hreordup) 
-    => Hdec.
-  (*Now, we use the loss condition to show that enough packets are seen,
-    hence we can apply [all_packets_in_block_recovered] to get
-    the results we want*)
-  rewrite -Henc in Hinb.
-  rewrite -Henc in Hall.
-  move: Hloss=> [Hsublist]. rewrite -Henc in Hi.
-  move=>/(_ i Hi) Hloss.
-  have Hinpdat: packet_in_data f b by 
-    apply (wf_in_data Hwfb Hinfb (negbTE Hparf)).
-  have:=(all_packets_in_block_recovered Hwf Hsublist 
-    Hwfb Hencb Hinb Hbk Hall Hloss Hinpdat).
-  rewrite -Hdec => [[Hinf | Hinf0]].
-  - exists p. by rewrite -Hpf.
-  - exists (p_packet f <| p_seqNum := 0 |>). split=>//.
-    by rewrite /remove_seqNum/= Hpf.
+  have Hk0: 0 < Z.to_nat k by apply /ltP; lia.
+  apply (@find_batch _  _(Z.to_nat k)) in Hinp=>//; last first.
+    rewrite Hszsub. apply dvdn_mull. by rewrite dvdnn.
+  case: Hinp => [i [Hisz Hinp]].
+  move: Hisz. rewrite Hszsub mulnK // => Hi.
+  apply (block_i_recovered_Z Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hsub Hi 
+    (Hloss i Hi) Hdups Hreord Hdec Hthresh).
+  move: Hinp. rewrite !Z2Nat.id; try lia.
+  rewrite sublist_sublist0 //; try lia.
+  (*All we need is a bounds proof*)
+  have Hk: k = Z.of_nat (Z.to_nat k) by lia.
+  rewrite {1 2}Hk.
+  split; try lia.
+  - rewrite -!Nat2Z.inj_mul. to_ssrnat.
+    apply inj_le. to_ssrnat. by rewrite addn1 mulSn leq_addl.
+  - rewrite {1}Hk -Nat2Z.inj_mul. apply inj_le. to_ssrnat.
+    by rewrite leq_pmul2r// addn1.
 Qed.
 
 (*A simple corollary: if we send some multiple of k packets,
@@ -367,8 +422,11 @@ Corollary all_packets_recovered_div_Z (orig : list packet)
   Zlength enc_params = Zlength orig ->
   all (fun x => x == (k, h)) enc_params ->
   encoded = (encoder_all_steps orig enc_params).2 ->
-  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
-  loss_cond encoded received ->
+  (*No new packets are added*)
+  (forall p, p \in received -> p \in encoded) ->
+  (*At least k packets in i(k+h) to (i+1) (k+h) received, for all i*)
+  (forall i, i < size orig %/ Z.to_nat k -> 
+    loss_cond_i encoded received i) ->
   (*Bound on reordering and duplication*)
   duplicates_bounded received fpacket_inhab m ->
   reorder_bounded encoded received d ->
@@ -379,10 +437,10 @@ Corollary all_packets_recovered_div_Z (orig : list packet)
   forall p, p \in orig -> 
     exists p', p' \in decoded /\ remove_seqNum p = remove_seqNum p'.
 Proof.
-  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hloss Hdups 
+  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hsub Hloss Hdups 
   Hreord Hdec Hthresh Hdiv p Hinp.
   apply (all_packets_recovered_Z Hallvalid Hallenc Hseqnum 
-    Hlenenc Hallkh Henc Hloss Hdups Hreord Hdec Hthresh).
+    Hlenenc Hallkh Henc Hsub Hloss Hdups Hreord Hdec Hthresh).
   by rewrite divnK // -Zlength_size sublist_same; try lia.
 Qed. 
 
@@ -399,8 +457,11 @@ Corollary orig_decoded_streams_Z (orig : list packet)
   Zlength enc_params = Zlength orig ->
   all (fun x => x == (k, h)) enc_params ->
   encoded = (encoder_all_steps orig enc_params).2 ->
-  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
-  loss_cond encoded received ->
+  (*No new packets are added*)
+  (forall p, p \in received -> p \in encoded) ->
+  (*At least k packets in i(k+h) to (i+1) (k+h) received for all i*)
+  (forall i, i < size orig %/ Z.to_nat k -> 
+    loss_cond_i encoded received i) ->
   (*Bound on reordering and duplication*)
   duplicates_bounded received fpacket_inhab m ->
   reorder_bounded encoded received d ->
@@ -410,14 +471,14 @@ Corollary orig_decoded_streams_Z (orig : list packet)
   (Z.to_nat k) %| size orig ->
   map remove_seqNum orig =i map remove_seqNum decoded.
 Proof.
-  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hloss Hdups 
+  move => Hallvalid Hallenc Hseqnum Hlenenc Hallkh Henc Hsub Hloss Hdups 
   Hreord Hdec Hthresh Hdiv.
   move=> p.
   case: (p \in [seq remove_seqNum i | i <- orig]) /mapP =>
     [[p'] Hinp' Hp'| Hnotin].
   - symmetry. apply /mapP.
     apply (all_packets_recovered_div_Z Hallvalid Hallenc Hseqnum 
-    Hlenenc Hallkh Henc Hloss Hdups Hreord Hdec Hthresh)
+    Hlenenc Hallkh Henc Hsub Hloss Hdups Hreord Hdec Hthresh)
     in Hinp'=>//.
     case: Hinp' => [p2 [Hinp2 Hremp2]]. exists p2=>//.
     by rewrite Hp'.
@@ -429,7 +490,7 @@ Proof.
       (0 < h' <= ByteFacts.fec_max_h)%Z) by
       move=> k' h' Hin; move: Hallkh => /allP /(_ _ Hin) /eqP []->->.
     have[p1 [Hinp1 Hp1]]:=(all_decoded_in_Z (esym Hlenenc) Hkhb Hallvalid Hallenc 
-      Hseqnum Henc (proj1 Hloss) Hdec Hinp2).
+      Hseqnum Henc Hsub Hdec Hinp2).
     exists p1=>//. by rewrite Hpp2.
 Qed.
 
@@ -498,15 +559,61 @@ End Intermediate.
 (*The strongest spec: If the above holds and additionally,
   we do not change the FEC parameters,
   there is not too much reordering or duplication and
-  at most h packets of each (k+h) sized block are lost,
-  then all packets are recovered. We give 2 forms
-  of this result*)
+  for block i (i < size orig / k), if at most h packets
+  from i(k+h) to (i+1) (k+h) in the encoded stream are lost,
+  then all packets from ik to (i+1)k from the original stream
+  are recovered.
+  The corollaries (after) show that if all such blocks satisfy
+  the condition, all packets are recovered.*)
 Section Strong.
 
 Variable k: Z.
 Variable h: Z.
 Variable k_bound: (0 < k <= fec_n - 1 - fec_max_h)%Z.
 Variable h_bound: (0 < h <= fec_max_h)%Z.
+
+Theorem block_i_recovered (orig : list packet) 
+  (encoded received: list fpacket)
+  (decoded: list packet) (enc_params: list (Z * Z))
+  (d m: nat) (threshold: int) (i: nat):
+  (forall p, p \in orig -> packet_valid p) ->
+  (forall p, p \in orig -> encodable p) ->
+  uniq (map p_seqNum orig) ->
+  (forall (p: packet), p \in orig ->
+  Z.of_nat (p_seqNum p) < Int64.half_modulus) ->
+  Zlength enc_params = Zlength orig ->
+  all (fun x => x == (k, h)) enc_params ->
+  encoded = (encoder_all_steps orig enc_params).2 ->
+  (*No new packets are added*)
+  (forall p, p \in received -> p \in encoded) ->
+  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
+  (i < size orig %/ Z.to_nat k)%N ->
+  loss_cond_i k h encoded received i->
+  (*Bound on reordering and duplication*)
+  duplicates_bounded received fpacket_inhab m ->
+  reorder_bounded encoded received d ->
+  decoded = (decoder_all_steps_m threshold received).1.2 ->
+  (*Threshold is large enough but less than 2^30*)
+  (k + h + Z.of_nat (2 * d + m) <= Int.unsigned threshold <
+    Int.half_modulus / 2)%Z ->
+  (*Then any packet from ik to (i+1)k in the original list
+    appears in the output*)
+  forall p, p \in 
+    sublist (Z.of_nat i * k) (Z.of_nat (i+1) * k) orig -> 
+    exists p', p' \in decoded /\ remove_seqNum p = remove_seqNum p'.
+Proof.
+  move=>Hallval Hallenc Huniq Hseqs Hsz Hallkh Henc Hsub Hi Hloss 
+    Hdups Hreord Hdec Hthresh p. 
+  apply (@block_i_recovered_Z k h k_bound h_bound orig encoded
+    received decoded enc_params d m (Int.unsigned threshold))=>//; try lia.
+  rewrite Hdec decoder_all_steps_m_eq //; try lia.
+  move=> p' Hinp'.
+  apply (@encoder_bounds orig enc_params)=>//.
+  - move=> k' h' Hin.
+    by move: Hallkh => /allP /(_ _ Hin) /eqP [] ->->.
+  - move: Hsz. by rewrite !Zlength_size; lia.
+  - rewrite -Henc. by apply Hsub.
+Qed.
 
 Theorem all_packets_recovered (orig : list packet) 
   (encoded received: list fpacket)
@@ -520,8 +627,11 @@ Theorem all_packets_recovered (orig : list packet)
   Zlength enc_params = Zlength orig ->
   all (fun x => x == (k, h)) enc_params ->
   encoded = (encoder_all_steps orig enc_params).2 ->
-  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
-  loss_cond k h encoded received ->
+  (*No new packets are added*)
+  (forall p, p \in received -> p \in encoded) ->
+  (*At least k packets in i(k+h) to (i+1) (k+h) received for all i*)
+  (forall i, (i < size orig %/ Z.to_nat k)%N ->
+    loss_cond_i k h encoded received i) ->
   (*Bound on reordering and duplication*)
   duplicates_bounded received fpacket_inhab m ->
   reorder_bounded encoded received d ->
@@ -534,7 +644,7 @@ Theorem all_packets_recovered (orig : list packet)
     sublist 0 (Z.of_nat (size orig %/ Z.to_nat k * Z.to_nat k)) orig -> 
     exists p', p' \in decoded /\ remove_seqNum p = remove_seqNum p'.
 Proof.
-  move=>Hallval Hallenc Huniq Hseqs Hsz Hallkh Henc Hloss 
+  move=>Hallval Hallenc Huniq Hseqs Hsz Hallkh Henc Hsub Hloss 
     Hdups Hreord Hdec Hthresh p. 
   apply (@all_packets_recovered_Z k h k_bound h_bound orig encoded
     received decoded enc_params d m (Int.unsigned threshold))=>//; try lia.
@@ -544,7 +654,7 @@ Proof.
   - move=> k' h' Hin.
     by move: Hallkh => /allP /(_ _ Hin) /eqP [] ->->.
   - move: Hsz. by rewrite !Zlength_size; lia.
-  - rewrite -Henc. by apply Hloss.
+  - rewrite -Henc. by apply Hsub.
 Qed.
 
 (*If the length of orig is a multiple of k, then the output list
@@ -561,8 +671,11 @@ Theorem orig_decoded_streams (orig : list packet)
   Zlength enc_params = Zlength orig ->
   all (fun x => x == (k, h)) enc_params ->
   encoded = (encoder_all_steps orig enc_params).2 ->
-  (*At least k packets in i(k+h) to (i+1) (k+h) received*)
-  loss_cond k h encoded received ->
+ (*No new packets are added*)
+ (forall p, p \in received -> p \in encoded) ->
+ (*At least k packets in i(k+h) to (i+1) (k+h) received for all i*)
+ (forall i, (i < size orig %/ Z.to_nat k)%N ->
+   loss_cond_i k h encoded received i) ->
   (*Bound on reordering and duplication*)
   duplicates_bounded received fpacket_inhab m ->
   reorder_bounded encoded received d ->
@@ -573,7 +686,7 @@ Theorem orig_decoded_streams (orig : list packet)
   (Z.to_nat k) %| size orig ->
   map remove_seqNum orig =i map remove_seqNum decoded.
 Proof.
-  move=>Hallval Hallenc Huniq Hseqs Hsz Hallkh Henc Hloss 
+  move=>Hallval Hallenc Huniq Hseqs Hsz Hallkh Henc Hsub Hloss 
     Hdups Hreord Hdec Hthresh p. 
   apply (@orig_decoded_streams_Z k h k_bound h_bound orig encoded
     received decoded enc_params d m (Int.unsigned threshold))=>//; try lia.
@@ -583,7 +696,7 @@ Proof.
   - move=> k' h' Hin.
     by move: Hallkh => /allP /(_ _ Hin) /eqP [] ->->.
   - move: Hsz. by rewrite !Zlength_size; lia.
-  - rewrite -Henc. by apply Hloss.
+  - rewrite -Henc. by apply Hsub.
 Qed.
 
 End Strong.
