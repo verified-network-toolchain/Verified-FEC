@@ -1,5 +1,4 @@
 (*More general results we need in various places in the FEC proofs*)
-(*TODO: combine with CommonSSR?*)
 Require Import VST.floyd.functional_base.
 Require Import CommonSSR.
 
@@ -11,7 +10,6 @@ Set Bullet Behavior "Strict Subproofs".
 
 Ltac split_all := repeat match goal with | |- ?p /\ ?q => split end.
 
-(*TODO: maybe use before also*)
 (*Put inequalities and numeric goals in a form such that
   we can use ssreflect lemmas*)
 Ltac to_ssrnat :=
@@ -643,7 +641,7 @@ End Map.
 
 Section Mem.
 
-(*TODO: should we replace in CommonSSR?*)
+(*Should we replace in CommonSSR?*)
 Lemma inP: forall {A: eqType} (x: A) (l: seq A),
   reflect (In x l) (x \in l).
 Proof.
@@ -1137,7 +1135,6 @@ Proof.
   - right. by apply Hrs.
 Qed. 
 
-(*TODO: see if we need*)
 Lemma proj_sumbool_false: forall {P Q: Prop} (a: {P} + {Q}), Coqlib.proj_sumbool a = false -> Q.
 Proof.
   move => P Q a.

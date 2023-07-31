@@ -1,21 +1,6 @@
-(*Require Import AbstractEncoderDecoder.
-Require Import RSEEncoderDecoder.
-Require Import VST.floyd.functional_base.
-Require Import ByteFacts.
-Require Import Block. *)
 Require Import CommonSSR.
 Require Import Lia.
 Require Import CommonFEC.
-(*Require Import AssocList.
-Require Import IP.
-Require Import AbstractEncoderDecoder.
-Require Import CommonSSR.
-Require Import ReedSolomonList.
-Require Import ZSeq.
-Require Import Endian.*)
-
-(*Require Import ByteField. (*For byte equality - TODO: move to ByteFacts*)*)
-
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -45,11 +30,9 @@ Variable received : seq pack.
 
 (*All received packets were sent*)
 Variable rec_sub: {subset received <= sent}.
-(*forall x, x \in received -> x \in sent.*)
 
-(*Problem: are we looking at this as a completed transcript or as an ongoing one? If completed, can calcuate
-  the displacement. If not, then need to use DT. We will try a DT-based method. But this is annoying and imperative
-  let's first try to assume we know the missing packets*)
+(*We view this as a completed transcript, so we know  
+  which packets are missing.*)
 
 Definition o_seqNum (p: pack) :=
   index p sent.
@@ -81,7 +64,7 @@ Definition ri (p : pack) : nat :=
 Definition displ (p: pack) : nat :=
   nat_abs_diff (ri p) (o_seqNum p).
 
-(*TODO: change to sorted by lt*)
+(* should change to sorted by lt*)
 Fixpoint s_incr (s: seq nat) :=
   match s with
   | nil => true
@@ -147,7 +130,7 @@ Proof.
 Qed.
 
 
-(*The key lemma in TODO: given a strictly increasing list, if we look at
+(*A key lemma: given a strictly increasing list, if we look at
   the list at two positions (n1 and n2), the distance between the list elements
   at n1 and n2 can only be larger*)
 Lemma uniq_incr_nats: forall (d: nat) n1 n2 (s: seq nat),
@@ -278,8 +261,7 @@ Qed.
 (*The lemma that allows us to relate differences in [u_seqNum] to
   differences in [ri] (which we can bound by d).
   Mostly a corollary of [uniq_incr_nats_abs] and [index_list_incr] *)
-(*BUT: we need the uniqueness of the sending list for this - TODO: 
-  is this a problem (we will probably not be able to allow duplicates
+(*BUT: we need the uniqueness of the sending list for this -
   It is also obvious why this is a problem - if the sequence numbers wrap around,
   the receive index will not wrap around also, making the first difference
   very large. Even some local property will not hold)*)
@@ -354,7 +336,7 @@ Qed.
 
 (*The second condition: if there are any duplicates, they are separated by at most k
   packets*)
-(*TODO: this condition will be important in showing that our implementation correctly
+(*this condition will be important in showing that our implementation correctly
 keeps track of the number of unique packets seen. But it is not needed for our
 bounds here*)
 Definition duplicates_bounded (default: pack) (k: nat) : Prop :=
@@ -410,7 +392,7 @@ Proof.
     have Hnth2: nth default received (index p2 l1) = p2.
       rewrite Hrec nth_cat.
       have->//: index p2 l1 < size l1 by rewrite index_mem.
-    (*TODO: maybe generalize for cases (just index in received and size one)*)
+    (*maybe generalize for cases (just index in received and size one)*)
     have Hbound: (size l1 + size l2 + 1) - (index p2 l1) <= k.
       apply Hdups => //.
       eapply leq_trans. apply index_size. by rewrite -addnA leq_addr.
@@ -421,7 +403,6 @@ Proof.
   - (*Otherwise, first ocurrence is after. It could be equal to p1,
       or it could be in l2, or it could be our occurence of p2.
       We need to consider each case. First, we prove a general lemma*)
-    (*TODO: separate lemma?*)
     have Hseqp1:size (undup_fst l1) = u_seqNum p1. {
       symmetry.
       by rewrite /u_seqNum Hrec u_seqNum_size_eq.
@@ -543,14 +524,3 @@ Qed.
 End Defs.
 
 End SeqNums.
-
-
-(*TODO: 
-  1. (DONE) version of decoder with explicit timeouts (compare time of packet), show this is a refinement
-  of previous (ie: exists some state that makes this ok)
-  2. show that encoder is equivalent to previous where all states are (k, h)
-  3. Define version of decoder without any timeouts
-  4. Define props from before about reordering, seqNum, time
-  5. Show that if these props hold, the two decoder versions are equivalent (hence, no timeouts)
-  6. Define props from before about limited losses
-  7. (big one) show that whole correctness theorem applies with simpler decoder/encoder*)

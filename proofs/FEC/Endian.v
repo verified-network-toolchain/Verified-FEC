@@ -88,7 +88,7 @@ Proof.
   intros n Hn. apply Hbits. lia. apply Z.pow2_bits_true. lia.
 Qed.
 
-(*Need generic lemma about Z.lor bound - TODO: move*)
+(*Need generic lemma about Z.lor bound - should move*)
 Lemma Z_lor_bound: forall (z1 z2 i: Z),
   0 < i ->
   0 <= z1 < 2 ^ i ->
@@ -297,8 +297,8 @@ End Convert.
 
 (** Represent data as bytes*)
 
-(* This provides a shorthand to take machine-length types and represent as a list of bytes
-  TODO; eventually this will be used to write short data_at representations*)
+(* This provides a shorthand to take machine-length types and represent as a list of bytes;
+  eventually this will be used to write short data_at representations*)
 
 Export ListNotations.
 
@@ -351,8 +351,7 @@ Proof.
   destruct (Z.testbit 15 n) eqn : Ht; lia.
 Qed.
 
-(*This is much harder to prove than it seems
-  TODO: is there an easier way?*)
+(*This is much harder to prove than it seems, is there an easier way?*)
 Lemma byte_to_nibbles_inv: forall b,
   let (n1, n2) := byte_to_nibbles b in
   nibbles_to_byte n1 n2 = b.
@@ -385,7 +384,6 @@ Proof.
       apply Hi1.
 Qed.
 
-(*TODO: move maybe*)
 Lemma nibble_log_bound: forall (n: nibble),
   0 <= Z.log2 (Nibble.unsigned n) < 4.
 Proof.
@@ -484,7 +482,7 @@ Proof.
   int_of_bytes_bound.
 Qed.
 
-(*TODO: kind of ugly spec *)
+(*kind of ugly spec *)
 Lemma short_to_bytes_inv: forall (s: short),
   match (short_to_bytes E s) with
   | [b1; b2] => bytes_to_short b1 b2 = s

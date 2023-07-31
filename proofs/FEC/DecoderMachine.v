@@ -1,33 +1,20 @@
-(*A decoder that does arithmetic on machine-length integers, not nats*)
-(*TODO: also provide a version with some efficiency/speedups closer
-  to C code (or maybe wait until VST see)*)
+(*A Consumer that does arithmetic on machine-length integers, not nats*)
+(*Future: should provide a version with some efficiency/speedups closer
+  to C code*)
 (*Here, we prove that under certain generous conditions of the
   input packet stream, this is equivalent to the idealized decoder.*)
-Require Import VST.floyd.functional_base.
-Require Import AbstractEncoderDecoder.
-Require Import ZSeq.
-Require Import Block.
-Require Import DecoderTimeouts.
-Require Import DecoderGeneric.
-Require Import SeqCmp.
+Require Export DecoderTimeouts.
+Require Export SeqCmp.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
 
 Module S64:=SeqCmp I64.
 Module S32:=SeqCmp I32.
 
 Section Machine.
-
-(*Hmm, let's think about this - can have time as Z because all
-  operations are in terms of Int.repr time - but I think we
-  want the _m versions with Znth because otherwise we need to
-  prove in VST proof
-  TODO: make sure*)
 
 
 Definition create_block_with_fec_packet_m (p: fpacket) (time : Z) : 
@@ -128,40 +115,21 @@ Qed.
 
 Variable threshold : int.
 
-(*Once again, will have more efficient version like C code, 
-  for now just prove equivalence*)
-(*TODO: is it nontrivial to prove equivalence? Probably not
-  because we can easily prove everything is within required bounds*)
-(*TODO: use from before?*)
-(*Definition block_notin_packet block packet : bool :=
-    ~~ (packet_in_block packet block).*)
-
-(*NOTE: We are changing the code to use 64 bit integers and thus
-  Int64 comparison operations. Then, we can assume that all
-  packets have unique sequence numbers (at current network speeds,
-  it would take around 600,000 years before we run into problems).
-  Otherwise, we need to deal with wraparound, which is highly 
-  nontrivial, because we would need to reason both about
-  reorder/duplication as well as loss, in a different way from 
-  the stronger conditions for ensuring packet recovery.
-  TOOD: write this somewhere
-  *)
-(*I think: shouldn't need this or any: still store Z, just
-  do comparisons on Int.repr time*)
+(*still store Z, just do comparisons on Int.repr time*)
 (*The check to update the time*)
 Fixpoint upd_time_m (time: Z) (curr: fpacket) (blocks: list block) :
   Z := 
   match blocks with
-  | nil => time + 1 (*Int.add (Int.repr time) Int.one*)
+  | nil => time + 1
   | bl :: tl =>
     let currSeq := Int64.repr (Z.of_nat (fd_blockId curr)) in
     let blkid := Int64.repr (Z.of_nat (blk_id bl)) in
     if S64.seq_eq currSeq blkid then
       if (block_notin_packet bl curr) 
-      then time + 1 (*Int.add (Int.repr time) Int.one*)
+      then time + 1
       else time
     else if S64.seq_lt currSeq blkid
-      then time + 1 (*Int.add time Int.one*)
+      then time + 1
     else upd_time_m time curr tl
   end.
 
@@ -278,11 +246,11 @@ Proof.
   symmetry; apply /ltP; lia.
 Qed.
 
-(*TODO: dont need anymore, but we will need in VST proofs*)
+(*Dont need anymore, but would will need in VST proofs*)
 Lemma int_add_one (z: Z):
   Int.add (Int.repr z) Int.one = Int.repr (z + 1).
 Proof.
-  apply Endian.int_unsigned_inj. (*TODO: move*)
+  apply Endian.int_unsigned_inj.
   by rewrite /Int.add/Int.one !Int.unsigned_repr_eq -Zplus_mod.
 Qed.
 
@@ -302,7 +270,6 @@ Qed.
 
 Opaque create_block_with_packet_black.
 
-(*TODO: move to Common, use more*)
 Lemma in_prop_tl: forall {A: eqType} (h: A) (s: seq A) (P: A -> Prop),
   (forall x, x \in (h :: s) -> P x) ->
   (forall x, x \in s -> P x).
@@ -353,7 +320,7 @@ Proof.
     rewrite -S32.seq_leq_leq.
     - f_equal.
       rewrite /Int.add.
-      apply Endian.int_unsigned_inj. (*TODO: move*)
+      apply Endian.int_unsigned_inj.
       rewrite !Int.unsigned_repr_eq.
       by rewrite Zplus_mod_idemp_l.
     - (*Here, use fact that upd_time increases by at most 1
@@ -372,7 +339,7 @@ Proof.
     have Hadd: Int.add (Int.repr tm) threshold =
     I32.repr (tm + Int.unsigned threshold). {
       rewrite /Int.add.
-      apply Endian.int_unsigned_inj. (*TODO: move*)
+      apply Endian.int_unsigned_inj.
       rewrite !Int.unsigned_repr_eq.
       by rewrite Zplus_mod_idemp_l.
     }
@@ -432,7 +399,7 @@ Proof.
     rewrite mem_filter /not_timed_out =>/andP[/Z.leb_spec0 Htime].
     move=> Hinb.
     split; try lia.
-    move: Hinb Hthresh. (*TODO: do we need Htime?*)
+    move: Hinb Hthresh.
     clear.
     elim: blks => [//=| bhd btl IH /=].
     + rewrite in_cons orbF => /eqP ->.

@@ -1,22 +1,12 @@
-Require Import AbstractEncoderDecoder.
-Require Import DecoderGeneric.
-Require Import DecoderNoTimeouts.
-Require Import VST.floyd.functional_base.
-Require Import CommonSSR.
-Require Import ByteFacts.
-Require Import Block.
-Require Import Reorder.
-Require Import CommonFEC.
-
+Require Export DecoderNoTimeouts.
+Require Export Reorder.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
-(*Now we specialize the decoder for our timeout function*)
+(*Now we specialize the Consumer for our timeout function*)
 Section DecodeTimeouts.
 
 Variable threshold : Z.
@@ -26,14 +16,11 @@ analysis (and to prevent us from needing to change everything
 from before), though in the code, they are done together. Maybe we will
 prove another version that combines it to make the VST proof simpler.*)
 (*True if packet not present*)
-(*Very inefficient/different from real impl, we will prove that this
+(*Inefficient and different from real impl, we will prove that this
 is equivalent to a version like the C code, but this is easier for analysis
 because we don't need to reason about wf blocks*)
 Definition block_notin_packet block packet : bool :=
     ~~ (packet_in_block packet block).
-    (*
-    isNone (Znth (Z.of_nat (fd_blockIndex packet)) 
-      (data_packets block ++ parity_packets block)).*)
 
 (*The check to update the time*)
 Fixpoint upd_time (time: Z) (curr: fpacket) (blocks: list block) :
@@ -108,7 +95,6 @@ Definition bounded_reorder_list (rec: list fpacket):=
   fd_blockId p1 = fd_blockId p2 ->
   (nat_abs_diff (u_seqNum rec p1) (u_seqNum rec p2) <= (k + h) + 2 * d)%N.
 
-(*TODO: move*)
 Lemma u_seqNum_cat_in: forall {A: eqType} (l1 l2: seq A) (x: A),
   x \in l1 ->
   u_seqNum (l1 ++ l2) x = u_seqNum l1 x.
@@ -130,7 +116,6 @@ Proof.
   by rewrite !u_seqNum_cat_in.
 Qed.
 
-(*TODO: move*)
 Lemma duplicates_bounded_cat_fst {A: eqType}: 
   forall (l1 l2 : list A) d m,
   duplicates_bounded (l1 ++ l2) d m ->
@@ -497,7 +482,7 @@ Proof.
           }
         (*Now we know that the block
           must have timed out, or else contradiction*)
-        (*TODO: refactor out - very similar to previous*)
+        (*should refactor out - very similar to previous*)
         have: not_timed_out (upd_time time p blocks) b = false. {
           case Hto: (not_timed_out (upd_time time p blocks) b)=>//.
           exfalso. apply Hnotex.
@@ -615,7 +600,6 @@ Lemma decoder_timeout_notimeout_multiple:
   (decoder_multiple_steps_gen upd_time triv_timeout prev packs blks2 sent time).1.1.2.
 Proof.
   move=> blks1 blks2 prev packs time sent.
-  (* move: blks1 blks2 prev.*)
   rewrite decoder_multiple_steps_rewrite /decoder_multiple_steps_gen/decoder_one_step.
   move: blks1 blks2 prev time sent. 
   elim: packs => [//= | p ptl /= 
@@ -624,13 +608,6 @@ Proof.
     apply (wf_substream Hwf). move=> x Hinx. by rewrite mem_cat Hinx.
   }
   have Hsort1' : sorted blk_order blks1 by apply Hinvar.
-  (*
-  have Hsort1': sorted blk_order 
-    [seq x <- blks1 | not_timed_out (upd_time time p blks1) x] by
-    (apply sorted_filter; [apply blk_order_trans | apply Hinvar]).
-  have Hsort2': sorted blk_order 
-    [seq x <- blks2 | triv_timeout (upd_time time p blks2) x] by
-    (apply sorted_filter=>//; apply blk_order_trans).*)
   have Hwf'': wf_packet_stream (prev ++ [:: p]). {
     apply (wf_substream Hwf). move=> x. 
     rewrite !mem_cat !in_cons orbF => /orP[Hinp | Hxp].
@@ -711,7 +688,6 @@ Proof.
   }
   (*Then, it is impossible to have a block with p's id in blks2 but not
     blks1 after timeouts. This contradicts the bounded reordering*)
-    (*TODO: see what we need*)
   have Hhasfalse: has (fun b0 : block => blk_id b0 == fd_blockId p)
       blks1 = false ->
     has (fun b0 : block => blk_id b0 == fd_blockId p)
@@ -727,81 +703,6 @@ Proof.
     move: Hhas1 => /hasP Hhas1. exfalso. apply Hhas1.
       exists b2=>//. by rewrite Hidb2.
   }
-  (* 
-    have: not_timed_out (upd_time time p blks1) b2 = false. {
-      case Hto: (not_timed_out (upd_time time p blks1) b2) =>//.
-      move: Hhas1 => /hasP Hhas1. exfalso. apply Hhas1.
-      exists b2=>//. by rewrite Hidb2. 
-    }
-    rewrite /not_timed_out Z.leb_antisym => Htimeout.
-    apply negbFE in Htimeout.
-    move: Htimeout => /Z.ltb_spec0 Htimeout.
-    (*Use decoder timeout invariant to get the first
-      packet in the block*)
-    move: Hinvar => [Htime [Hstart [Hprevto [Hsort1 Hsubs1]]]].
-    move: Hstart => /(_ b2 Hinb21) 
-      [p' [l1 [l2 [Hidp' [Hprev [Hnotin Hblacktime]]]]]].
-    apply (@same_block_close prev p p' l1 l2) =>//.
-    by rewrite Hidp' Hidb2.
-    have->: (l1 ++ [:: p'] ++ l2 ++ [:: p]) = prev ++ [:: p]
-      by rewrite Hprev !catA.
-    rewrite !undup_fst_rcons (negbTE Hnotin) size_cat addn1.
-    move: Htimeout. rewrite -Hblacktime.
-    rewrite Hupdtime.
-    case: (p \in prev); try lia. rewrite !size_cat addn1. lia.
-  }*)
-  (*The final lemma that is the core of proving the invariant:
-    every block for a future packet is in blks1 iff it is blks2, 
-    after we process timeouts. In other words, we only delete
-    blocks where no future packets arrive.*)
-  (*
-  have Htimeouteq: forall (p': fpacket) (b: block),
-    p' \in ptl ->
-    blk_id b = fd_blockId p' ->
-    (b \in [seq x <- blks1 | not_timed_out (upd_time time p blks1) x]) =
-    (b \in [seq x <- blks2 | triv_timeout (upd_time time p blks1) x]). {
-      clear -Hblks Hinvar.
-    move=> p' b Hinp' Hidp'. (*HERE*) 
-    rewrite !mem_filter/=.
-    (*The core: we cannot time out the block with a packet
-      arriving later, or else we contradict the bounded
-      reordering (via the decoder invariant)*)
-    case Hto: (not_timed_out (upd_time time p blks1) b) => /=.
-    apply (Hblks p') =>//. by rewrite in_cons Hinp' orbT.
-    (*If it's in blks2, then it's in blks1, so we use the
-      decoder invariant to get the start time and again
-      show a contradiction*)
-    case Hinb2: (b \in blks2) =>//.
-    have Hinb1': (b \in blks1) by rewrite (Hblks p')// in_cons Hinp' orbT.
-    case Hinvar => [Htime [Hstart _]].
-    move: Hstart => /(_ b Hinb1') 
-      [p'' [l1 [l2 [Hidp'' [Hprev [Hnotin Hblacktime]]]]]].
-    move: Hto. rewrite /not_timed_out Z.leb_antisym => Hto.
-    apply negbFE in Hto.
-    move: Hto => /Z.ltb_spec0 Hto.
-    (*Now we need to split ptl into the parts before p' and after*)
-    have [l3 [l4 [Hptl Hnotin1]]]:= (find_first Hinp').
-    exfalso.
-    apply (@same_block_close (prev ++ [:: p] ++ l3) p' p'' l1 (l2 ++ [:: p] ++ l3))=>//.
-    -- apply (@reorder_dup_cond_cat_fst _ l4). 
-      by rewrite -!catA -Hptl.
-    -- by rewrite Hprev !catA.
-    -- by rewrite Hidp'' Hidp'.
-    -- (*Just some tedious inequality manipulation*)
-      have->: (l1 ++ [:: p''] ++ (l2 ++ [:: p] ++ l3) ++ [:: p']) =
-        ((prev ++ [:: p]) ++ (l3 ++ [:: p'])) by rewrite Hprev !catA.
-      have Hbound: 
-        Z.of_nat (size (undup_fst ((prev ++ [:: p]) ++ l3 ++ [:: p']))) >=
-        Z.of_nat (size (undup_fst (prev ++ [:: p]))).
-        apply inj_ge. apply /leP. apply size_undup_fst_le_app.
-      move: Hto. rewrite undup_fst_rcons (negbTE Hnotin) size_cat addn1. 
-      rewrite -Hblacktime.
-      have->: upd_time time p blks1 = 
-        Z.of_nat (size (undup_fst ((prev ++ [:: p])))) by
-          (*From invariant preservation*)
-          apply decoder_timeout_invar_preserved_one.
-      lia.
-  }*)
   rewrite (IH _ [seq x <- (update_dec_state_gen blks2 p (upd_time time p blks2)).1
   | triv_timeout (upd_time time p blks2) x] _ _ _ ); rewrite {IH}.
   - (*Prove this invariant implies equality (not too hard)*)
@@ -883,7 +784,6 @@ Proof.
       hard work above (Htimeouteq)*)
     move=> p' b Hinp' .
     (*The main result*)
-    (*TODO: move*)
     have Hnottimeout: forall (b: block),
       b \in blks2 ->
       blk_id b = fd_blockId p' ->
@@ -937,9 +837,6 @@ Proof.
       rewrite !mem_rem_uniq/in_mem//=; last by
       apply (blk_order_sort_uniq Hsort1'). 2: by
       apply (blk_order_sort_uniq Hsort).
-      (*I Think this is the lemma we need*)
-      
-
       case: ((b ==
       (add_packet_to_block_black p
          (nth block_inhab blks2
@@ -951,8 +848,7 @@ Proof.
         apply /eqP. by rewrite -Hidp' Hb add_black_id eq_refl.
       * case Hbnth: ( b != nth block_inhab blks2
           (find (fun b0 : block => blk_id b0 == fd_blockId p) blks2)) 
-          ; (*TODO: see if we need name*)
-          last by rewrite andbF.
+          ;last by rewrite andbF.
         rewrite /=.
         rewrite (Hblks p')=>//; last by rewrite in_cons Hinp' orbT.
         case Hinb2: (b \in blks2); last by rewrite andbF.

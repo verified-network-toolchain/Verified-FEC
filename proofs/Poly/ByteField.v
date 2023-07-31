@@ -494,7 +494,7 @@ Section ByteAlg.
 Local Open Scope ring_scope.
 
 (*Now we need to define some structures*)
-Definition beq (b1 b2: byte) : bool := (Byte.eq_dec b1 b2).
+(*Definition beq (b1 b2: byte) : bool := (Byte.eq_dec b1 b2).
 
 Lemma beq_axiom: Equality.axiom beq.
 Proof.
@@ -504,7 +504,7 @@ Proof.
 Qed.
 
 Definition byte_eqMixin := EqMixin beq_axiom.
-Canonical byte_eqType := EqType byte byte_eqMixin.
+Canonical byte_eqType := EqType byte byte_eqMixin.*)
 
 (*We can get choice and finite types from the above bijection*)
 Definition byte_choiceMixin := CanChoiceMixin byte_qpoly_cancel.
@@ -643,7 +643,7 @@ Qed.
 
 Lemma byte_1not0: Byte.one != Byte.zero.
 Proof.
-  apply /beq_axiom. apply Byte.one_not_zero.
+  apply /eqP. apply Byte.one_not_zero.
 Qed.
 
 Definition byte_comringmixin := ComRingMixin byte_mulA byte_mulC byte_mul1q byte_mulD byte_1not0.

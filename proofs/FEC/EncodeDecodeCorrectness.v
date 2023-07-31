@@ -1,18 +1,11 @@
-Require Import VST.floyd.functional_base.
-Require Import AbstractEncoderDecoder.
-Require Import CommonSSR.
-Require Import ZSeq.
 Require Import Encoder.
-Require Import DecoderGeneric.
-Require Import Block.
-Require Import CommonFEC.
+Require Import DecoderMachine.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
+
 
 (*We first prove the versions for the infinite-precision versions*)
 
@@ -90,11 +83,6 @@ Proof.
 Qed.
 
 End GenericCorrect.
-
-Require Import ByteFacts.
-Require Import Reorder.
-Require Import DecoderTimeouts.
-Require Import DecoderNoTimeouts.
 
 (*Correctness With Timeouts/Reordering*)
 Section TimeoutCorrect.
@@ -369,7 +357,7 @@ End TimeoutCorrect.
 
 (*Now prove these theorems for the machine-length version of the
   decoder*)
-Require Import DecoderMachine.
+
 Section Machine.
 
 (*The weakest spec: all data packets that are received by the

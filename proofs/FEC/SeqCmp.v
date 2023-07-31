@@ -257,7 +257,7 @@ Proof.
         rewrite Zminus_mod (Zmod_small (z2 mod m - z1 mod m)); try lia.
       }
       rewrite C Zmod_small; try lia. 
-    + rewrite Hmax in C. (*TODO: repetitive*)
+    + rewrite Hmax in C.
       have: z1 mod m - z2 mod m = (z1 - z2) mod m. {
         rewrite Zminus_mod (Zmod_small (z1 mod m - z2 mod m)); try lia. 
       }

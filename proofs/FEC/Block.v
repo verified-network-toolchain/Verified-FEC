@@ -1,22 +1,17 @@
 (*Definitions and proofs about RSE blocks, independent of the specific encoder/decoder *)
-Require Import VST.floyd.functional_base.
-Require Import AssocList.
-Require Import IP.
-Require Import AbstractEncoderDecoder.
-Require Import CommonSSR.
-Require Import ReedSolomonList.
-Require Import ZSeq.
-Require Import Endian.
-Require Import ByteFacts.
-Require Import CommonFEC.
-(*Require Import ByteField.*) (*For byte equality - TODO: move to ByteFacts*)
+Require Export VST.floyd.functional_base.
+Require Export AssocList.
+Require Export IP.
+Require Export AbstractPacket.
+Require Export CommonSSR.
+Require Export ReedSolomonList.
+Require Export ZSeq.
+Require Export CommonFEC.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
 
 (*Construct Inhabitant instance automatically*)
 Ltac solve_inhab :=
@@ -90,11 +85,6 @@ Coercion p_fec_data' : fpacket >-> fec_data.
 
 (** Representing Blocks *)
 
-(*Timeout is 10 seconds. We give this in microseconds. TODO: is Z ok?*)
-(*
-Definition fec_timeout : Z := proj1_sig (opaque_constant 10000000).
-Definition fec_timeout_eq : fec_timeout = 10000000%Z := proj2_sig (opaque_constant _).
-*)
 Section Block.
 
 Record block := mk_blk { blk_id: nat;
@@ -185,86 +175,6 @@ Definition block_wf (b: block) : Prop :=
   (forall p, packet_in_data p b -> fd_isParity p = false) /\
   (forall p, packet_in_parity p b -> fd_isParity p).
 
-(*Definition range_lt_le_dec: forall (x y z: Z),
-  { x < y <= z} + {~(x < y <= z)}.
-Proof.
-  intros. destruct (Z_lt_ge_dec x y).
-  - destruct (Z_le_gt_dec y z).
-    + left. auto.
-    + right. lia.
-  - right. lia.
-Defined.*)
-(*
-(*Decidable version of [block_wf]*)
-Definition block_wf_bool (b: block) : bool :=
-  range_lt_le_dec 0 (blk_k b) (ByteFacts.fec_n - 1 - ByteFacts.fec_max_h) &&
-  range_lt_le_dec 0 (blk_h b) (ByteFacts.fec_max_h) &&
-  forallb (fun (o: option fec_packet_act) =>
-    match o with
-    | None => true
-    | Some p => 
-                Z.eq_dec (fd_k p) (blk_k b) &&
-                Z.eq_dec (fd_h p) (blk_h b) &&
-                Int.eq_dec (fd_blockId p) (blk_id b) &&
-                (Znth (Int.unsigned (fd_blockIndex p)) (data_packets b ++ parity_packets b) == Some p) &&
-                [ forall (x : 'I_(Z.to_nat (Zlength (data_packets b ++ parity_packets b))) |
-                            nat_of_ord x != Z.to_nat (Int.unsigned (fd_blockIndex p)) ),
-                    Znth (Z.of_nat x) (data_packets b ++ parity_packets b) != Some p ] &&
-                packet_valid (f_packet p)
-    end) (data_packets b ++ parity_packets b) &&
-  Z.eq_dec (Zlength (data_packets b)) (blk_k b) &&
-  Z.eq_dec (Zlength (parity_packets b)) (blk_h b) &&
-  forallb (fun o =>
-    match o with
-    | None => true
-    | Some p => encodable (f_packet p)
-    end) (data_packets b).
-
-Lemma block_wf_bool_reflect: forall b,
-  reflect (block_wf b) (block_wf_bool b).
-Proof.
-  move => b. apply iff_reflect. rewrite /block_wf /block_wf_bool. split.
-  - move => [Hkbound [Hhbound [Hkh [Hid [Hidx [Hk [Hh Henc]]]]]]]. 
-    do 5 (try(apply /andP; split)); try solve_sumbool.
-    + rewrite is_true_true_eq forallb_forall => o. case: o => [p |//]. rewrite in_app_iff => Hin.
-      apply /andP; split; [repeat (apply /andP; split)|].
-      * apply Hkh in Hin. solve_sumbool.
-      * apply Hkh in Hin. solve_sumbool.
-      * apply Hid in Hin. solve_sumbool.
-      * apply (Hidx _ (Int.unsigned (fd_blockIndex p))) in Hin. apply /eqP. by apply Hin.
-      * apply /forallP => x. apply /implyP => Hx.
-        case: (Znth (Z.of_nat x) (data_packets b ++ parity_packets b) == Some p) /eqP => [Hnth|//].
-        apply Hidx in Hnth. apply (f_equal Z.to_nat) in Hnth. rewrite Nat2Z.id in Hnth.
-        move: Hx. by rewrite Hnth eq_refl. by [].
-      * by apply Henc. 
-    + rewrite is_true_true_eq forallb_forall => o. case: o => [p |//]. apply Henc.
-  - move => /andP [/andP[/andP[/andP[/andP[Hhbound Hkbound] Hall] Hk] Hh] Henc].
-    solve_sumbool. move: Hall. rewrite is_true_true_eq forallb_forall => Hall.
-    repeat split; try lia.
-    + rewrite -in_app_iff in H. apply Hall in H. move: H => /andP[/andP[/andP[/andP[/andP [H _] _] _] _ ] _].
-      by solve_sumbool.
-    + rewrite -in_app_iff in H. apply Hall in H. move: H => /andP[/andP[/andP[/andP[/andP [_ H] _] _] _] _].
-      by solve_sumbool.
-    + move => p. rewrite -in_app_iff => Hin. apply Hall in Hin. move: Hin => /andP[/andP[/andP[/andP[_ H] _] _] _].
-      by solve_sumbool.
-    + rewrite -in_app_iff in H. apply Hall in H. move: H => /andP[/andP[_ Hp2] _].
-      move => Hith.
-      have Hi: 0 <= i < Zlength (data_packets b ++ parity_packets b). { apply Znth_inbounds.
-        by rewrite Hith. }
-      move: Hp2 => /forallP Hp2.
-      case: (Z.eq_dec i (Int.unsigned (fd_blockIndex p))) => [//|Hneq].
-      (*Now need to construct ordinal*)
-      have Hibound: (Z.to_nat i < (Z.to_nat (Zlength (data_packets b ++ parity_packets b))))%N. {
-        apply /ltP. lia. }
-      move: Hp2 => /(_ (Ordinal Hibound))/= => /implyP Hp2. move: Hp2. rewrite Z2Nat.id; try lia. 
-      rewrite Hith eq_refl /=. move => Hp2. have: false. apply Hp2.
-        case : (Z.to_nat i == Z.to_nat (Int.unsigned (fd_blockIndex p))) /eqP => [Heq|//].
-        apply Z2Nat.inj in Heq; try rep_lia. by [].
-    + move->. rewrite -in_app_iff in H. apply Hall in H. by move: H => /andP[/andP[/andP[_ /eqP Hp1] _] _].
-    + move: Henc. rewrite is_true_true_eq forallb_forall => Henc p Hp. by apply Henc in Hp.
-    + move => p Hp. rewrite -in_app_iff in Hp. apply Hall in Hp. by move: Hp => /andP[ _ Hval].
-Qed. 
-*)
 (*From a block, we can generate what is needed*)
 Definition packet_mx (b: block): list (list byte) :=
   map (fun x => match x with
@@ -779,10 +689,7 @@ Ltac case_pickSeq l ::=
 Section BlockList.
 
 Definition block_list := alist nat_eqType (seq_eqType (option_eqType fpacket_eqType)).
-(*Canonical block_list_eqType : eqType := 
-  EqType block_list (alist_eqMixin nat_eqType 
-    (seq_eqType (option_eqType fpacket_eqType))).
-*)
+
 (*Packet should have same blockId*)
 Definition update_packet_list (p: fpacket) (l: list (option fpacket)) :=
   upd_Znth (Z.of_nat (fd_blockIndex p)) l (Some p).
@@ -1181,7 +1088,7 @@ Proof.
     have//: true = false by apply Hcon.
 Qed.
 
-(*Version specialized to [get_block_lists] TODO: remove? this is legacy*)
+(*Version specialized to [get_block_lists]*)
 Lemma get_blocks_list_all_id: forall (l: list fpacket) (i: nat) (pkts: list (option fpacket))
   (p: fpacket),
   wf_packet_stream l ->
@@ -1286,7 +1193,6 @@ Proof.
   case Hpkts: (pmap id (data_packets b ++ parity_packets b)) => [//|h t /=].
   move => _.
   have Hin: packet_in_block h b
-    (*TODO: lemma? See after changing if*)
     by rewrite /packet_in_block/packet_in_data/packet_in_parity -mem_cat
     pmap_id_some Hpkts in_cons eq_refl.
   have [Hkeq  Hheq]: fd_k h = blk_k b /\ fd_h h = blk_h b by apply (Hkh _ Hin).
@@ -1452,7 +1358,7 @@ Proof.
       have [Hpid' Hinp']: fd_blockId (p_fec_data' p') = fd_blockId p /\ p' \in s. {
         apply (get_block_lists_prop_packets (get_block_lists_spec Hwf) Hinb).
         by rewrite pmap_id_some Hmap in_cons eq_refl. }
-      (*Why is the coercion not working? TODO*)
+      (*Why is the coercion not working?*)
       have [Hk' Hh']: fd_k p = fd_k (p_fec_data' p') /\ 
         fd_h p = fd_h (p_fec_data' p') by apply Hwf.
       case Hwf => [Hkh [_ [_  /( _ p Hp)]]] [Hk Hh].
@@ -1837,7 +1743,7 @@ Proof.
           therefore, by wf of b1, j = blockIndex, which is what we want to show*)
       have Hinb2: packet_in_block p b2 by
       apply (subseq_option_in' Hsubdata Hsubpar). move: Hin.
-      (*TODO: these are very similar*)
+      (*Note: these are very similar*)
       rewrite packet_in_block_eq -mem_cat => /inP Hin.
       apply in_app_or in Hin. move: Hin. rewrite !In_Znth_iff => [[[j [Hj Hnth]] | [j [Hj Hnth]]]].
       * move: Hsubdata. rewrite /subseq_option => [[Hlen Hall]]. move: Hall => /(_ j Hj).

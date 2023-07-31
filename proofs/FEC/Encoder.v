@@ -1,21 +1,10 @@
-Require Import VST.floyd.functional_base.
-Require Import AssocList.
-Require Import IP.
-Require Import AbstractEncoderDecoder.
-Require Import CommonSSR.
-Require Import ReedSolomonList.
-Require Import ZSeq.
-Require Import ByteFacts.
-Require Import Block.
-Require Import CommonFEC.
+Require Export Block.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
-(** Encoder **)
+(** Producer **)
 
 Section Encoder.
 
@@ -57,8 +46,6 @@ Definition create_block_with_packet_red (p: packet) (k: Z) (h: Z) : block :=
 
 (** Encoder predicate*)
 
-(*TODO: change name state*)
-
 (*We will write our encoder first as a function (with inputted k and h), then write the predicate, where
   we quantify over k and h*)
 (*We include 2 pieces of state: the list of blocks include all previous blocks, and the current block is
@@ -92,8 +79,6 @@ Definition encoder_one_step (blocks: list block) (currBlock : option block) (cur
         let t := encode_exist curr b in
         (t.1.1 ++ blocks, t.1.2, t.2)
   end.
-
-(*TODO: just use all steps version below*)
 
 (*For proofs, a version which concatenates all of the results of encoder_one_step*)
 Definition encoder_all_steps (orig: list packet) (params: list (Z * Z)) : list block * option block * list fpacket :=
@@ -158,19 +143,6 @@ Proof.
   move => orig params curr k h. by eapply encode_func_get_params.
 Qed. 
 
-(*Then, we have our final function and predicate*)
-(*
-Definition rse_encode_func' (orig: list packet) (encoded: list (list fpacket)) (curr: packet) (param: Z * Z) :
-  list fpacket :=
-  let prevStates := pmap id (map get_encode_params encoded) in
-  rse_encode_func orig prevStates curr param.1 param.2.
-
-Definition rse_encoder: (@encoder fec_data) :=
-  fun orig encoded curr new =>
-    exists (k h: Z),
-    0 < k <= fec_n - 1 - fec_max_h /\ 0 < h <= fec_max_h /\
-    new = rse_encode_func' orig encoded curr (k, h).
-*)
 End Encoder.
 
 (*We want to prove the properties we will need of our encoder.
@@ -1645,7 +1617,7 @@ Proof.
 Qed.
 
 (*The key theorem about the encoder: encoder_props holds. We need all of these properties for a strong enough
-  IH, even though only a few are important in the final theorem we need (TODO: reference*)
+  IH, even though only a few are important in the final theorem we need*)
 (*We have 1 other statement (about Zindex). We don't have this in [encoder_props] because it doesn't hold at
   all the intermediate steps*)
 Theorem encoder_all_steps_blocks: forall (orig: list packet) (params: list (Z * Z)),
@@ -1929,8 +1901,6 @@ Proof.
 Qed.
 
 (*Concat version of encoder*)
-(*TODO: see if we still need this - for now, just use to prove
-  simple encoder equivalent*)
 Section Concat.
 
 
@@ -1997,8 +1967,6 @@ Proof.
 Qed.
 
 End Concat.
-
-(*TODO: separate file?*)
 
 (* Reasoning about block boundaries*)
 
@@ -2081,7 +2049,6 @@ End Simple.
 
 (*Here, we use nats instead so that we can use mathcomp's results about
   nat division*)
-(*TODO: maybe use nats everywhere*)
 Variable k: nat.
 Variable h: nat.
 
@@ -2105,7 +2072,7 @@ Definition encode_boundary_invar (blks: seq block) (curr: option block) (sent: s
    (forall b, b \in block_option_list (blks, curr) -> 
    blk_k b = Z.of_nat k /\
    size (data_packets b) = k) /\
-   (*somewhat redundant with invar - TODO: need to fix*)
+   (*somewhat redundant with invar -should fix*)
    (forall b, curr = Some b -> (Zindex None (data_packets b) < Z.of_nat k)%Z).
 
 Lemma add_red_data_size: forall p curr,
@@ -2526,7 +2493,7 @@ Proof.
   }
   have Hsz1: size [seq i | i <- concat l & ~~ fd_isParity (p_fec_data' i)] =
     (size l) * (Z.to_nat k). {
-    (*TODO: repetitive below - can we improve?*)
+    (*Note: repetitive below - can we improve?*)
     rewrite concat_flatten filter_flatten -concat_flatten size_map.
     by rewrite (@size_concat _ (Z.to_nat k)); first by
       rewrite !size_map.
@@ -2701,7 +2668,7 @@ Theorem encoder_boundaries_i: forall (k h: Z) p orig (i: nat),
     (size orig %% (Z.to_nat k)) /\
   exists (f: fpacket),
     p_packet f = p /\
-    ~~ fd_isParity f /\ (*TODO: do we need?*)
+    ~~ fd_isParity f /\
     packet_in_block f b.
 Proof.
   move=> k h p orig i Hkbound Hhbound Hval Henc Huniqseq Hinp Hi
@@ -2728,7 +2695,6 @@ Proof.
   rewrite !Z2Nat.id; try lia.
   move => Horig [ [Hperm [Hallwf [_ [_ [_ [_ [_ [Henc [Hinprog [Hwf [Huniq Huniqdat]]]]]]]]]]] Hzidx] Hallh.
   (*Now get results from [encode_boundary_invar]*)
-  (*TODO: do we need anything other than Hallk?*)
   have Hk0: (Z.to_nat k) != 0 by apply /eqP; lia.
   have/=:=(encode_boundary_invar_all (Z.to_nat h) Hk0 orig).
   rewrite !Z2Nat.id; try lia.

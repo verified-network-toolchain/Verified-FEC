@@ -1,21 +1,9 @@
-Require Import AbstractEncoderDecoder.
-Require Import DecoderGeneric.
-Require Import VST.floyd.functional_base.
-Require Import ByteFacts.
-Require Import Block.
-Require Import CommonSSR.
-Require Import ZSeq.
-Require Import CommonFEC.
-
-
+Require Export DecoderGeneric.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
-
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
 
 Definition triv_upd_time : Z -> fpacket -> list block -> Z :=
   fun z _ _ => 0.
@@ -250,7 +238,6 @@ Definition decoder_nto_invar (blks: seq block) (prev: list fpacket)
   (forall (p: fpacket), p \in prev ->
     ~~ fd_isParity p -> p_packet p \in output) /\
   (*All blocks are nonempty*)
-  (*TODO: can we prove this?*)
   (forall (b: block), b \in blks -> exists (p: fpacket),
     packet_in_block p b) /\
   (*If a block is marked complete, it is recoverable*)
@@ -318,8 +305,7 @@ Proof.
   move=> blks prev output time p Hwf [Hsort [Hallsub [Hallinblk [Hinout [Hnonemp Hcomp]]]]].
   rewrite /decoder_nto_invar. split;[|split]. (*do easy cases first*)
   { by apply decoder_one_step_sorted. }
-  { (*TODO: separate lemma, used a lot*)
-    move=> b Hinb.
+  { (*maybe make separate lemma*) move=> b Hinb.
     have Hwfcons: wf_packet_stream (p :: prev). {
       apply (wf_substream Hwf) => x. 
       by rewrite mem_cat !in_cons orbF orbC.
@@ -358,7 +344,7 @@ Proof.
       by rewrite mem_cat=>->.
     }
     have Hinpb3: packet_in_block p b3. {
-      (*TODO: separate lemma for all of this*)
+      (*should have separate lemma for all of this*)
       have [b4 /andP[Hinb4 Hinpb4]]:=(get_blocks_allin Hwf Hinpl).
       have ->//: b3 = b4.
       apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
@@ -488,7 +474,7 @@ Proof.
 Qed.
 
 
-(*TODO: prove in DecoderGeneric*)
+(*Note: should move to DecoderGeneric*)
 Lemma decoder_multiple_steps_gen_cat: 
   forall upd timeout prev_packs rec1 rec2 blks sent time,
     decoder_multiple_steps_gen upd timeout prev_packs 
@@ -534,12 +520,6 @@ Proof.
   rewrite decoder_multiple_steps_gen_cons/=. apply IH.
   by rewrite mem_cat Hinp.
 Qed.
-
-
-
-
-
-
 
 (*Any two blocks with same blockId are equal, given a list
   sorted by blockId*)
@@ -880,8 +860,7 @@ Proof.
   (*Idea: 2 cases: either p has appeared in l1 or not.
     If it appeared in l1, it is the output by the invariant.
     Otherwise, it is NOT in the current block with this id
-    (because everything in this block in prev by subblock - TODO
-      is in decodertimeout probably)
+    (because everything in this block in prev by subblock)
     so it will be in the output of [decode_block] - but we need to
     show that the block is recoverable*)
   case Hinpl1: (p \in l1); first by 
@@ -889,7 +868,7 @@ Proof.
     apply negbT; apply Hwfb.
   (*Hard case: need to show that block recoverable*)
   rewrite update_dec_state_gen_eq //.
-  (*Make goal nicer - TODO do we need this?*)
+  (*Make goal nicer*)
   forget (decoder_multiple_steps_gen (fun=> (fun=> (fun=> 0%Z)))
   (fun=> xpredT) [::] l1 [::] [::] 0) as state.
   move: Hsort Hsubblocks Hinblocks Hinoutput Hblknonemp.
@@ -930,8 +909,7 @@ Proof.
         }
       (*Use [decode_block_correct] (from RS decoder theorem)*) 
         rewrite (decode_block_correct Hwfb)=>//.
-        -- (*TODO: separate?*)
-          apply (get_block_diff_in Hwf)=>//.
+        -- apply (get_block_diff_in Hwf)=>//.
           rewrite /packet_in_data/=. apply /negP=> /inP.
           rewrite In_Znth_iff Zlength_sublist; try lia; last by
             rewrite Zlength_upd_Znth zseq_Zlength; lia.
@@ -991,7 +969,6 @@ Proof.
         move: Hsubblocks => /( _ _ Hinb1) [b2 [Hinb2 Hsub2]].
         have [b3 [Hinb3 Hsub3]]: exists b', b' \in (get_blocks sent) 
           /\ subblock b2 b' by apply get_blocks_sublist with(l2:=l1)=>//=.
-        (*TODO: separate lemma?*)
         have Hbeq: b = b3. {
           apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
           rewrite -(get_blocks_ids Hwf Hbin Hinbp2).
@@ -1012,14 +989,11 @@ Proof.
       by rewrite Hidb1. 
     }
     rewrite /add_packet_to_block_black.
-    (*TODO: add to invariant*)
-    (*have Hcomp: (forall b, b \in blks -> black_complete b ->
-      recoverable b) by admit.*)
     have Hsub: subblock b1 b. {
       move: Hsubblocks => /(_ b1 Hinb1) [b2 [Hinb2 Hsub2]].
       have [b3 [Hinb3 Hsubb3]]: 
         exists b3, b3 \in get_blocks sent /\ subblock b2 b3 by
-        apply get_blocks_sublist with(l2:=l1)=>//. (*TODO: repetitive*)
+        apply get_blocks_sublist with(l2:=l1)=>//.
       have->: b = b3; last by apply (subblock_trans Hsub2).
       apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
       by rewrite -(proj1 Hsubb3) -(proj1 Hsub2) Hidb1.
@@ -1111,7 +1085,6 @@ Proof.
               apply get_blocks_sublist with(l2:=(p1:: l1)).
           have Heq: b4 = b; last by subst. {
             apply (map_uniq_inj (get_blocks_id_uniq Hwf))=>//.
-            (*TODO: separate lemma, did a lot*)
             by rewrite -(proj1 Hsub4)/= -(proj1 Hsubb2) -Hidp1.
           }
         }

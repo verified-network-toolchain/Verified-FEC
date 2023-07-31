@@ -202,6 +202,17 @@ Proof.
   intros b1 b2. unfold Byte.xor. rewrite Byte.unsigned_repr; [ reflexivity | apply byte_xor_size].
 Qed.
 
+(*EqType for bytes*)
 
+Lemma reflect_proj_sumbool: forall (P: Prop) (H: {P} + {~P}),
+  reflect P H.
+Proof.
+  move => P H. case : H => [Hy | Hn].
+  by apply ReflectT. by apply ReflectF.
+Qed.
+
+Definition byte_eqMixin := EqMixin 
+  (fun i1 i2 => reflect_proj_sumbool (Byte.eq_dec i1 i2)).
+Canonical byte_eqType := EqType byte byte_eqMixin.
 
 

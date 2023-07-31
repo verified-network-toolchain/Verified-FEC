@@ -1,14 +1,14 @@
-Require Import Endian.
+Require Export Endian.
 Require Import VST.floyd.functional_base.
-From RecordUpdate Require Import RecordSet. (*for updating records easily*)
-Import RecordSetNotations.
+From RecordUpdate Require Export RecordSet. (*for updating records easily*)
+Export RecordSetNotations.
 Set Bullet Behavior "Strict Subproofs".
 
 (** IP and UDP Packets *)
 
 (** IP *)
 
-(*TODO: I believe that everything > 1 byte is in network byte order. Can I find a source for this?
+(*I believe that everything > 1 byte is in network byte order. Can I find a source for this?
   It is very poorly documented*)
 
 Record ip_fields :=
@@ -27,7 +27,7 @@ Definition ip_list (f: ip_fields) :=
 Definition ip_bytes (f: ip_fields) :=
   MemBytes_to_byte_list (ip_list f) ++ (ip_options f).
 
-(*TODO: do we need any other validity conditions?*)
+(*Do we need any other validity conditions?*)
 Definition valid_ip_bytes (f: ip_fields) (contents: list byte) : bool :=
   Z.eq_dec (Nibble.unsigned (ip_hl f) * 4) (Zlength (ip_bytes f)) &&
   Z.eq_dec (Short.unsigned (ip_len f)) (Zlength (ip_bytes f ++ contents)).
@@ -170,7 +170,6 @@ Proof.
   replace (ip_options ip) with header by (inversion H; reflexivity). list_solve.
 Qed.
 
-(*TODO: move, may be useful more generally*)
 Ltac simpl_sumbool :=
   repeat match goal with
   | [ H: proj_sumbool ?x = true |- _ ] => destruct x; [ clear H | solve[inversion H]]
@@ -232,7 +231,7 @@ Definition udp_list (u: udp_fields) :=
 Definition udp_bytes (u: udp_fields) :=
   MemBytes_to_byte_list (udp_list u).
 
-(*TODO: any other validity conditions?*)
+(*Any other validity conditions?*)
 Definition valid_udp_bytes (u: udp_fields) (contents: list byte) : bool :=
   Z.eq_dec (Short.unsigned (udp_len u)) (Zlength (udp_bytes u ++ contents)).
 
@@ -378,7 +377,6 @@ Proof.
     simpl. f_equal. congruence.
 Qed.
 
-(*TODO: where to put the boundedness assumptions?*)
 Lemma copy_fix_header_valid: forall (header con1 con2: list byte),
   Zlength header + Zlength con2 <= Short.max_unsigned ->
   valid_packet header con1 = true ->

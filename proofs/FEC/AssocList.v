@@ -53,7 +53,7 @@ Lemma updateWith_diff: forall k f a k' v',
 Proof.
   move => k f a k' v'. elim : a => [//= | h t /= IH]. 
   case : h => [kh vh]/=.
-  move => (*/andP[Hnotin Huniq]*) /eqP Hkk'. case: (k == kh) /eqP => Hkkh/=.
+  move => /eqP Hkk'. case: (k == kh) /eqP => Hkkh/=.
   - rewrite !in_cons; subst.
     case: ((k', v') == (kh, f vh)) /eqP => [[Hk2]|/= _];
     by case: ((k', v') == (kh, vh)) /eqP => [[Hk2']| /= _]; subst.
