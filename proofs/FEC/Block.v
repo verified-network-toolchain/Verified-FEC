@@ -1404,7 +1404,7 @@ Proof.
 Qed.
 
 (*We need some properties of [get_blocks] for the
-  decoder with timeouts. We don't prove everything in
+  Consumer with timeouts. We don't prove everything in
   [block_wf] because we don't want all the assumptions
   (for instance, about fec_n and fec_max_h)*)
 Lemma get_blocks_ids: forall (s: seq fpacket) (b: block) p,
@@ -1536,7 +1536,7 @@ Proof.
   by apply Hwf.
 Qed.
 
-(*Need for decoder no timeouts*)
+(*Need for Consumer no timeouts*)
 Lemma get_blocks_id_uniq: forall s,
   wf_packet_stream s ->
   uniq (map blk_id (get_blocks s)).
@@ -1557,7 +1557,7 @@ Qed.
 
 End BlockList.
 
-(* For the decoder, we need to reason about subblocks)*)
+(* For the Consumer, we need to reason about subblocks)*)
 
 Section Subblock.
 
@@ -1892,7 +1892,7 @@ Proof.
   - by apply (subblock_in Hsub).
 Qed. 
 
-Lemma decoder_invar_allid: forall (blocks : seq block) prev,
+Lemma consumer_invar_allid: forall (blocks : seq block) prev,
   wf_packet_stream prev ->
   (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
   subblock b b') ->
@@ -1906,7 +1906,7 @@ Proof.
   by apply (get_blocks_ids Hwf).
 Qed.
 
-Lemma decoder_invar_inprev: forall (blocks: seq block) prev,
+Lemma consumer_invar_inprev: forall (blocks: seq block) prev,
   wf_packet_stream prev ->
   (forall b, b \in blocks -> exists b', b' \in (get_blocks prev) /\
   subblock b b') ->

@@ -2,8 +2,8 @@
 (*Future: should provide a version with some efficiency/speedups closer
   to C code*)
 (*Here, we prove that under certain generous conditions of the
-  input packet stream, this is equivalent to the idealized decoder.*)
-Require Export DecoderTimeouts.
+  input packet stream, this is equivalent to the idealized consumer.*)
+Require Export ConsumerTimeouts.
 Require Export SeqCmp.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
@@ -139,7 +139,7 @@ Definition not_timed_out_m: Z -> block -> bool := fun currTime =>
   (fun b => S32.seq_leq (Int.repr currTime)
     (Int.add (Int.repr(black_time b)) threshold)).
 
-Fixpoint update_dec_state_m (blocks: list block) (curr: fpacket)
+Fixpoint update_con_state_m (blocks: list block) (curr: fpacket)
   (time: Z) : list block * list packet:=
 match blocks with
 | nil => let t := create_block_with_packet_black curr time in 
@@ -154,39 +154,39 @@ match blocks with
     let t := create_block_with_packet_black curr time in 
       (t.1 :: blocks, t.2)
   else 
-    let t := update_dec_state_m tl curr time
+    let t := update_con_state_m tl curr time
     in (bl :: t.1, t.2)
 end.
 
-Definition decoder_one_step_m (blocks: list block) curr (time : Z) :
+Definition consumer_one_step_m (blocks: list block) curr (time : Z) :
 list block * list packet * Z :=
 (*First, we process timeouts; this covers the case when the packet
   which makes the block timeout is the kth packet; we should not
   recover this block (it makes our invariants much harder).*)
 let tm := upd_time_m time curr blocks in
-let t := update_dec_state_m blocks curr tm in
+let t := update_con_state_m blocks curr tm in
 let blks := filter (not_timed_out_m tm) t.1 in
 (blks, t.2, tm).
 
 
-Definition decoder_multiple_steps_m
+Definition consumer_multiple_steps_m
 (prev_packs packs: list fpacket)
 (state: list block) (sent: list packet) (time: Z) :
 list block * list packet * Z * list fpacket :=
 foldl (fun (acc: list block * list packet * Z * list fpacket) 
   (p: fpacket) =>
-  let t := decoder_one_step_m acc.1.1.1 p acc.1.2 in
+  let t := consumer_one_step_m acc.1.1.1 p acc.1.2 in
   (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p])) 
 (state, sent, time, prev_packs) packs.
 
-Definition decoder_all_steps_m (received: list fpacket) :
+Definition consumer_all_steps_m (received: list fpacket) :
 (list block * list packet * Z) :=
-(decoder_multiple_steps_m nil received nil nil 0).1.
+(consumer_multiple_steps_m nil received nil nil 0).1.
 
-Lemma decoder_multiple_steps_m_rewrite: forall prev packs blks sent time,
-  decoder_multiple_steps_m prev packs blks sent time =
+Lemma consumer_multiple_steps_m_rewrite: forall prev packs blks sent time,
+  consumer_multiple_steps_m prev packs blks sent time =
   (foldl (fun (acc: seq block * seq packet * Z * seq fpacket) (p: fpacket) =>
-    let t := decoder_one_step_m acc.1.1.1 p acc.1.2 in
+    let t := consumer_one_step_m acc.1.1.1 p acc.1.2 in
     (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p]))
     (blks, sent, time, prev) packs).
 Proof.
@@ -219,7 +219,7 @@ Variable thresh_bound:
   (Int.unsigned threshold < Int.half_modulus / 2)%Z.
 
 (*Our invariant:*)
-Definition dec_machine_invar (blks: seq block)
+Definition con_machine_invar (blks: seq block)
   (time: Z) : Prop :=
   (*All black times are no more than [threshold] behind the
     current time*)
@@ -278,17 +278,17 @@ Proof.
 Qed.
 
 (*Equality for one step, assuming invariant*)
-Lemma decoder_one_step_m_eq (blks: seq block) (time: Z) 
+Lemma consumer_one_step_m_eq (blks: seq block) (time: Z) 
   (curr: fpacket) :
   (Z.of_nat (fd_blockId curr) < Int64.half_modulus)%Z ->
   (Z.of_nat (fd_blockIndex curr) <= Int.max_unsigned)%Z ->
   (0 <= fd_k curr < Int.modulus)%Z ->
-  dec_machine_invar blks time ->
-  decoder_one_step_m blks curr time =
-  decoder_one_step (Int.unsigned threshold) blks curr time.
+  con_machine_invar blks time ->
+  consumer_one_step_m blks curr time =
+  consumer_one_step (Int.unsigned threshold) blks curr time.
 Proof.
   move=> Hcurr Hidx Hkbound [Hthresh Hallid].
-  rewrite /decoder_one_step_m/decoder_one_step/decoder_one_step_gen/=.
+  rewrite /consumer_one_step_m/consumer_one_step/consumer_one_step_gen/=.
   have Htime: upd_time_m time curr blks = 
     upd_time time curr blks. {
     rewrite {Hthresh}. move: Hallid. elim: blks => [_ //=|b btl IH Hallid /=].
@@ -351,7 +351,7 @@ Proof.
       lia.
     }
     elim: blks=>[_ _ _ //| b btl IH Hthresh Hallid /= Hbtime].
-    - f_equal. rewrite /not_timed_out/not_timed_out_m /update_dec_state_m.
+    - f_equal. rewrite /not_timed_out/not_timed_out_m /update_con_state_m.
       by rewrite /= create_black_time Hadd S32.seq_leq_leq //. 
     - have Hbound: (z_abs_diff 
       (Z.of_nat (fd_blockId curr)) (Z.of_nat (blk_id b)) <
@@ -384,16 +384,16 @@ Qed.
 (*Now, we have to prove preservation of the invariant.
   Here, we prove for the non-machine version, then use
   the previous lemma to show the invariant for the machine one*)
-Lemma decoder_m_invar_one_step (blks: seq block) (time: Z) 
+Lemma consumer_m_invar_one_step (blks: seq block) (time: Z) 
   (curr: fpacket) :
   (Z.of_nat (fd_blockId curr) < Int64.half_modulus)%Z ->
-  dec_machine_invar blks time ->
-  dec_machine_invar (decoder_one_step (Int.unsigned threshold) 
+  con_machine_invar blks time ->
+  con_machine_invar (consumer_one_step (Int.unsigned threshold) 
     blks curr time).1.1
-    (decoder_one_step (Int.unsigned threshold) blks curr time).2.
+    (consumer_one_step (Int.unsigned threshold) blks curr time).2.
 Proof.
-  rewrite /dec_machine_invar => Hid [Hthresh Hallid].
-  rewrite /decoder_one_step/=.
+  rewrite /con_machine_invar => Hid [Hthresh Hallid].
+  rewrite /consumer_one_step/=.
   split.
   - move=> b.
     rewrite mem_filter /not_timed_out =>/andP[/Z.leb_spec0 Htime].
@@ -441,61 +441,61 @@ Proof.
 Qed.
 
 (*Put both lemmas together*)
-Lemma decoder_multiple_steps_m_eq (blks: seq block) (time: Z)
+Lemma consumer_multiple_steps_m_eq (blks: seq block) (time: Z)
   (prev_pkts pkts: seq fpacket) (sent: seq packet) :
   (forall (p: fpacket), p \in prev_pkts ++ pkts -> 
     (Z.of_nat (fd_blockId p) < Int64.half_modulus)%Z /\
     (Z.of_nat (fd_blockIndex p) <= Int.max_unsigned)%Z /\
     (0 <= fd_k p < Int.modulus)%Z) ->
-  dec_machine_invar blks time ->
-  decoder_multiple_steps_m prev_pkts pkts blks sent time =
-  decoder_multiple_steps (Int.unsigned threshold) 
+  con_machine_invar blks time ->
+  consumer_multiple_steps_m prev_pkts pkts blks sent time =
+  consumer_multiple_steps (Int.unsigned threshold) 
     prev_pkts pkts blks sent time.
 Proof.
-  rewrite decoder_multiple_steps_rewrite
-  decoder_multiple_steps_m_rewrite.
+  rewrite consumer_multiple_steps_rewrite
+  consumer_multiple_steps_m_rewrite.
   move: blks time prev_pkts sent.
   elim: pkts => 
     [//|curr pkts IH blks time prev sent Hbounds Hinvar].
-  Opaque decoder_one_step decoder_one_step_m.
+  Opaque consumer_one_step consumer_one_step_m.
   rewrite /= IH.
-  - by rewrite decoder_one_step_m_eq //; apply Hbounds;
+  - by rewrite consumer_one_step_m_eq //; apply Hbounds;
     rewrite mem_cat mem_head orbT.
   - rewrite -catA. by apply Hbounds.
-  - rewrite decoder_one_step_m_eq //; try (by apply Hbounds;
+  - rewrite consumer_one_step_m_eq //; try (by apply Hbounds;
     rewrite mem_cat mem_head orbT).
-    apply decoder_m_invar_one_step=> //.
+    apply consumer_m_invar_one_step=> //.
     apply Hbounds. by rewrite mem_cat mem_head orbT.
 Qed.
 
 (*And therefore, if all indicies, ids, and k values are 
   bounded appropriately, then the machine-length version is
-  equal to the infinte precision decoder.*)
-Corollary decoder_all_steps_m_eq (pkts: seq fpacket) :
+  equal to the infinte precision Consumer.*)
+Corollary consumer_all_steps_m_eq (pkts: seq fpacket) :
   (forall (p: fpacket), p \in pkts -> 
   (Z.of_nat (fd_blockId p) < Int64.half_modulus)%Z /\
   (Z.of_nat (fd_blockIndex p) <= Int.max_unsigned)%Z /\
   (0 <= fd_k p < Int.modulus)%Z) ->
-  decoder_all_steps_m pkts =
-  decoder_all_steps (Int.unsigned threshold) pkts.
+  consumer_all_steps_m pkts =
+  consumer_all_steps (Int.unsigned threshold) pkts.
 Proof.
   move=> Hbounds.
-  by rewrite /decoder_all_steps_m decoder_multiple_steps_m_eq.
+  by rewrite /consumer_all_steps_m consumer_multiple_steps_m_eq.
 Qed.
 
 End Equiv.
 
 Section AllDat.
 
-(*One unequivocal spec we can give of the machine-length decoder:
+(*One unequivocal spec we can give of the machine-length Consumer:
   all data packets are outputted*)
 Lemma all_data_outputted_one_m (blks: seq block) (time: Z) 
   (curr: fpacket):
   fd_isParity curr = false ->
-  p_packet curr \in (decoder_one_step_m blks curr time).1.2.
+  p_packet curr \in (consumer_one_step_m blks curr time).1.2.
 Proof.
   move=> Hdat.
-  rewrite /decoder_one_step_m/=.
+  rewrite /consumer_one_step_m/=.
   move: (upd_time_m time curr blks)=> tm'.
   elim blks => [//= | b bs /= IH].
   - by rewrite Hdat mem_cat mem_head.
@@ -516,15 +516,15 @@ Lemma all_data_outputted_multiple_m (blks: seq block) (time: Z)
   forall (p: fpacket), p \in  (prev_pkts ++ pkts) ->
     fd_isParity p = false ->
     p_packet p \in 
-      (decoder_multiple_steps_m prev_pkts pkts blks sent time).1.1.2.
+      (consumer_multiple_steps_m prev_pkts pkts blks sent time).1.1.2.
 Proof.
-  rewrite decoder_multiple_steps_m_rewrite.
+  rewrite consumer_multiple_steps_m_rewrite.
   move: blks time prev_pkts sent.
   elim: pkts => [//= _ _ prev sent Hin p| 
     curr ptl IH blks time prev sent Hinprev p].
   - rewrite cats0. by apply Hin.
   - move=> Hinp Hpar. 
-    Opaque decoder_one_step_m.
+    Opaque consumer_one_step_m.
     rewrite /=. apply IH =>//; last by rewrite -catA.
     move=> p'. rewrite mem_cat in_cons orbF => /orP[Hinp' Hpar' | 
       /eqP -> /= Hpar'].
@@ -536,7 +536,7 @@ Corollary all_data_outputted_m (pkts: seq fpacket) :
   forall (p: fpacket), p \in pkts ->
   fd_isParity p = false ->
   p_packet p \in 
-    (decoder_all_steps_m pkts).1.2.
+    (consumer_all_steps_m pkts).1.2.
 Proof.
   move=> p Hinp Hpar.
   by apply all_data_outputted_multiple_m.

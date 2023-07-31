@@ -1,4 +1,4 @@
-Require Export DecoderGeneric.
+Require Export ConsumerGeneric.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -11,15 +11,15 @@ Definition triv_upd_time : Z -> fpacket -> list block -> Z :=
 Definition triv_timeout : Z -> block -> bool :=
   fun _ _ => true.
 
-Definition decoder_one_step_nto :=
-  decoder_one_step_gen triv_upd_time triv_timeout.
+Definition consumer_one_step_nto :=
+  consumer_one_step_gen triv_upd_time triv_timeout.
 
-Definition decoder_multiple_steps_nto:=
-  decoder_multiple_steps_gen triv_upd_time triv_timeout.
-Definition decoder_all_steps_nto:=
-  decoder_all_steps_gen triv_upd_time triv_timeout.
+Definition consumer_multiple_steps_nto:=
+  consumer_multiple_steps_gen triv_upd_time triv_timeout.
+Definition consumer_all_steps_nto:=
+  consumer_all_steps_gen triv_upd_time triv_timeout.
 
-(*First we prove that with this decoder, it doesn't matter what
+(*First we prove that with this Consumer, it doesn't matter what
   time updating mechanism you use as long as you never timeout.
   Neither the intermediate functions nor the state are affected
   beyond just having different time information.*)
@@ -153,17 +153,17 @@ Qed.
 (*Any timing mechanism will result in the same output if we never
   timeout packets*)
 
-Lemma decoder_notimeout_upd_time:
+Lemma consumer_notimeout_upd_time:
   forall u1 u2 blks1 blks2 prev packs time1 time2 sent,
   map (fun b => b <| black_time := 0 |>) blks1 =
   map (fun b => b <| black_time := 0|> ) blks2 ->
-  (decoder_multiple_steps_gen u1 triv_timeout prev 
+  (consumer_multiple_steps_gen u1 triv_timeout prev 
     packs blks1 sent time1).1.1.2 =
-  (decoder_multiple_steps_gen u2 triv_timeout prev 
+  (consumer_multiple_steps_gen u2 triv_timeout prev 
     packs blks2 sent time2).1.1.2.
 Proof.
   move=> u1 u2 blks1 blks2 prev packs. move: blks1 blks2 prev.
-  rewrite /decoder_multiple_steps_gen.
+  rewrite /consumer_multiple_steps_gen.
   elim: packs => [//= | p ptl /= 
     IH blks1 blks2 prev time1 time2 sent Heqblks].
   move: IH.
@@ -171,12 +171,12 @@ Proof.
   (*All of the interesting stuff is in this proof, we separate it
     to reduce duplication*)
     have [Hupd1 Hupd2]: 
-    (update_dec_state_gen blks1 p (u1 time1 p blks1)).2 =
-    (update_dec_state_gen blks2 p (u2 time2 p blks2)).2 /\
+    (update_con_state_gen blks1 p (u1 time1 p blks1)).2 =
+    (update_con_state_gen blks2 p (u2 time2 p blks2)).2 /\
     [seq b <| black_time := 0 |>
-      | b <- (update_dec_state_gen blks1 p (u1 time1 p blks1)).1] =
+      | b <- (update_con_state_gen blks1 p (u1 time1 p blks1)).1] =
     [seq b <| black_time := 0 |>
-      | b <- (update_dec_state_gen blks2 p (u2 time2 p blks2)).1]. {
+      | b <- (update_con_state_gen blks2 p (u2 time2 p blks2)).1]. {
       rewrite {IH}.
       move: (u1 time1 p blks1) => t1.
       move: (u2 time2 p blks2) => t2.
@@ -198,20 +198,20 @@ Proof.
           * rewrite /=. split. by apply IH. f_equal=>//. by apply IH.
   }
   (*The rest of the proof is basically trivial*)
-  by rewrite (IH _ ((update_dec_state_gen
+  by rewrite (IH _ ((update_con_state_gen
   [seq x <- blks2 | triv_timeout (u2 time2 p blks2) x] p
   (u2 time2 p blks2)).1) _ _ (u2 time2 p blks2) _ ) // {IH}
   /triv_timeout/= !filter_predT//= Hupd1.
 Qed.
 
 (*Lift this result to all packets*)
-Lemma decoder_notimeout_upd_time_all:
+Lemma consumer_notimeout_upd_time_all:
   forall u1 u2 packs,
-  (decoder_all_steps_gen u1 triv_timeout packs).1.2 =
-  (decoder_all_steps_gen u2 triv_timeout packs).1.2.
+  (consumer_all_steps_gen u1 triv_timeout packs).1.2 =
+  (consumer_all_steps_gen u2 triv_timeout packs).1.2.
 Proof.
-  move=> u1 u2 packs. rewrite /decoder_all_steps_gen.
-  by apply decoder_notimeout_upd_time.
+  move=> u1 u2 packs. rewrite /consumer_all_steps_gen.
+  by apply consumer_notimeout_upd_time.
 Qed.
 
 End TimeDoesntMatter.
@@ -223,7 +223,7 @@ Section AllRecovered.
 
 Local Open Scope nat_scope.
 
-Definition decoder_nto_invar (blks: seq block) (prev: list fpacket) 
+Definition consumer_nto_invar (blks: seq block) (prev: list fpacket) 
   (output: list packet) : Prop :=
   (*blks sorted by blk_id in strictly increasing order*)
   sorted blk_order blks /\
@@ -296,15 +296,15 @@ Qed.
   The only nontrivial part is ensuring that every packet is in
   a block - ie: we don't overwrite any previous packets when
   a new one comes.*)
-Lemma decoder_nto_invar_pres: forall blks prev output time p,
+Lemma consumer_nto_invar_pres: forall blks prev output time p,
   wf_packet_stream (prev ++ [:: p]) ->
-  decoder_nto_invar blks prev output ->
-  decoder_nto_invar (decoder_one_step_nto blks p time).1.1
-    (prev ++ [:: p]) (output ++ (decoder_one_step_nto blks p time).1.2).
+  consumer_nto_invar blks prev output ->
+  consumer_nto_invar (consumer_one_step_nto blks p time).1.1
+    (prev ++ [:: p]) (output ++ (consumer_one_step_nto blks p time).1.2).
 Proof.
   move=> blks prev output time p Hwf [Hsort [Hallsub [Hallinblk [Hinout [Hnonemp Hcomp]]]]].
-  rewrite /decoder_nto_invar. split;[|split]. (*do easy cases first*)
-  { by apply decoder_one_step_sorted. }
+  rewrite /consumer_nto_invar. split;[|split]. (*do easy cases first*)
+  { by apply consumer_one_step_sorted. }
   { (*maybe make separate lemma*) move=> b Hinb.
     have Hwfcons: wf_packet_stream (p :: prev). {
       apply (wf_substream Hwf) => x. 
@@ -313,7 +313,7 @@ Proof.
     (*need permutation*)
     have [b' [Hinb' Hsub]]: exists (b': block), 
       b' \in get_blocks (p :: prev) /\ subblock b b' :=
-      (decoder_one_step_gen_subblocks Hwfcons Hallsub Hinb).
+      (consumer_one_step_gen_subblocks Hwfcons Hallsub Hinb).
     have Hperm: perm_eq (get_blocks (p :: prev)) 
       (get_blocks (prev ++ [:: p])). {
         apply get_blocks_perm=>//. 
@@ -322,8 +322,8 @@ Proof.
     exists b'.
     by rewrite -(perm_mem Hperm). }
   (*Now we prove the interesting invariants*) 
-  rewrite /= /triv_timeout/triv_upd_time filter_predT /decoder_nto_invar.
-  rewrite update_dec_state_gen_eq //.
+  rewrite /= /triv_timeout/triv_upd_time filter_predT /consumer_nto_invar.
+  rewrite update_con_state_gen_eq //.
   have Hinpl: p \in (prev ++ [::p]) by 
     rewrite mem_cat in_cons eq_refl orbT.
   case Hhas: (has (fun b : block => blk_id b == fd_blockId p) blks)=>[/=|].
@@ -447,77 +447,77 @@ Proof.
       split; try lia. by apply Hwf.
 Qed.
        
-Lemma decoder_nto_invar_multiple: forall blks prev output time rec,
+Lemma consumer_nto_invar_multiple: forall blks prev output time rec,
   wf_packet_stream (prev ++ rec) ->
-  decoder_nto_invar blks prev output ->
-  decoder_nto_invar (decoder_multiple_steps_nto prev rec blks output time).1.1.1
-    (prev ++ rec) (decoder_multiple_steps_nto prev rec blks output time).1.1.2.
+  consumer_nto_invar blks prev output ->
+  consumer_nto_invar (consumer_multiple_steps_nto prev rec blks output time).1.1.1
+    (prev ++ rec) (consumer_multiple_steps_nto prev rec blks output time).1.1.2.
 Proof.
   move=> blks prev output time rec Hwf Hinvar.
   rewrite -(prev_packets_multiple triv_upd_time triv_timeout prev rec blks output time).
-  rewrite /decoder_multiple_steps_nto.
+  rewrite /consumer_multiple_steps_nto.
   move: blks prev output time Hwf Hinvar. 
   elim: rec=>[// | curr tl /= IH blks prev output time Hwf Hinvar].
   apply IH=>//=. by rewrite -catA.
-  apply decoder_nto_invar_pres=>//.
+  apply consumer_nto_invar_pres=>//.
   apply (wf_substream Hwf). move=> x.
   by rewrite !mem_cat!in_cons!orbF orbA=>->.
 Qed.
 
-Lemma decoder_nto_invar_all: forall rec,
+Lemma consumer_nto_invar_all: forall rec,
   wf_packet_stream rec ->
-  decoder_nto_invar (decoder_all_steps_nto rec).1.1
-    rec (decoder_all_steps_nto rec).1.2.
+  consumer_nto_invar (consumer_all_steps_nto rec).1.1
+    rec (consumer_all_steps_nto rec).1.2.
 Proof.
-  move=> rec Hwf. rewrite /decoder_all_steps_nto.
-  by apply decoder_nto_invar_multiple.
+  move=> rec Hwf. rewrite /consumer_all_steps_nto.
+  by apply consumer_nto_invar_multiple.
 Qed.
 
 
-(*Note: should move to DecoderGeneric*)
-Lemma decoder_multiple_steps_gen_cat: 
+(*Note: should move to ConsumerGeneric*)
+Lemma consumer_multiple_steps_gen_cat: 
   forall upd timeout prev_packs rec1 rec2 blks sent time,
-    decoder_multiple_steps_gen upd timeout prev_packs 
+    consumer_multiple_steps_gen upd timeout prev_packs 
       (rec1 ++ rec2) blks sent time =
-    let t := decoder_multiple_steps_gen upd timeout prev_packs
+    let t := consumer_multiple_steps_gen upd timeout prev_packs
       rec1 blks sent time in
-    decoder_multiple_steps_gen upd timeout (prev_packs ++ rec1)
+    consumer_multiple_steps_gen upd timeout (prev_packs ++ rec1)
       rec2 t.1.1.1 t.1.1.2 t.1.2.
 Proof.
   move=> upd timeout prev rec1 rec2 blks sent time/=.
   rewrite -(prev_packets_multiple upd timeout prev rec1 blks sent time).
-  rewrite /decoder_multiple_steps_gen foldl_cat//=.
+  rewrite /consumer_multiple_steps_gen foldl_cat//=.
   move: (foldl
   (fun (acc : seq block * seq packet * Z * seq fpacket) (p : fpacket) =>
-   ([seq x <- (update_dec_state_gen acc.1.1.1 p (upd acc.1.2 p acc.1.1.1)).1
+   ([seq x <- (update_con_state_gen acc.1.1.1 p (upd acc.1.2 p acc.1.1.1)).1
        | timeout (upd acc.1.2 p acc.1.1.1) x],
    acc.1.1.2 ++
-   (update_dec_state_gen acc.1.1.1 p (upd acc.1.2 p acc.1.1.1)).2,
+   (update_con_state_gen acc.1.1.1 p (upd acc.1.2 p acc.1.1.1)).2,
    upd acc.1.2 p acc.1.1.1, acc.2 ++ [:: p])) ) => f.
   by case: (f (blks, sent, time, prev) rec1)=>/= [[[a b] c] d]/=.
 Qed.
 
-Lemma decoder_multiple_steps_gen_cons:
+Lemma consumer_multiple_steps_gen_cons:
   forall upd timeout prev_packs p rec blks sent time,
-  decoder_multiple_steps_gen upd timeout prev_packs 
+  consumer_multiple_steps_gen upd timeout prev_packs 
     (p:: rec) blks sent time =
-  let t := decoder_one_step_gen upd timeout
+  let t := consumer_one_step_gen upd timeout
     blks p time in
-  decoder_multiple_steps_gen upd timeout (prev_packs ++ [:: p])
+  consumer_multiple_steps_gen upd timeout (prev_packs ++ [:: p])
     rec t.1.1 (sent ++ t.1.2) t.2.
 Proof.
   move=> upd timeout prev p rec blks sent time.
   by rewrite -(prev_packets_multiple upd timeout prev [:: p] blks sent time).
 Qed.
 
-Lemma decoder_multiple_output_grows: forall 
+Lemma consumer_multiple_output_grows: forall 
   upd timeout prev_packs rec blks sent time p,
   p \in sent ->
-  p \in (decoder_multiple_steps_gen upd timeout prev_packs rec blks sent time).1.1.2.
+  p \in (consumer_multiple_steps_gen upd timeout prev_packs rec blks sent time).1.1.2.
 Proof.
   move=> upd timeout prev rec. move: prev. 
   elim: rec=>[// | h t /= IH prev blks sent time p Hinp].
-  rewrite decoder_multiple_steps_gen_cons/=. apply IH.
+  rewrite consumer_multiple_steps_gen_cons/=. apply IH.
   by rewrite mem_cat Hinp.
 Qed.
 
@@ -644,7 +644,7 @@ Proof.
       rewrite packet_in_block_eq -mem_cat.
     rewrite (subblock_in Hsub Hinfb1)/=.
     have Hwfl1: wf_packet_stream l1. by apply (wf_substream Hwf).
-    by apply (decoder_invar_inprev Hwfl1 Hallsub Hinb1).
+    by apply (consumer_invar_inprev Hwfl1 Hallsub Hinb1).
   - apply /allP => f. rewrite !mem_filter => /andP [Hinfb Hinfl1].
     apply /mapP. exists (Some f)=>//.
     rewrite mem_filter=>/=.
@@ -832,16 +832,16 @@ Theorem all_packets_in_block_recovered: forall k i j (sent rec: seq fpacket)
   (count (fun x => (x \in rec)) (undup (sublist i j sent)) 
     >= Z.to_nat k) ->
   forall (p: fpacket), packet_in_data p b ->
-     (p_packet p) \in (decoder_all_steps_nto rec).1.2 \/
-     (p_packet p) <| p_seqNum := 0 |> \in (decoder_all_steps_nto rec).1.2.
+     (p_packet p) \in (consumer_all_steps_nto rec).1.2 \/
+     (p_packet p) <| p_seqNum := 0 |> \in (consumer_all_steps_nto rec).1.2.
 Proof.
   move=> k i j sent rec b Hwf Hsubstream Hwfb Henc Hbin Hbk Hall 
     Hcount p Hinp.
-  rewrite /decoder_all_steps_nto/decoder_all_steps_gen.
+  rewrite /consumer_all_steps_nto/consumer_all_steps_gen.
   have Hk0: (Z.to_nat k) != 0. {
     case Hwfb => [Hk _]. apply /eqP. lia.
   }
-  (*We examine the decoder at the time when we get the kth packet
+  (*We examine the Consumer at the time when we get the kth packet
     in this block*)
   have[l1 [p1 [l2 [Hrec [Hcountl1 [Hinp1b Hnotin]]]]]]:=
     (find_kth_item_in Hk0 Hall Hcount).
@@ -849,13 +849,13 @@ Proof.
   have Hwfrec: wf_packet_stream rec := (wf_substream Hwf Hsubstream).
   have Hwfl1: wf_packet_stream l1 by
     apply (wf_substream Hwfrec) => x; rewrite Hrec mem_cat =>->.
-  have:=(decoder_nto_invar_all Hwfl1).
-  rewrite /decoder_all_steps_nto/decoder_all_steps_gen.
-  rewrite Hrec decoder_multiple_steps_gen_cat/= 
-  decoder_multiple_steps_gen_cons/=/triv_timeout !filter_predT/triv_upd_time.
+  have:=(consumer_nto_invar_all Hwfl1).
+  rewrite /consumer_all_steps_nto/consumer_all_steps_gen.
+  rewrite Hrec consumer_multiple_steps_gen_cat/= 
+  consumer_multiple_steps_gen_cons/=/triv_timeout !filter_predT/triv_upd_time.
   move=> [Hsort [Hsubblocks [Hinblocks [Hinoutput [Hblknonemp Hcomp]]]]].
-  apply (or_impl (@decoder_multiple_output_grows _ _ _ _ _ _ _ _)
-    (@decoder_multiple_output_grows _ _ _ _ _ _ _ _)).
+  apply (or_impl (@consumer_multiple_output_grows _ _ _ _ _ _ _ _)
+    (@consumer_multiple_output_grows _ _ _ _ _ _ _ _)).
   rewrite !mem_cat.
   (*Idea: 2 cases: either p has appeared in l1 or not.
     If it appeared in l1, it is the output by the invariant.
@@ -867,9 +867,9 @@ Proof.
     left; apply /orP; left; apply Hinoutput=>//;
     apply negbT; apply Hwfb.
   (*Hard case: need to show that block recoverable*)
-  rewrite update_dec_state_gen_eq //.
+  rewrite update_con_state_gen_eq //.
   (*Make goal nicer*)
-  forget (decoder_multiple_steps_gen (fun=> (fun=> (fun=> 0%Z)))
+  forget (consumer_multiple_steps_gen (fun=> (fun=> (fun=> 0%Z)))
   (fun=> xpredT) [::] l1 [::] [::] 0) as state.
   move: Hsort Hsubblocks Hinblocks Hinoutput Hblknonemp.
   set blks:=state.1.1.1.

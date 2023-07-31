@@ -9,7 +9,7 @@ Set Bullet Behavior "Strict Subproofs".
 (** The Consumer *)
 
 (*First, we provide the building blocks and intermediate functions
-  for any decoder (irrespective of timeouts, etc)*)
+  for any Consumer (irrespective of timeouts, etc)*)
 
 (*First major step: what does it mean to decode a block?*)
 (*[decoder_list] takes in a value i, representing the sublist of parities that we will look at
@@ -378,52 +378,52 @@ Proof.
   - by apply (get_blocks_sub_Znth Hwf Hinb1).
 Qed.
 
-(*With these building blocks, we can now define the decoder.
+(*With these building blocks, we can now define the Consumer.
   We do this in several stages and forms
-  1. First, we give a generic decoder parameterized by the way
+  1. First, we give a generic Consumer parameterized by the way
     of updating time and timing out blocks. This implementation
     does not match the C code; it is simpler but inefficient, and it
     makes multiple passes to separate each part of the code.
-  2. We then instantiate this generic decoder with the specific
+  2. We then instantiate this generic Consumer with the specific
     timeout mechanism used (as well as a version with no timeouts).
     This comprises our idealized functional model.
   3. We give a version that works on machine-length
-    integers and one that matches more closely with the (revised)
+    integers and (future work) one that matches more closely with the (revised)
     C code.
 
   This approach allows us to separate the proofs and reduce repetition.
   We prove that the idealized model satisfies 2 properties:
   1. All outputted packets are valid data packets (ie: they came
-    from the input to the encoder).
+    from the input to the Producer).
   2. If the packet stream has some (relatively small) amount of reordering
     and duplication, and not too many packets are lost, then all packets
-    are recovered. We do this by relating the decoder to one with
+    are recovered. We do this by relating the Consumer to one with
     no timeouts.
   
-  Then we prove the following of the machine-integer decoder:
+  Then we prove the following of the machine-integer Consumer:
   1. If the packet stream has a (very large) bound on reordering/
     duplication, then this is equivalent to the idealized model.
-  2. No matter what, the decoder outputs all data packets it receives.
+  2. No matter what, the Consumer outputs all data packets it receives.
 
   Finally, we combine these results to get 3 levels of specification:
-  1. No matter what, all data packets the decoder sees are outputted.
+  1. No matter what, all data packets the Consumer sees are outputted.
   2. If the stream is not too badly behaved (ie: not so much reordering
     that we run into integer wraparound issues), then all packets
-    the decoder produces are valid.
+    the Consumer produces are valid.
   3. If the stream is nicely behaved and not too many packets are lost,
-    then the decoder recovers all packets.*)
+    then the Consumer recovers all packets.*)
   
-(*First, we give a generalized version of the decoder, which enables
+(*First, we give a generalized version of the Consumer, which enables
   us to prove theorems about versions with different (or no) timeout
   mechanism*)
-Section GenDecode.
+Section GenConsumer.
 
 (*We can update the time, in general, by looking at the current time,
   the list of blocks, and the current packet*)
 Variable upd_time: Z -> fpacket -> list block -> Z.
 Variable not_timeout : Z -> block -> bool.
 
-Fixpoint update_dec_state_gen (blocks: list block) (curr: fpacket)
+Fixpoint update_con_state_gen (blocks: list block) (curr: fpacket)
     (time: Z) : list block * list packet:=
   match blocks with
   | nil => let t := create_block_with_packet_black curr time in 
@@ -437,86 +437,60 @@ Fixpoint update_dec_state_gen (blocks: list block) (curr: fpacket)
       let t := create_block_with_packet_black curr time in 
         (t.1 :: blocks, t.2)
     else 
-      let t := update_dec_state_gen tl curr time
+      let t := update_con_state_gen tl curr time
       in (bl :: t.1, t.2)
   end.
 
-Definition decoder_one_step_gen (blocks: list block) curr time :
+Definition consumer_one_step_gen (blocks: list block) curr time :
   list block * list packet * Z :=
   (*First, we update the time, then we process the packets, finally
     we timeout expired blocks. This makes the invariants a bit
     trickier than timing out first, but is more natural to write
     as a programmer*)
   let tm := upd_time time curr blocks in
-  let t := update_dec_state_gen blocks curr tm in
+  let t := update_con_state_gen blocks curr tm in
   let blks := filter (not_timeout tm) t.1 in
   (blks, t.2, tm).
 
-Definition decoder_multiple_steps_gen 
+Definition consumer_multiple_steps_gen 
   (prev_packs packs: list fpacket)
   (state: list block) (sent: list packet) (time: Z) :
   list block * list packet * Z * list fpacket :=
   foldl (fun (acc: list block * list packet * Z * list fpacket) 
     (p: fpacket) =>
-    let t := decoder_one_step_gen acc.1.1.1 p acc.1.2 in
+    let t := consumer_one_step_gen acc.1.1.1 p acc.1.2 in
     (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p])) 
   (state, sent, time, prev_packs) packs.
 
-Definition decoder_all_steps_gen (received: list fpacket) :
+Definition consumer_all_steps_gen (received: list fpacket) :
   (list block * list packet * Z) :=
-  (decoder_multiple_steps_gen nil received nil nil 0).1.
+  (consumer_multiple_steps_gen nil received nil nil 0).1.
 
-(*Now we can define the decoder function*)
-Definition decoder_func_gen (received: list fpacket) (curr: fpacket) : 
+(*Now we can define the Consumer function*)
+Definition consumer_func_gen (received: list fpacket) (curr: fpacket) : 
   list packet :=
-  let t := decoder_all_steps_gen received in
-  (decoder_one_step_gen t.1.1 curr t.2).1.2.
+  let t := consumer_all_steps_gen received in
+  (consumer_one_step_gen t.1.1 curr t.2).1.2.
 
-(*We can prove some general lemmas about any such decoder*)
+(*We can prove some general lemmas about any such Consumer*)
 
 (*First, prove something about the prev_packets*)
 Lemma prev_packets_multiple: forall prev packs state sent time,
-  (decoder_multiple_steps_gen prev packs state sent time).2 =
+  (consumer_multiple_steps_gen prev packs state sent time).2 =
   prev ++ packs.
 Proof.
   move=> prev packs. move: prev.
-  rewrite /decoder_multiple_steps_gen; elim: packs => 
+  rewrite /consumer_multiple_steps_gen; elim: packs => 
     [//= prev state sent time | h t /= IH prev packs state time/=].
   by rewrite cats0.
   by rewrite IH -catA.
 Qed.
 
-(*A framework for showing facts about the decoder, expressed by invariants*)
-Lemma prove_decoder_invariant_multiple 
-  (P: list fpacket -> list block -> Z -> Prop) 
-  (P2: list fpacket -> Prop)
-  prev_packs state packs sent time:
-  (forall blks curr tm prv, P prv blks tm ->
-    P2 (prv ++ [:: curr]) ->
-    P (prv ++ [:: curr]) ((decoder_one_step_gen blks curr tm).1.1)
-      (decoder_one_step_gen blks curr tm).2) ->
-  (forall l1 l2, P2 (l1 ++ l2) -> P2 l1) ->
-  P2 (prev_packs ++ packs) ->
-  P prev_packs state time ->
-  P ((decoder_multiple_steps_gen prev_packs packs state sent time).2)
-    ((decoder_multiple_steps_gen prev_packs packs state sent time).1.1.1)
-    ((decoder_multiple_steps_gen prev_packs packs state sent time).1.2).
-Proof.
-  move=> Hind Hp2cat.
-  move: prev_packs state sent time.
-  elim: packs => [//= | p1 ptl /= IH prev state sent time Hp2 Hbase].
-  move: IH; rewrite /decoder_multiple_steps_gen/= => IH.
-  apply IH. rewrite -catA. apply Hp2.
-  apply Hind.
-  apply Hbase.
-  apply (Hp2cat _ ptl). by rewrite -catA.
-Qed.
-
 (*sortedness*)
 
 (*We prove a stronger version later: combine?*)
-Lemma in_update_dec_state_gen_id: forall b blks (p: fpacket) time,
-  b \in (update_dec_state_gen blks p time).1 ->
+Lemma in_update_con_state_gen_id: forall b blks (p: fpacket) time,
+  b \in (update_con_state_gen blks p time).1 ->
   fd_blockId p = blk_id b \/
   exists b', (b' \in blks) && (blk_id b' == blk_id b).
 Proof.
@@ -548,13 +522,13 @@ Proof.
 Qed.
 
 
-Lemma decoder_one_step_sorted: forall blocks curr time,
+Lemma consumer_one_step_sorted: forall blocks curr time,
   sorted blk_order blocks ->
   sorted blk_order
-    (decoder_one_step_gen blocks curr time).1.1.
+    (consumer_one_step_gen blocks curr time).1.1.
 Proof.
   move=> blocks curr time.
-  rewrite /blk_order /decoder_one_step_gen/= => Hsort.
+  rewrite /blk_order /consumer_one_step_gen/= => Hsort.
   apply sorted_filter. apply blk_order_trans.
   move: (upd_time time curr blocks) => t.
   move: (not_timeout t) => f.
@@ -576,7 +550,7 @@ Proof.
       move=>/andP[/allP Hall _] Hsort.  
       rewrite Hsort andbT.
       apply /allP => b1 Hinb1.
-      apply in_update_dec_state_gen_id in Hinb1.
+      apply in_update_con_state_gen_id in Hinb1.
       case: Hinb1 => [Hcurr | [b' /andP[Hinb' /eqP Hb']]].
       * by rewrite -Hcurr ltnNge leq_eqVlt Hlt (introF eqP Heq).
       * rewrite -Hb'. by apply Hall.
@@ -584,19 +558,19 @@ Qed.
 
 (*From this, we get uniqueness for free*)
 
-Lemma decoder_one_step_uniq: forall blocks curr time,
+Lemma consumer_one_step_uniq: forall blocks curr time,
   sorted blk_order blocks ->
-  uniq (decoder_one_step_gen blocks curr time).1.1.
+  uniq (consumer_one_step_gen blocks curr time).1.1.
 Proof.
   move=> blocks curr time Hsort.
   apply sorted_uniq_in with(leT:=blk_order).
   - move => b1 b2 b3 _ _ _. apply ltn_trans.
   - move=> b1 _. by apply ltnn.
-  - by apply decoder_one_step_sorted.
+  - by apply consumer_one_step_sorted.
 Qed.
 
 (*Now we want to prove several structural results about the 
-  generic decoder which will enable us to prove that it always
+  generic Consumer which will enable us to prove that it always
   produces valid packets. *)
 
 
@@ -613,7 +587,7 @@ Proof.
   split_all => //; rewrite Hk ?Hh; apply subseq_option_sublist; apply subseq_option_upd_Znth; by apply subseq_option_app.
 Qed.
 
-(* A nontrivial theorem to prove that uses [decode_list_correct_full] to show that for ANY
+(* A nontrivial theorem to prove that uses [decoder_list_correct_full] to show that for ANY
   subblock of a well formed, complete block that has received at least k packets, we get 
   the packets of the original packet matrix, possibly padded with some zeroes*)
 Theorem subblock_recoverable_correct: forall (b1 b2: block),
@@ -796,7 +770,7 @@ Proof.
     + rewrite !Zlength_map. lia.
 Qed.
 
-(*As a corllary, any packet in [decode_block] was in the original block's data packets*)
+(*As a collary, any packet in [decode_block] was in the original block's data packets*)
 Corollary in_decode_block_in_data: forall (b1 b2: block) (p: packet),
   block_wf b2 ->
   block_encoded b2 ->
@@ -815,18 +789,18 @@ Qed.
 End SubblockDecode.
 
 
-(*Now we prove part 2: every block in the decoder is a subblock of a block produced by the encoder.
+(*Now we prove part 2: every block in the Consumer is a subblock of a block produced by the Producer.
   We need 2 parts: first, that the blocks in received are subblocks of those of encoded, second, that
-  the blocks in the decoder state are subblocks of those in received (because of timeouts). Then, we
+  the blocks in the Consumer state are subblocks of those in received (because of timeouts). Then, we
   can use the transitivity of the subblock relation.
   
   Proving these is the main benefit of the [get_block_lists] approach; it would be very difficult to
   prove these by induction directly*)
 
-Section DecoderSubblocks.
+Section ConsumerSubblocks.
 
 
-(*The decoder has several intermediate functions we need to handle first*)
+(*The Consumer has several intermediate functions we need to handle first*)
 
 (*Intermediate case 1: create a new block*)
 Lemma create_block_subblock: forall (l: list fpacket) (h: fpacket) (time: Z),
@@ -959,12 +933,12 @@ Qed.
 Opaque create_block_with_packet_black.
 
 (*Intermediate case 3: we need a separate inductive lemma for 
-  [update_dec_state_gen]. This is a straightforward application
+  [update_con_state_gen]. This is a straightforward application
   of the previous 2 cases*)
-Lemma update_dec_state_gen_subblocks: forall l blks curr time,
+Lemma update_con_state_gen_subblocks: forall l blks curr time,
   wf_packet_stream (curr :: l) ->
   (forall b, b \in blks -> exists b', b' \in (get_blocks l) /\ subblock b b') ->
-  forall b, b \in (update_dec_state_gen blks curr time).1 ->
+  forall b, b \in (update_con_state_gen blks curr time).1 ->
     exists b', b' \in (get_blocks (curr :: l)) /\ subblock b b'.
 Proof.
   move=>l blks curr. elim: blks => [//= time Hwf Hsub b | h t /= IH time Hwf Hsubs b].
@@ -997,30 +971,30 @@ Proof.
           rewrite in_cons Hin' orbT.
 Qed.
 
-(*A very easy corollary, but we need it in the decoder timeout
+(*A very easy corollary, but we need it in the Consumer timeout
   invariant*)
-Lemma decoder_one_step_gen_subblocks: forall l blks curr time,
+Lemma consumer_one_step_gen_subblocks: forall l blks curr time,
   wf_packet_stream (curr :: l) ->
   (forall b, b \in blks -> exists b', b' \in (get_blocks l) /\ subblock b b') ->
-  forall b, b \in (decoder_one_step_gen blks curr time).1.1 ->
+  forall b, b \in (consumer_one_step_gen blks curr time).1.1 ->
     exists b', b' \in (get_blocks (curr :: l)) /\ subblock b b'.
 Proof.
   move=> l blks curr time Hwf Hsubs b.
-  rewrite /decoder_one_step_gen.
+  rewrite /consumer_one_step_gen.
   rewrite mem_filter => /andP[Hnoto Hinb].
-  by apply (update_dec_state_gen_subblocks Hwf) in Hinb=>//.
+  by apply (update_con_state_gen_subblocks Hwf) in Hinb=>//.
 Qed.
 
-(*Now, finally we can show that every block in the decoder state is a subblock of some
+(*Now, finally we can show that every block in the Consumer state is a subblock of some
   block from the received stream. This is easy after the previous
   lemma*)
-Theorem decoder_all_steps_state_subblocks: forall (received: seq fpacket) (b: block),
+Theorem consumer_all_steps_state_subblocks: forall (received: seq fpacket) (b: block),
   wf_packet_stream received ->
-  b \in (decoder_all_steps_gen received).1.1 ->
+  b \in (consumer_all_steps_gen received).1.1 ->
   exists b', b' \in (get_blocks received) /\ subblock b b'.
 Proof.
-  move => r b Hwf. rewrite /decoder_all_steps_gen
-    /decoder_multiple_steps_gen -(revK r) foldl_rev.
+  move => r b Hwf. rewrite /consumer_all_steps_gen
+    /consumer_multiple_steps_gen -(revK r) foldl_rev.
   (*We reverse the list so that we can use foldr. We want to use (rev r)
   everywhere to simplify induction. Luckily rev is a permutation, so
   we can safely switch get_blocks*)
@@ -1037,25 +1011,25 @@ Proof.
   elim : r => [//= b Hwf | h t /= IH b Hwf].
   move: IH. set blks := (foldr
   (fun (x0 : fpacket) (z : seq block * seq packet * Z * seq fpacket) =>
-   ((update_dec_state_gen
+   ((update_con_state_gen
        [seq x <- z.1.1.1 | not_timeout (upd_time z.1.2 x0 z.1.1.1) x] x0
        (upd_time z.1.2 x0 z.1.1.1)).1,
    z.1.1.2 ++
-   (update_dec_state_gen
+   (update_con_state_gen
       [seq x <- z.1.1.1 | not_timeout (upd_time z.1.2 x0 z.1.1.1) x] x0
       (upd_time z.1.2 x0 z.1.1.1)).2, upd_time z.1.2 x0 z.1.1.1, 
    z.2 ++ [:: x0])) ([::], [::], 0, [::]) t).
   (*We don't care what blks is. It is long and ugly, so we generalize*)
   move: blks => blks IH Hinb.
-  eapply decoder_one_step_gen_subblocks. apply Hwf.
+  eapply consumer_one_step_gen_subblocks. apply Hwf.
   2: apply Hinb. move=> b'. apply IH.
   exact (wf_packet_stream_tl Hwf).
 Qed.
 
 (*The other general result we need: we need to relate the output
-  to the blocks; ie: every packet in the decoder 
+  to the blocks; ie: every packet in the Consumer 
   current output is either the current packet or in the [decode_block]
-  of a block in the decoder's state. It is not true of the whole 
+  of a block in the Consumer's state. It is not true of the whole 
   output, since we might have removed the block corresponding to a 
   previous packet.*)
 
@@ -1192,13 +1166,13 @@ Qed.
   input. However, we can still say the following:
   there is some block b, a subblock of (get_blocks input),
   for which the packet is in [decode_block b]*)
-Lemma in_update_dec_state_gen: forall l blks (curr: fpacket) time p,
+Lemma in_update_con_state_gen: forall l blks (curr: fpacket) time p,
   wf_packet_stream (curr :: l) ->
   0 <= Z.of_nat (fd_blockIndex curr) < fd_k curr + fd_h curr ->
   0 <= fd_h curr ->
   (forall b, b \in blks -> 
     exists b', b' \in (get_blocks l) /\ subblock b b') ->
-    p \in (update_dec_state_gen blks curr time).2 ->
+    p \in (update_con_state_gen blks curr time).2 ->
   (p_packet curr = p /\ fd_isParity curr = false) \/
   exists b b',
     b' \in (get_blocks (curr:: l)) /\ subblock b b' /\
@@ -1217,33 +1191,33 @@ Proof.
         move=> b' Hinb'. apply Hallblks. by rewrite in_cons Hinb' orbT.
 Qed. 
 
-Theorem in_decode_func_in_block: forall received (curr: fpacket) (p: packet),
+Theorem in_consume_func_in_block: forall received (curr: fpacket) (p: packet),
   wf_packet_stream (curr:: received) ->
   0 <= Z.of_nat (fd_blockIndex curr) < fd_k curr + fd_h curr ->
   0 <= fd_h curr ->
-  p \in (decoder_func_gen received curr) ->
+  p \in (consumer_func_gen received curr) ->
   (p_packet curr = p /\ fd_isParity curr = false) \/
   exists b b',
     b' \in (get_blocks (curr:: received)) /\ subblock b b' /\
     recoverable b /\ p \in decode_block b.
 Proof.
-  move => r curr p Hwf Hidx Hh. rewrite /decoder_func_gen
-    /decoder_all_steps_gen/decoder_multiple_steps_gen/= => Hin.
-  apply (in_update_dec_state_gen Hwf) in Hin=>//.
+  move => r curr p Hwf Hidx Hh. rewrite /consumer_func_gen
+    /consumer_all_steps_gen/consumer_multiple_steps_gen/= => Hin.
+  apply (in_update_con_state_gen Hwf) in Hin=>//.
   move=> b.
-  apply decoder_all_steps_state_subblocks.
+  apply consumer_all_steps_state_subblocks.
   by apply (wf_packet_stream_tl Hwf).
 Qed.
 
-Lemma decoder_all_steps_concat: forall received,
-  (decoder_all_steps_gen received ).1.2 = concat (mkseqZ 
-    (fun i => (decoder_func_gen (sublist 0 i received) (Znth i received)))
+Lemma consumer_all_steps_concat: forall received,
+  (consumer_all_steps_gen received ).1.2 = concat (mkseqZ 
+    (fun i => (consumer_func_gen (sublist 0 i received) (Znth i received)))
     (Zlength received)).
 Proof.
-  move => r. rewrite /decoder_func_gen /decoder_all_steps_gen
-  /decoder_multiple_steps_gen.
+  move => r. rewrite /consumer_func_gen /consumer_all_steps_gen
+  /consumer_multiple_steps_gen.
   (*doesn't depend on specifics of one step function*)
-  move: decoder_one_step_gen => one_step.
+  move: consumer_one_step_gen => one_step.
   remember (@nil packet) as base. rewrite -(cat0s (concat _)) -Heqbase.
   rewrite {Heqbase}.
   move: (@nil block).
@@ -1265,15 +1239,15 @@ Proof.
     by rewrite !Z.add_simpl_r.
 Qed. 
 
-End DecoderSubblocks.
+End ConsumerSubblocks.
 
-(*An alternate characterization of [decoder_one_step_gen]
+(*An alternate characterization of [consumer_one_step_gen]
   that makes many things easier to prove*)
 
-(*A functional characterization of [upd_dec_state]*)
-Lemma update_dec_state_gen_eq blks curr time:
+(*A functional characterization of [upd_con_state]*)
+Lemma update_con_state_gen_eq blks curr time:
   sorted blk_order blks ->
-  update_dec_state_gen blks curr time =
+  update_con_state_gen blks curr time =
   if has (fun b => blk_id b == fd_blockId curr) blks then
     let b := nth block_inhab blks 
       (find (fun b => blk_id b == fd_blockId curr) blks) in
@@ -1323,11 +1297,11 @@ Proof.
 Qed.
 
 
-(*Some other results useful for the timeout version of the decoder*)
+(*Some other results useful for the timeout version of the Consumer*)
 
-Lemma in_upd_dec_state: forall blocks p time b,
+Lemma in_upd_con_state: forall blocks p time b,
   sorted blk_order blocks ->
-  b \in (update_dec_state_gen blocks p time).1 ->
+  b \in (update_con_state_gen blocks p time).1 ->
   (b \in blocks) \/
   (b = (create_block_with_packet_black p time).1 /\
     forall b', b' \in blocks -> not_timeout time b' = false \/ 
@@ -1336,7 +1310,7 @@ Lemma in_upd_dec_state: forall blocks p time b,
   (exists b', b' \in blocks /\ b = (add_packet_to_block_black p b').1).
 Proof.
   move=> blks p time b/= Hsort.
-  rewrite update_dec_state_gen_eq=>//.
+  rewrite update_con_state_gen_eq=>//.
   case Hhas: (has (fun b0 : block => blk_id b0 == fd_blockId p)
     blks) =>/=.
   - rewrite mem_insert => /orP[/eqP Hb | Hbin].
@@ -1347,7 +1321,6 @@ Proof.
       split=>//. 
       apply mem_nth. by rewrite -has_find.
     + apply mem_rev_orig in Hbin. by left.
-
   - rewrite mem_insert => /orP[/eqP Hcreate | ].
     + right. left. split=>//.
       move=> b' Hinb'.
@@ -1361,4 +1334,4 @@ Proof.
     + by left.
 Qed. 
 
-End GenDecode.
+End GenConsumer.

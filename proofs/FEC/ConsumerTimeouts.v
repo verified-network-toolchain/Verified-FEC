@@ -1,4 +1,4 @@
-Require Export DecoderNoTimeouts.
+Require Export ConsumerNoTimeouts.
 Require Export Reorder.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
@@ -7,7 +7,7 @@ Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Now we specialize the Consumer for our timeout function*)
-Section DecodeTimeouts.
+Section ConsumerTimeouts.
 
 Variable threshold : Z.
 
@@ -48,27 +48,27 @@ Qed.
 Definition not_timed_out: Z -> block -> bool := fun currTime =>
   (fun b => (Z.leb currTime (black_time b + threshold))).
 
-Definition decoder_one_step :=
-  decoder_one_step_gen upd_time not_timed_out.
-Definition decoder_multiple_steps:=
-  decoder_multiple_steps_gen upd_time not_timed_out.
-Definition decoder_all_steps:=
-  decoder_all_steps_gen upd_time not_timed_out.
+Definition consumer_one_step :=
+  consumer_one_step_gen upd_time not_timed_out.
+Definition consumer_multiple_steps:=
+  consumer_multiple_steps_gen upd_time not_timed_out.
+Definition consumer_all_steps:=
+  consumer_all_steps_gen upd_time not_timed_out.
 
-Lemma decoder_multiple_steps_rewrite: forall prev packs blks sent time,
-  decoder_multiple_steps prev packs blks sent time =
+Lemma consumer_multiple_steps_rewrite: forall prev packs blks sent time,
+  consumer_multiple_steps prev packs blks sent time =
   (foldl (fun (acc: seq block * seq packet * Z * seq fpacket) (p: fpacket) =>
-    let t := decoder_one_step acc.1.1.1 p acc.1.2 in
+    let t := consumer_one_step acc.1.1.1 p acc.1.2 in
     (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p]))
     (blks, sent, time, prev) packs).
 Proof.
   by [].
 Qed.
 
-Lemma decoder_all_steps_rewrite: forall l,
-  decoder_all_steps l =
+Lemma consumer_all_steps_rewrite: forall l,
+  consumer_all_steps l =
   (foldl (fun (acc: seq block * seq packet * Z * seq fpacket) (p: fpacket) =>
-    let t := decoder_one_step acc.1.1.1 p acc.1.2 in
+    let t := consumer_one_step acc.1.1.1 p acc.1.2 in
     (t.1.1, acc.1.1.2 ++ t.1.2, t.2, acc.2 ++ [:: p]))
     (nil, nil, 0, nil) l).1.
 Proof.
@@ -199,12 +199,12 @@ Proof.
 Qed. 
 
 (*We need several sets of invariants to prove what we want
-  (that under the reordering assumptions, the decoder is equivalent
+  (that under the reordering assumptions, the Consumer is equivalent
   to a version with no timeouts)*)
 
 (*The first 3 invariants are the main ones we want, the others are mainly
   there to enable us to prove them*)
-  Definition decoder_timeout_invar (blocks: list block) 
+  Definition consumer_timeout_invar (blocks: list block) 
   (prev: list fpacket) (time: Z) : Prop :=
   (*The time is calculated correctly
     as the number of unique packets to arrive*)
@@ -274,17 +274,17 @@ Qed.
 
 (*We prove that this invariant is preserved. This is the key
   structural lemma to characterize the timeout behavior*)
-  Lemma decoder_timeout_invar_preserved_one: forall blocks prev time p,
+Lemma consumer_timeout_invar_preserved_one: forall blocks prev time p,
   wf_packet_stream (prev ++ [:: p]) ->
   reorder_dup_cond (prev ++ [:: p]) ->
-  decoder_timeout_invar blocks prev time ->
-  decoder_timeout_invar (decoder_one_step blocks p time).1.1
-    (prev ++ [:: p]) (decoder_one_step blocks p time).2.
+  consumer_timeout_invar blocks prev time ->
+  consumer_timeout_invar (consumer_one_step blocks p time).1.1
+    (prev ++ [:: p]) (consumer_one_step blocks p time).2.
 Proof.
   move=>blocks prev time p Hwf. 
   rewrite /reorder_dup_cond/bounded_reorder_list/duplicates_bounded =>
   [[Hreord [Hdups Hthresh]]].
-  rewrite /decoder_timeout_invar => 
+  rewrite /consumer_timeout_invar => 
     [[Htime [Hcreate [Hprevnotin [Hsort Hsubblock]]]]].
   (*There are a number of results we will need many times*)
   (*First: prev stream is wf*)
@@ -293,9 +293,9 @@ Proof.
   have Hwf': wf_packet_stream prev by
     apply (wf_packet_stream_tl Hwfcons). 
   (*All packets in blocks agree with ID values*)
-  have Hallid:= (decoder_invar_allid Hwf' Hsubblock).
+  have Hallid:= (consumer_invar_allid Hwf' Hsubblock).
   (*All packets in a block are in prev*)
-  have Hinprev:= (decoder_invar_inprev Hwf' Hsubblock). 
+  have Hinprev:= (consumer_invar_inprev Hwf' Hsubblock). 
   (*We do the 1st invariant separately, since it's useful
     in the rest*)
   have Hupdtime: (upd_time time p blocks = Z.of_nat (size (undup_fst (prev ++ [:: p])))). {
@@ -322,13 +322,13 @@ Proof.
   }
   repeat split.
   - (*We already did the first one*)
-    by rewrite /decoder_one_step/=. 
+    by rewrite /consumer_one_step/=. 
   - (*For the second invariant, we need to show that every new block
     satisfies the condition. The difficult part is to show that
     the current packet has not been seen before.*)
     move=> b.
-    rewrite /decoder_one_step mem_filter => /andP[Hnoto Hinb].
-    apply in_upd_dec_state with(not_timeout:=not_timed_out) in Hinb=>//.
+    rewrite /consumer_one_step mem_filter => /andP[Hnoto Hinb].
+    apply in_upd_con_state with(not_timeout:=not_timed_out) in Hinb=>//.
     case: Hinb => [Hinb | [[Hb Hall] | H]].
     + (*easy case: follows from IH*)
       move: Hcreate => /(_ b Hinb) [p' [l1 [l2 [Hidp' [Hprev [Hpnotin Hl1time]]]]]].
@@ -411,13 +411,13 @@ Proof.
         split_all=>//. by rewrite Hidp1 Hidb.
         by rewrite Hprev !catA.
         (*To prove this, we use the fact that if it were not
-          true, this block would still be in [decoder_one_step]*)
+          true, this block would still be in [consumer_one_step]*)
         have: not_timed_out (upd_time time p blocks) b = false. {
           case Hto: (not_timed_out (upd_time time p blocks) b)=>//.
           exfalso. apply Hnotex. 
           exists (add_packet_to_block_black p b).1. move: Hto.
           rewrite mem_filter /not_timed_out add_black_time=>->/=.
-          rewrite update_dec_state_gen_eq =>//.
+          rewrite update_con_state_gen_eq =>//.
           have Hhas: has (fun b0 : block => blk_id b0 == fd_blockId p) blocks.
             apply /hasP. exists b=>//. by rewrite Hidb Hpp'.
           rewrite Hhas /= mem_insert.
@@ -441,7 +441,7 @@ Proof.
         move=> Hnotex'.
         exfalso. apply Hnotex. exists (create_block_with_packet_black p 
           (upd_time time p blocks)).1.
-        rewrite mem_filter update_dec_state_gen_eq//.
+        rewrite mem_filter update_con_state_gen_eq//.
         have->:has (fun b : block => blk_id b == fd_blockId p) blocks = false.
           apply /hasP. move=> [b1 Hinb1 /eqP Hidb1]. 
           apply Hnotex'. exists b1. by rewrite Hinb1/= Hidb1; subst.
@@ -469,7 +469,7 @@ Proof.
         apply inj_ge. apply /leP. apply size_undup_fst_le_app.
       * (*Now, we know that this block must have timed out because
         p and p' cannot have the same blockIndex and blockId
-        (from wf); hence we can use [notin_decoder_one_step]*) 
+        (from wf); hence we can use [notin_consumer_one_step]*) 
         move=> [b /andP[Hinb Hinpb]].
         have Hidpp': (fd_blockId p <> fd_blockId p' \/ 
           fd_blockIndex p <> fd_blockIndex p'). {
@@ -492,7 +492,7 @@ Proof.
           - exists (add_packet_to_block_black p b).1.
             move: Hto.
             rewrite mem_filter /not_timed_out add_black_time=>->/=.
-            rewrite update_dec_state_gen_eq =>//.
+            rewrite update_con_state_gen_eq =>//.
             have Hhas: has (fun b0 : block => blk_id b0 == fd_blockId p') blocks.
               apply /hasP. exists b=>//. by rewrite Hidb.
             rewrite Hideq Hhas /= mem_insert.
@@ -511,7 +511,7 @@ Proof.
             have Hidbb1:blk_id b = blk_id b1 by apply Hsub1.
             apply (@other_in_add_black' _ _ _ _ b1 Hwf')=>//.
             by case: Hidpp'.
-          - exists b. rewrite mem_filter Hto Hinpb update_dec_state_gen_eq//.
+          - exists b. rewrite mem_filter Hto Hinpb update_con_state_gen_eq//.
             case Hhas: (has (fun b0 : block => blk_id b0 == fd_blockId p) blocks);
             rewrite mem_insert/= andbT.
             + apply /orP; right. rewrite rem_in_neq //.
@@ -531,12 +531,12 @@ Proof.
         -- rewrite Hidp1. symmetry. by apply Hallid.
         -- by rewrite Hprev !catA.
         -- lia.
-  - by apply decoder_one_step_sorted.
+  - by apply consumer_one_step_sorted.
   - move=> b Hinb.
     (*need permutation*)
     have [b' [Hinb' Hsub]]: exists (b': block), 
       b' \in get_blocks (p :: prev) /\ subblock b b' :=
-      (decoder_one_step_gen_subblocks Hwfcons Hsubblock Hinb).
+      (consumer_one_step_gen_subblocks Hwfcons Hsubblock Hinb).
     have Hperm: perm_eq (get_blocks (p :: prev)) 
       (get_blocks (prev ++ [:: p])). {
         apply get_blocks_perm=>//. 
@@ -581,14 +581,14 @@ Qed.
 
 (*This turns out to be much easier than trying to prove step-by-step.
   Instead we prove that, if we mantain the invariant that the two
-  decoders agree on the blocks for all packets yet to come, the
+  Consumers agree on the blocks for all packets yet to come, the
   output will be equal. This effectively means that we do not timeout
   any block which still has packets left.*)
-Lemma decoder_timeout_notimeout_multiple:
+Lemma consumer_timeout_notimeout_multiple:
   forall blks1 blks2 prev packs time sent,
   wf_packet_stream (prev ++ packs) ->
   reorder_dup_cond (prev ++ packs) ->
-  decoder_timeout_invar blks1 prev time ->
+  consumer_timeout_invar blks1 prev time ->
   sorted blk_order blks2 ->
   (forall b, b \in blks2 -> exists b', b' \in (get_blocks prev) /\
     subblock b b') ->
@@ -596,11 +596,11 @@ Lemma decoder_timeout_notimeout_multiple:
   (forall (p: fpacket) (b: block), p \in packs ->
     blk_id b = fd_blockId p ->
     (b \in blks1) = (b \in blks2)) ->
-  (decoder_multiple_steps prev packs blks1 sent time).1.1.2 =
-  (decoder_multiple_steps_gen upd_time triv_timeout prev packs blks2 sent time).1.1.2.
+  (consumer_multiple_steps prev packs blks1 sent time).1.1.2 =
+  (consumer_multiple_steps_gen upd_time triv_timeout prev packs blks2 sent time).1.1.2.
 Proof.
   move=> blks1 blks2 prev packs time sent.
-  rewrite decoder_multiple_steps_rewrite /decoder_multiple_steps_gen/decoder_one_step.
+  rewrite consumer_multiple_steps_rewrite /consumer_multiple_steps_gen/consumer_one_step.
   move: blks1 blks2 prev time sent. 
   elim: packs => [//= | p ptl /= 
     IH blks1 blks2 prev time sent Hwf Hreord Hinvar Hsort Hsubs2 Hblksub Hblks].
@@ -625,24 +625,24 @@ Proof.
         apply /existsbP. exists b1. rewrite Hinpb1 andbT.
         rewrite -(Hblks p)//. by rewrite mem_head.
         symmetry. case Hinvar => [_ [_ [_ [_ Hsubs]]]].
-        by apply (decoder_invar_allid Hwf' Hsubs).
+        by apply (consumer_invar_allid Hwf' Hsubs).
       * case: (existsb [eta packet_in_block p] blks2) /existsbP => 
           [[b2 /andP[Hinb2 Hinpb2]] | //].
         exfalso. apply Hnotex1. exists b2. rewrite Hinpb2 andbT.
         rewrite (Hblks p) //. by rewrite mem_head.
-        symmetry. by apply (decoder_invar_allid Hwf' Hsubs2).
+        symmetry. by apply (consumer_invar_allid Hwf' Hsubs2).
     + apply Hsort.
-    + apply (decoder_invar_allid Hwf' Hsubs2).
+    + apply (consumer_invar_allid Hwf' Hsubs2).
     + apply Hinvar.
     + case Hinvar => [_ [_ [_ [_ Hsubs]]]].
-      apply (decoder_invar_allid Hwf' Hsubs).
+      apply (consumer_invar_allid Hwf' Hsubs).
   }
   (*As well as this (showing that we actually do update
     the time correctly, at least for p)*)
   have Hupdtime: upd_time time p blks1 = 
     if p \in prev then time else time + 1. {
     rewrite Htimeeq upd_time_spec //; last by
-      apply (decoder_invar_allid Hwf' Hsubs2).
+      apply (consumer_invar_allid Hwf' Hsubs2).
     (*The main result - do we need elsewhere?*)
     have->//: existsb [eta packet_in_block p] blks2 = (p \in prev).
     case Hinp: (p \in prev).
@@ -652,7 +652,7 @@ Proof.
       + (*In this case, in blks2 also*)
         apply /existsbP. exists b. rewrite Hinpb andbT.
         by apply Hblksub.
-      + (*In this case, get contradiction by invariant 3 of decoder
+      + (*In this case, get contradiction by invariant 3 of Consumer
           invariants*)
         case: Hinvar => [Htime [Hstart [Hprevto H]]].
         move: Hprevto => /( _ _ Hinp Hnotex) 
@@ -664,7 +664,7 @@ Proof.
     - (*Otherwise, clearly not in a packet in blks2, or else by
         subblock, it would have had to be in prev*)
       apply /existsbP => [[b /andP[Hinb Hinpb]]].
-      have: p \in prev by apply (decoder_invar_inprev Hwf' Hsubs2 Hinb).
+      have: p \in prev by apply (consumer_invar_inprev Hwf' Hsubs2 Hinb).
       by rewrite Hinp.
   }
   (*We prove lemmas about some of the cases here, since we
@@ -703,16 +703,16 @@ Proof.
     move: Hhas1 => /hasP Hhas1. exfalso. apply Hhas1.
       exists b2=>//. by rewrite Hidb2.
   }
-  rewrite (IH _ [seq x <- (update_dec_state_gen blks2 p (upd_time time p blks2)).1
+  rewrite (IH _ [seq x <- (update_con_state_gen blks2 p (upd_time time p blks2)).1
   | triv_timeout (upd_time time p blks2) x] _ _ _ ); rewrite {IH}.
   - (*Prove this invariant implies equality (not too hard)*)
     rewrite /triv_timeout/= !filter_predT -!Htimeeq.
-    have->//: (update_dec_state_gen blks1 p
+    have->//: (update_con_state_gen blks1 p
       (upd_time time p blks1)).2 =
-      (update_dec_state_gen blks2 p (upd_time time p blks1)).2.
+      (update_con_state_gen blks2 p (upd_time time p blks1)).2.
     (*We must show that the outputted packets in this step are
       equal*)
-    rewrite !update_dec_state_gen_eq //.
+    rewrite !update_con_state_gen_eq //.
     (*First case: if a block with p's idx is in blks1 after timeouts*)
     case Hhas1: (has (fun b : block => blk_id b == fd_blockId p)
       blks1).
@@ -731,8 +731,8 @@ Proof.
       rewrite (Hblks p) //. by rewrite mem_head. by apply /eqP.
   - by rewrite -catA.
   - by rewrite -catA.
-  - by apply decoder_timeout_invar_preserved_one.
-  - by apply decoder_one_step_sorted.
+  - by apply consumer_timeout_invar_preserved_one.
+  - by apply consumer_one_step_sorted.
   - have Hwfcons: wf_packet_stream (p :: prev). {
       apply (wf_substream Hwf). move => x. 
       rewrite !mem_cat !in_cons => /orP[Hxp | Hinp].
@@ -743,7 +743,7 @@ Proof.
     (*need permutation*)
     have [b' [Hinb' Hsub]]: exists (b': block), 
       b' \in get_blocks (p :: prev) /\ subblock b b' :=
-      (decoder_one_step_gen_subblocks Hwfcons Hsubs2 Hinb).
+      (consumer_one_step_gen_subblocks Hwfcons Hsubs2 Hinb).
     have Hperm: perm_eq (get_blocks (p :: prev)) 
       (get_blocks (prev ++ [:: p])). {
         apply get_blocks_perm=>//. 
@@ -754,7 +754,7 @@ Proof.
   - (*Now we prove that every block in blks1 is in blks2*)
     move=> b.
     rewrite !mem_filter {1}Htimeeq => /andP[Hnto]/=.
-    rewrite !update_dec_state_gen_eq //.
+    rewrite !update_con_state_gen_eq //.
 
     (*First, see if there is a block with blockId p in blks1*)
     case Hhas1: (has (fun b0 : block => blk_id b0 == fd_blockId p)
@@ -818,11 +818,11 @@ Proof.
         have->: upd_time time p blks1 = 
           Z.of_nat (size (undup_fst ((prev ++ [:: p])))) by
             (*From invariant preservation*)
-            apply decoder_timeout_invar_preserved_one.
+            apply consumer_timeout_invar_preserved_one.
         lia.
     }
     move=> Hidp'.
-    rewrite !update_dec_state_gen_eq //.
+    rewrite !update_con_state_gen_eq //.
     (*First, see if there is a block with blockId p in blks1*)
     case Hhas1: (has (fun b0 : block => blk_id b0 == fd_blockId p)
     blks1).
@@ -868,17 +868,17 @@ Qed.
 
 (*Now we lift to all steps easily, and we get the result
   that we wanted: under the reordering assumptions, the output
-  of [decoder_all_steps] is equal to [decoder_all_steps_noto]*)
-Theorem decoder_timeout_notimeout_all: forall packs,
+  of [consumer_all_steps] is equal to [consumer_all_steps_noto]*)
+Theorem consumer_timeout_notimeout_all: forall packs,
   wf_packet_stream packs ->
   reorder_dup_cond packs ->
-  (decoder_all_steps packs).1.2 =
-  (decoder_all_steps_nto packs).1.2.
+  (consumer_all_steps packs).1.2 =
+  (consumer_all_steps_nto packs).1.2.
 Proof.
   move=> packs Hwf Hreord.
-  rewrite /decoder_all_steps/decoder_all_steps_gen -/decoder_multiple_steps.
-  rewrite -> decoder_timeout_notimeout_multiple with(blks2:=nil)=> //.
-  apply decoder_notimeout_upd_time_all.
+  rewrite /consumer_all_steps/consumer_all_steps_gen -/consumer_multiple_steps.
+  rewrite -> consumer_timeout_notimeout_multiple with(blks2:=nil)=> //.
+  apply consumer_notimeout_upd_time_all.
 Qed.
 
-End DecodeTimeouts.
+End ConsumerTimeouts.
