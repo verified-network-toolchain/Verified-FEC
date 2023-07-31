@@ -13,10 +13,17 @@ own lawyer.
 
 In 2021 the core of the algorithm was proved correct (after correcting a latent undefined behavior bug) by Josh
 Cohen at Princeton University, advised by Andrew Appel 
-and with assistance from Qinshi Wang.
+and with assistance from Qinshi Wang[^1].
+
+[^1]: Joshua M. Cohen, Qinshi Wang, and Andrew W. Appel. Verified
+Erasure Correction in Coq with MathComp and VST, *34th International Conference
+on Computer-Aided Verification (CAV)*, 2022.
 
 Verification of other parts of the program (packet handling
-and buffer manager for sender and for receiver) are ongoing work.
+and buffer manager for sender and for receiver) are described in the paper
+"Specifying and Verifying a Real-World Packet Error-Correction System".
+The proofs accompanying this paper can be found in the directory 
+[proofs/FEC](proofs/FEC) and the code can be found in [src/*/mini_prod3](src/).
 
 LICENSE: Peraton Labs (the successor company of Bellcore) open-sourced
 the code in 2021 under the Apache 2.0 license, and Cohen and Appel
