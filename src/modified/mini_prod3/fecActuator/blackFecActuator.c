@@ -44,7 +44,7 @@
 #include "blackFecActuator.h"
 
 //#define FECTIMEOUT  10.0  /* 10 seconds.        */
-#define FECTIMEOUT 500 //JOSH - timeout after 500 unique packets have arrived - TODO change?
+#define FECTIMEOUT 500 //JOSH - timeout after 500 unique packets have arrived
 #define MAXPACKETLENGTH 65536
 #define MAXSTRING 1024
 
@@ -297,7 +297,6 @@ struct fecBlock {
 JOSH - Changes
 1. Remove check for isParity - any packet can be the last in the block
 2. Because of this, add calculation of c
-3. TODO: fix header stuff
 */
 
 struct packetinfo *blackFecActuator_regenerateMissingPackets(
@@ -332,6 +331,7 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
   }
   else {
     // XXX: memory leak? we calloc f->bpacketptrs[i] but hardly ever free
+    //JOSH - fixed below
     memset(f->bpacketptrs, 0, maxn * sizeof(unsigned char *));
     memset(f->bpacketsizes, 0, maxn * sizeof(int));
     memset(f->bpstat, 0, maxn);
@@ -450,6 +450,11 @@ struct packetinfo *blackFecActuator_regenerateMissingPackets(
       /* adjust parameters.         */
       newpinfo->blockIndex = i;
       newpinfo->isParity = 0;
+
+      //JOSH - here, need to free f->bpacketptrs[i], or else memory leak
+      //We only freed the data for nonexistent packets, not packets that
+      //existed but were lost
+      free(f->bpacketptrs[i]);
     }
   }
 
@@ -771,7 +776,6 @@ DECLARE(blackFecActuator)
   /* has the same FEC type as the current block.  Create the new  */
   /* block.  If the previous block hasn't completed it will   */
   /* eventually complete and/or expire.       */
-  //TODO: make sure this is OK, because comparison might not be antisymmetric
   else if (seqNum_lt(currblock->blockSeq, blockSeq)) {
   //else if (blockSeq > currblock->blockSeq) {
 
@@ -878,7 +882,7 @@ DECLARE(blackFecActuator)
         if (fecblock->next != 0) {
           fecblock->next->prev = fecblock->prev;
         }
-
+        fecBlock_free(fecblock);
       }
 
     }
