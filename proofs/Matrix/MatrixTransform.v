@@ -8,12 +8,14 @@ Unless required by applicable law or agreed to in writing, software distributed 
 
 (* Transform a matrix by mapping over it or flattening it*)
 Require Import VST.floyd.proofauto.
-
+From HB Require Export structures.
 Require Import ByteField.
 Require Export ListMatrix.
 Require Import ZSeq.
+From mathcomp Require Import ssralg.
 
 Set Bullet Behavior "Strict Subproofs".
+Local Open Scope list_scope.
 
 (*Need because "forward" gives some weird defaults for Znth*)
 Lemma Znth_default: forall {A: Type} (H2 H1: Inhabitant A) (l: list A) (i: Z),
@@ -97,7 +99,7 @@ Proof.
   intros. unfold map_2d_rev. apply map_app.
 Qed.
 
-Definition bytemx := lmatrix byte_fieldType.
+Definition bytemx := lmatrix byte. 
 
 (*Move between [map_2d] and [map_2d_rev]. This holds in general, but we only prove it
   for byte lists because we have useful abbreviations such as "get" and "wf_lmatrix"*)

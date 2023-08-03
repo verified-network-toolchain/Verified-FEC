@@ -52,8 +52,8 @@ Proof.
   - apply sum_change_cond. move => i Hin.
     have Hix: i < x by move: Hin; rewrite mem_iota add0n subn0.
     have Hinlt: i < n by apply (ltn_trans Hix).
-    have ->: (nth x (Finite.enum (ordinal_finType n)) i =
-           (nth x (Finite.enum (ordinal_finType n)) (Ordinal Hinlt))) by [].
+    have ->: (nth x (Finite.enum (ordinal n)) i =
+           (nth x (Finite.enum (ordinal n)) (Ordinal Hinlt))) by [].
     rewrite ordinal_enum. have ->: Ordinal Hinlt != x. 
     rewrite ltn_neqAle in Hix. by move : Hix => /andP[Hixneq H{H}].
     by rewrite andbT.
@@ -62,7 +62,7 @@ Proof.
     rewrite !ordinal_enum Hpx eq_refl /= GRing.addrC. f_equal.
     apply sum_change_cond. move => i Hiin.
     have Hin: i < n. move: Hiin. rewrite mem_iota subnKC. by move => /andP[H1 H2]. by [].
-    have ->: nth x (Finite.enum (ordinal_finType n)) i = nth x (Finite.enum (ordinal_finType n)) (Ordinal Hin) by [].
+    have ->: nth x (Finite.enum (ordinal n)) i = nth x (Finite.enum (ordinal n)) (Ordinal Hin) by [].
     rewrite ordinal_enum. have ->: Ordinal Hin != x. have: i != x. move : Hiin; rewrite mem_iota ltn_neqAle
     => /andP[/andP[Hnneq H{H}] H{H}]. by rewrite eq_sym. by []. by rewrite andbT.
 Qed. 

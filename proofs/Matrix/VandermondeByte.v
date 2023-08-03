@@ -13,6 +13,7 @@ Require Import VST.floyd.functional_base.
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.matrix.
 Require Import mathcomp.algebra.ssralg.
+Require Import mathcomp.algebra.finalg.
 Require Import mathcomp.algebra.poly.
 Require Import mathcomp.algebra.polydiv.
 Set Implicit Arguments.
@@ -23,7 +24,6 @@ Require Import ByteField.
 Require Import ListPoly.
 Require Import CommonSSR.
 Require Import PolyField.
-Require Import BoolField.
 Require Import Vandermonde.
 Require Import ByteFacts.
 Require Import Gaussian.
@@ -31,7 +31,7 @@ Require Import GaussRestrict.
 
 (** Results about the Weight Matrix*)
 
-Notation B := byte_fieldType.
+Notation B := byte.
 
 
 Section PrimitiveVandermonde.
@@ -55,15 +55,15 @@ Qed.
 
 (*Now we need to prove [strong_inv] for this matrix*)
 
-Lemma qpoly_to_byte_mul: forall q1 q2,
-  qpoly_to_byte (@GRing.mul qpoly_p256_fieldType q1 q2)  = (qpoly_to_byte q1) * (qpoly_to_byte q2).
+Lemma qpoly_to_byte_mul: forall (q1 q2: (qpoly_p256 : fieldType)),
+  qpoly_to_byte (GRing.mul q1 q2)  = (qpoly_to_byte q1) * (qpoly_to_byte q2).
 Proof.
   move => q1 q2. have->:(qpoly_to_byte q1 * qpoly_to_byte q2) = byte_mul (qpoly_to_byte q1) (qpoly_to_byte q2) by [].
   by rewrite /byte_mul !qpoly_byte_cancel.
 Qed. 
 
 Lemma qpoly_to_byte_pow: forall (q: qpoly (Poly p256)) i,
-  qpoly_to_byte (@GRing.exp qpoly_p256_fieldType q i) = (qpoly_to_byte q) ^+ i.
+  qpoly_to_byte (@GRing.exp qpoly_p256 q i) = (qpoly_to_byte q) ^+ i.
 Proof.
   move => q i. elim : i => [| n IH /=].
   - rewrite !GRing.expr0. apply byte_to_qpoly_inj. by rewrite qpoly_byte_cancel byte_one_qpoly.
@@ -77,17 +77,19 @@ Lemma qpow_map_nonzero_inj: forall x y,
   (x < 255)%N ->
   (y < 255)%N ->
   x != 0%N ->
-  (@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) x) = qx p256_geq_2 ^+ y ->
+  (@GRing.exp qpoly_p256 (qx p256_geq_2) x) = qx p256_geq_2 ^+ y ->
    x = y.
 Proof.
   move => x y Hx Hy Hx0.
-  have Hxbound: (x < (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1).-1)%N
+  have Hxbound: (x < (#|(bool : finType)| ^ (size (Poly p256)).-1).-1)%N
     by rewrite card_bool size_p256.
-  have Hybound: (y < (#|finalg.FinRing.Field.eqType bool_finFieldType| ^ (size (Poly p256)).-1).-1)%N by
+  have Hybound: (y < (#|(bool: finType)| ^ (size (Poly p256)).-1).-1)%N by
     rewrite card_bool size_p256.
-  have->:(@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) x) = (qpow_map p256_irred p256_geq_2 (Ordinal Hxbound)) by [].
-  have->:(@GRing.exp qpoly_p256_fieldType (qx p256_geq_2) y) = (qpow_map p256_irred p256_geq_2 (Ordinal Hybound)) by [].  
-  move=>Heqxy. apply val_inj in Heqxy. apply (bij_inj (qpow_map_bij p256_irred p256_primitive' p256_geq_2)) in Heqxy.
+  have->:(@GRing.exp qpoly_p256 (qx p256_geq_2) x) = (qpow_map p256_irred p256_geq_2 (Ordinal Hxbound)) by [].
+  have->:(@GRing.exp qpoly_p256 (qx p256_geq_2) y) = (qpow_map p256_irred p256_geq_2 (Ordinal Hybound)) by [].  
+  move=>Heqxy.
+  apply (@val_inj) in Heqxy. (*why does this work with @?*)
+  apply (bij_inj (qpow_map_bij p256_irred p256_primitive' p256_geq_2)) in Heqxy.
   by apply (f_equal (@nat_of_ord _)) in Heqxy.
 Qed.
 
@@ -208,7 +210,7 @@ Proof.
   (@GRing.exp B bx (n - j.+1)) ^+ z / bx ^+ (n - r.+1) ^+ z = bx ^+ (z * (r - j)). {
   move => z. have: (0 <= z)%N by []. rewrite leq_eqVlt => /orP[Hz0 | Hz].
   + eq_subst Hz0. rewrite -!GRing.exprM !muln0 mul0n !GRing.expr0. apply GRing.mulfV.
-    apply GRing.oner_neq0.
+    by rewrite GRing.oner_neq0.
   + have: (j <= r)%N by rewrite ltnSE. rewrite leq_eqVlt => /orP[Hjreq | Hlt].
     - eq_subst Hjreq. rewrite Hjreq subnn muln0 GRing.expr0. apply GRing.mulfV.
       rewrite -GRing.exprM. rewrite GRing.expf_neq0. by []. apply qx_not_zero.

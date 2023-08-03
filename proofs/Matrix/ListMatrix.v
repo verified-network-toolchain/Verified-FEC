@@ -28,6 +28,9 @@ Require Import Vandermonde. (*for [submx_rows_cols]*)
 Require Import ReedSolomon. (*for [fill_row]*)
 Require Import ByteFacts. (*for [byte_unsigned_inj]*)
 
+Local Open Scope seq_scope.
+Local Open Scope Z_scope.
+
 (** Converting Between Z and Ordinals*)
 
 (*Convert bounded Z to ordinal*)
@@ -1434,8 +1437,8 @@ Lemma dot_prod_sum: forall m n p mx1 mx2 i j b (d: 'I_(Z.to_nat n)) (Hi: 0 <= i 
   wf_lmatrix mx2 n p ->
   dot_prod mx1 mx2 i j b = 
   \sum_(0 <= i0 < Z.to_nat b) 
-    lmatrix_to_mx m n mx1 (Z_to_ord Hi) (nth d (Finite.enum (ordinal_finType (Z.to_nat n))) i0) *
-    lmatrix_to_mx n p mx2 (nth d (Finite.enum (ordinal_finType (Z.to_nat n))) i0) (Z_to_ord Hj).
+    lmatrix_to_mx m n mx1 (Z_to_ord Hi) (nth d (Finite.enum (ordinal (Z.to_nat n))) i0) *
+    lmatrix_to_mx n p mx2 (nth d (Finite.enum (ordinal (Z.to_nat n))) i0) (Z_to_ord Hj).
 Proof.
   move => m n p mx1 mx2 i j b d Hi Hj Hb Hwf1 Hwf2. rewrite /dot_prod /Ziota. have: (0%nat <= Z.to_nat b)%coq_nat by lia.
   have: (Z.to_nat b <= Z.to_nat n)%coq_nat by lia. rewrite {Hb}.
@@ -1447,8 +1450,8 @@ Proof.
     rewrite IH; try lia.
     rewrite /lmatrix_to_mx !mxE /=. f_equal. 
     have Hc': (0 <= c' < Z.to_nat n)%nat. rewrite Hc0 /=. apply (introT ltP). lia.
-    have ->: (nth d (Finite.enum (ordinal_finType (Z.to_nat n))) c') = 
-      (nth d (Finite.enum (ordinal_finType (Z.to_nat n))) (Ordinal Hc')) by []. rewrite ordinal_enum //=.
+    have ->: (nth d (Finite.enum (ordinal (Z.to_nat n))) c') = 
+      (nth d (Finite.enum (ordinal (Z.to_nat n))) (Ordinal Hc')) by []. rewrite ordinal_enum //=.
     by rewrite !Z2Nat.id; try lia.
 Qed.
 
@@ -1725,7 +1728,7 @@ Proof.
 Qed.
 
 (*The identity matrix*)
-Definition id_list (n: Z) := mk_lmatrix n n (fun x y => if Z.eq_dec x y then (GRing.one F) else (GRing.zero F)).
+Definition id_list (n: Z) := mk_lmatrix n n (fun x y => if Z.eq_dec x y then (GRing.one F) else (@GRing.zero F)).
 
 Lemma id_list_wf: forall n,
   0 <= n ->
@@ -1867,12 +1870,12 @@ Qed.
 
 Lemma Z_ord_list_index: forall (n: Z) (l: list Z) (x: 'I_(Z.to_nat n)),
   Forall (fun x => 0 <= x < n) l ->
-  @index Z_eqtype (Z.of_nat x) l = index x (Z_ord_list l n).
+  @index Z (Z.of_nat x) l = index x (Z_ord_list l n).
 Proof.
   move => n l x Hall. have Hcancel: pcancel (@nat_of_ord (Z.to_nat n)) insub. {
     move => m. rewrite insubT. by []. move => Hlt. rewrite /=. f_equal. by apply ord_inj. }
   rewrite -(index_pmap _ Hcancel); last first.
-  - apply /allP => y. move => /(@mapP Z_eqtype) [z Hin Hz].
+  - apply /allP => y. move => /(@mapP Z) [z Hin Hz].
     subst. have Hzn: 0 <= z < n. move: Hall. move: Hin. rewrite in_mem_In => Hin. 
     by rewrite Forall_forall => /(_ z Hin).
     rewrite insubT. apply /ltP. lia. by [].
@@ -1883,7 +1886,7 @@ Proof.
       * rewrite !insubT //= => [[Hn1y]] [Hn2y]. subst.
         by apply (congr1 (@nat_of_ord (Z.to_nat n))) in Hn2y.
   - have Hxz: nat_of_ord x = Z.to_nat (Z.of_nat (nat_of_ord x)) by rewrite Nat2Z.id.
-    rewrite {2}Hxz (@index_map' Z_eqtype nat_eqType Z.to_nat _ (fun x => Z.leb 0 x)).
+    rewrite {2}Hxz (@index_map' Z nat Z.to_nat _ (fun x => Z.leb 0 x)).
     + by [].
     + move => z1 z2 /Z.leb_spec0 Hz1 /Z.leb_spec0 Hz2. lia.
     + apply /allP => z. rewrite in_mem_In => Hin. apply /Z.leb_spec0. move: Hall.

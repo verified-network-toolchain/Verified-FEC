@@ -407,7 +407,7 @@ Qed.
 
 (*We give a new definition to avoid clashing with the previous canonical structures*)
 (*TODO: BAD!*)
-Definition qpoly_p256 : Type :=
+Definition qpoly_p256 : finFieldType :=
   (PolyField_qpoly__canonical__GRing_Field p256_irred : finFieldType).
 
 (*Definition qpoly_p256_finMixin := @qpoly_finMixin GF2 (Poly p256) p256_irred.
@@ -495,19 +495,6 @@ End ByteQpolyMap.
 Section ByteAlg.
 
 Local Open Scope ring_scope.
-
-(*Now we need to define some structures*)
-(*Definition beq (b1 b2: byte) : bool := (Byte.eq_dec b1 b2).
-
-Lemma beq_axiom: Equality.axiom beq.
-Proof.
-  move => x y. rewrite /beq. case: (Byte.eq_dec x y) => [Hxy /= | Hxy /=].
-  - by apply ReflectT.
-  - by apply ReflectF.
-Qed.
-
-Definition byte_eqMixin := EqMixin beq_axiom.
-Canonical byte_eqType := EqType byte byte_eqMixin.*)
 
 (*We can get choice and finite types from the above bijection*)
 

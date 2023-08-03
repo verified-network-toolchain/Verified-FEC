@@ -210,7 +210,7 @@ Proof.
     rewrite Hparities. 2 : { apply mem_nth. by rewrite Hparsz. }
     rewrite !mxE. apply /eqP. rewrite GRing.subr_eq. apply /eqP.
     (*idea: we need to split into lost and found indices*) 
-    have Hperm: perm_eq (index_enum (ordinal_finType k)) (missing_packets ++ (ord_comp missing_packets)). 
+    have Hperm: perm_eq (index_enum (ordinal k)) (missing_packets ++ (ord_comp missing_packets)). 
       by rewrite index_ord_enum perm_sym ord_comp_app_perm. 
     rewrite (perm_big _ Hperm) big_cat /=. f_equal.
     - rewrite (big_nth x_k). rewrite (big_nat_widen 0 (size missing_packets) xh). 2: by rewrite Hpacksz leqnn.
@@ -411,9 +411,9 @@ Proof.
     - by rewrite size_cat !size_map Hparsz ord_comp_size_uniq // Hpacksz subnK. }
     (*We proved that the rest of the sum is 0, now we need to show that the one term is 1*)
     rewrite GRing.add0r !mxE. 
-    have->:(nth x_k (index_enum (ordinal_finType k)) (k - xh + x)) = Ordinal Hx.
-      have->: (nth x_k (index_enum (ordinal_finType k)) (k - xh + x)) = 
-               (nth x_k (index_enum (ordinal_finType k)) (Ordinal Hx)) by [].
+    have->:(nth x_k (index_enum (ordinal k)) (k - xh + x)) = Ordinal Hx.
+      have->: (nth x_k (index_enum (ordinal k)) (k - xh + x)) = 
+               (nth x_k (index_enum (ordinal k)) (Ordinal Hx)) by [].
       by rewrite index_ord_enum nth_ord_enum.
     rewrite (nth_map x_max_n). rewrite nth_cat.
     have->: Ordinal Hx < size (widen_ord_seq k_leq_n (ord_comp missing)) = false.

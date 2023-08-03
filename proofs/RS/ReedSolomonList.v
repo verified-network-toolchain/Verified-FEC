@@ -26,6 +26,8 @@ Require Import Gaussian.
 Require Import GaussRestrict.
 Require Import ByteField.
 
+Local Open Scope list_scope.
+
 Lemma NoDup_app: forall {A: Type} (l1 l2:list A),
   NoDup l1 ->
   NoDup l2 ->
@@ -1149,9 +1151,10 @@ Lemma find_parity_aux_base: forall f par base l1,
   find_parity_aux f par base l1 = base ++ find_parity_aux f par [::] l1.
 Proof.
   move => f par base l1. move : base. elim : l1 => [//= base | /= h t IH base].
-  - by rewrite cats0. 
+  - by rewrite app_nil_r. 
   - rewrite IH (IH (match Znth h par with  | Some _ => [:: f h]  | None => [::] end)). 
-    case Hh: (Znth h par) => [o /= | //]. by rewrite -catA.
+    case Hh: (Znth h par) => [o /= | //].
+    by rewrite -app_assoc.
 Qed.
 
 Lemma find_parity_aux_app': forall f par base l1 l2,
@@ -1216,7 +1219,7 @@ Proof.
   move => f par base i j Hij. rewrite (Ziota_leq Hij) find_parity_aux_app' Zlength_app.
   split.
   - move => Hlen. have Hnil: Zlength (find_parity_aux f par [::] (Ziota i (j - i))) = 0 by list_solve.
-    apply Zlength_nil_inv in Hnil. by rewrite Hnil cats0.
+    apply Zlength_nil_inv in Hnil. by rewrite Hnil app_nil_r.
   - move => /esym Happ. apply cat_extra in Happ. rewrite Happ. list_solve.
 Qed.
 
@@ -1272,7 +1275,7 @@ Proof.
   have Hk: 0 <= k by list_solve.
   pose proof (@decode_list_mx_zero k c packets parities stats i Hk Hc Hlen) as Hmx.
   apply lmatrix_to_mx_inj in Hmx.
-  - rewrite Hmx Hkpack crop_extend //. lia. by rewrite -Hkpack.
+  - by rewrite Hmx Hkpack crop_extend // -Hkpack. 
   - apply fill_rows_list_wf; lia.
   - apply extend_mx_wf; list_solve.
 Qed.
@@ -1350,7 +1353,7 @@ Lemma pad_packets_full: forall (packets: list (list byte)) lens c i,
 Proof.
   move => packets lens c i Hi Hlen Hc.
   rewrite pad_packets_nth; try lia. 
-  by rewrite Hlen Z.sub_diag /zseq /= cats0.
+  by rewrite Hlen Z.sub_diag /zseq /= app_nil_r.
 Qed.
 
 (*As a corollary, if all the lengths are correct, we exactly recover the original data*)

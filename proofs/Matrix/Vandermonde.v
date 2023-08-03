@@ -184,18 +184,19 @@ Proof.
     rewrite (horner_coef_wide _ Hsz) -{4}(Hzero j) -(@big_mkord _ _ _ n (fun _ => true) (fun i => p`_i * l`_j ^+ i))
     (big_nth j) ordinal_enum_size big_nat_cond (big_nat_cond _ _ 0 n (fun _ => true)).
     apply eq_big => [//| i /andP[/andP[H{H} Hin] H{H}]].
-    have->: (nth j (index_enum (ordinal_finType n)) i) = (nth j (index_enum (ordinal_finType n)) (Ordinal Hin))
+    have->: (nth j (index_enum (ordinal n)) i) = (nth j (index_enum (ordinal n)) (Ordinal Hin))
     by apply (elimT eqP). rewrite !ordinal_enum. rewrite Heqp coef_poly Hin /=. 
     by have->: c' i = c (Ordinal Hin) by rewrite Heqc' insubT /=. }
   have Hallroot: all (root p) l. { apply /allP => x Hxin. rewrite /root. apply /eqP.
-    have <-: nth 0 l (index x l) = x by apply nth_index.
+    have <-: nth 0 l (index x l) = x by rewrite nth_index.
     have Hidx: (index x l) < n by rewrite Hlen index_mem.
     have ->: l`_(index x l) = l`_(Ordinal Hidx) by []. apply Hroots. }
   (*Therefore, p is the 0 polynomial*)
   have Hp: p = 0. apply (roots_geq_poly_eq0 Hallroot Huniq). by rewrite -Hlen Heqp size_poly.
   move => x. have: p`_x = 0 by rewrite Hp; apply coef0.
   rewrite Heqp coef_poly. have Hxn: x < n by []. rewrite Hxn Heqc' insubT /=.
-  have->: Ordinal Hxn = x. (apply (elimT eqP)). by have: x == x by rewrite eq_refl. by [].
+  have->//:@Sub nat (fun x => x < n) _ x Hxn = x.
+  apply /eqP. by have: x == x by rewrite eq_refl.
 Qed.
 
 (*Now we want to use submatrices defined by lists of rows and columns. So we need to convert

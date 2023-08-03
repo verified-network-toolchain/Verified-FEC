@@ -67,7 +67,7 @@ Proof.
                 end) (Some A) t) => [mx |].
         -- split => [//|[r [Hr Harc0]]]. move: Hr. rewrite in_cons => /orP[/eqP Hrh | Hrt].
           ++ move: Hahc. by rewrite -Hrh Harc0 eq_refl.
-          ++ have: (exists r : ordinal_eqType m, r \in t /\ A r c = 0). exists r. by split. 
+          ++ have: (exists r : ordinal m, r \in t /\ A r c = 0). exists r. by split. 
              by rewrite -IH Hrest.
         -- split => [_|//]. move: Hrest. rewrite IH => [[r [Hrt Hrac]]].
            exists r. split => [|//]. by rewrite in_cons Hrt orbT.
@@ -543,8 +543,10 @@ Lemma gauss_multiple_steps_restrict_expand: forall {m n} (A: 'M[F]_(m, n)) (Hmn:
    | Some mx => gauss_multiple_steps_restrict mx Hmn r.+1 s
   end.
 Proof.
-  move => m n A Hmn r s. rewrite /gauss_multiple_steps_restrict /= insubT//= => Hrm.
-  have->: Ordinal Hrm = r by apply ord_inj. case Hone: (gauss_one_step_restrict A r Hmn) => [//= mx | //=].
+  move => m n A Hmn r s. rewrite /gauss_multiple_steps_restrict/=insubT//==>Hrm.
+  have->:@Sub nat (fun x => leq (S x) m) _ (@nat_of_ord m r) Hrm = r
+    by apply ord_inj.
+  case Hone: (gauss_one_step_restrict A r Hmn) => [//= mx | //=].
   elim : (iota r.+1 s) => [// | h t IH /=]. case Hhm : (h < m). by rewrite insubT. by rewrite insubF.
 Qed.
 
@@ -983,7 +985,7 @@ Lemma gauss_multiple_steps_restrict_noop_expand: forall {m n} (A: 'M[F]_(m, n)) 
   gauss_multiple_steps_restrict_noop (gauss_one_step_restrict_noop A r Hmn) Hmn r.+1 s.
 Proof.
   move => m n A Hmn r s. rewrite /gauss_multiple_steps_restrict_noop /= insubT // => Hrm /=.
-  by have->: Ordinal Hrm = r by apply ord_inj.
+  by have->:(@Sub nat (fun x => x < m) _ r Hrm) = r by apply ord_inj.
 Qed.
 
 Lemma gauss_multiple_steps_restrict_noop_overflow: forall {m n} (A : 'M_(m, n)) (Hmn : m <= n) (r s : nat),

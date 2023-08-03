@@ -50,10 +50,10 @@ Proof.
   move => m n k A B. rewrite -matrixP => i j. rewrite !mxE /=.
   have: 0 <= n by []. rewrite leq_eqVlt => /orP[/eqP Hn0 /= | Hnpos /=].
   - subst. rewrite big_seq_cond big_seq_cond. symmetry. 
-    rewrite (big_seq_cond (r:=(index_enum (ordinal_finType 0)))) (big_seq_cond (r:=(index_enum (ordinal_finType 0)))).
+    rewrite (big_seq_cond (r:=(index_enum (ordinal 0)))) (big_seq_cond (r:=(index_enum (ordinal 0)))).
     rewrite !big1 //; move => x; have: x < 0 by []; by [].
   - rewrite !(big_nth (Ordinal Hnpos)) big_nat_rev /= big_nat_cond. symmetry. rewrite big_nat_cond.
-    apply eq_big => [// | x]. have->: size (index_enum (ordinal_finType n)) = n
+    apply eq_big => [// | x]. have->: size (index_enum (ordinal n)) = n
       by rewrite /index_enum /= ordinal_enum_size.
     move => /andP[/andP[_ Hxn] _].
     have Hcase: (n - (nth (Ordinal Hnpos) (ord_enum n) x).+1)%N = nth (Ordinal Hnpos) (ord_enum n) (0 + n - x.+1). {
@@ -66,7 +66,7 @@ Qed.
 
 (*get elements of identity matrix*)
 Lemma id_A : forall {n} (x y : 'I_n),
-  (1%:M) x y = if x == y then 1 else (GRing.zero F).
+  (1%:M) x y = if x == y then 1 else (@GRing.zero F).
 Proof.
 move => n x y; rewrite /scalar_mx mxE; by case : (x == y). 
 Qed.
@@ -77,8 +77,8 @@ Lemma sum_if: forall {n} (x : 'I_n) (f1 : 'I_n -> F),
 Proof.
   move => n x f1. rewrite (big_nth x) /= /index_enum /=. rewrite ordinal_enum_size.
   have Hzero: forall i : nat, i < n -> i != x ->
-  (if x == nth x (Finite.enum (ordinal_finType n)) i
-    then f1 (nth x (Finite.enum (ordinal_finType n)) i)
+  (if x == nth x (Finite.enum (ordinal n)) i
+    then f1 (nth x (Finite.enum (ordinal n)) i)
     else 0) = 0. {  move => i Hin Hx. have: i == Ordinal Hin by []. move => /eqP Hi; rewrite Hi.
    rewrite ordinal_enum. have: (Ordinal Hin != x) by [].
    rewrite /negb. rewrite eq_sym. by case(x == Ordinal Hin). }
@@ -97,11 +97,11 @@ Lemma sum_if_twice: forall {n} (r1 r2 : 'I_n) (f1 f2 : 'I_n -> F),
 Proof.
 move => n r1 r2 f1 f2 Hlt. rewrite (big_nth r1) /= /index_enum /= ordinal_enum_size.
   have Hzero: forall i : nat, i < n -> i != r1 -> i != r2 ->
-  (if nth r1 (Finite.enum (ordinal_finType n)) i == r1
-  then f1 (nth r1 (Finite.enum (ordinal_finType n)) i)
+  (if nth r1 (Finite.enum (ordinal n)) i == r1
+  then f1 (nth r1 (Finite.enum (ordinal n)) i)
   else
-  if nth r1 (Finite.enum (ordinal_finType n)) i == r2
-  then f2 (nth r1 (Finite.enum (ordinal_finType n)) i)
+  if nth r1 (Finite.enum (ordinal n)) i == r2
+  then f2 (nth r1 (Finite.enum (ordinal n)) i)
   else 0) = 0. {
   move => i Hin Hir1 Hr2. have: i == Ordinal Hin by []. move => /eqP Hi. rewrite Hi. 
   rewrite ordinal_enum.
@@ -211,9 +211,9 @@ case : (eq_op x r2).
     + rewrite (@eq_big_seq _ _ _ _ _ _ (fun z => ((if z == r2 then A z y else if z == r1 then c * A z y else 0)))).
       rewrite sum_if_twice //. move => z Hz. case : (z == r1) /eqP => [-> | //]. move: Hgt. 
       case : (r1 == r2) /eqP =>[ -> | //]. by rewrite ltnn.
-    + move => z Hz. case Hzeq : (z == r1) => //=. case Hze: (z == r2) => //=.  by apply GRing.mul1r. by apply GRing.mul0r.
+    + move => z Hz. case Hzeq : (z == r1) => //=. case Hze: (z == r2) => //=.  by apply GRing.mul1r. by rewrite GRing.mul0r.
   - rewrite (@eq_big_seq _ _ _ _ _ _ (fun z => (if x == z then A z y else 0))). by rewrite sum_if.
-    move => z Hz. case Heqz : (x == z). by apply GRing.mul1r. by apply GRing.mul0r.
+    move => z Hz. case Heqz : (x == z). by apply GRing.mul1r. by rewrite GRing.mul0r.
 Qed.
 
 Lemma add_mul_mx_inv: forall {m : nat} (c: F) (r1 r2: 'I_m),
@@ -562,7 +562,7 @@ Proof.
 Qed. 
 
 Lemma row_function_equiv: forall {m n} (A: 'M[F]_(m,n)) (l : seq 'I_m) (r : 'I_m) (f: 'I_m -> 'M[F]_(m,n) -> 'M[F]_(m,n)),
-  (forall (A : 'M_(m, n)) (i : ordinal_eqType m) (j : 'I_n) r,
+  (forall (A : 'M_(m, n)) (i : ordinal m) (j : 'I_n) r,
          i != r -> A i j = f r A i j) -> (*f only changes entries in r*)
   (forall (A B : 'M[F]_(m,n)), (forall j, A r j = B r j) -> (forall r' j, r' \notin l -> A r' j = B r' j) ->
     forall j, (f r A) r j = (f r B) r j) -> (*f depends only on values in row r and rows not in the list*) 
@@ -1413,7 +1413,7 @@ Proof.
   have :  1%:M r r = GRing.one F by rewrite id_A eq_refl.
   rewrite -Hinv. have: (A *m invmx A) r r = 0. rewrite mxE big1 =>[//|].
   move => i H{H}. by rewrite Hzero GRing.mul0r. move ->.
-  move => H. have: 1 != GRing.zero F by apply GRing.oner_neq0. by rewrite H eq_refl.
+  move => H. have: 1 != @GRing.zero F by rewrite GRing.oner_neq0. by rewrite H eq_refl.
 Qed.
 
 
