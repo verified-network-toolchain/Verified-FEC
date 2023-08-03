@@ -15,6 +15,8 @@ Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 Require Import CommonSSR.
 
+Local Open Scope seq_scope.
+
 (*Version of [iota] for nonnegative integers*)
 
 Section Ziota.
@@ -75,7 +77,7 @@ Qed.
 Lemma Ziota_plus_1: forall (x len : Z),
   0 <= x ->
   0 <= len ->
-  Ziota x (len + 1) = Ziota x len ++ [:: (x +len)%Z].
+  Ziota x (len + 1) = (Ziota x len ++ [:: (x +len)%Z]).
 Proof.
   move => x len Hx Hlen. rewrite /Ziota.
   have ->: (Z.to_nat (len + 1) = Z.to_nat len + 1%nat)%nat by rewrite Z2Nat.inj_add; try lia.
@@ -87,7 +89,7 @@ Qed.
 
 Lemma Ziota_leq: forall i j,
   0 <= i <= j ->
-  Ziota 0 j = Ziota 0 i ++ Ziota i (j - i).
+  Ziota 0 j = (Ziota 0 i ++ Ziota i (j - i)).
 Proof.
   move => i j Hij. rewrite /Ziota -map_cat. f_equal.
   have->: (Z.to_nat j) = ((Z.to_nat i) + (Z.to_nat (j-i)))%coq_nat by lia.
@@ -273,8 +275,7 @@ Qed.
 End ZSeq.
 
 (*TODO: where to put this?*)
-Definition Z_eq_mixin := EqMixin Z.eqb_spec.
-Canonical Z_eqtype := EqType Z Z_eq_mixin. (*dont want canonical*)
+HB.instance Definition _ := hasDecEq.Build Z Z.eqb_spec.
 
 Section Zindex.
 

@@ -5,7 +5,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 *)
-
+From HB Require Export structures.
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.finalg.
@@ -15,6 +15,7 @@ Unset Printing Implicit Defensive.
 Set Bullet Behavior "Strict Subproofs".
 
 (*Field of booleans*)
+HB.about bool.
 
 Definition bool_zmodmixin := ZmodMixin addbA addbC addFb addbb.
 Canonical bool_zmodtype := ZmodType _ bool_zmodmixin.

@@ -7,7 +7,7 @@ Unless required by applicable law or agreed to in writing, software distributed 
 *)
 
 Require Import VST.floyd.functional_base.
-
+From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -211,8 +211,6 @@ Proof.
   by apply ReflectT. by apply ReflectF.
 Qed.
 
-Definition byte_eqMixin := EqMixin 
-  (fun i1 i2 => reflect_proj_sumbool (Byte.eq_dec i1 i2)).
-Canonical byte_eqType := EqType byte byte_eqMixin.
-
+HB.instance Definition _ := hasDecEq.Build byte 
+(fun i1 i2 => reflect_proj_sumbool (Byte.eq_dec i1 i2)).
 

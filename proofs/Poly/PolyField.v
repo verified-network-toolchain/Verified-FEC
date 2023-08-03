@@ -5,7 +5,7 @@ You may obtain a copy of the License at
     http://www.apache.org/licenses/LICENSE-2.0
 Unless required by applicable law or agreed to in writing, software distributed under the License is distributed on an "AS IS" BASIS, WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied. See the License for the specific language governing permissions and limitations under the License.
 *)
-
+From HB Require Export structures.
 From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.poly.
@@ -88,16 +88,8 @@ Inductive qpoly : predArgType := Qpoly (qp : {poly F}) of (size qp < size p).
 Coercion qp (q: qpoly) : {poly F} := let: Qpoly x _ := q in x.
 Definition qsz (q: qpoly) : size q < size p := let: Qpoly _ x := q in x.
 
-Canonical qpoly_subType := [subType for qp].
-Definition qpoly_eqMixin := Eval hnf in [eqMixin of qpoly by <:].
-Canonical qpoly_eqType := Eval hnf in EqType qpoly qpoly_eqMixin.
-
-Definition qpoly_choiceMixin := [choiceMixin of qpoly by <:].
-Canonical qpoly_choiceType := Eval hnf in ChoiceType qpoly qpoly_choiceMixin.
-
-Definition qpoly_countMixin := [countMixin of qpoly by <:].
-Canonical qpoly_countType := Eval hnf in CountType qpoly qpoly_countMixin.
-Canonical qpoly_subCountType := [subCountType of qpoly].
+HB.instance Definition _ := [isSub for (fun x => qp x)].
+HB.instance Definition _ := [Countable of qpoly by <:].
 
 Lemma qpoly_inj: injective qp. Proof. exact: val_inj. Qed.
 
@@ -176,8 +168,11 @@ Proof.
   apply (Bijective qpoly_tuple_cancel tuple_qpoly_cancel).
 Qed.
 
-Definition qpoly_finMixin := CanFinMixin qpoly_tuple_cancel.
-Canonical qpoly_finType := Eval hnf in FinType qpoly qpoly_finMixin. 
+(*NOTE: based on TransferFinType in fintype.v, not well documented*)
+
+HB.instance Definition _ :=
+  isFinite.Build qpoly
+    (@pcan_enumP qpoly _ _ _ (can_pcan qpoly_tuple_cancel)).
 
 Lemma qpoly_size: #|qpoly| = (#|F|^((size p).-1))%N.
 Proof.
@@ -241,9 +236,6 @@ move=> q; rewrite /qadd /qopp /q0; apply qpoly_inj=>/=.
 by rewrite GRing.addrC GRing.subrr.
 Qed.
 
-Definition qpoly_zmodMixin := ZmodMixin qaddA qaddC qaddFq qaddqq.
-Canonical qpoly_zmodType := ZmodType qpoly qpoly_zmodMixin.
-
 (* Ring *)
 
 Lemma qmul_size (p1 p2: {poly F}) : size ((p1 * p2) %% p) < size p.
@@ -272,25 +264,35 @@ move=> q. rewrite /qmul /q1; apply qpoly_inj=>/=.
 by rewrite GRing.mul1r modp_small //; apply qsz.
 Qed.
 
+Lemma qpoly_mulq1: right_id q1 qmul.
+Proof.
+move=> q. by rewrite qpoly_mulC qpoly_mul1q.
+Qed.
+
 Lemma qpoly_mulD : left_distributive qmul qadd.
 Proof. 
 move=>q1 q2 q3; rewrite /qmul /qadd; apply qpoly_inj=>/=.
 by rewrite -modpD GRing.mulrDl. 
 Qed.
 
+Lemma qpoly_mulDr : right_distributive qmul qadd.
+Proof.
+move=>q1 q2 q3; rewrite /qmul /qadd; apply qpoly_inj=>/=.
+by rewrite -modpD GRing.mulrDr. 
+Qed.
+
 Lemma qpoly_1not0: q1 != q0.
 Proof. 
 case: (q1 == q0) /eqP => //.
 rewrite /q0 /q1 /= => [[eq_1_0]].
-have neq_1_0:=(GRing.oner_neq0 (poly_ringType F)).
-move: neq_1_0.
-by rewrite eq_1_0 eq_refl.
-Qed. 
+have:= (poly1_neq0 F).
+by rewrite -eq_1_0 eq_refl.
+Qed.
 
-Definition qpoly_comRingMixin := ComRingMixin 
-  qpoly_mulA qpoly_mulC qpoly_mul1q qpoly_mulD qpoly_1not0.
-Canonical qpoly_ringType := RingType qpoly qpoly_comRingMixin.
-Canonical qpoly_comRingType := ComRingType qpoly qpoly_mulC.
+HB.instance Definition _ := GRing.isRing.Build qpoly
+  qaddA qaddC qaddFq qaddqq 
+  qpoly_mulA  qpoly_mul1q qpoly_mulq1 qpoly_mulD qpoly_mulDr qpoly_1not0.
+HB.instance Definition _ := GRing.Ring_hasCommutativeMul.Build qpoly qpoly_mulC.
 
 (* Now we want to show that inverses exist and are computable. *)
 (* We do this in several steps                                 *)
@@ -436,21 +438,18 @@ rewrite negbK => /eqP->.
 by rewrite qinv_zero.
 Qed.
 
-Definition qpoly_unitringmixin := 
-  UnitRingMixin qpoly_mulVr qpoly_mulrV qpoly_unitP qpoly_inv0id.
-Canonical qpoly_unitringtype := UnitRingType qpoly qpoly_unitringmixin.
-Canonical qpoly_comunitring := [comUnitRingType of qpoly].
+HB.instance Definition _ := GRing.Ring_hasMulInverse.Build qpoly
+qpoly_mulVr qpoly_mulrV qpoly_unitP qpoly_inv0id.
 
 (*Integral Domain *)
-
-Canonical qpoly_idomaintype := IdomainType qpoly qpoly_mulf_eq0.
+HB.instance Definition _ := GRing.ComUnitRing_isIntegral.Build qpoly
+qpoly_mulf_eq0.
 
 (* Field *)
 
-Lemma qpoly_mulVf : GRing.Field.axiom qinv.
+Lemma qpoly_mulVf : GRing.field_axiom qpoly.
 Proof.
-move=> q q_neq_0.
-by apply qpoly_mulVr.
+move=> q q_neq_0. by apply q_neq_0.
 Qed.
 
 Lemma qpoly_inv0: qinv 0%R = 0%R.
@@ -458,9 +457,8 @@ Proof.
 exact: qinv_zero.
 Qed.
 
-Definition qpoly_fieldmixin := FieldMixin qpoly_mulVf qpoly_inv0.
-Canonical qpoly_fieldType := FieldType qpoly qpoly_fieldmixin.
-Canonical qpoly_finFieldType := Eval hnf in [finFieldType of qpoly].
+HB.instance Definition _ := GRing.UnitRing_isField.Build qpoly
+qpoly_mulVf.
 
 (* Fields over primitive polynomials *)
 
@@ -520,23 +518,14 @@ Inductive qpolyNZ : predArgType := Qnz (qq: qpoly) of (qunit qq).
 Coercion qq (q: qpolyNZ) : qpoly := let: Qnz x _ := q in x.
 Definition qun (q: qpolyNZ) : qunit q := let: Qnz _ x := q in x.
 
-Canonical qpolyNZ_subType := [subType for qq].
-
-Definition qpolyNZ_eqMixin := Eval hnf in [eqMixin of qpolyNZ by <:].
-Canonical qpolyNZ_eqType := Eval hnf in EqType qpolyNZ qpolyNZ_eqMixin.
-Definition qpolyNZ_choiceMixin := [choiceMixin of qpolyNZ by <:].
-Canonical qpolyNZ_choiceType := Eval hnf in ChoiceType qpolyNZ qpolyNZ_choiceMixin.
-Definition qpolyNZ_countMixin := [countMixin of qpolyNZ by <:].
-Canonical qpolyNZ_countType := Eval hnf in CountType qpolyNZ qpolyNZ_countMixin.
-Canonical qpolyNZ_subCountType := [subCountType of qpolyNZ].
-
-Definition qpolyNZ_finMixin := Eval hnf in [finMixin of qpolyNZ by <:].
-Canonical qpolyNZ_finType := Eval hnf in FinType qpolyNZ qpolyNZ_finMixin.
-Canonical subFinType := [subFinType of qpolyNZ].
+HB.instance Definition _ := [isSub for qq].
+HB.instance Definition _ := [Choice of qpolyNZ by <:].
+HB.instance Definition _ := [Countable of qpolyNZ by <:].
+HB.instance Definition _ := [Finite of qpolyNZ by <:].
 
 Lemma qpolyNZ_card: #|qpolyNZ| = #|qpoly|.-1.
 Proof.
-have uniq_sz:=(card_finField_unit qpoly_finFieldType).
+have uniq_sz:=(card_finField_unit qpoly).
 move: uniq_sz; rewrite cardsT/= => <-.
 by rewrite !card_sub.
 Qed.

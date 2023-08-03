@@ -12,6 +12,7 @@ From mathcomp Require Import all_ssreflect.
 Require Import mathcomp.algebra.ssralg.
 Require Import mathcomp.algebra.poly.
 Require Import mathcomp.algebra.polydiv.
+Require Import mathcomp.algebra.finalg.
 Set Implicit Arguments.
 Unset Strict Implicit.
 Unset Printing Implicit Defensive.
@@ -390,14 +391,13 @@ End LPoly.
 
 (*We will be working over GF(2), so we can give simpler functions because all leading coefficients are 1. The
   code will be more efficient, which is important because this will be run many times in a loop*)
-Require Import BoolField.
 Require Import PolyField.
 
 Section BoolPolyDiv.
 
 Local Open Scope ring_scope.
 
-Definition F := bool_fieldType.
+Notation F := bool.
 
 (*Some facts about the field of booleans*)
 Lemma bool_1_0: forall (f: F),
@@ -563,7 +563,7 @@ Proof.
 Qed.
 
 Definition seq_of_lpoly (n: nat) : (seq (lpoly F)) :=
-  sub_seq (polynomial_subType F) (seq_of_polyseqs_all_last n).
+  sub_seq (polynomial F) (seq_of_polyseqs_all_last n).
 
 (*Finally we have what we want: an lpoly is in the list iff it is a nonzero polynomial of degree at most n*)
 Lemma seq_of_lpoly_in: forall n (l: lpoly F),
@@ -799,9 +799,9 @@ Qed.
 
 Definition prim_div_check (l: lpoly F) : option (lpoly F) :=
   pickSeq (bool_dvdp l) (all_xn1 (2%N ^ ((size l).-1)).-1).
-
 Lemma prim_div_check_spec: forall (l: lpoly F),
-  reflect (forall n, (Poly l) %| 'X^n - 1 -> (n == 0%N) || (((#|F|^((size (Poly l)).-1)).-1) <= n)) 
+  reflect (forall n, (Poly l) %| 'X^n - 1 -> (n == 0%N) || 
+    (((#|(F: finType)|^((size (Poly l)).-1)).-1) <= n)) 
     (prim_div_check l == None).
 Proof.
   move => l. case Hcheck : (prim_div_check l ) => [q /= | /=].
@@ -908,7 +908,7 @@ Lemma p256_primitive: primitive_poly p256.
 Proof.
   have Hsz: 1 < size p256 by [].
   have Hn: 4 < (size p256).-1 <= 4.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute.
+  apply (elimT (find_primP Hsz Hn)). by vm_compute. 
 Qed.
 
 End BoolPolyDiv.
