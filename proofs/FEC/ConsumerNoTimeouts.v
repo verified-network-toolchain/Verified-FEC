@@ -623,9 +623,9 @@ Lemma subblock_size_count: forall (l1 l2: seq fpacket) (blks: list block)
   block_wf b2 ->
   subblock b1 b2 ->
   b1 \in blks ->
-  (forall b : block_eqType,
+  (forall b : block,
     b \in blks ->
-    exists b' : block_eqType, b' \in get_blocks l1 /\ subblock b b') ->
+    exists b' : block, b' \in get_blocks l1 /\ subblock b b') ->
   (forall (p: fpacket), p \in l1 -> exists b,
     b \in blks /\ packet_in_block p b) ->
   sorted blk_order blks ->

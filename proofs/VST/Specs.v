@@ -18,6 +18,7 @@ Require Import ByteFacts.
 Require Import VandermondeByte.
 Require Import CommonVST.
 Require Import ReedSolomonList.
+Local Open Scope list_scope.
 
 #[export] Instance CompSpecs : compspecs.
 make_compspecs prog. Defined.

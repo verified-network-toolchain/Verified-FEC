@@ -663,13 +663,13 @@ Proof.
 Qed.
 
 Lemma existsbP: forall {A: eqType} {s: seq A} {P: A -> bool},
-  reflect (exists x, (x \in s) && P x) (existsb P s).
+  reflect (exists x, (x \in s) && P x) (List.existsb P s).
 Proof.
   move=> A s P. elim: s => [//= | hd tl /= IH].
   - by apply ReflectF => [[]].
   - case Hhd: (P hd).
     + apply ReflectT. exists hd. by rewrite mem_head Hhd.
-    + move: IH. case Htl: (existsb P tl) => IH.
+    + move: IH. case Htl: (List.existsb P tl) => IH.
       * apply ReflectT. apply elimT in IH =>//.
         case: IH => [x /andP[Hintl Hp]].
         exists x. by rewrite in_cons Hintl orbT.

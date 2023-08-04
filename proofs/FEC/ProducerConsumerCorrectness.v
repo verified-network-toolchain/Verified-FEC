@@ -42,7 +42,7 @@ Proof.
   have Hidx: 0 <= Z.of_nat (fd_blockIndex (Znth i received)) < fd_k (Znth i received) + fd_h (Znth i received). {
     split; try lia; apply Hwfrec. rewrite in_mem_In. by apply Znth_In. }
   have Hcurrh: 0 <= fd_h (Znth i received). { apply Hwfrec. rewrite in_mem_In. by apply Znth_In. }
-  have Hsubstream: forall x : fpacket_eqType,
+  have Hsubstream: forall x : fpacket,
     x \in Znth i received :: sublist 0 i received ->
     x \in (producer_all_steps orig enc_params).2. {
       move=> x. rewrite in_cons => /orP[/eqP Hx | Hinrec].

@@ -23,6 +23,8 @@ Set Bullet Behavior "Strict Subproofs".
 
 Opaque ByteField.byte_mul.
 
+Local Open Scope list_scope.
+
 Lemma int_byte_zero: Vint (Int.repr 0) = Vubyte Byte.zero.
 Proof.
   reflexivity.
@@ -136,13 +138,6 @@ Proof.
   intros z Hz. unfold default_val. simpl. rewrite zseq_Zrepeat by lia. reflexivity.
 Qed.
 
-(*small lemmas that are helpful*)
-Lemma get_inhab: forall l i j, @get byte (inhabitant_F B) l i j = 
-   @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j.
-Proof.
-  reflexivity.
-Qed.
-
 Definition fec_blk_decode_loop1 :=
               Sfor 
                 (Sset _i (Ecast (Econst_int (Int.repr 0) tint) tuchar))
@@ -254,8 +249,7 @@ forward_loop (EX (i: Z),
       { simpl_repr_byte. entailer!.
         { rewrite <- byte_int_repr by rep_lia.
           rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
-          split; [f_equal; f_equal|reflexivity]. 
-          rewrite <- cat_app. list_solve.
+          split; [f_equal; f_equal|reflexivity]. list_solve. 
         }
         { rewrite pop_find_lost_plus_1 by rep_lia.
           rewrite pop_find_found_plus_1 by rep_lia. repeat simpl_sum_if.
@@ -271,8 +265,7 @@ forward_loop (EX (i: Z),
       { simpl_repr_byte. rewrite_eqs; entailer!.
         { rewrite <- byte_int_repr by rep_lia.
           rewrite find_lost_plus_1 by lia. rewrite find_found_plus_1 by lia. repeat simpl_sum_if.
-          split; [reflexivity| f_equal; f_equal].
-          rewrite <- cat_app. list_solve.
+          split; [reflexivity| f_equal; f_equal]. list_solve.
         }
         { rewrite pop_find_lost_plus_1 by rep_lia.
           rewrite pop_find_found_plus_1 by rep_lia. repeat simpl_sum_if.
@@ -994,6 +987,46 @@ Definition fec_blk_decode_loop4 :=
               (Sset _j (Ebinop Oadd (Etempvar _j tint) (Econst_int (Int.repr 1) tint) tint)))))
      (Sset _i (Ecast (Ebinop Oadd (Etempvar _i tuchar) (Econst_int (Int.repr 1) tint) tint) tuchar))).
 
+(*TODO: move*)
+From HB Require structures.
+From mathcomp Require ssralg.
+Section RowsCols.
+
+Import structures ssralg ByteField.
+
+Definition bsubmx_rows_cols_list : list (list byte) -> Z -> Z ->
+  list Z -> list Z -> lmatrix byte := 
+  fun m z1 z2 l1 l2 => submx_rows_cols_list m z1 z2 l1 l2.
+
+End RowsCols.
+(*TODO: from Verif_field*)
+From mathcomp Require all_ssreflect ssralg.
+Section ByteZero.
+
+Import structures.
+Import all_ssreflect ssralg ByteField.
+
+Lemma byte_mul_0_b: forall b, 
+  byte_mul 0%R b = 0%R.
+Proof.
+  move=> b. apply (@GRing.mul0r byte).
+Qed. 
+
+Lemma byte_mul_b_0: forall b,
+  byte_mul b 0%R = 0%R.
+Proof.
+  apply (@GRing.mulr0 byte).
+Qed.
+
+Lemma byte_add_b_0: forall b,
+  Byte.xor b 0%R = b.
+Proof.
+  apply (@GRing.addr0 byte).
+Qed.
+
+End ByteZero.
+
+
 (*TODO: this proof is long and tedious (some is unavoidable bc its a triply-nested loop with an if statement
   inside) - can it be automated more*)
 Lemma body_fec_blk_decode_loop4: forall (Espec: OracleKind) (k c h xh i: Z) (v_row v_found v_s: val) 
@@ -1045,12 +1078,12 @@ semax (func_tycontext f_fec_blk_decode Vprog Gprog [])
       temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd))
       SEP (data_at Tsh (tarray (tarray tuchar 16000) 128)
              (pop_mx_mult_part xh c k fec_max_h fec_max_cols
-                (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) 
+                (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) 
                    (map Byte.unsigned row) (map Byte.unsigned (found1 ++ found2)))
-                (col_mx_list (F:=B)
-                   (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1)
+                (col_mx_list
+                   (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1)
                       (Ziota 0 c))
-                   (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c 
+                   (submx_rows_cols_list (fill_missing c parities) xh c 
                       (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) xh 0) v_s; 
       FIELD_TABLES gv; iter_sepcon_arrays packet_ptrs packets;
       data_at Ews (tarray tint (Zlength packet_ptrs)) (map Vint (map Int.repr lengths)) pl;
@@ -1079,7 +1112,7 @@ Proof.
         (pop_mx_mult_part xh c k fec_max_h fec_max_cols 
           (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row) 
               (map Byte.unsigned (found1 ++ found2)))
-          (col_mx_list (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+          (col_mx_list (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
               (submx_rows_cols_list (fill_missing  c parities) xh c (map Byte.unsigned row) (Ziota 0 c)) (k-xh) xh c)
           i' 0) v_s) :: seps)))); subst locs; subst seps.
   { forward. Exists 0. entailer!.
@@ -1111,19 +1144,19 @@ Proof.
         (Q1 := locs) (Q2 := locs) 
         (R1 := data_at Tsh (tarray (tarray tuchar 16000) 128)
             (pop_mx_mult_part xh c k fec_max_h fec_max_cols
-               (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+               (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
                   (map Byte.unsigned (found1 ++ found2)))
-               (col_mx_list (F:=B)
-                  (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                  (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c 
+               (col_mx_list
+                  (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                  (submx_rows_cols_list (fill_missing c parities) xh c 
                      (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' 0) v_s :: seps)
         (R2 := (data_at Tsh (tarray (tarray tuchar 16000) 128)
              (pop_mx_mult_part xh c k fec_max_h fec_max_cols
-                (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+                (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
                    (map Byte.unsigned (found1 ++ found2)))
-                (col_mx_list (F:=B)
-                   (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                   (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c 
+                (col_mx_list
+                   (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                   (submx_rows_cols_list (fill_missing c parities) xh c 
                       (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' c) v_s) :: seps); 
       [ | solve[ subst locs; subst seps; simpl app; entailer! ] | solve [auto 50 with closed ] |]; abbreviate_semax.
       { forward_loop (EX (j: Z),
@@ -1132,11 +1165,11 @@ Proof.
         (SEPx (
            (data_at Tsh (tarray (tarray tuchar 16000) 128)
              (pop_mx_mult_part xh c k fec_max_h fec_max_cols
-                (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+                (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
                    (map Byte.unsigned (found1 ++ found2)))
-                (col_mx_list (F:=B)
-                   (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                   (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c 
+                (col_mx_list 
+                   (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                   (submx_rows_cols_list (fill_missing c parities) xh c 
                       (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' j) v_s) :: seps)))).
         { forward. Exists 0. subst locs seps; entailer!. }
         { Intros j. forward_if.  (*inner (j) loop body*)
@@ -1149,21 +1182,21 @@ Proof.
             (*no point in frame rule because we need everything*)
             forward_loop (EX (q: Z),
               PROP (0 <= q <= k)
-              (LOCALx (temp _y (Vubyte (dot_prod (F:=B) 
-                (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) 
+              (LOCALx (temp _y (Vubyte (dot_prod 
+                (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) 
                     (map Byte.unsigned row) (map Byte.unsigned (found1 ++ found2)))
-                (col_mx_list (F:=B)
-                   (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                   (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c
+                (col_mx_list
+                   (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                   (submx_rows_cols_list (fill_missing c parities) xh c
                       (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' j q)) 
                 :: temp _q (Vint (Int.repr q)) :: temp _j (Vint (Int.repr j)) :: locs) (SEPx seps1)))
             break: (PROP () 
-              (LOCALx (temp _y (Vubyte (dot_prod (F:=B) 
-                (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) 
+              (LOCALx (temp _y (Vubyte (dot_prod 
+                (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) 
                     (map Byte.unsigned row) (map Byte.unsigned (found1 ++ found2)))
-                (col_mx_list (F:=B)
-                   (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                   (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c
+                (col_mx_list
+                   (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                   (submx_rows_cols_list (fill_missing c parities) xh c
                       (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' j k)) 
                 :: temp _j (Vint (Int.repr j)) :: locs) (SEPx seps1))).
             { forward. simpl_repr_byte. Exists 0.
@@ -1247,30 +1280,30 @@ Proof.
                          temp _q (Vint (Int.repr q))]
                       [ data_at Tsh (tarray (tarray tuchar 16000) 128)
                         (pop_mx_mult_part xh c k fec_max_h fec_max_cols
-                         (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+                         (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
                             (map Byte.unsigned (found1 ++ found2)))
-                         (col_mx_list (F:=B)
-                            (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                            (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c 
+                         (col_mx_list
+                            (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                            (submx_rows_cols_list (fill_missing c parities) xh c 
                                (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' j) v_s;
                         data_at Tsh (tarray tuchar fec_max_h)
                           (pop_find_parity_found stats parities i fec_max_h (Zlength packet_ptrs) (fec_n - 1)) v_found;
                         data_at Ews (tarray (tarray tuchar (fec_n - 1)) fec_max_h) 
                           (rev_mx_val weight_mx) (gv _fec_weights)])
                       with (P1 := []) (P2 := [])
-                      (Q1 := temp _y (Vubyte (dot_prod (F:=B)
-                           (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+                      (Q1 := temp _y (Vubyte (dot_prod
+                           (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
                               (map Byte.unsigned (found1 ++ found2)))
-                           (col_mx_list (F:=B)
-                              (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                              (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c (map Byte.unsigned row)
+                           (col_mx_list
+                              (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                              (submx_rows_cols_list (fill_missing c parities) xh c (map Byte.unsigned row)
                                  (Ziota 0 c)) (k - xh) xh c) i' j q)) :: locs) 
-                      (Q2 := temp _y (Vubyte (dot_prod (F:=B) 
-                        (submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) 
+                      (Q2 := temp _y (Vubyte (dot_prod 
+                        (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) 
                             (map Byte.unsigned row) (map Byte.unsigned (found1 ++ found2)))
-                        (col_mx_list (F:=B)
-                           (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-                           (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c
+                        (col_mx_list
+                           (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+                           (submx_rows_cols_list (fill_missing c parities) xh c
                               (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) i' j (q + 1))) :: locs)
                       (R1 := seps) (R2 := seps);
                       [ | solve [ subst locs seps; simpl app; entailer!] | solve [auto 50 with closed ] |].
@@ -1318,19 +1351,23 @@ Proof.
                                 { unfold Int.xor. rewrite !Int.unsigned_repr, ByteFacts.byte_xor_fold by simpl_repr_byte.
                                   simpl_repr_byte. unfold Vubyte. f_equal. f_equal. f_equal.
                                   rewrite dot_prod_plus_1 by lia.
-                                  replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType B)) with
-                                    Byte.xor by reflexivity. f_equal.
-                                  replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType B)) with
-                                    ByteField.byte_mul by reflexivity. f_equal.
+                                  unfold ssralg.GRing.add. simpl.
+                                  f_equal.
+                                  unfold ssralg.GRing.mul; simpl.
+                                  f_equal.
                                   - unfold submx_rows_cols_rev_list, submx_rows_cols_list.
-                                    rewrite mk_lmatrix_get by lia.
+                                    (*TODO: bad*)
+                                    rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia.
                                     unfold get. rewrite !Znth_map by list_solve.
                                     rewrite Znth_app1 by lia. reflexivity.
-                                  - unfold col_mx_list. rewrite mk_lmatrix_get by lia.
+                                  - unfold col_mx_list. 
+                                    rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia.
                                     destruct (Z_lt_ge_dec q (Zlength packet_ptrs - Zlength (find_lost stats (Zlength packet_ptrs)))); simpl.
                                     + (*real case*)
+                                      unfold bsubmx_rows_cols_list.
                                       unfold submx_rows_cols_list.
-                                      rewrite get_inhab,mk_lmatrix_get, Znth_Ziota by lia. 
+                                      rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field),
+                                      Znth_Ziota by lia.
                                       unfold get. rewrite Znth_map by list_solve. reflexivity.
                                     + (*contradiction case*)
                                       assert (Hkbyte: 0 <= (Zlength packet_ptrs) <= Byte.max_unsigned) by rep_lia.
@@ -1347,18 +1384,25 @@ Proof.
                           assert (Hjlen: j >= Zlength (Znth (Byte.unsigned (Znth q (find_found stats (Zlength packet_ptrs)))) packets)). {
                             rewrite Hlenspec,Int.signed_repr in H11; try rep_lia. inner_length. } clear H11.
                           forward. entailer!. f_equal. rewrite dot_prod_plus_1 by lia. simpl.
-                          unfold col_mx_list at 2. assert (Hget: forall l i j,
+                          unfold col_mx_list at 2. (*assert (Hget: forall l i j,
                             @get byte (inhabitant_F B) l i j = @get (ssralg.GRing.Field.sort B) (inhabitant_F B) l i j). {
-                            reflexivity. } rewrite (get_inhab _ q j), mk_lmatrix_get by rep_lia.
+                            reflexivity. }*) 
+                          rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by rep_lia.
                           destruct (Z_lt_ge_dec q (Zlength packet_ptrs - Zlength (find_lost stats (Zlength packet_ptrs)))); simpl.
                           2 : { assert (Hkbyte: 0 <= (Zlength packet_ptrs) <= Byte.max_unsigned) by rep_lia.
                                 pose proof (find_lost_found_Zlength stats Hkbyte). rep_lia. }
-                          assert (Hzero: @get byte (inhabitant_F B) (submx_rows_cols_list (F:=B) packets
+                          assert (Hzero: get (bsubmx_rows_cols_list packets
                            (Zlength packet_ptrs - Zlength (find_lost stats (Zlength packet_ptrs))) c
                            (map Byte.unsigned (find_found stats (Zlength packet_ptrs))) (Ziota 0 c)) q j = Byte.zero). {
-                            unfold submx_rows_cols_list. rewrite (get_inhab _ q j), mk_lmatrix_get,Znth_Ziota by lia.
+                            unfold bsubmx_rows_cols_list, submx_rows_cols_list. 
+                            rewrite mk_lmatrix_get, Znth_Ziota by lia.
                             unfold get. rewrite Znth_overflow by list_solve. reflexivity. }
-                          rewrite Hzero, ssralg.GRing.mulr0, ssralg.GRing.addr0. reflexivity.
+                          match goal with
+                          | |- context [get (bsubmx_rows_cols_list ?packets ?a ?b ?c ?d) ?i ?j] =>
+                            replace (get (bsubmx_rows_cols_list packets a b c d) i j) with Byte.zero
+                            by apply Hzero
+                          end.
+                          rewrite byte_mul_b_0, byte_add_b_0. reflexivity.
                         }
                       }
                       { (*Other case - we are in parities*)
@@ -1415,20 +1459,20 @@ Proof.
                                 { unfold Int.xor. rewrite !Int.unsigned_repr, ByteFacts.byte_xor_fold; simpl_repr_byte.
                                   unfold Vubyte. do 3 f_equal.
                                   rewrite dot_prod_plus_1 by lia.
-                                  replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType B)) with
-                                    Byte.xor by reflexivity. f_equal.
-                                  replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType B)) with
-                                    ByteField.byte_mul by reflexivity. f_equal.
+                                  unfold ssralg.GRing.add; simpl.
+                                  f_equal.
+                                  unfold ssralg.GRing.mul; simpl.
+                                  f_equal.
                                   - unfold submx_rows_cols_rev_list, submx_rows_cols_list.
-                                    rewrite mk_lmatrix_get by lia.
+                                    rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia.
                                     unfold get. rewrite !Znth_map by list_solve.
                                     rewrite Znth_app2 by lia. reflexivity.
-                                  - unfold col_mx_list. rewrite mk_lmatrix_get by lia.
+                                  - unfold col_mx_list. rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia.
                                     destruct (Z_lt_ge_dec q (Zlength packet_ptrs - Zlength (find_lost stats (Zlength packet_ptrs)))); simpl.
                                     + (*contradiction case*) rep_lia.
                                     + (*real case*)
                                       unfold submx_rows_cols_list.
-                                      rewrite get_inhab, mk_lmatrix_get, Znth_Ziota by lia. 
+                                      rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field), Znth_Ziota by lia.
                                       apply fill_missing_mx_some; try lia; auto. 
                                       rewrite <- Hsome. f_equal. rewrite Znth_map, find_parity_rows_found_Znth by rep_lia.
                                       pose proof find_lost_found_Zlength stats Hkbyte.
@@ -1576,7 +1620,7 @@ Definition fec_blk_decode_loop5 :=
 Lemma body_fec_blk_decode_loop5: forall (Espec: OracleKind) (k (*h*) c xh i: Z) (v_s v_v v_lost: val) 
   (gv: globals) (pl pd ps: val) (packet_ptrs parity_ptrs: list val) (stats: list byte)
   (packets: list (list byte)) (parities: list (option (list byte))) (lengths: list Z)
-  (d' w' w'': lmatrix B) (row found1 found2: list byte)
+  d' w' w'' (row found1 found2: list byte)
 
 (*TODO: what do we need? Do we need h?*)
   (Hknh : 0 < k < fec_n - fec_max_h)
@@ -1593,13 +1637,13 @@ Lemma body_fec_blk_decode_loop5: forall (Espec: OracleKind) (k (*h*) c xh i: Z) 
   (Hrow: row = find_parity_rows parities i)
   (Hfound1: found1 = find_found stats k) 
   (Hfound2: found2 = find_parity_found parities (fec_n - 1) i)
-  (Hw'': w'' = submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+  (Hw'': w'' = submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
          (map Byte.unsigned (found1 ++ found2)))
-  (Hd': d' = col_mx_list (F:=B)
-        (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-        (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c (map Byte.unsigned row) (Ziota 0 c))
+  (Hd': d' = col_mx_list
+        (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+        (submx_rows_cols_list (fill_missing c parities) xh c (map Byte.unsigned row) (Ziota 0 c))
         (k - xh) xh c)
-  (Hw': w' = submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1) (seq.map Byte.unsigned row)
+  (Hw': w' = submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1) (seq.map Byte.unsigned row)
         (seq.map Byte.unsigned (seq.rev (find_lost stats k)))),
 semax (func_tycontext f_fec_blk_decode Vprog Gprog [])
   (PROP ( )
@@ -1621,9 +1665,9 @@ semax (func_tycontext f_fec_blk_decode Vprog Gprog [])
    data_at Tsh (tarray tuchar (xh * (xh + xh)))
      (map Vubyte
         (flatten_mx
-           (gauss_restrict_list (F:=B) xh (xh + xh)
-              (concat_mx_id (F:=B)
-                 (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+           (gauss_restrict_list xh (xh + xh)
+              (concat_mx_id
+                 (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                     (seq.map Byte.unsigned (find_parity_rows parities i))
                     (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh)))) v_v;
    data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (Zlength packet_ptrs) fec_max_h) v_lost))
@@ -1640,8 +1684,8 @@ semax (func_tycontext f_fec_blk_decode Vprog Gprog [])
       temp _pstat ps)
       SEP (iter_sepcon_arrays packet_ptrs
              (pop_fill_rows_list packets
-                (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                   (lmatrix_multiply (F:=B) xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k)))
+                (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                   (lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k)))
                 xh 0);
       data_at Ews (tarray tschar (Zlength packet_ptrs))
         (map Vbyte (pop_stats stats (map Byte.unsigned (rev (find_lost stats k))) xh)) ps;
@@ -1653,9 +1697,9 @@ semax (func_tycontext f_fec_blk_decode Vprog Gprog [])
       data_at Tsh (tarray tuchar (xh * (xh + xh)))
         (map Vubyte
            (flatten_mx
-              (gauss_restrict_list (F:=B) xh (xh + xh)
-                 (concat_mx_id (F:=B)
-                    (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+              (gauss_restrict_list xh (xh + xh)
+                 (concat_mx_id
+                    (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                        (seq.map Byte.unsigned (find_parity_rows parities i))
                        (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh)))) v_v;
       data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (Zlength packet_ptrs) fec_max_h) v_lost))).
@@ -1732,12 +1776,12 @@ forward_loop (EX (i: Z),
         with (P1 := []) (P2 := []) (Q1 := locs) (Q2 := locs)
         (R1 := iter_sepcon_arrays packet_ptrs
             (pop_fill_rows_list packets
-               (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                  (lmatrix_multiply (F:=B) xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k)))
+               (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                  (lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k)))
                i' 0) :: seps)
         (R2 := iter_sepcon_arrays packet_ptrs (pop_fill_rows_list packets
-              (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-              (lmatrix_multiply (F:=B) xh k c w'' d')) 
+              (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+              (lmatrix_multiply xh k c w'' d')) 
               (map Byte.unsigned (rev (find_lost stats k))) i' c) :: seps);
         [ | subst locs seps; simpl app; entailer! | solve[ auto 50 with closed ] |];
         abbreviate_semax.
@@ -1745,8 +1789,8 @@ forward_loop (EX (i: Z),
             (PROP (0 <= j <= c)
             (LOCALx ((temp _j (Vint (Int.repr j))) :: locs)
             (SEPx (iter_sepcon_arrays packet_ptrs (pop_fill_rows_list packets
-                (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                (lmatrix_multiply (F:=B) xh k c w'' d')) 
+                (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                (lmatrix_multiply xh k c w'' d')) 
                 (map Byte.unsigned (rev (find_lost stats k))) i' j) :: seps))))).
           { forward. Exists 0. subst locs seps; entailer!. }
           { Intros j. subst locs seps; forward_if.
@@ -1771,9 +1815,9 @@ forward_loop (EX (i: Z),
                  data_at Tsh (tarray tuchar (xh * (xh + xh)))
                  (map Vubyte
                     (flatten_mx
-                       (gauss_restrict_list (F:=B) xh (xh + xh)
-                          (concat_mx_id (F:=B)
-                             (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+                       (gauss_restrict_list xh (xh + xh)
+                          (concat_mx_id
+                             (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                                 (seq.map Byte.unsigned (find_parity_rows parities i))
                                 (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh)))) v_v]).
               rewrite <- seq_assoc. 
@@ -1784,8 +1828,8 @@ forward_loop (EX (i: Z),
                   temp _plen pl; temp _pdata pd; lvar _lost (tarray tuchar fec_max_h) v_lost]
                 [ iter_sepcon_arrays packet_ptrs
                   (pop_fill_rows_list packets
-                     (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                        (lmatrix_multiply (F:=B) xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k)))
+                     (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                        (lmatrix_multiply xh k c w'' d')) (map Byte.unsigned (rev (find_lost stats k)))
                      i' j);
                    data_at Ews (tarray tint (Zlength packet_ptrs)) (map Vint (map Int.repr lengths)) pl;
                    data_at Ews (tarray (tptr tuchar) (Zlength packet_ptrs + Zlength parities))
@@ -1795,7 +1839,7 @@ forward_loop (EX (i: Z),
               (Q1 := temp _y (Vint (Int.repr 0)) :: temp _r
                 (field_address (tarray (tarray tuchar fec_max_cols) fec_max_h)
                    [ArraySubsc j; ArraySubsc (xh - 1)] v_s) :: locs)
-              (Q2 := temp _y (Vubyte (dot_prod (F:=B) (find_invmx_list w' xh) (*dont need other locals*)
+              (Q2 := temp _y (Vubyte (dot_prod (find_invmx_list w' xh) (*dont need other locals*)
                               (lmatrix_multiply xh k c w'' d') i' j xh)) :: locs)
               (R1 := seps) (R2 := seps);
               [ | subst locs seps; simpl app; entailer! | solve [ auto 50 with closed ] |]; abbreviate_semax.
@@ -1804,7 +1848,7 @@ forward_loop (EX (i: Z),
                 forward_loop (EX (n : Z),
                   PROP (0 <= n <= xh)
                   (LOCALx (temp _n (field_address (tarray tuchar (xh * (xh + xh))) (SUB (i' * xh * 2 + n)) v_v)
-                    :: (temp _y (Vubyte (dot_prod (F:=B) (rev_cols_list xh xh (find_invmx_list w' xh)) (*dot prod is reversed*)
+                    :: (temp _y (Vubyte (dot_prod (rev_cols_list xh xh (find_invmx_list w' xh)) (*dot prod is reversed*)
                                 (rev_rows_list xh c (lmatrix_multiply xh k c w'' d')) i' j n))) :: 
                     (temp _r (offset_val (((xh - 1 - n) * fec_max_cols) + j) v_s))  :: locs)
                   (SEPx seps))).
@@ -1858,7 +1902,7 @@ forward_loop (EX (i: Z),
                       assert (Hpopnth: forall (v: val) (l: list val),
                         (@Znth val v j (@Znth (list val) l (xh - 1 - n) 
                         (pop_mx_mult_part xh c k fec_max_h fec_max_cols w'' d' xh 0))) =
-                        (Vubyte (get (lmatrix_multiply (F:=B) xh k c w'' d') (xh - 1 - n) j))). {
+                        (Vubyte (get (lmatrix_multiply xh k c w'' d') (xh - 1 - n) j))). {
                         intros v l. rewrite !(@Znth_default _ Inhabitant_val),!(@Znth_default _  Inhabitant_list),
                           pop_mx_mult_part_done; try rep_lia. reflexivity. 
                         rewrite pop_mx_mult_part_Zlength; rep_lia.
@@ -1875,8 +1919,8 @@ forward_loop (EX (i: Z),
                       { entailer!; simpl_repr_byte. }
                       { unfold FIELD_TABLES. Intros.
                         forward_call(gv, (Znth (i' * xh * 2 + n)
-                            (flatten_mx (gauss_restrict_list (F:=B) xh (xh + xh) (concat_mx_id (F:=B) w' xh)))),
-                            (get (lmatrix_multiply (F:=B) xh k c w'' d') (xh - 1 - n) j)).
+                            (flatten_mx (gauss_restrict_list xh (xh + xh) (concat_mx_id w' xh)))),
+                            (get (lmatrix_multiply xh k c w'' d') (xh - 1 - n) j)).
                         (*TODO: why do I get this extra goal?*)
                         { entailer!. simpl. unfold Vubyte. simpl_repr_byte. } 
                         { forward. (*simplify y*) unfold Int.xor. 
@@ -1890,11 +1934,12 @@ forward_loop (EX (i: Z),
                           repeat split. (*lots of equivalences because of pointers*)
                           - solve_offset.
                           - f_equal. rewrite dot_prod_plus_1 by lia.
-                            replace (ssralg.GRing.add (V:=ssralg.GRing.Field.zmodType B)) with Byte.xor by auto.
+                            unfold ssralg.GRing.add; simpl.
                             f_equal.
-                            replace (ssralg.GRing.mul (R:=ssralg.GRing.Field.ringType B)) with ByteField.byte_mul by auto.
+                            unfold ssralg.GRing.mul; simpl.
                             f_equal.
-                            + unfold rev_cols_list. rewrite mk_lmatrix_get by lia. 
+                            + unfold rev_cols_list.
+                              rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia. 
                               unfold find_invmx_list, right_submx. rewrite mk_lmatrix_get by lia.
                               set (xh := Zlength (find_lost stats (Zlength packet_ptrs))) in *.
                               rewrite (@flatten_mx_Znth' xh (xh + xh)); 
@@ -1903,7 +1948,7 @@ forward_loop (EX (i: Z),
                               f_equal.
                               * rewrite idx_div; lia.
                               * rewrite idx_mod; lia.
-                            + unfold rev_rows_list. rewrite mk_lmatrix_get by lia. f_equal. lia.
+                            + unfold rev_rows_list. rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia. f_equal. lia.
                           - solve_offset.
                           - rewrite fec_max_cols_eq, fec_max_h_eq; auto. 
                         }
@@ -1948,8 +1993,8 @@ forward_loop (EX (i: Z),
                       temp _j (Vint (Int.repr j)); temp _pdata pd;
                        temp _data_lost_row (Vubyte (Znth (xh - i' - 1) (find_lost stats (Zlength packet_ptrs))));
                       temp _y (Vubyte
-                        (dot_prod (F:=B) (find_invmx_list (F:=B) w' xh) 
-                          (lmatrix_multiply (F:=B) xh k c w'' d') i' j xh))]).
+                        (dot_prod (find_invmx_list w' xh) 
+                          (lmatrix_multiply xh k c w'' d') i' j xh))]).
                   set (seps :=
                     [ data_at Ews (tarray (tptr tuchar) (Zlength packet_ptrs + Zlength parities))
                         (packet_ptrs ++ parity_ptrs) pd]).
@@ -1966,9 +2011,9 @@ forward_loop (EX (i: Z),
                       data_at Tsh (tarray tuchar (xh * (xh + xh)))
                        (map Vubyte
                           (flatten_mx
-                             (gauss_restrict_list (F:=B) xh (xh + xh)
-                                (concat_mx_id (F:=B)
-                                   (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+                             (gauss_restrict_list xh (xh + xh)
+                                (concat_mx_id
+                                   (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                                       (seq.map Byte.unsigned (find_parity_rows parities i))
                                       (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh)))) v_v;
                       data_at Ews (tarray tint (Zlength packet_ptrs)) (map Vint (map Int.repr lengths)) pl;
@@ -1977,13 +2022,13 @@ forward_loop (EX (i: Z),
                   with (P1 := []) (P2 := []) (Q1 := locs) (Q2 := locs)
                     (R1 := iter_sepcon_arrays packet_ptrs
                        (pop_fill_rows_list packets
-                          (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                             (lmatrix_multiply (F:=B) xh k c w'' d')) 
+                          (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                             (lmatrix_multiply xh k c w'' d')) 
                           (map Byte.unsigned (rev (find_lost stats k))) i' j) :: seps)
                     (R2 := iter_sepcon_arrays packet_ptrs
                         (pop_fill_rows_list packets
-                           (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                              (lmatrix_multiply (F:=B) xh k c w'' d'))
+                           (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                              (lmatrix_multiply xh k c w'' d'))
                            (map Byte.unsigned (rev (find_lost stats k))) i' (j + 1)) :: seps);
                   [ | subst locs seps; simpl app; entailer! | solve [ auto 50 with closed ] |]; abbreviate_semax.
                   { subst locs seps. forward_if.
@@ -1994,8 +2039,8 @@ forward_loop (EX (i: Z),
                       rewrite Int.signed_repr, Hlenspec in H4 by rep_lia.
                       (*Need to unfold the [iter_sepcon_arrays]*)
                       set (poppack := pop_fill_rows_list packets
-                       (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                          (lmatrix_multiply (F:=B) xh k c w'' d'))
+                       (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                          (lmatrix_multiply xh k c w'' d'))
                        (map Byte.unsigned (rev (find_lost stats k))) i' j) in *.
                       assert (Hleneq: Zlength packet_ptrs = Zlength poppack). { subst poppack.
                         unfold pop_fill_rows_list. rewrite mkseqZ_Zlength; lia. }
@@ -2013,8 +2058,8 @@ forward_loop (EX (i: Z),
                           (*rewrite before entailer because everything gets subst'ed and it's impossible
                             to read*)
                           set (poppack' := pop_fill_rows_list packets
-                           (lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh)
-                              (lmatrix_multiply (F:=B) xh k c w'' d'))
+                           (lmatrix_multiply xh xh c (find_invmx_list w' xh)
+                              (lmatrix_multiply xh k c w'' d'))
                            (map Byte.unsigned (rev (find_lost stats k))) i' (j + 1)) in *.
                           assert (Hleneq': Zlength packet_ptrs = Zlength poppack'). { subst poppack'.
                             unfold pop_fill_rows_list. rewrite mkseqZ_Zlength; lia. }
@@ -2029,25 +2074,25 @@ forward_loop (EX (i: Z),
                             set (row := find_parity_rows parities i) in *.
                             set (xh := Zlength lost) in *.
                             set (k := Zlength packet_ptrs) in *.
-                            set (w' := submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+                            set (w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                               (seq.map Byte.unsigned row) (seq.map Byte.unsigned (seq.rev lost))) in *.
-                            set (w'' := submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1)
+                            set (w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1)
                               (map Byte.unsigned row)
                               (map Byte.unsigned (found ++ find_parity_found parities (fec_n - 1) i))) in *.
-                            set (d' := col_mx_list (F:=B)
-                             (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found)
+                            set (d' := col_mx_list
+                             (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found)
                                 (Ziota 0 c))
-                             (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c
+                             (submx_rows_cols_list (fill_missing c parities) xh c
                                 (map Byte.unsigned row) (Ziota 0 c)) (k - xh) xh c) in *.
-                            set (s := lmatrix_multiply (F:=B) xh k c w'' d') in *.
-                            set (d := lmatrix_multiply (F:=B) xh xh c (find_invmx_list (F:=B) w' xh) s) in *.
+                            set (s := lmatrix_multiply xh k c w'' d') in *.
+                            set (d := lmatrix_multiply xh xh c (find_invmx_list w' xh) s) in *.
                             rewrite Znth_map; [| rewrite Zlength_rev; list_solve ].
                             rewrite Znth_rev by lia. replace (Zlength lost) with xh by lia.
                             unfold set at 3.
                             rewrite remove_upd_Znth by lia. cancel. apply derives_refl'.
                             rewrite set_Zlength2. f_equal. unfold set. rewrite !upd_Znth_map.
                             f_equal. rewrite upd_Znth_same by lia. f_equal. subst d.
-                            unfold lmatrix_multiply. rewrite (@mk_lmatrix_get B) by lia.
+                            unfold lmatrix_multiply. rewrite (@mk_lmatrix_get ByteField.Byte_int__canonical__GRing_Field) by lia.
                             reflexivity.
                           - apply FinFun.Injective_map_NoDup. intros b1 b2. apply byte_unsigned_inj.
                             apply NoDup_rev. apply find_lost_NoDup. rep_lia.
@@ -2312,8 +2357,8 @@ apply (semax_frame_seq
           apply row_mx_list_wf; lia. }
     2 : { rewrite zseq_Zlength; rep_nia. }
     replace (tarray tuchar (2 * xh * xh)) with (tarray tuchar (xh * (xh + xh))) by  (f_equal; lia).
-    forward_call(gv, xh, xh + xh, (concat_mx_id (F:=B)
-            (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+    forward_call(gv, xh, xh + xh, (concat_mx_id
+            (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                (seq.map Byte.unsigned (find_parity_rows parities i))
                (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh), v_v, Tsh).
     { entailer!. simpl. simpl_repr_byte. f_equal. rewrite !byte_int_repr by rep_lia. do 4 f_equal. lia. }
@@ -2354,8 +2399,8 @@ apply (semax_frame_seq
           temp _xk (Vubyte (Byte.repr (xk + Zlength (find_parity_found parities (fec_n - 1) i))));
           temp _pstat ps]
         [ data_at Tsh (tarray tuchar (xh * (xh + xh))) (map Vubyte (flatten_mx
-           (gauss_restrict_list (F:=B) xh (xh + xh) (concat_mx_id (F:=B)
-                 (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+           (gauss_restrict_list xh (xh + xh) (concat_mx_id
+                 (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                     (seq.map Byte.unsigned (find_parity_rows parities i)) (*a pattern would be REALLY helpful*)
                     (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh)))) v_v;
           data_at Tsh (tarray tuchar (2 * fec_max_h * fec_max_h - 2 * xh * xh))
@@ -2372,7 +2417,7 @@ apply (semax_frame_seq
             (pop_mx_mult_part xh c k fec_max_h fec_max_cols 
               (submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row) 
                   (map Byte.unsigned (found1 ++ found2)))
-              (col_mx_list (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+              (col_mx_list (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
                   (submx_rows_cols_list (fill_missing  c parities) xh c (map Byte.unsigned row) (Ziota 0 c)) (k-xh) xh c)
               xh 0) v_s) (*this is quite ugly*) :: seps);
         [ | solve [ simpl app; entailer! ] | solve [ auto 50 with closed ]|] .
@@ -2384,13 +2429,13 @@ apply (semax_frame_seq
       forward.
 
       (*remember matrices to make the loop invariants nicer. The names match those in [decode_list_mx]*)
-      set (w'' := submx_rows_cols_rev_list (F:=B) weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
+      set (w'' := submx_rows_cols_rev_list weight_mx xh k (fec_n - 1) (map Byte.unsigned row)
         (map Byte.unsigned (found1 ++ found2))) in *.
-      set (d' := col_mx_list (F:=B)
-       (submx_rows_cols_list (F:=B) packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
-       (submx_rows_cols_list (F:=B) (fill_missing c parities) xh c (map Byte.unsigned row)
+      set (d' := col_mx_list
+       (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
+       (submx_rows_cols_list (fill_missing c parities) xh c (map Byte.unsigned row)
           (Ziota 0 c)) (k - xh) xh c) in *.
-      set (w' := submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+      set (w' := submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
               (seq.map Byte.unsigned row) (seq.map Byte.unsigned 
               (seq.rev (find_lost stats k)))) in *.
 
@@ -2414,9 +2459,9 @@ apply (semax_frame_seq
       data_at Tsh (tarray tuchar (xh * (xh + xh)))
         (map Vubyte
             (flatten_mx
-              (gauss_restrict_list (F:=B) xh (xh + xh)
-                  (concat_mx_id (F:=B)
-                    (submx_rows_cols_rev_list (F:=B) weight_mx xh xh (fec_n - 1)
+              (gauss_restrict_list xh (xh + xh)
+                  (concat_mx_id
+                    (submx_rows_cols_rev_list weight_mx xh xh (fec_n - 1)
                         (seq.map Byte.unsigned (find_parity_rows parities i))
                         (seq.map Byte.unsigned (seq.rev (find_lost stats k)))) xh)))) v_v;
                         data_at Tsh (tarray tuchar fec_max_h) (pop_find_lost stats (Zlength packet_ptrs) fec_max_h) v_lost]).
@@ -2470,7 +2515,7 @@ apply (semax_frame_seq
         by (rewrite Zlength_map, Zlength_rev; reflexivity).
       rewrite (@pop_fill_rows_list_done packets _ (map Byte.unsigned (rev (find_lost stats (Zlength packet_ptrs))))
         (map (Zlength (A:=byte)) packets) 0 (Zlength packet_ptrs) c (Zlength (find_lost stats (Zlength packet_ptrs)))); 
-      try lia; try assumption; [| apply (@lmatrix_multiply_wf B (Zlength (find_lost stats (Zlength packet_ptrs)))); 
+      try lia; try assumption; [| apply (@lmatrix_multiply_wf ByteField.Byte_int__canonical__GRing_Field (Zlength (find_lost stats (Zlength packet_ptrs)))); 
         lia | rewrite Zlength_map, Zlength_rev; reflexivity |].
       unfold FEC_TABLES.
       (*do matrix part last so we can derives_refl'*)
@@ -2479,9 +2524,20 @@ apply (semax_frame_seq
       - subst w' d' w'' row found1 found2. apply derives_refl'. f_equal. f_equal. unfold decode_list_mx.
         rewrite (@fill_rows_list_extend _ (Zlength packet_ptrs) _ _ _ _ _ c); try lia. 
         rewrite Hroweq, Hfoundeq, !cat_app, !CommonSSR.map_map_equiv.
-        rewrite (@submx_rows_cols_list_extend _ _ _ _ _  _ c); try lia; try assumption. 
-        rewrite (extend_mx_length (m:=(Zlength packets)) (m':=(Zlength packet_ptrs))); try lia. f_equal.
-        rewrite CommonSSR.rev_rev. apply CommonSSR.map_map_equiv. 
+        match goal with
+        | |- fill_rows_list (F:=ByteField.Byte_int__canonical__GRing_Field)  ?l ?c ?l2 ?e ?x ?t1 =
+          fill_rows_list (F:=ByteField.Byte_int__canonical__GRing_Field)  ?l ?c ?l2 ?e ?y ?t2 =>
+          replace t1 with t2 by
+            (rewrite CommonSSR.rev_rev; apply CommonSSR.map_map_equiv);
+          replace x with y; [reflexivity |]
+        end.
+        f_equal.
+        f_equal.
+        f_equal.
+        unfold bsubmx_rows_cols_list.
+        symmetry.
+        rewrite (@submx_rows_cols_list_extend _ _ _ _ _  _ c); try lia; try assumption.
+        + f_equal. apply extend_mx_length; try lia; solve[list_solve].
         + rewrite Forall_map. eapply Forall_impl. 2:  apply find_found_bound; rep_lia.
           simpl. lia.
         + rewrite Forall_Znth,Zlength_Ziota by lia. intros x Hx. rewrite Znth_Ziota; lia. 

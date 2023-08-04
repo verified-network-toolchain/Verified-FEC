@@ -370,7 +370,7 @@ Proof.
    | isSome x].
   move => Heq. rewrite Hpars'. by rewrite in_cons eq_refl.
   move => /(_ fec_data_eq_dec). (*why do i get these weird goals?*)
-  rewrite mem_filter/=. rewrite (@mem_map fpacket_eqType); last first.
+  rewrite mem_filter/=. rewrite (@mem_map fpacket); last first.
     by apply some_inj.
   rewrite in_mem_In In_Znth_iff. len_encode. move => [i [Hi Hith]]. subst.
   len_encode => /=. rewrite Znth_map; len_encode => /=. len_encode.
@@ -2391,7 +2391,7 @@ Theorem block_boundaries k h orig (i: nat):
   size output.1.1 = size orig %/ (Z.to_nat k).
 Proof.
   move=> Hkbound Hhbound Hval Henc Huniqseq Hi output sent b n encoded.
-  have Hallinbounds: (forall k0 h0 : Z_eqtype,
+  have Hallinbounds: (forall k0 h0 : Z,
     (k0, h0) \in zseq (Zlength orig) (k, h) ->
     (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
     move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
@@ -2670,7 +2670,7 @@ Theorem producer_boundaries_i: forall (k h: Z) p orig (i: nat),
 Proof.
   move=> k h p orig i Hkbound Hhbound Hval Henc Huniqseq Hinp Hi
   sent b.
-  have Hallinbounds: (forall k0 h0 : Z_eqtype,
+  have Hallinbounds: (forall k0 h0 : Z,
     (k0, h0) \in zseq (Zlength orig) (k, h) ->
     (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
     move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.
@@ -2760,7 +2760,7 @@ Lemma same_block_index: forall (k h : Z) (orig: seq packet) (p1 p2: fpacket),
 Proof.
   (*Lots of boilerplate to get assumptions we need*)
   move=> k h orig p1 p2 Hkbound Hhbound Hval Henc Huniqseq/=.
-  have Hallinbounds: (forall k0 h0 : Z_eqtype,
+  have Hallinbounds: (forall k0 h0 : Z,
     (k0, h0) \in zseq (Zlength orig) (k, h) ->
     (0 < k0 <= fec_n - 1 - fec_max_h)%Z /\ (0 < h0 <= fec_max_h)%Z) by
     move=> k' h'; rewrite /zseq mem_nseq => /andP[_ /eqP []]->->.

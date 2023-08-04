@@ -21,7 +21,20 @@ Require Import PopArrays.
 
 Set Bullet Behavior "Strict Subproofs".
 
+From HB Require structures.
+From mathcomp Require ssralg.
+Section Extend.
+
+Import structures ssralg ByteField.
+
+Definition bextend : Z -> Z -> list (list byte) -> lmatrix byte :=
+  fun k c m => extend_mx k c m.
+
+End Extend.
+
 Section Encoder.
+
+Local Open Scope list_scope.
 
 Opaque ByteField.byte_mul. 
 
@@ -80,14 +93,14 @@ Proof.
       PROP (0 <= i <= h)
        (LOCALx (temp _i (Vint (Int.repr i)):: temp _z (Vint (Int.repr ((i - 1) mod 256))) :: LOCALS)
        (SEPx (iter_sepcon_arrays parity_ptrs 
-        (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k) (extend_mx (F:=B) k c packets) i 0)  
+        (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k) (bextend k c packets) i 0)  
         :: SEPS))))
       break: 
       (PROP ()  (LOCALx LOCALS (SEPx ((iter_sepcon_arrays parity_ptrs (encoder_list h k c packets)) :: SEPS)))).
     { rewrite_eqs. forward. Exists (0%Z).  rewrite_eqs. entailer!. rewrite pop_mx_mult_zero by lia.
       apply derives_refl'. reflexivity. }
     { (*loop body*) Intros i. rewrite_eqs.
-      remember (pop_mx_mult h c k (submatrix (F:=B) (fec_n - 1) weight_mx h k) (extend_mx (F:=B) k c packets)i 0)
+      remember (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k) (bextend k c packets)i 0)
             as mx.
       assert (Hwf: wf_lmatrix mx h c) by (subst; apply pop_mx_mult_wf; rep_lia). destruct Hwf as [Hmxlen [_ Hinmx]].
       forward_if.
@@ -148,12 +161,12 @@ Proof.
                 PROP (0 <= j <= c)
                 (LOCALx (temp _j (Vint (Int.repr j)) :: LOCALS1)
                   (SEPx (iter_sepcon_arrays parity_ptrs (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k) 
-                    (extend_mx (F:=B) k c packets) i j) :: SEPS))))
+                    (bextend k c packets) i j) :: SEPS))))
                 break: (PROP () (LOCALx LOCALS1 (SEPx (iter_sepcon_arrays parity_ptrs (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k) 
-                    (extend_mx (F:=B) k c packets) i c) :: SEPS)))).
+                    (bextend k c packets) i c) :: SEPS)))).
               { rewrite_eqs. forward. Exists 0%Z. rewrite_eqs. entailer!. }
-              { Intros j. remember (pop_mx_mult h c k (submatrix (F:=B) (fec_n - 1) weight_mx h k)
-               (extend_mx (F:=B) k c packets) i j) as mx'. rewrite_eqs. forward_if.
+              { Intros j. remember (pop_mx_mult h c k (submatrix (fec_n - 1) weight_mx h k)
+               (bextend k c packets) i j) as mx'. rewrite_eqs. forward_if.
                 { (*body of j- loop*) forward. simpl_repr_byte.
                   assert_PROP (force_val (sem_add_ptr_int (tarray tuchar 255) Signed (gv _fec_weights)
                     (Vint (Int.repr i))) =
@@ -174,15 +187,15 @@ Proof.
                     (LOCALx (temp _n (Vint (Int.repr n)) :: 
                       temp _p (field_address0 (tarray (tarray tuchar 255) 128) 
                               [ArraySubsc n; ArraySubsc i] (gv _fec_weights)) ::
-                      temp _y (Vubyte (dot_prod (F:=B) (submatrix (F:=B) (fec_n - 1) weight_mx h k)
-                         (extend_mx (F:=B) k c packets) i j n)) :: LOCALS2)
+                      temp _y (Vubyte (dot_prod (submatrix (fec_n - 1) weight_mx h k)
+                         (bextend k c packets) i j n)) :: LOCALS2)
                     (SEPx (iter_sepcon_arrays parity_ptrs mx' :: SEPS))))
                   break:
                    (PROP ()
                    (LOCALx (temp _p (field_address0 (tarray (tarray tuchar 255) 128) 
                               [ArraySubsc k; ArraySubsc i] (gv _fec_weights)) ::
-                      temp _y (Vubyte (dot_prod (F:=B) (submatrix (F:=B) (fec_n - 1) weight_mx h k)
-                         (extend_mx (F:=B) k c packets) i j k)) :: LOCALS2)
+                      temp _y (Vubyte (dot_prod (submatrix (fec_n - 1) weight_mx h k)
+                         (bextend k c packets) i j k)) :: LOCALS2)
                    (SEPx (iter_sepcon_arrays parity_ptrs mx' :: SEPS)))).
                   { rewrite_eqs; forward. Exists 0%Z. rewrite_eqs; entailer!. }
                   { Intros n. rewrite_eqs; forward_if.
@@ -198,8 +211,8 @@ Proof.
                           temp _t'5 (Vint (Int.repr (Zlength (Znth n packets)))); temp _n (Vint (Int.repr n));
                           temp _p (field_address0 (tarray (tarray tuchar 255) 128) [ArraySubsc n; ArraySubsc i] 
                             (gv _fec_weights));
-                          temp _y (Vubyte (dot_prod (F:=B) (submatrix (F:=B) (fec_n - 1) weight_mx h k)
-                            (extend_mx (F:=B) k c packets) i j (n + 1)));
+                          temp _y (Vubyte (dot_prod (submatrix (fec_n - 1) weight_mx h k)
+                            (bextend k c packets) i j (n + 1)));
                           temp _j (Vint (Int.repr j)); temp _i (Vint (Int.repr i)); temp _z (Vint (Int.repr i));
                           temp _pparity (field_address0 (tarray (tptr tuchar) (k + h)) (SUB k) pd); 
                           gvars gv; temp _k (Vint (Int.repr k)); temp _h (Vint (Int.repr h)); 
@@ -306,12 +319,12 @@ Proof.
                         rewrite Byte.repr_unsigned. rewrite upd_Znth_map. entailer!.
                         rewrite <- pop_mx_mult_set by lia.  
                         remember (pop_mx_mult (Zlength parity_ptrs) c (Zlength packet_ptrs)
-                          (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packet_ptrs))
-                          (extend_mx (F:=B) (Zlength packet_ptrs) c packets) i j) as mx'.
+                          (submatrix (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packet_ptrs))
+                          (bextend (Zlength packet_ptrs) c packets) i j) as mx'.
                         rewrite (@set_default _ _ Inhabitant_byte mx') by reflexivity.
-                        remember (set mx' i j (dot_prod (F:=B)
-                          (submatrix (F:=B) (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packet_ptrs))
-                          (extend_mx (F:=B) (Zlength packet_ptrs) c packets) i j (Zlength packet_ptrs))) as mx''. simpl in Heqmx''.
+                        remember (set mx' i j (dot_prod
+                          (submatrix (fec_n - 1) weight_mx (Zlength parity_ptrs) (Zlength packet_ptrs))
+                          (bextend (Zlength packet_ptrs) c packets) i j (Zlength packet_ptrs))) as mx''. simpl in Heqmx''.
                         rewrite <- Heqmx''.
                         assert (Hwf: wf_lmatrix mx'' (Zlength parity_ptrs) c). { subst. apply set_wf.
                           apply pop_mx_mult_wf; rep_lia. } destruct Hwf as [Hlenmx'' [_ Hinmx'']].
@@ -339,7 +352,7 @@ Proof.
       }
       { (*end of outer loop*) forward. rewrite_eqs. entailer!.
         replace i with (Zlength parity_ptrs) by lia. rewrite pop_mx_mult_done by lia.
-        unfold encoder_list. cancel.
+        unfold encoder_list. unfold bextend. cancel.
       }
     }
     { (*trivial error again*) rewrite_eqs. forward_if True.

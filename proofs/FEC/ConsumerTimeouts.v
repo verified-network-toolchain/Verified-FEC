@@ -158,14 +158,14 @@ Lemma upd_time_spec: forall time p blocks,
   (forall b (p: fpacket), b \in blocks -> packet_in_block p b ->
     fd_blockId p = blk_id b) ->
   upd_time time p blocks =
-    if (existsb (fun b => packet_in_block p b) blocks) then time else
+    if (List.existsb (fun b => packet_in_block p b) blocks) then time else
       time + 1.
 Proof.
   move=>time p blocks. elim: blocks => [//= | bhd btl /= IH Hsort Hids (*Hnth*)].
   case: (fd_blockId p == blk_id bhd) /eqP => Heq.
   - rewrite /block_notin_packet.
     case Hin: (packet_in_block p bhd)=>//=.
-    case: (existsb (fun b => packet_in_block p b) btl) /existsbP =>
+    case: (List.existsb (fun b => packet_in_block p b) btl) /existsbP =>
         [[b] /andP[Hinb Hinbx] |//].
     (*Now we know it cannot be in tail because all have 
           larger sequence number*)
@@ -182,7 +182,7 @@ Proof.
       exfalso; apply Heq; apply Hids=>//; rewrite mem_head.
     case Hlt: (fd_blockId p < blk_id bhd)%N.
     + (*similarly, contradiction from sorting*)
-      case: (existsb [eta packet_in_block p] btl) /existsbP =>
+      case: (List.existsb [eta packet_in_block p] btl) /existsbP =>
       [[b] /andP[Hinb Hinbx] |//]; subst.
       move: Hsort. rewrite path_sortedE; 
         last by move => b1 b2 b3; apply ltn_trans.
@@ -300,7 +300,7 @@ Proof.
     in the rest*)
   have Hupdtime: (upd_time time p blocks = Z.of_nat (size (undup_fst (prev ++ [:: p])))). {
     rewrite undup_fst_rcons upd_time_spec =>//.
-    + case: (existsb [eta packet_in_block p] blocks) /existsbP => 
+    + case: (List.existsb [eta packet_in_block p] blocks) /existsbP => 
       [[b /andP[Hinb Hinpb]] | Hnotin].
       * (*If the packet is in some block, then it is was in prev*)
         by have->:p \in prev by apply (Hinprev _ _ Hinb Hinpb).
@@ -343,11 +343,11 @@ Proof.
         -- by rewrite Hinp.
         -- rewrite Hb create_black_time Nat2Z.inj_succ -Htime.
           rewrite upd_time_spec=>//.
-          case: (existsb [eta packet_in_block p] blocks) /existsbP=>//
+          case: (List.existsb [eta packet_in_block p] blocks) /existsbP=>//
             [[b' /andP[Hinb' Hpb']]].
           by rewrite (Hinprev _ _ Hinb' Hpb') in Hinp.
       * (*The interesting case: in p is in prev, consider 2 cases*)
-        case: (existsb [eta packet_in_block p] blocks) /existsbP.
+        case: (List.existsb [eta packet_in_block p] blocks) /existsbP.
         -- (*If p was in a block, that block must have timed out,
           so we have a previous packet in p's block that is too far apar*)
          move => [b' /andP[Hinb' Hpb']].
@@ -401,7 +401,7 @@ Proof.
         to, which must have timed out. If there was no such block,
         there could not have been a timeout, a contradiction*)
       move=> Hnotex.
-      case: (existsb (fun b => blk_id b == fd_blockId p') blocks) /existsbP.
+      case: (List.existsb (fun b => blk_id b == fd_blockId p') blocks) /existsbP.
       * move=> [b /andP[Hinb /eqP Hidb]].
         (*Use invariant to get first one*)
         move: Hcreate => /( _ b Hinb) [p1 [l1 [l2 [Hidp1 [Hprev [Hnotin Htimeb]]]]]].
@@ -458,7 +458,7 @@ Proof.
       rewrite mem_cat in_cons orbF => /orP[Hinp' | /eqP //].
       move=> Hnotex.
       (*Case 1: there is no block with p' in prevs*)
-      case: (existsb [eta packet_in_block p'] blocks) /existsbP; last first.
+      case: (List.existsb [eta packet_in_block p'] blocks) /existsbP; last first.
       * (*easy: use IH*)
         move=> Hnotex'. move: Hprevnotin => /(_ p' Hinp' Hnotex')
           [p'' [l1 [l2 [Hid [Hprev [Hnotin Htimeout]]]] ]].
@@ -619,14 +619,14 @@ Proof.
   (*We also need these results in multiple places*)
   have Htimeeq: upd_time time p blks1 = upd_time time p blks2. {
     rewrite !upd_time_spec.
-    + case: (existsb [eta packet_in_block p] blks1) /existsbP => 
+    + case: (List.existsb [eta packet_in_block p] blks1) /existsbP => 
       [[b1 /andP[Hinb1 Hinpb1]]| Hnotex1].
-      * have->//:existsb [eta packet_in_block p] blks2.
+      * have->//:List.existsb [eta packet_in_block p] blks2.
         apply /existsbP. exists b1. rewrite Hinpb1 andbT.
         rewrite -(Hblks p)//. by rewrite mem_head.
         symmetry. case Hinvar => [_ [_ [_ [_ Hsubs]]]].
         by apply (consumer_invar_allid Hwf' Hsubs).
-      * case: (existsb [eta packet_in_block p] blks2) /existsbP => 
+      * case: (List.existsb [eta packet_in_block p] blks2) /existsbP => 
           [[b2 /andP[Hinb2 Hinpb2]] | //].
         exfalso. apply Hnotex1. exists b2. rewrite Hinpb2 andbT.
         rewrite (Hblks p) //. by rewrite mem_head.
@@ -644,10 +644,10 @@ Proof.
     rewrite Htimeeq upd_time_spec //; last by
       apply (consumer_invar_allid Hwf' Hsubs2).
     (*The main result - do we need elsewhere?*)
-    have->//: existsb [eta packet_in_block p] blks2 = (p \in prev).
+    have->//: List.existsb [eta packet_in_block p] blks2 = (p \in prev).
     case Hinp: (p \in prev).
     - (*See if there is a block in blks1 (NOT blks2) with p in it*)
-      case: (existsb [eta packet_in_block p] blks1) /existsbP 
+      case: (List.existsb [eta packet_in_block p] blks1) /existsbP 
         => [[b /andP[Hinb Hinpb]] | Hnotex].
       + (*In this case, in blks2 also*)
         apply /existsbP. exists b. rewrite Hinpb andbT.
@@ -850,6 +850,7 @@ Proof.
           (find (fun b0 : block => blk_id b0 == fd_blockId p) blks2)) 
           ;last by rewrite andbF.
         rewrite /=.
+        have->:mem_seq blks1 b = (b \in blks1) by [].
         rewrite (Hblks p')=>//; last by rewrite in_cons Hinp' orbT.
         case Hinb2: (b \in blks2); last by rewrite andbF.
         by rewrite Hnottimeout.

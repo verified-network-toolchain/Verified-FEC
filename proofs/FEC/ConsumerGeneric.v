@@ -759,7 +759,8 @@ Proof.
       move: Hre.
       rewrite {1}/packet_bytes -catA recover_packet_correct. 2: by rewrite Hval.
       move => [Hh] Hcon. have Hval':=Hval.
-      apply valid_not_zero in Hval. move: Hval => /eqP Hval. rewrite catA Znth_app1.
+      apply valid_not_zero in Hval. move: Hval => /eqP Hval.
+      rewrite Znth_app1.
       rewrite Hval. by rewrite -Hh -Hcon.
       move: Hval'. rewrite /valid_packet => /andP[Hlen _]. solve_sumbool.
       (*[list_solve] should be able to handle this*) rewrite Zlength_app. list_solve.

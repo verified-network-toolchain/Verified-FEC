@@ -14,9 +14,6 @@ Variable K V: eqType.
 
 Notation assoc_list := (list (K * V)).
 
-(*Definition assoc_eqMixin := seq_eqMixin (prod_eqType K V).
-Canonical assoc_eqType : eqType := EqType assoc_list assoc_eqMixin. *)
-
 Definition empty': assoc_list := nil.
 
 Lemma empty_uniq: uniq (map fst empty').
@@ -231,9 +228,8 @@ Qed.
 Inductive alist := Alist (al: assoc_list) of (uniq (map fst al)).
 Coercion al (a: alist) : assoc_list := let: Alist x _ := a in x.
 Definition al_uniq (a: alist) : uniq (map fst (al a)) := let :Alist _ x := a in x.
-Canonical alist_subType := [subType for al].
-Definition alist_eqMixin := SubEqMixin alist_subType.
-Definition alist_eqType := EqType alist alist_eqMixin.
+HB.instance Definition _ := [isSub for al].
+HB.instance Definition _ := [Equality of alist by <:].
 
 Definition empty : alist := Alist empty_uniq.
 Definition update_or_add (k: K) (v: V) (f: V -> V) (a: alist) : alist :=

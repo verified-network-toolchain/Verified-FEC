@@ -17,6 +17,29 @@ Require Import FECTactics.
 
 Set Bullet Behavior "Strict Subproofs".
 
+(*TODO: move*)
+(*So we don't have to import SSReflect*)
+From HB Require structures.
+From mathcomp Require all_ssreflect ssralg.
+Section ByteZero.
+
+Import structures.
+Import all_ssreflect ssralg.
+
+Lemma byte_mul_0_b: forall b, 
+  byte_mul 0%R b = 0%R.
+Proof.
+  move=> b. apply (@GRing.mul0r byte).
+Qed. 
+
+Lemma byte_mul_b_0: forall b,
+  byte_mul b 0%R = 0%R.
+Proof.
+  apply (@GRing.mulr0 byte).
+Qed.
+
+End ByteZero.
+
 (** Verification of [fec_find_mod]*)
 
 Lemma body_fec_find_mod : semax_body Vprog Gprog f_fec_find_mod fec_find_mod_spec.
@@ -74,9 +97,9 @@ Proof.
       }
     }
     { destruct (Byte.eq_dec b1 Byte.zero) as [ Hb1 |Hb1].
-      { forward. entailer!. rewrite (@ssralg.GRing.mul0r byte_ring). reflexivity. }
+      { forward. entailer!. rewrite byte_mul_0_b. reflexivity. }
       { destruct (Byte.eq_dec b2 Byte.zero) as [Hb2|].
-        { subst. forward. entailer!.  rewrite (@ssralg.GRing.mulr0 byte_ring). reflexivity. }
+        { subst. forward. entailer!. rewrite byte_mul_b_0. reflexivity. }
         { rewrite Int_repr_zero in H by rep_lia. apply byte_unsigned_zero in H. inversion H. }
       }
     }

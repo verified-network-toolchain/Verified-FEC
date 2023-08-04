@@ -21,7 +21,9 @@ Require Import ReedSolomonList.
 Require Import VandermondeByte.
 Require Import MatrixTransform.
 Require Import CommonSSR.
-  
+
+Local Open Scope Z_scope.
+
 Section PopArr.
 
 (*We define a more general version, where we only populate up to m' and n' (such that m' <= m, n' <= n)
@@ -229,6 +231,8 @@ Qed.
 
 End PopMult.
 
+Require Import ByteField.
+
 (*We also need a partial version for the decoder, since the whole array is not filled in*)
 (*The original matrices have dimensions m' x k' and k' x n'*)
 Definition pop_mx_mult_part m' n' k' m n (mx1 mx2: lmatrix B) (i j : Z) : list (list Values.val) :=
@@ -292,7 +296,6 @@ Proof.
   rewrite /get in Hdone. by apply Hdone.
 Qed. 
 
-Require Import ByteField.
 Require Import PolyField.
 Require Import ByteFacts.
 
@@ -377,7 +380,7 @@ Proof.
 Qed.
 
 Lemma cat_app: forall {A: Type} (l1 l2: list A),
-  (l1 ++ l2)%list = l1 ++ l2.
+  (l1 ++ l2)%list = (l1 ++ l2)%SEQ.
 Proof.
   by [].
 Qed.
@@ -538,7 +541,7 @@ Qed.
   Also, it is treated as a 1-D array for all intents and purposes, so we do that here*)
 
 (*This means we have filled up the first i rows and the first j entries of row i*)
-
+Local Open Scope Z_scope.
 (*The first part (the rest is just Vundef)*)
 Definition pop_find_inv_fst (xh: Z) (weights: lmatrix B) (row lost : seq byte) i j : seq Values.val :=
    mkseqZ (fun z =>
@@ -780,6 +783,8 @@ Proof.
   - rewrite Zlength_upd_Znth pop_find_inv_fst_Zlength; nia.
   - rewrite pop_find_inv_fst_Zlength; nia.
 Qed. 
+
+Local Open Scope seq_scope.
 
 Lemma pop_find_inv_post: forall xh weights row lost,
   0 <= xh ->

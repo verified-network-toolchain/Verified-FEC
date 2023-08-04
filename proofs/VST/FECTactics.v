@@ -38,20 +38,20 @@ Ltac simplify_zeroes  :=
   end.
 
 (*To make things nicer*)
-Notation B := ByteField.byte_fieldType.
+Notation B := byte.
 
 (*maybe expand this with needed definitions for decoder (only 2-3 places it would be needed)*)
 (*Solve goals of the form [wf_matrix mx m n]*)
 Ltac solve_wf :=
   repeat(lazymatch goal with
-  | [H: _ |- wf_lmatrix (scalar_mul_list_partial (F:=B)  _ _ _ _ _ _) _ _] => apply scalar_mul_list_partial_wf
-  | [H: _ |- wf_lmatrix (scalar_mul_list (F:=B) _ _ _ _ _) _ _ ] => apply scalar_mul_list_partial_wf
-  | [H: _ |- wf_lmatrix (all_cols_one_partial (F:=B) _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
-  | [H: _ |- wf_lmatrix (add_multiple_partial (F:=B) _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_lmatrix (add_multiple (F:=B) _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
-  | [H: _ |- wf_lmatrix (sub_all_rows_partial (F:=B) _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
-  | [H: _ |- wf_lmatrix (gauss_all_steps_list_partial (F:=B) _ _ _ _) _ _] => apply gauss_all_steps_list_partial_wf
-  | [H: _ |- wf_lmatrix (all_lc_one_partial (F:=B) _ _ _ _) _ _] => apply all_lc_one_partial_wf
+  | [H: _ |- wf_lmatrix (scalar_mul_list_partial  _ _ _ _ _ _) _ _] => apply scalar_mul_list_partial_wf
+  | [H: _ |- wf_lmatrix (scalar_mul_list _ _ _ _ _) _ _ ] => apply scalar_mul_list_partial_wf
+  | [H: _ |- wf_lmatrix (all_cols_one_partial _ _ _ _ _) _ _ ] => apply all_cols_one_partial_wf
+  | [H: _ |- wf_lmatrix (add_multiple_partial _ _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_lmatrix (add_multiple _ _ _ _ _ _) _ _] => apply add_multiple_partial_wf
+  | [H: _ |- wf_lmatrix (sub_all_rows_partial _ _ _ _ _) _ _] => apply sub_all_rows_partial_wf
+  | [H: _ |- wf_lmatrix (gauss_all_steps_list_partial _ _ _ _) _ _] => apply gauss_all_steps_list_partial_wf
+  | [H: _ |- wf_lmatrix (all_lc_one_partial _ _ _ _) _ _] => apply all_lc_one_partial_wf
   end); try lia; try assumption.
 
 (*These lemmas are easy to prove with [simpl_repr_byte], which is why they are here*)

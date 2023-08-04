@@ -1,6 +1,7 @@
 Require Import VST.floyd.functional_base.
 Require Import ZSeq.
 Require Export ByteFacts.
+From HB Require Import structures.
 From mathcomp Require Import all_ssreflect.
 Set Implicit Arguments.
 Unset Strict Implicit.
@@ -64,8 +65,7 @@ Proof.
   h1 c1 a1 h2 c2 s2 Hh Hc Hs; subst.
 Qed.
 
-Definition packet_eqMixin := EqMixin packet_eqP.
-Canonical packet_eqType := EqType packet packet_eqMixin.
+HB.instance Definition _ := hasDecEq.Build packet packet_eqP.
 
 Definition fec_packet_eqb (p1 p2: fec_packet) : bool :=
   fec_data_eq_dec (p_fec_data p1) (p_fec_data p2) && ((p_packet p1) == (p_packet p2)).
@@ -81,8 +81,7 @@ Proof.
   - apply ReflectF. move => Hc. by rewrite Hc in Hpeq.
 Qed.
 
-Definition fec_packet_eqMixin := EqMixin fec_packet_eqP.
-Canonical fec_packet_eqType := EqType fec_packet fec_packet_eqMixin.
+HB.instance Definition _ := hasDecEq.Build fec_packet fec_packet_eqP.
 
 #[export] Instance packet_inhab: Inhabitant packet.
 apply (mk_pkt nil nil 0).

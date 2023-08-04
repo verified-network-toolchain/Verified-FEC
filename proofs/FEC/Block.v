@@ -74,8 +74,7 @@ Coercion f_packet : fpacket >-> packet.
 
 Definition fpacket_eq_axiom  := (@fec_packet_eqP _ fec_data_eq_dec).
 
-Definition fpacket_eqMixin := EqMixin fpacket_eq_axiom.
-Canonical fpacket_eqType := EqType fpacket fpacket_eqMixin.
+HB.instance Definition _ := hasDecEq.Build fpacket fpacket_eq_axiom.
 
 #[export]Instance fpacket_inhab : Inhabitant fpacket := 
   @mk_fecpkt fec_data packet_inhab fec_data_inhab.
@@ -117,8 +116,8 @@ Proof.
   move => t. by repeat match goal with | x : ?A * ?B |- _ => destruct x end.
 Qed.
 
-Definition block_eqMixin := CanEqMixin block_tuple_cancel.
-Canonical block_eqType := EqType block block_eqMixin.
+HB.instance Definition _ :=
+  Equality.copy block (can_type block_tuple_cancel).
 
 (*Nicer definitions for packets in a block*)
 Definition packet_in_data (p: fpacket) (b: block) : bool :=
@@ -688,7 +687,7 @@ Ltac case_pickSeq l ::=
 (*Here, we reason about the lists for each block, not the full structure*)
 Section BlockList.
 
-Definition block_list := alist nat_eqType (seq_eqType (option_eqType fpacket_eqType)).
+Definition block_list := alist nat (seq (option fpacket)).
 
 (*Packet should have same blockId*)
 Definition update_packet_list (p: fpacket) (l: list (option fpacket)) :=
