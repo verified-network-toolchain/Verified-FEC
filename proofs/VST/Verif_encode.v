@@ -261,6 +261,7 @@ Proof.
                               (*finally, need to prove that the postcondition is satisfied*) 
                                 { unfold Int.xor. rewrite !Int.unsigned_repr by simpl_repr_byte.
                                   rewrite dot_prod_plus_1 by lia. rewrite submatrix_spec by rep_lia.
+                                  unfold bextend.
                                   rewrite extend_mx_spec by rep_lia. 
                                   simpl.
                                   destruct (Z_lt_le_dec j (Zlength (Znth n packets))); [simpl | lia].
@@ -277,7 +278,7 @@ Proof.
                       { (*other if condition (when we are past the end*)
                         forward. entailer!.
                         (*this time, the proof of the invariant is much simpler*)
-                        rewrite dot_prod_plus_1 by lia. 
+                        rewrite dot_prod_plus_1 by lia. unfold bextend.
                         rewrite extend_mx_spec by rep_lia. simpl.
                         destruct (Z_lt_le_dec j (Zlength (Znth n packets))); simpl.
                         assert (Hlenbound: Zlength (Znth n packets) <= c) by inner_length. 

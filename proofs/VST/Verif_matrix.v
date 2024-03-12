@@ -325,14 +325,14 @@ Proof.
                       remember (get (scalar_mul_list_partial m n
                         (all_cols_one_partial m n (gauss_all_steps_list_partial m n mx k) k i)
                         i (byte_inv qij) j) i j) as aij.
+                      
                       forward_call (gv, aij, (byte_inv qij)).
-                      { unfold FIELD_TABLES. unfold INDEX_TABLES. subst; entailer!.
-                        (*TODO: what is going on here? ASK*)
-                        unfold firstn. simpl length. simpl firstn. unfold eval_cast.
-                        
-                        simpl firstn.
-                        simpl. simpl firstn. unfold Vubyte.
-                        rewrite !zero_ext_inrange; try reflexivity. all: auto. }
+                      { apply prop_right. simpl. unfold Vubyte. 
+                        simpl_repr_byte. subst; reflexivity.
+                      }
+                      {
+                        unfold FIELD_TABLES. unfold INDEX_TABLES. subst; entailer!.
+                      }
                       { forward. simpl_repr_byte.
                         Exists (j+1). entailer!. solve_offset.
                         unfold FIELD_TABLES. unfold INDEX_TABLES. cancel. rewrite <- byte_int_repr by rep_lia.
@@ -353,9 +353,14 @@ Proof.
                       entailer!. } 
                       rewrite Htemp in H2; clear Htemp.
                       (*need to know that j = n at end of loop*)
-                      assert (Hjn: j >= n). { apply typed_false_not_true in H2. rewrite (not_iff_compat) in H2.
-                      2: { rewrite ptr_comparison_gt_iff. reflexivity. all: auto. all: simpl; lia. }
-                      lia. } 
+                      assert (Hjn: j >= n). {
+                        apply typed_false_not_true in H2.
+                        rewrite (not_iff_compat) in H2.
+                        2: {
+                          setoid_rewrite ptr_comparison_gt_iff. reflexivity.
+                          all: auto. all: simpl; lia.
+                        }
+                        lia. } 
                       assert (j = n) by lia. subst; clear Hjn H2. unfold scalar_mul_list. cancel. 
                     }
                   }
@@ -591,7 +596,7 @@ Proof.
                   (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - 1 - (n - 1))] s)) as Hfa. { entailer!.
                 } rewrite Hfa in HRE; clear Hfa.
                 assert_PROP (j < n) as Hjn. { entailer!. 
-                 rewrite ptr_comparison_gt_iff in HRE; auto; simpl; lia. } clear HRE.
+                 setoid_rewrite ptr_comparison_gt_iff in HRE; auto; simpl; lia. } clear HRE.
                 (*simplify n so we can dereference*)
                  assert_PROP ((force_val (sem_binary_operation' Osub (tptr tuchar) tint
                 (field_address0 (tarray tuchar (m * n)) [ArraySubsc (i * n + n - j)] s)
@@ -610,6 +615,10 @@ Proof.
                    (all_lc_one_partial m n (gauss_all_steps_list_partial m n mx m)
                     i) i (byte_inv aii) j) i j) as aij.
                   forward_call (gv, aij, (byte_inv aii)).
+                  {
+                    apply prop_right. unfold Vubyte. simpl. simpl_repr_byte. 
+                    subst; reflexivity.
+                  }
                   { unfold FIELD_TABLES. entailer!. }
                   { forward. (*loop invariant preservation*)
                     Exists (j+1). entailer!.
@@ -635,7 +644,7 @@ Proof.
               rewrite Haddr in HRE; clear Haddr.
               assert (Hjn: j >= n). {
                 apply typed_false_not_true in HRE. rewrite (not_iff_compat) in HRE. 2: {
-                rewrite ptr_comparison_gt_iff. reflexivity. all: auto. all: simpl; lia. }
+                setoid_rewrite ptr_comparison_gt_iff. reflexivity. all: auto. all: simpl; lia. }
                 lia. } 
               assert (j = n) by lia. subst; clear Hjn HRE. 
               rewrite !(@get_default _ _ (inhabitant_F _)) by reflexivity.

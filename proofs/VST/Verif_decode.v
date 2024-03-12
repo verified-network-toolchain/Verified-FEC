@@ -522,7 +522,12 @@ Proof.
                 }
               }
             }
-            { (*contradiction*) rewrite Znth_app2 in H2 by lia.
+            { (*contradiction*) 
+              (*TODO: why is Znth unfolding?*)
+              pose proof (Znth_app2 val Vundef) as Happ.
+              unfold Znth at 1 in Happ.
+              rewrite Happ in H2 by lia.
+              (*rewrite Znth_app2 in H2 by lia.*)
                replace (k + i - Zlength packet_ptrs) with i in H2 by lia.
                rewrite <- Hparsconsist in H2 by lia. rewrite H2 in Hparith; inversion Hparith.
             }
@@ -552,7 +557,12 @@ Proof.
           { rewrite Hnull. apply denote_tc_test_eq_split. apply valid_pointer_null.
             apply valid_pointer_zero64; auto.
           }
-          { forward. rewrite Znth_app2 in H2 by lia.
+          { forward.
+            (*TODO: again Znth is unfolded*)
+            pose proof (Znth_app2 val Vundef) as Happ.
+            unfold Znth at 1 in Happ.
+            rewrite Happ in H2 by lia. 
+            (*rewrite Znth_app2 in H2 by lia.*)
             replace (k + i - Zlength packet_ptrs) with i in H2 by lia.
             rewrite Hnull in H2. inversion H2.
           }
@@ -1115,7 +1125,9 @@ Proof.
           (col_mx_list (bsubmx_rows_cols_list packets (k - xh) c (map Byte.unsigned found1) (Ziota 0 c))
               (submx_rows_cols_list (fill_missing  c parities) xh c (map Byte.unsigned row) (Ziota 0 c)) (k-xh) xh c)
           i' 0) v_s) :: seps)))); subst locs; subst seps.
-  { forward. Exists 0. entailer!.
+  { forward. Exists 0. replace 16000 with fec_max_cols by rep_lia.
+    replace 128 with fec_max_h by rep_lia. (*need to avoid stack overflow*)
+    entailer!.
     rewrite pop_mx_mult_part_zero by rep_lia.
     rewrite data_at__tarray, zseq_Zrepeat, default_arr, fec_max_cols_eq, fec_max_h_eq by lia. cancel.
   }
@@ -1528,7 +1540,10 @@ Proof.
         }
       }
       { (*preservation of outer loop invar*) subst locs seps; simpl app. forward. Exists (i'+1). 
-        unfold Int.add. simpl_repr_byte. entailer!.
+        unfold Int.add. simpl_repr_byte.
+        rewrite <- fec_max_cols_eq, <- fec_max_h_eq.
+        replace 255 with (fec_n - 1) by rep_lia.
+         entailer!.
         rewrite <- pop_mx_mult_part_row_finish by lia. cancel.
       }
     }
@@ -1879,7 +1894,9 @@ forward_loop (EX (i: Z),
                       (field_address0 (tarray tuchar (xh * (xh + xh))) (SUB (i' * xh * 2 + xh)) v_v)) as Hmtemp. {
                       entailer!; solve_offset. }
                     assert_PROP (n < xh) as Hxnxh. { entailer!. 
-                      rewrite Hntemp, Hmtemp,ptr_comparison_lt_iff in H4; auto; try lia; try nia. simpl; lia. }
+                      rewrite Hntemp, Hmtemp in H4.
+                      setoid_rewrite ptr_comparison_lt_iff in H4; auto; try lia; try nia.
+                      simpl; lia. }
                     clear Hntemp Hmtemp H4.
                     forward.
                     { entailer!; nia. }
@@ -1964,7 +1981,7 @@ forward_loop (EX (i: Z),
                       entailer!; solve_offset. }
                     assert_PROP (xh <= n) as Hxnxh. { entailer!. rewrite Hntemp, Hmtemp in H4.
                       apply typed_false_not_true in H4. 
-                      rewrite ptr_comparison_lt_iff in H4; auto; try lia; try nia.  simpl. lia. }
+                      setoid_rewrite ptr_comparison_lt_iff in H4; auto; try lia; try nia.  simpl. lia. }
                     clear Hntemp Hmtemp H4.
                     assert (Hnxh: n = xh) by lia. entailer!. 
                     rewrite dot_prod_rev; try lia. reflexivity. apply right_submx_wf; lia.
@@ -2296,7 +2313,7 @@ apply (semax_frame_seq
     assert (Hfoundeq: (find_parity_found parities (fec_n - 1) i) = (find_parity_found parities (fec_n - 1) parbound)). {
       apply find_parity_found_eq; try lia. rewrite !find_parity_rows_found_Zlength. lia. }
     unfold FEC_TABLES. unfold app at 1 2. Intros.
-    forward. forward_if True; [contradiction | solve[forward; entailer!] |].
+    forward. forward_if True; [discriminate | solve[forward; entailer!] |].
     assert (Hxh0: 0 < xh). { assert (Hxh0: 0 = xh \/ 0 < xh) by list_solve. destruct Hxh0 as [Hxh0 | Hxh0]; try lia.
       rewrite <- Hxh0 in H. rewrite !Byte.unsigned_repr in H by rep_lia. contradiction. } clear H.
     apply (semax_frame_seq
@@ -2504,7 +2521,11 @@ apply (semax_frame_seq
       forward. (*prove postcondition*)
       simpl_repr_byte. 
       rewrite <- CommonSSR.filter_filter, <- (@find_lost_filter stats (Zlength packet_ptrs)) by lia.
+      rewrite <- fec_max_h_eq, <- fec_max_cols_eq.
       entailer!.
+      {
+        unfold Vubyte. simpl. simpl_repr_byte.
+      }
       unfold decoder_list.
       assert (Hrevlen: Zlength (find_lost stats (Zlength packet_ptrs)) =
         (Zlength (map Byte.unsigned (rev (find_lost stats (Zlength packet_ptrs)))))). {
@@ -2567,7 +2588,8 @@ apply (semax_frame_seq
         (*Now have to go 1D - 2D array*)
         rewrite <- (split2_data_at_Tarray_app), <- (concat_unconcat _ 128 256); try lia.
         replace (2 * 128 * 128) with (128 * 256) by lia.
-        rewrite <- data_at_2darray_concat; auto. entailer!.
+        rewrite <- data_at_2darray_concat; auto.
+        rewrite <- fec_n_eq, <- fec_max_h_eq. entailer!.
         * apply unconcat_length2; lia.
         * rewrite Zlength_app,  Zlength_map, (@flatten_mx_Zlength _ xh (xh + xh)), zseq_Zlength; 
             [nia | rep_nia |]. 
