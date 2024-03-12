@@ -391,7 +391,8 @@ End LPoly.
 
 (*We will be working over GF(2), so we can give simpler functions because all leading coefficients are 1. The
   code will be more efficient, which is important because this will be run many times in a loop*)
-Require Import PolyField.
+From mathcomp
+Require Import qpoly qfpoly.
 
 Section BoolPolyDiv.
 
@@ -598,7 +599,7 @@ Proof.
       pose proof (divp_eq q p) as Hq.
       move: Hp Hq. rewrite Hdivqp Hdivpq !GRing.addr0 => Hp. rewrite {2} Hp GRing.mulrA.
       rewrite GRing.mulrC -{1}(GRing.mulr1 q) => Hq. apply GRing.mulfI in Hq.
-      have: 1%N = size (q %/ p * (p %/ q)) by rewrite -(size_poly1 F) Hq.
+      have: 1%N = size (q %/ p * (p %/ q)) by rewrite -Hq size_poly1. 
       move => /eqP Hsz1. move: Hsz1. rewrite eq_sym size_mul_eq1 => /andP[Hqp1 Hpq1].
       move: Hpq1; rewrite size_one => /eqP Hpq1. move: Hp. rewrite Hpq1 GRing.mul1r. move ->. 
       by rewrite eq_refl. by rewrite Hq0.
@@ -747,6 +748,7 @@ Proof.
     + move: Hdiv; rewrite bool_dvdp_spec polyseqK => ->. by rewrite orbT.
 Qed.
 
+
 (** Testing for Primitive lpolys*)
 
 (*Similarly, we want a computable method for determining if a polynomial over GF(2) is primitive. We want to
@@ -827,28 +829,37 @@ Proof.
 Qed.
 
 Definition find_prim (l: lpoly F) (n: nat) : bool :=
-  ((find_irred l n) == None) && (bool_dvdp l (xn1_lpoly ((2^((size l).-1)).-1))) &&
-  ((prim_div_check l) == None).
+  [&& 
+     l \is monic,
+     find_irred l n == None, 
+     bool_dvdp l (xn1_lpoly ((2^((size l).-1)).-1)) & 
+     prim_div_check l == None].
 
-Lemma find_primP: forall (l: lpoly F) n,
+Lemma find_prim_primitive : forall (l: lpoly F) n,
   1 < size l ->
   n < (size l).-1 <= n.*2 ->
-  reflect (primitive_poly l) (find_prim l n).
+  primitive_poly l = find_prim l n.
 Proof.
   move => l n Hszl Hn. 
   have Hpow0: (2 ^ (size l).-1).-1 != 0%N. { have: 2^ 1 <= 2 ^((size l).-1) by rewrite leq_exp2l // ltn_predRL.
     have->: 2 ^ 1 = 2%N by []. move => Hbound. by rewrite -lt0n ltn_predRL. }
-  case Hprim: (find_prim l n).
-  - apply ReflectT. move: Hprim; rewrite /find_prim /primitive_poly => 
-    /andP[/andP [/(find_irredP Hszl Hn) Hirred Hdiv] / prim_div_check_spec Hdivcheck].
-    split. by rewrite polyseqK in Hirred.
-    split. rewrite /= card_bool. move: Hdiv. rewrite bool_dvdp_spec polyseqK xn1_lpoly_spec //.
-    rewrite /=. move: Hdivcheck. by rewrite polyseqK card_bool.
-  - apply ReflectF. move: Hprim; rewrite /find_prim /primitive_poly => Hfalse [Hirred [Hdiv Halldiv]].
-    have: (irreducible_poly (Poly l)) by rewrite polyseqK. move => /(find_irredP Hszl Hn) Hirrb.
-    have Hprimb: (prim_div_check l == None). apply /prim_div_check_spec. rewrite /= polyseqK. apply Halldiv.
-    move: Hfalse; rewrite Hprimb Hirrb /= andbT bool_dvdp_spec polyseqK xn1_lpoly_spec.
-    move: Hdiv. by rewrite /= card_bool; move ->. by [].
+  rewrite /primitive_poly/find_prim.
+  case Hmon: (l \is monic) =>//=.
+  congr ([&& _ , _ & _]).
+  - by apply/irreducibleP/find_irredP => //; rewrite polyseqK.
+  - by rewrite bool_dvdp_spec polyseqK xn1_lpoly_spec // 
+    card_monic_qpoly // card_bool.
+  - apply/forallP/prim_div_check_spec; rewrite card_bool /= polyseqK.
+    + move=> H n1 Hd.
+      case: leqP => [|dD]; rewrite !(orbT, orbF) //.
+      have dD': n1 < #|{poly %/ l}|.-1 by
+        rewrite card_monic_qpoly // card_bool.
+      by have /= := H (Ordinal dD'); rewrite Hd.
+    + move=> H [n1 Hn1] /=.
+      apply/implyP=> /H.
+      move: Hn1.
+      rewrite card_monic_qpoly // card_bool => Hn1.
+      by rewrite leqNgt Hn1 orbF. 
 Qed.
 
 (** Concrete Polynomials*)
@@ -873,42 +884,48 @@ Lemma p8_primitive : primitive_poly p8.
 Proof.
   have Hsz: 1 < size p8 by [].
   have Hn: 2 < (size p8).-1 <= 2.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute.
+  rewrite (find_prim_primitive Hsz Hn).
+  by vm_compute.
 Qed.
 
 Lemma p16_primitive: primitive_poly p16.
 Proof.
   have Hsz: 1 < size p16 by [].
   have Hn: 2 < (size p16).-1 <= 2.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute.
+  rewrite (find_prim_primitive Hsz Hn).
+  by vm_compute.
 Qed.
 
 Lemma p32_primitive: primitive_poly p32.
 Proof.
   have Hsz: 1 < size p32 by [].
   have Hn: 3 < (size p32).-1 <= 3.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute.
+  rewrite (find_prim_primitive Hsz Hn).
+  by vm_compute.
 Qed.
 
 Lemma p64_primitive: primitive_poly p64.
 Proof.
   have Hsz: 1 < size p64 by [].
   have Hn: 3 < (size p64).-1 <= 3.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute.
+  rewrite (find_prim_primitive Hsz Hn).
+  by vm_compute.
 Qed.
 
 Lemma p128_primitive: primitive_poly p128.
 Proof.
   have Hsz: 1 < size p128 by [].
   have Hn: 4 < (size p128).-1 <= 4.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute.
+  rewrite (find_prim_primitive Hsz Hn).
+  by vm_compute.
 Qed.
 
 Lemma p256_primitive: primitive_poly p256.
 Proof.
   have Hsz: 1 < size p256 by [].
   have Hn: 4 < (size p256).-1 <= 4.*2 by [].
-  apply (elimT (find_primP Hsz Hn)). by vm_compute. 
+  rewrite (find_prim_primitive Hsz Hn).
+  by vm_compute.
 Qed.
 
 End BoolPolyDiv.

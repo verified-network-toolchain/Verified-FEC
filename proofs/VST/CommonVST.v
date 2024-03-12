@@ -377,7 +377,7 @@ Proof.
     + (*We will need these later, when we have transformed the [data_at] predicates, so they are harder to prove*)
       assert_PROP (field_compatible (tarray (tarray t m) (Z.succ (Zlength al))) [] p). { entailer!. }
       assert_PROP (field_compatible0 (tarray (tarray t m) n) [ArraySubsc 1] p). { entailer!.
-        apply arr_field_compatible0. auto. list_solve. }
+        apply arr_field_compatible0. auto. Zlength_solve. (*TODO: list_solve hangs*) }
       change (a :: al) with ([a] ++ al). 
       change (list (reptype t)) with (reptype (tarray t m)) in a.
       rewrite (split2_data_at_Tarray_app 1 _ _ _ [a]). 2: Zlength_solve.
@@ -386,19 +386,18 @@ Proof.
       rewrite (split2_data_at_Tarray_app m).
       replace (n * m - m) with ((n-1) * m) by lia.
       erewrite data_at_singleton_array_eq. 2: reflexivity.
-      assert (Hm: 0 <= m). rewrite <- Hmlen. list_solve.
+      assert (Hm: 0 <= m). rewrite <- Hmlen. Zlength_solve.
       entailer!. rewrite !field_address0_clarify; auto.
       simpl. unfold sizeof. rewrite <- Z.mul_assoc.
       replace (Z.max 0 (Zlength a) * 1) with (Zlength a) by lia. rewrite IHal. cancel.
       inversion H0; subst; auto. lia. unfold field_address0.
       rewrite field_compatible0_1d_2d in H3.
       destruct (field_compatible0_dec (tarray t (Z.succ (Zlength al) * Zlength a)) [ArraySubsc (Zlength a)] p); [| contradiction].
-    apply isptr_is_pointer_or_null; auto. list_solve. list_solve. auto.
-    inversion H0; subst; reflexivity.
-    rewrite (Zlength_concat (n-1) m). lia. list_solve. inversion H0; auto.
+    apply isptr_is_pointer_or_null; auto. all: try solve[Zlength_solve].  auto.
+    rewrite (Zlength_concat (n-1) m). lia. Zlength_solve. inversion H0; auto.
     + assert_PROP ((field_compatible0 (tarray t (n * m)) [ArraySubsc m] p)). { entailer!.
       apply arr_field_compatible0. apply H2.
-       split. list_solve. rewrite <- (Z.mul_1_l (Zlength a)) at 1. apply Z.mul_le_mono_nonneg_r; list_solve. }
+       split. Zlength_solve. rewrite <- (Z.mul_1_l (Zlength a)) at 1. apply Z.mul_le_mono_nonneg_r; Zlength_solve. }
       change (a :: al) with ([a] ++ al). 
       change (list (reptype t)) with (reptype (tarray t m)) in a.
       rewrite (split2_data_at_Tarray_app 1 _ _ _ [a]). 2: Zlength_solve.
@@ -407,15 +406,15 @@ Proof.
       rewrite (split2_data_at_Tarray_app m). 2: auto.
       replace (n * m - m) with ((n-1) * m) by lia.
       erewrite data_at_singleton_array_eq. 2: reflexivity.
-      assert (Hm: 0 <= m). rewrite <- Hmlen. list_solve.
+      assert (Hm: 0 <= m). rewrite <- Hmlen. Zlength_solve.
       entailer!. rewrite !field_address0_clarify; auto.
       simpl. unfold sizeof. rewrite <- Z.mul_assoc.
       replace (Z.max 0 (Zlength a) * 1) with (Zlength a) by lia. rewrite IHal. cancel.
       inversion H0; subst; auto. lia. unfold field_address0.
       rewrite <- field_compatible0_1d_2d in H2.
       destruct (field_compatible0_dec (tarray (tarray t (Zlength a)) (Z.succ (Zlength al))) [ArraySubsc 1] p); [| contradiction].
-      apply isptr_is_pointer_or_null; auto. list_solve. list_solve. auto.
-      rewrite (Zlength_concat (n-1) m). lia. list_solve. inversion H0; auto.
+      apply isptr_is_pointer_or_null; auto. all: try Zlength_solve. auto.
+      rewrite (Zlength_concat (n-1) m). lia. Zlength_solve. inversion H0; auto.
 Qed.
 
 (** Working with Arrays of Pointers*)
@@ -466,7 +465,8 @@ Proof.
   assert (0 <= i < Zlength contents \/ ~ (0 <= i < Zlength contents)) as [Hlt | Hgt] by lia; [| entailer ].
   (*why doesn't entailer! work?*)
   sep_apply (iter_sepcon_arrays_Znth _ _ _ Heq Hlt).
-  assert (forall m P Q, P -> (m |-- !! Q) -> (m |-- !! (P -> Q))). { intros. sep_apply H. entailer!. }
+  assert (forall m P Q, P -> (m |-- !! Q) -> (m |-- !! (P -> Q))). { intros. sep_apply H. entailer. 
+    (*TODO: entailer! fails*) }
   apply H. assumption. entailer!.
 Qed.
 
@@ -494,7 +494,7 @@ Lemma combine_remove_nth: forall {A B: Type} `{Inhabitant A} `{Inhabitant B} n (
   combine (remove_nth n l1) (remove_nth n l2) = remove_nth n (combine l1 l2).
 Proof.
   intros A B Hinh1 Hinh2 n l1 l2 Hlens Hn.
-  unfold remove_nth. rewrite combine_app by list_solve. rewrite Hlens. rewrite !combine_sublist by lia.
+  unfold remove_nth. rewrite combine_app by Zlength_solve. rewrite Hlens. rewrite !combine_sublist by lia.
   rewrite combine_Zlength by lia. rewrite Hlens. reflexivity.
 Qed.
 

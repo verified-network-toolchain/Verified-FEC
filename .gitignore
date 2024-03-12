@@ -35,3 +35,7 @@ nra.cache
 *.conf
 *.html
 *.crashcoqide
+
+src/modified/mini_prod3/common/include/composition.h
+src/orig/mini_prod3/common/include/composition.h
+src/incremental

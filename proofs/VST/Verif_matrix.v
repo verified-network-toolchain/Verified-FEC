@@ -105,7 +105,7 @@ Proof.
   }
   { forward. replace i with (fec_max_h) by rep_lia. thaw Ftrace. entailer!. rewrite pop_weight_weight_done. cancel. }
 }
-{ forward. forward_if True; [contradiction | |].
+{ forward. forward_if True; [discriminate | |].
   { forward. entailer!. }
   { forward_call(gv, fec_max_h, fec_n - 1,  (weight_mx_list fec_max_h (fec_n - 1)),
       (gv _fec_weights), Ews).
@@ -120,7 +120,7 @@ Proof.
       destruct (Z_le_lt_dec fec_max_h (fec_n - 1)); try rep_lia. rewrite weight_mx_list_spec by rep_lia.
       apply vandermonde_strong_inv. apply (ssrbool.introT (ssrnat.leP)). rep_lia. 
     }
-    { Intros ret. forward. forward_if True; [ contradiction | |].
+    { Intros ret. forward. forward_if True; [ discriminate | |].
       { forward. entailer!. }
       { forward. entailer!. pose proof weight_mx_wf as Hwf. pose proof (rev_mx_val_wf _ _ _ Hwf) as Hrev.
         unfold FEC_TABLES.
@@ -326,7 +326,13 @@ Proof.
                         (all_cols_one_partial m n (gauss_all_steps_list_partial m n mx k) k i)
                         i (byte_inv qij) j) i j) as aij.
                       forward_call (gv, aij, (byte_inv qij)).
-                      { unfold FIELD_TABLES. unfold INDEX_TABLES. entailer!. }
+                      { unfold FIELD_TABLES. unfold INDEX_TABLES. subst; entailer!.
+                        (*TODO: what is going on here? ASK*)
+                        unfold firstn. simpl length. simpl firstn. unfold eval_cast.
+                        
+                        simpl firstn.
+                        simpl. simpl firstn. unfold Vubyte.
+                        rewrite !zero_ext_inrange; try reflexivity. all: auto. }
                       { forward. simpl_repr_byte.
                         Exists (j+1). entailer!. solve_offset.
                         unfold FIELD_TABLES. unfold INDEX_TABLES. cancel. rewrite <- byte_int_repr by rep_lia.

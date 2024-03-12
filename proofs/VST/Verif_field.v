@@ -66,12 +66,13 @@ Proof.
                               if Byte.eq_dec b2 Byte.zero then Byte.zero else Byte.one));
      temp _a (Vubyte b1); temp _b (Vubyte b2); gvars gv)
     SEP (INDEX_TABLES gv)).
-  - forward. entailer!. if_tac. subst. rewrite Byte.unsigned_zero in H'; contradiction.
+  - forward. entailer!. if_tac. subst. rewrite Byte.unsigned_zero in H. discriminate.
     if_tac. subst. rewrite Byte.unsigned_zero. reflexivity.
     destruct (Int.eq (Int.repr (Byte.unsigned b2)) Int.zero) eqn : Hb20. apply Int.same_if_eq in Hb20.
     apply Int_repr_zero in Hb20; [| rep_lia]. apply byte_unsigned_zero in Hb20. contradiction.
     reflexivity.
-  - forward. entailer!. rewrite Int_repr_zero in H by rep_lia. apply byte_unsigned_zero in H. subst.
+  - forward. entailer!. apply typed_false_tint_Vint in H. rewrite Int_repr_zero in H by rep_lia.
+    apply byte_unsigned_zero in H. subst.
     if_tac; [reflexivity |contradiction].
   - forward_if.
     { destruct (Byte.eq_dec b1 Byte.zero) as [|Hb1]; [contradiction |].
@@ -84,7 +85,7 @@ Proof.
         forward; simpl_map; [ entailer! | entailer!; rep_lia |]. forward. 
         unfold INDEX_TABLES. entailer!. revert H. rewrite !byte_logs_Znth by rep_lia. 
         rewrite !Byte.repr_unsigned. intros Hlarge. rewrite byte_pows_Znth by rep_lia.
-        replace 255 with (fec_n - 1) by rep_lia.
+        replace 256 with fec_n by rep_lia.
         rewrite mult_large by rep_lia. reflexivity.
       }
       { forward; simpl_map; [entailer! | entailer! | ].
