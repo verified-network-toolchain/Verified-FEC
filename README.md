@@ -25,6 +25,10 @@ and buffer manager for sender and for receiver) are described in the paper
 The proofs accompanying this paper can be found in the directory 
 [proofs/FEC](proofs/FEC) and the code can be found in [src/*/mini_prod3](src/).
 
+Dependencies: This repo requires Coq 8.18, VST 2.13, and Mathematical Components 2.1, and
+Coq Record Update 3.3.0.
+It builds with the November 2023 Coq Platform (& coq-record-update).
+
 LICENSE: Peraton Labs (the successor company of Bellcore) open-sourced
 the code in 2021 under the Apache 2.0 license, and Cohen and Appel
 open-sourced the proof under the same license.  See [LICENSE.md](LICENSE.md)
