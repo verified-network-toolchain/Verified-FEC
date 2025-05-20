@@ -1,7 +1,7 @@
 # End-to-End Proofs
 
 This folder contains the proof scripts accompanying the paper "Specifying and Verifying a Real-World Packet Error-Correction System" by Joshua M. Cohen and Andrew W. Appel.
-See the [src](../src) folder for information about the underlying C code (both original and modified).
+See the [src](../../src) folder for information about the underlying C code (both original and modified).
 
 ## Compilation
 
